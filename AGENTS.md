@@ -15,6 +15,8 @@
 - If adding Home Assistant service actions, define the schema/strings and register handlers in `async_setup()`, not `async_setup_entry()`.
 - Provider credentials belong on the parent config entry; per-agent settings belong in `conversation` config subentries. Do not introduce global singleton agents or shared conversation memory across entries.
 - Keep HACS/Core metadata current when behavior changes: `manifest.json`, `hacs.json`, translations, diagnostics, repairs, and README status should not drift from source.
+- Always use Home Assistant-native and Pydantic AI helpers where available instead of custom code workarounds especially for async or network related activities.
+- Always plan to work within the Home Assistant and Pydantic AI ecosystem instead of around it.
 
 ## Commands
 
