@@ -2,17 +2,35 @@
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 
-Home Assistant custom integration scaffold for Assist conversation agents backed by
-Pydantic AI.
+Home Assistant custom integration for Assist conversation agents and AI task data
+generation backed by Pydantic AI.
 
 ## Status
 
-This repository currently contains the provider/configuration foundation. Assist
-conversation entities can be configured and exposed as distinct Home Assistant
-conversation agents, but the Pydantic AI chat runtime is not implemented yet. A
-configured agent returns a placeholder response until runtime support is added.
+Implemented capabilities include:
+
+- OpenAI and OpenAI-compatible provider connections using Pydantic AI's
+  `OpenAIChatModel` and Home Assistant's shared async HTTP client.
+- Multiple configurable Assist conversation agents per provider connection.
+- Home Assistant control tools for conversation agents when an LLM API is
+  selected for that agent.
+- AI task entities for Home Assistant data generation, including attachment
+  support and structured output validation.
+- Configurable structured output modes for AI tasks: tool, native, and prompted.
+- Optional remote Streamable HTTP MCP server subentries, with tool discovery,
+  explicit runtime allowlists, and response services for listing or refreshing
+  discovered tools.
+- Optional local `pydantic-ai-skills` selection from `/config/skills` or a
+  subfolder, with script execution disabled unless explicitly enabled on the
+  provider connection.
+- Optional Logfire tracing with Home Assistant metadata.
+- Config entry reauthentication, provider reconfiguration, subentry
+  reconfiguration, diagnostics redaction, and repair issues for model-validation
+  and Logfire-token conflicts.
 
 ## Installation
+
+This integration requires Home Assistant 2026.5.1 or newer.
 
 ### HACS Custom Repository
 
@@ -33,10 +51,81 @@ configured agent returns a placeholder response until runtime support is added.
 1. Go to Settings > Devices & services.
 2. Add `Pydantic AI Agent`.
 3. Configure a provider connection with an OpenAI or OpenAI-compatible API key.
-4. Add conversation-agent subentries for each Assist agent you want to expose.
+4. For OpenAI-compatible providers, enter the provider's OpenAI-compatible base
+   URL, such as `http://localhost:11434/v1`.
+5. Add subentries for the agents and tool sources you want to expose.
 
-Each Assist agent is represented by its own `conversation.*` entity. That entity
-ID is the Home Assistant conversation agent ID.
+Provider-level settings are shared by all subentries under that provider
+connection. Per-agent and per-task settings are stored on their own subentries.
+
+### Conversation Agents
+
+Add a `Conversation agent` subentry for each Assist agent you want to expose.
+Each subentry creates a distinct `conversation.*` entity, and that entity ID is
+the Home Assistant conversation agent ID.
+
+Conversation agents support:
+
+- A per-agent name, model, and instruction prompt.
+- Optional Home Assistant LLM API selection. Selecting an API enables Home
+  Assistant control tools and makes the entity advertise conversation control
+  support.
+- Optional MCP server selection. Selected MCP servers must have at least one
+  allowed tool configured before runtime use.
+- Optional local skill selection from the configured skills folder.
+- Optional model settings including temperature, thinking, max tokens, top P,
+  timeout, parallel tool calls, seed, penalties, extra headers, and extra body.
+
+### AI Tasks
+
+Add an `AI task` subentry for each AI task model configuration you want to
+expose. Each subentry creates an `ai_task.*` entity that supports Home Assistant
+data generation and attachments.
+
+AI task entities can return plain text or validate structured results against
+the schema requested by Home Assistant. Structured output defaults to tool output
+and can be changed to native or prompted output in the advanced AI task settings.
+
+### MCP Servers
+
+Add an `MCP server` subentry to connect a remote Streamable HTTP MCP server.
+Stdio and local command MCP servers are not supported by this integration.
+
+MCP server configuration supports:
+
+- HTTP or HTTPS MCP endpoint URLs.
+- Optional JSON HTTP headers.
+- Optional comma-separated allowed tool names.
+
+Use the `pydantic_ai_agent.list_mcp_tools` action to list cached discovered
+tools, or `pydantic_ai_agent.refresh_mcp_tools` to reconnect and refresh tool
+catalogs. Both actions require a Pydantic AI Agent config entry ID and can be
+limited to one MCP server subentry ID.
+
+MCP tools are available at runtime only when a conversation agent or AI task
+selects the server and the server has an explicit allowed-tools list.
+
+### Skills
+
+Provider setup includes a skills folder field. The folder must be `/config/skills`
+or one of its subfolders. Conversation agents and AI tasks can select discovered
+`pydantic-ai-skills` from that folder.
+
+Skill script execution is disabled by default. Enable `Allow skill script
+execution` only for skills you trust; changing the skills folder or script
+execution setting clears selected skills from existing agent and task subentries.
+
+### Validation And Repairs
+
+The integration validates configured models with provider test requests when
+conversation-agent and AI-task subentries are created or reconfigured, and again
+when the provider entry loads. Authentication failures trigger reauthentication.
+Model, permission, provider-configuration, or streaming-capability failures that
+can be fixed by reconfiguration are surfaced as Home Assistant repair issues
+without preventing the provider entry from loading.
+
+Diagnostics redact API keys, Logfire tokens, prompts, sensitive model settings,
+MCP headers, and MCP URL passwords.
 
 ### Logfire Tracing
 
@@ -54,6 +143,8 @@ token are left loaded but get a repair warning and do not emit Logfire traces.
 ## Development
 
 Use Python 3.14.2 or newer.
+
+Install or update the development environment, then run the local checks:
 
 ```bash
 scripts/setup

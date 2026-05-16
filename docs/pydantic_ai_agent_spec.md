@@ -8,16 +8,16 @@ direction, so current source, executable config, manifests, and tests remain the
 authority when this document describes planned behavior.
 
 Current implementation status: the repository contains the provider/configuration
-foundation, parent config flow, conversation and AI task data subentry flows,
-conversation and AI task entity registration, diagnostics, setup-time provider
-validation, repair issues for reconfigurable model validation failures, direct
-Pydantic AI model streaming, Home Assistant LLM tool conversion, ChatLog history
-conversion, and Pydantic AI stream event adaptation.
+foundation, parent config flow, conversation, AI task, and MCP server subentry
+flows, conversation and AI task entity registration, diagnostics, setup-time
+provider validation, repair issues for reconfigurable model validation failures,
+Pydantic AI `Agent` runtime execution, Home Assistant LLM tool conversion,
+remote Streamable HTTP MCP toolsets, local `pydantic-ai-skills` capabilities,
+ChatLog history conversion, and Pydantic AI message adaptation.
 
 Known remaining gaps include runtime capability detection beyond validation
-probes, direct tests for the model/tool execution loop through Home Assistant
-LLM API mocks, translation coverage tests, and cleanup/cancellation lifecycle
-tests.
+probes, translation coverage tests, cleanup/cancellation lifecycle tests, and
+deeper edge-case coverage for MCP and skill runtime failures.
 
 ## Product Identity
 
@@ -35,23 +35,24 @@ new source paths, entity names, constants, documentation, or tests.
 
 ## Purpose
 
-`Pydantic AI Agent` provides Home Assistant Assist conversation agents backed by
-Pydantic AI. It allows Home Assistant users to create one or more provider
-connections, each with provider credentials and mode on the parent config entry,
-and one or more independent Assist agents with model, prompt, Home Assistant tool
-access, and model behavior settings on `conversation` config subentries.
+`Pydantic AI Agent` provides Home Assistant Assist conversation agents and AI
+task data-generation entities backed by Pydantic AI. It allows Home Assistant
+users to create one or more provider connections, each with provider credentials
+and mode on the parent config entry, and one or more independent Assist agents
+with model, prompt, Home Assistant tool access, MCP toolsets, selected skills,
+and model behavior settings on `conversation` config subentries.
 
 The integration bridges three systems:
 
 1. Home Assistant Assist and conversation entities.
 2. Home Assistant `ChatLog` and LLM API tool execution.
-3. Pydantic AI agents, providers, model settings, toolsets, and streaming events.
+3. Pydantic AI agents, providers, model settings, toolsets, and message events.
 
 The implementation should follow the architecture of Home Assistant's official
 OpenAI conversation integration where practical: one conversation entity handles
 Assist input, asks `ChatLog` to provide LLM data and HA tools, sends the turn to
-the model provider, streams assistant/tool/reasoning deltas back into `ChatLog`,
-and returns Home Assistant's conversation result.
+a Pydantic AI `Agent`, appends assistant/tool/reasoning content back into
+`ChatLog`, and returns Home Assistant's conversation result.
 
 ## Implementation Research Requirement
 
@@ -151,8 +152,8 @@ Implementation checklist before coding each feature:
 - Support multiple independent integration instances.
 - Allow each instance to use its own API key, provider mode, base URL, model,
   instructions, Home Assistant tool access, and advanced model options.
-- Stream assistant response text into Assist when supported by Home Assistant and
-  the selected provider.
+- Append assistant responses into Assist through Home Assistant `ChatLog`; the
+  current conversation entity does not advertise streaming.
 - Surface high-level tool calls, tool results, and displayable reasoning or
   thinking summaries through Home Assistant `ChatLog` so the Assist UI can show
   details.
@@ -166,14 +167,14 @@ Implementation checklist before coding each feature:
   interaction, tool execution, setup task, unload task, script, and test helper.
 - Detect provider, model, Home Assistant, and Pydantic AI capabilities at runtime
   rather than relying on brittle hardcoded assumptions.
-- Preserve future extension points for MCP toolsets, skills, additional
-  providers, AI task entities, diagnostics, and richer tracing.
+- Preserve future extension points for additional MCP transports, additional
+  providers, diagnostics, and richer tracing.
 
 ## Non-Goals
 
 - Do not implement STT or TTS in the MVP.
-- Do not implement MCP servers, skill registries, RAG, vector memory, or custom
-  external tool catalogs in the MVP.
+- Do not implement local/stdio/SSE MCP servers, remote skill registries, RAG,
+  vector memory, or custom external tool catalogs in the MVP.
 - Do not create a global singleton agent shared across all config entries.
 - Do not share memory or conversation history across config entries by default.
 - Do not bypass Home Assistant's LLM API for smart-home control.
@@ -221,8 +222,9 @@ Rationale:
   separate credentials, endpoints, or provider modes.
 
 STT and TTS subentry types remain future extensions. The MVP supports
-`conversation` subentries for Assist agents and `ai_task_data` subentries for
-Home Assistant AI task data-generation entities.
+`conversation` subentries for Assist agents, `ai_task_data` subentries for Home
+Assistant AI task data-generation entities, and `mcp_server` subentries for
+remote Streamable HTTP MCP servers.
 
 ## Functional Requirements
 
@@ -251,8 +253,8 @@ Home Assistant AI task data-generation entities.
 - Each `conversation` config subentry must create exactly one
   `ConversationEntity` in the MVP.
 - The entity must be selectable as a Home Assistant Assist conversation agent.
-- The entity must advertise streaming support when the implementation can stream
-  through Home Assistant's conversation APIs.
+- The entity must not advertise streaming support until the implementation can
+  stream through Home Assistant's conversation APIs.
 - The entity must advertise control capability only when a Home Assistant LLM API
   is configured for that instance.
 - The entity unique ID must be stable across option changes.
@@ -267,26 +269,26 @@ Home Assistant AI task data-generation entities.
   LLM API and prompt configuration.
 - The entity must convert the current `ChatLog` messages into Pydantic AI message
   history for the run.
-- The entity must call Pydantic AI's direct model streaming API with the selected
-  provider, model, model settings, ChatLog-derived message history, and Home
-  Assistant LLM API tool definitions.
-- The entity must stream or append assistant output back into `ChatLog`.
+- The entity must call the shared Pydantic AI `Agent` runtime with the selected
+  provider, model, model settings, ChatLog-derived message history, Home
+  Assistant LLM API tools, selected MCP toolsets, and selected skills.
+- The entity must append assistant output back into `ChatLog`.
 - The entity must return Home Assistant's conversation result generated from the
   updated `ChatLog`.
 
 ### Streaming
 
-- Text deltas from Pydantic AI must be mapped to Home Assistant assistant content
-  deltas.
+- Text content from Pydantic AI must be mapped to Home Assistant assistant
+  content.
 - Displayable thinking or reasoning summary deltas must be mapped to Home
   Assistant `thinking_content` deltas.
 - Tool-call lifecycle events must be mapped to Home Assistant-compatible tool
   call records.
 - Tool results must be mapped to Home Assistant-compatible tool result content.
-- Streaming cancellation must stop provider work promptly and avoid appending
+- Request cancellation must stop provider work promptly and avoid appending
   misleading final content.
-- If a provider cannot stream a specific detail type, the integration must degrade
-  by streaming what is available and returning a valid final response.
+- If a provider cannot return a specific detail type, the integration must
+  degrade by returning what is available and producing a valid final response.
 
 ### Home Assistant Tool Use
 
@@ -340,6 +342,8 @@ independent instance.
 | Provider mode      | Yes                | Data                             | Example: `openai`, `openai_compatible`.                       |
 | API key            | Yes                | Data                             | Credential used for provider validation and requests.         |
 | Base URL           | Provider-dependent | Data                             | Required for OpenAI-compatible providers; optional otherwise. |
+| Logfire token      | No                 | Data                             | Enables optional Logfire tracing for the provider entry.      |
+| Skills folder      | No                 | Data                             | Must be `/config/skills` or a subfolder when configured.      |
 | Initial agent name | No                 | Conversation subentry title/data | Collected by the conversation subentry flow.                  |
 | Model              | No                 | Conversation/AI task subentry    | Entered and validated by subentry flows.                      |
 | HA LLM API         | No                 | Conversation subentry data       | Tool access is enabled when this selector has values.         |
@@ -377,6 +381,9 @@ without recreating the parent provider/service entry.
 | Model                      | Change model after setup.                                   |
 | System prompt/instructions | Customize assistant behavior.                               |
 | HA LLM API selection       | Choose which Home Assistant LLM API tools to expose.        |
+| MCP server selection       | Choose which configured MCP server toolsets to expose.      |
+| Skill selection            | Choose discovered local skills to expose as capabilities.   |
+| Max iterations             | Bound Pydantic AI request/tool-loop iterations.             |
 | Temperature                | Portable generation control where supported.                |
 | Thinking                   | Provider-dependent thinking control.                        |
 | Max tokens                 | Bound response size where supported.                        |
@@ -505,6 +512,10 @@ custom_components/pydantic_ai_agent/
 ├── ha_toolset.py
 ├── stream_adapter.py
 ├── ai_task.py
+├── mcp.py
+├── skills.py
+├── structured_output.py
+├── logfire_support.py
 ├── diagnostics.py
 ├── repairs.py
 └── translations/
@@ -516,28 +527,49 @@ Optional future files:
 ```text
 custom_components/pydantic_ai_agent/
 ├── system_health.py
-├── mcp.py
 └── providers.py
 ```
 
 ### Module Responsibilities
 
-| Module                 | Responsibility                                                                                                                  |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `__init__.py`          | Config entry setup/unload, runtime data creation, platform forwarding, options update listener.                                 |
-| `manifest.json`        | Home Assistant metadata, HACS version, requirements, config flow declaration.                                                   |
-| `const.py`             | Domain, config keys, option keys, defaults, provider IDs.                                                                       |
-| `config_flow.py`       | Initial config flow, subentry flow, reauth flow, provider validation.                                                           |
-| `conversation.py`      | `ConversationEntity` implementation and Home Assistant conversation lifecycle.                                                  |
-| `entity.py`            | Shared direct Pydantic AI model runtime, model settings handling, native structured-output request parameters, and tool loop.   |
-| `provider.py`          | Build Pydantic AI `OpenAIChatModel` and `OpenAIProvider` instances from provider config.                                        |
-| `history.py`           | Convert Home Assistant `ChatLog` content and attachments into Pydantic AI model messages.                                       |
-| `ha_toolset.py`        | Convert Home Assistant LLM API tools into Pydantic AI tools/toolsets.                                                           |
-| `stream_adapter.py`    | Convert Pydantic AI stream events into Home Assistant `ChatLog` deltas.                                                         |
-| `ai_task.py`           | Home Assistant AI task entity implementation for data generation and structured validation.                                     |
-| `diagnostics.py`       | Redacted config entry diagnostics for provider settings, subentry summaries, model settings, feature flags, and runtime status. |
-| `repairs.py`           | Model validation repair issue IDs, issue creation, issue deletion, and stale issue cleanup.                                     |
-| `translations/en.json` | Config flow, subentry flow, actionable errors, aborts, progress/info text, and operator-facing templates.                       |
+- `__init__.py`: Config entry setup/unload, runtime data creation, platform
+  forwarding, update listeners, setup-time validation, repairs, and MCP response
+  actions.
+- `manifest.json`: Home Assistant metadata, HACS version, requirements, and
+  config flow declaration.
+- `const.py`: Domain, config keys, option keys, defaults, provider IDs, and
+  structured-output constants.
+- `config_flow.py`: Initial config flow, provider reauth/reconfigure, subentry
+  flows, provider validation, MCP discovery, skill selection, and
+  structured-output configuration.
+- `conversation.py`: `ConversationEntity` implementation and Home Assistant
+  conversation lifecycle.
+- `entity.py`: Shared Pydantic AI `Agent` runtime, model settings handling, Home
+  Assistant LLM API tools, MCP toolsets, skills capabilities, usage limits, and
+  tool loop.
+- `provider.py`: Build Pydantic AI `OpenAIChatModel` and `OpenAIProvider`
+  instances from provider config.
+- `history.py`: Convert Home Assistant `ChatLog` content and attachments into
+  Pydantic AI model messages.
+- `ha_toolset.py`: Convert Home Assistant LLM API tools into Pydantic AI tools.
+- `stream_adapter.py`: Convert Pydantic AI message parts and tool calls into
+  Home Assistant `ChatLog` deltas.
+- `ai_task.py`: Home Assistant AI task entity implementation for data generation,
+  attachment input, and structured validation.
+- `mcp.py`: Remote Streamable HTTP MCP server validation, tool discovery/cache
+  refresh, allowlist handling, secret redaction, and runtime toolset creation.
+- `skills.py`: Local `pydantic-ai-skills` discovery from `/config/skills`,
+  selected-skill capability construction, and script execution gating.
+- `structured_output.py`: Pydantic AI structured output mode helpers for tool,
+  native, and prompted output.
+- `logfire_support.py`: Optional Logfire configuration, per-run instrumentation
+  metadata, and Logfire conflict repair data.
+- `diagnostics.py`: Redacted config entry diagnostics for provider settings,
+  subentry summaries, model settings, feature flags, and runtime status.
+- `repairs.py`: Model validation repair issue IDs, issue creation, issue
+  deletion, and stale issue cleanup.
+- `translations/en.json`: Config flow, subentry flow, actionable errors, aborts,
+  progress/info text, and operator-facing templates.
 
 ### Runtime Data
 
@@ -547,11 +579,11 @@ Each config entry must own an independent runtime container stored on
 The runtime container should include:
 
 - The resolved provider configuration for this entry.
-- Provider/client objects that need lifecycle management.
-- Provider configuration used to create direct Pydantic AI model instances for
-  each request.
+- Provider configuration used to create Pydantic AI model instances for each
+  request.
+- Optional Logfire instrumentation configuration.
 - Cached immutable option defaults.
-- Cleanup callbacks or context managers for provider resources.
+- Cleanup callbacks or context managers for runtime resources.
 
 The implementation must not store shared mutable state in module globals.
 
@@ -566,14 +598,14 @@ Requirements:
   Assistant async code paths.
 - Use async provider clients, async context managers, and Home Assistant-compatible
   async helpers for provider communication and test scripts.
-- Bound all provider calls, stream reads, and tool executions with explicit
-  timeouts.
+- Bound all provider calls and tool executions with explicit timeouts or usage
+  limits.
 - Track background tasks created by a config entry and cancel/await them during
   unload.
-- Close provider clients, Pydantic AI agent contexts, streams, and tool resources
-  during config entry unload and reload.
+- Close provider clients, MCP HTTP clients, Pydantic AI agent contexts, and tool
+  resources during config entry unload and reload.
 - Contain exceptions at integration boundaries: config flow validation, provider
-  calls, stream adapters, tool execution, diagnostics, setup, unload, and test
+  calls, message adapters, tool execution, diagnostics, setup, unload, and test
   scripts.
 - Convert caught exceptions into typed integration error categories and
   actionable translated messages.
@@ -594,8 +626,10 @@ Setup:
 1. Read config entry data and options.
 2. Build provider configuration and validate required fields.
 3. Create runtime data.
-4. Forward setup to the `conversation` and `ai_task` platforms.
-5. Register an options update listener that reloads the entry when needed.
+4. Validate configured conversation and AI task subentry models.
+5. Configure Logfire when enabled.
+6. Forward setup to the `conversation` and `ai_task` platforms.
+7. Register an update listener that reloads the entry when needed.
 
 Unload:
 
@@ -620,7 +654,7 @@ Responsibilities:
 - Register itself as a conversation agent when added to Home Assistant.
 - Unregister itself when removed.
 - Expose control features only when Home Assistant tool access is configured.
-- Mark streaming support when streaming is implemented and enabled.
+- Do not mark streaming support until streaming is implemented and enabled.
 - Use the conversation subentry agent name as the entity name.
 - Derive unique ID from the subentry ID to avoid entity recreation when the
   provider, model, or options change.
@@ -641,18 +675,20 @@ ChatLog.async_provide_llm_data(...)
         └── selected Home Assistant LLM API tools
         │
         ▼
-Pydantic AI direct model stream
+Pydantic AI Agent runtime
         │
         ├── configured provider/model
         ├── model settings
         ├── ChatLog-derived message history
-        └── HA LLM API tool definitions
+        ├── HA LLM API tools
+        ├── selected MCP toolsets
+        └── selected skills capabilities
         │
         ▼
-Pydantic AI event stream
+Pydantic AI response/new messages
         │
         ▼
-stream_adapter.py
+entity.py / stream_adapter.py
         │
         ▼
 Home Assistant ChatLog deltas
@@ -677,44 +713,47 @@ Requirements:
 - Apply history trimming or summarization only through an explicit option or
   future memory/history component.
 
-### Stream Adapter
+### Message Adapter
 
-The stream adapter is a boundary module. It must isolate Pydantic AI event API
-details from the rest of the integration.
+The message adapter is a boundary module. It must isolate Pydantic AI message and
+event API details from the rest of the integration.
 
 It must map:
 
-| Pydantic AI event concept  | Home Assistant output concept         |
+| Pydantic AI concept        | Home Assistant output concept         |
 | -------------------------- | ------------------------------------- |
-| Text delta                 | Assistant content delta               |
-| Displayable thinking delta | `thinking_content` delta              |
-| Tool call start            | Tool call placeholder/metadata        |
-| Tool call argument delta   | Accumulated tool call args            |
-| Tool call complete         | Home Assistant `ToolInput` equivalent |
+| Text content               | Assistant content                     |
+| Displayable thinking       | `thinking_content`                    |
+| Tool call                  | Tool call placeholder/metadata        |
+| Tool call arguments        | Home Assistant `ToolInput` equivalent |
 | Tool result                | Tool result content                   |
 | Final result               | Final assistant content state         |
 | Usage data                 | Trace/diagnostic metadata where safe  |
 | Provider error             | User-safe error response and logs     |
 
-The adapter must handle partial tool-call arguments, missing provider IDs,
-provider-specific native events, cancellation, and incomplete streams.
+The adapter must handle missing provider IDs, provider-specific native events,
+cancellation, and incomplete model responses.
 
 ### Pydantic AI Usage
 
-The MVP uses Pydantic AI's direct model API instead of the higher-level
-`pydantic_ai.Agent` runtime. Conversation requests call `model_request_stream()`
-with ChatLog-derived message history, configured `ModelSettings`, and
-Home Assistant LLM API tool definitions. This keeps Home Assistant `ChatLog` as
-the canonical history and tool-execution owner for each turn.
+The MVP uses the higher-level Pydantic AI `Agent` runtime. Conversation and AI
+task requests build an `Agent` with the configured model, output type, model
+settings, Home Assistant LLM API tools, selected remote MCP toolsets, selected
+skills capabilities, `max_concurrency=1`, `tool_retries=0`, and
+`output_retries=2`. Runtime bounds are enforced with Pydantic AI
+`UsageLimits(request_limit=max_iterations)`.
 
-AI task requests use the same direct model runtime with structured output request
-parameters built from the task's voluptuous schema. Each AI task subentry selects
+Home Assistant `ChatLog` remains the canonical conversation history for each
+conversation turn. The integration converts ChatLog content into Pydantic AI
+message history, runs the agent, then appends the agent's new messages back into
+ChatLog deltas before returning Home Assistant's conversation result.
+
+AI task requests use the same shared agent runtime. Each AI task subentry selects
 one of Pydantic AI's structured output modes: `tool` (default), `native`, or
 `prompted`. The final provider response is parsed as JSON and validated against
-the Home Assistant task schema before returning the `GenDataTaskResult`.
-
-Current direct model requests do not pass Pydantic AI `deps`, `usage_limits`, or
-`metadata`. Tool-loop bounds are enforced by the integration runtime.
+the Home Assistant task schema before returning the `GenDataTaskResult`. AI task
+entities advertise data generation and attachment input support; image generation
+is not implemented.
 
 ### Provider Support
 
@@ -757,7 +796,7 @@ Requirements:
   available for the selected model or endpoint.
 - Validate every external response shape before reading nested fields.
 - Validate Pydantic AI event types, part types, tool-call payloads, tool result
-  payloads, and provider-native objects at the stream adapter boundary.
+  payloads, and provider-native objects at the message adapter boundary.
 - Validate Home Assistant `ChatLog`, LLM API, and tool schema assumptions against
   the target Home Assistant version during implementation.
 - Fail closed for unsupported capabilities: disable the feature, show an
@@ -768,8 +807,8 @@ Requirements:
   and base URL.
 
 Current implementation note: capability detection is not generally implemented.
-Conversation entities advertise streaming support, Home Assistant control is
-advertised when an LLM API is configured, and structured-output support is
+Conversation entities do not advertise streaming support. Home Assistant control
+is advertised when an LLM API is configured, and structured-output support is
 validated for AI task models through the configured Pydantic AI output mode.
 
 Examples:
@@ -778,8 +817,8 @@ Examples:
   it accepts OpenAI-shaped requests.
 - Do not assume a model supports reasoning summaries because another model from
   the same provider does.
-- Do not assume Pydantic AI stream events contain a complete tool-call argument
-  object in one event; handle partial deltas and validate the final object.
+- Do not assume Pydantic AI message or event objects contain complete tool-call
+  arguments without validation; validate the final object.
 - Do not assume Home Assistant frontend details render every possible delta type;
   only emit deltas supported by the target Home Assistant `ChatLog` contract.
 
@@ -806,6 +845,48 @@ Security-sensitive behavior:
   behavior.
 - Users must be able to disable Home Assistant tool access for any instance.
 
+## Remote MCP Toolsets
+
+The current implementation supports remote Streamable HTTP MCP server subentries
+only. Stdio, SSE, and local command/process MCP servers are not implemented.
+
+Requirements:
+
+- Validate MCP URLs as HTTP or HTTPS URLs.
+- Reject credentials embedded in MCP URLs.
+- Accept optional JSON HTTP headers and redact sensitive header values in
+  diagnostics.
+- Discover server tools through FastMCP/Pydantic AI MCP tooling.
+- Cache discovered tools and expose response actions for listing and refreshing
+  them.
+- Require explicit selected servers and at least one allowed tool before exposing
+  MCP tools at runtime.
+- Prefix runtime tool names so tools from different MCP servers do not collide.
+- Close MCP HTTP clients after each agent run.
+
+Registered response actions:
+
+| Action                                | Purpose                                                   |
+| ------------------------------------- | --------------------------------------------------------- |
+| `pydantic_ai_agent.list_mcp_tools`    | Return cached discovered tools for a config entry/server. |
+| `pydantic_ai_agent.refresh_mcp_tools` | Reconnect to configured MCP servers and refresh tools.    |
+
+## Local Skills
+
+The current implementation can expose local `pydantic-ai-skills` capabilities to
+conversation agents and AI tasks.
+
+Requirements:
+
+- Discover skills only from `/config/skills` or subfolders of that directory.
+- Store provider-level skills folder and script-execution settings on the parent
+  config entry.
+- Store selected skills on conversation and AI task subentries.
+- Exclude `run_skill_script` unless script execution is explicitly enabled on the
+  provider entry.
+- Clear selected skills from existing subentries when the provider-level skills
+  folder or script-execution setting changes.
+
 ## Error Handling
 
 Errors must be normalized into typed integration error categories before they are
@@ -825,7 +906,7 @@ Required error categories:
 - Pydantic AI runtime error.
 - Tool-call validation failure.
 - Home Assistant LLM API tool execution failure.
-- Stream interruption or cancellation.
+- Provider interruption or cancellation.
 
 ### Config Flow Errors
 
@@ -855,7 +936,7 @@ responses and logs.
 | Provider rate limit   | Return a rate-limit response; optionally expose safe attribute/diagnostic.                |
 | Tool validation error | Add tool error result to conversation; allow model to recover if possible.                |
 | Tool execution error  | Add an actionable tool error result; log the pertinent error details without a traceback. |
-| Stream interrupted    | Stop appending deltas and return a safe partial/failure response.                         |
+| Provider interrupted  | Stop appending content and return a safe partial/failure response.                        |
 | Unsupported option    | Fail validation before runtime where possible.                                            |
 
 Runtime errors should preserve the most pertinent lower-level detail in logs and
@@ -911,9 +992,11 @@ custom_components/pydantic_ai_agent/
 - `config_flow`: `true`.
 - `requirements`: pinned or constrained Pydantic AI dependencies compatible with
   the target Home Assistant dependency constraints. For Home Assistant 2026.5.1,
-  the executable dependency is `pydantic-ai-slim[openai]==1.97.0` in both
-  `pyproject.toml` and `manifest.json`. This supplies the OpenAI-compatible
-  provider path used by the current async provider probe.
+  executable dependencies include `pydantic-ai-slim[openai,mcp]==1.97.0`,
+  `fastmcp==3.3.1`, `logfire==4.33.0`, and
+  `pydantic-ai-skills==0.10.0` in both `pyproject.toml` and `manifest.json`.
+  These supply the OpenAI-compatible provider path, remote MCP support, optional
+  Logfire tracing, and local skill capabilities.
 - `documentation`: repository documentation URL once known.
 - `issue_tracker`: repository issue URL once known.
 - `codeowners`: repository owner(s) once known.
@@ -958,9 +1041,9 @@ Required test coverage:
 - Stable entity unique ID across option changes.
 - Conversation entity registration and unregistration.
 - ChatLog-to-Pydantic message history conversion.
-- Pydantic event-to-ChatLog delta conversion.
-- Text streaming.
-- Thinking/reasoning summary streaming when supported.
+- Pydantic message-to-ChatLog delta conversion.
+- Non-streaming conversation response handling.
+- Thinking/reasoning summary mapping when supported.
 - Tool call and tool result mapping.
 - Tool execution through Home Assistant LLM API mocks.
 - Provider timeout and error handling.
@@ -970,21 +1053,19 @@ Required test coverage:
   nested sensitive provider/model settings.
 - Repair issue creation and cleanup for reconfigurable stored model validation
   failures.
-- Async cleanup and cancellation behavior for setup, unload, reload, streaming,
-  and provider client lifecycles.
+- Async cleanup and cancellation behavior for setup, unload, reload, provider
+  calls, MCP clients, and provider client lifecycles.
 - Capability detection and response-shape validation for provider/model features,
-  Pydantic AI stream events, and Home Assistant LLM API/tool data.
+  Pydantic AI messages/events, and Home Assistant LLM API/tool data.
 
 Current known coverage gaps:
 
 - Real-server tests, `pytest.mark.real_server`, `.env.example`, and
   `scripts/test-real-server` exist, but they are outside the default test suite
   and require explicit credentials and endpoint configuration.
-- The model/tool loop path through Home Assistant LLM API tool execution needs
-  direct test coverage.
 - Translation coverage and concrete error-template rendering need direct tests.
-- Cleanup/cancellation behavior for streaming and provider lifecycle needs direct
-  tests.
+- Cleanup/cancellation behavior for provider calls, MCP clients, and provider
+  lifecycle needs direct tests.
 - General provider/model capability detection tests remain future work because
   general capability detection is not implemented.
 
@@ -1007,7 +1088,8 @@ development.
 Requirements:
 
 - Add scripts under `scripts/` that exercise real Pydantic AI provider
-  connectivity, model calls, streaming, and tool-call behavior.
+  connectivity, model calls, non-streaming conversation responses, and tool-call
+  behavior.
 - Add pytest integration tests that can connect to real OpenAI or
   OpenAI-compatible servers through Pydantic AI.
 - Load credentials and provider details from a `.env` file only in test and
@@ -1046,14 +1128,14 @@ Real-server validation should cover:
 - Credential validation success and failure.
 - Base URL connection failures with actionable error details.
 - Plain chat completion.
-- Streaming text deltas.
+- Non-streaming conversation responses.
 - Provider/model rejection details.
-- Pydantic AI event stream shape used by `stream_adapter.py`.
+- Pydantic AI message/event shape used by `entity.py` and `stream_adapter.py`.
 - Home Assistant LLM API tool adapter behavior with mocked HA tools and a real
   provider model call where feasible.
 - Capability detection results for the configured provider, model, and base URL.
-- Response-shape validation for the actual Pydantic AI event stream emitted by
-  the configured provider and model.
+- Response-shape validation for the actual Pydantic AI messages/events emitted
+  by the configured provider and model.
 
 ## Acceptance Criteria
 
@@ -1062,10 +1144,17 @@ The MVP is complete when all of the following are true:
 - Home Assistant can load `custom_components/pydantic_ai_agent` as a HACS custom
   integration.
 - A user can create two config entries with different provider settings.
-- Each config entry creates one separate Assist conversation agent.
-- Each agent uses only its own credentials, provider mode, model, and options.
+- Each config entry can create one or more separate Assist conversation agents.
+- Each agent uses its parent provider credentials plus its own model, prompt,
+  Home Assistant tool access, MCP selections, skill selections, and model
+  settings.
 - Each agent can answer a plain chat request.
-- Streaming text is surfaced in Assist when supported.
+- AI task subentries create AI task entities for data generation and attachment
+  input, with structured output validation when Home Assistant provides a schema.
+- Remote Streamable HTTP MCP server subentries can discover, list, refresh, and
+  expose explicitly allowlisted tools to selected agents/tasks.
+- Conversation responses are surfaced in Assist; streaming text remains future
+  work until the entity advertises streaming support.
 - Home Assistant LLM API tools can be enabled per instance.
 - Tool calls execute through Home Assistant's LLM API, not direct service calls.
 - Tool calls and tool results are visible through Assist chat details when Home
@@ -1076,12 +1165,12 @@ The MVP is complete when all of the following are true:
 - Diagnostics, repair issues, logs, and debug/test artifacts avoid or redact
   credentials, auth headers, bearer tokens, cookies, raw prompts, and sensitive
   provider payload fields.
-- Async setup, streaming, tool execution, reload, unload, and provider cleanup do
-  not block the Home Assistant event loop and do not leak large tracebacks into
-  normal Home Assistant logs.
-- Capability detection gates streaming, tools, and reasoning features instead of
-  hardcoded provider/model assumptions.
-- Tests cover multi-instance isolation, streaming event mapping, tool execution,
+- Async setup, provider calls, tool execution, reload, unload, and provider
+  cleanup do not block the Home Assistant event loop and do not leak large
+  tracebacks into normal Home Assistant logs.
+- Capability detection gates future streaming, tools, and reasoning features
+  instead of hardcoded provider/model assumptions.
+- Tests cover multi-instance isolation, message mapping, tool execution,
   config/subentry flows, actionable message templates, and real-server provider
   validation.
 - Each implemented feature has a recorded source example review covering the
@@ -1094,10 +1183,10 @@ MVP surface area prematurely.
 
 Potential extensions:
 
-- Pydantic AI MCP toolsets.
-- User-defined skill/tool registries.
+- Additional MCP transports beyond remote Streamable HTTP.
+- Remote or user-defined skill/tool registries.
 - Additional provider modes.
-- Multiple entity types or subentries under a shared provider account.
+- Additional entity types or subentries under a shared provider account.
 - Richer diagnostics and system health.
 - Optional persistent memory with explicit privacy controls.
 - Provider-specific built-in tools such as web search where Home Assistant UX and

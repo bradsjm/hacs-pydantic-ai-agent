@@ -4,7 +4,7 @@
 
 - This is the `pydantic_ai_agent` Home Assistant custom integration, distributed through HACS from `custom_components/pydantic_ai_agent`.
 - Treat `docs/pydantic_ai_agent_spec.md` as the product/architecture direction, not proof that a feature is implemented. Verify against source before documenting or relying on behavior.
-- Runtime dependency is pinned in both `pyproject.toml` and `manifest.json`: `pydantic-ai-slim[openai]==1.97.0`; use `OpenAIChatModel`/`OpenAIProvider`, not deprecated aliases.
+- Runtime dependencies are pinned in both `pyproject.toml` and `manifest.json`: `pydantic-ai-slim[openai,mcp]==1.97.0`, `fastmcp==3.3.1`, `logfire==4.33.0`, and `pydantic-ai-skills==0.10.0`; use `OpenAIChatModel`/`OpenAIProvider`, not deprecated aliases.
 
 ## Home Assistant Patterns
 
@@ -28,10 +28,13 @@
 
 ## Current Architecture
 
-- `__init__.py` owns setup/unload, typed `entry.runtime_data`, update reloads, setup-time validation of configured subentry models, and repair issue creation/cleanup for reconfigurable validation failures.
-- `config_flow.py` owns parent provider config, reauth/reconfigure, `conversation` and `ai_task_data` subentry flows, model settings parsing, and the async Pydantic AI provider probe.
-- `conversation.py` registers one Home Assistant conversation entity per `conversation` subentry and advertises `CONTROL` only when `CONF_LLM_HASS_API` is configured.
-- `ai_task_data` subentries are configurable but no AI task platform is registered yet.
+- `__init__.py` owns setup/unload, typed `entry.runtime_data`, update reloads, setup-time validation of configured subentry models, repair issue creation/cleanup for reconfigurable validation failures, forwarding of both `conversation` and `ai_task` platforms, and response actions for MCP tool listing/refresh.
+- `config_flow.py` owns parent provider config, reauth/reconfigure, `conversation`, `ai_task_data`, and `mcp_server` subentry flows, model settings parsing, skill selection, MCP validation/discovery, structured output configuration, and the async Pydantic AI provider probe.
+- `conversation.py` registers one Home Assistant conversation entity per `conversation` subentry, does not advertise streaming, and advertises `CONTROL` only when `CONF_LLM_HASS_API` is configured.
+- `ai_task.py` registers one Home Assistant AI task entity per `ai_task_data` subentry for data generation and attachment input; image generation is not implemented.
+- `entity.py` owns the shared Pydantic AI `Agent` runtime, Home Assistant LLM API tool conversion, remote MCP toolsets, selected `pydantic-ai-skills` capabilities, usage limits, and cleanup of MCP HTTP clients.
+- `mcp.py` supports remote Streamable HTTP MCP server subentries only; stdio, SSE, and local command MCP servers are not implemented.
+- `skills.py` discovers local `pydantic-ai-skills` from `/config/skills` or subfolders and excludes skill script execution unless explicitly enabled on the provider entry.
 
 ## Testing
 
