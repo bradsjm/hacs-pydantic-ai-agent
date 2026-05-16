@@ -2,21 +2,28 @@
 
 ## Status
 
-This document is the functional and technical specification for the planned Home
-Assistant custom integration in this repository. The repository is currently a
-scaffold; the integration package, runtime code, and tests have not been
-implemented yet.
+This document is the functional and technical specification for the Home
+Assistant custom integration in this repository. It also records implementation
+direction, so current source, executable config, manifests, and tests remain the
+authority when this document describes planned behavior.
+
+Current implementation status: the repository contains the provider/configuration
+foundation, parent config flow, conversation and AI task data subentry flows,
+conversation entity registration, diagnostics, setup-time provider validation,
+and repair issues for reconfigurable model validation failures. The full
+Pydantic AI chat runtime, Home Assistant LLM toolset adapter, stream adapter, and
+AI task platform are not implemented yet.
 
 ## Product Identity
 
-| Field | Value |
-| --- | --- |
-| Integration domain | `pydantic_ai_agent` |
-| Display name | `Pydantic AI Agent` |
-| Home Assistant package path | `custom_components/pydantic_ai_agent/` |
-| Primary platform | `conversation` |
-| Distribution target | HACS custom integration |
-| Configuration model | UI config flow with config subentry reconfigure flows |
+| Field                       | Value                                                 |
+| --------------------------- | ----------------------------------------------------- |
+| Integration domain          | `pydantic_ai_agent`                                   |
+| Display name                | `Pydantic AI Agent`                                   |
+| Home Assistant package path | `custom_components/pydantic_ai_agent/`                |
+| Primary platform            | `conversation`                                        |
+| Distribution target         | HACS custom integration                               |
+| Configuration model         | UI config flow with config subentry reconfigure flows |
 
 Legacy names such as `hermes_agent_bridge` are obsolete and must not be used for
 new source paths, entity names, constants, documentation, or tests.
@@ -24,9 +31,10 @@ new source paths, entity names, constants, documentation, or tests.
 ## Purpose
 
 `Pydantic AI Agent` provides Home Assistant Assist conversation agents backed by
-Pydantic AI. It allows Home Assistant users to create one or more independent
-Assist agents, each with its own provider credentials, provider mode, model,
-prompt, and model behavior settings.
+Pydantic AI. It allows Home Assistant users to create one or more provider
+connections, each with provider credentials and mode on the parent config entry,
+and one or more independent Assist agents with model, prompt, Home Assistant tool
+access, and model behavior settings on `conversation` config subentries.
 
 The integration bridges three systems:
 
@@ -70,57 +78,57 @@ Research expectations:
 
 Suggested Home Assistant core URLs:
 
-| Area | URLs to inspect |
-| --- | --- |
+| Area                                     | URLs to inspect                                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------- |
 | Official OpenAI conversation integration | `https://github.com/home-assistant/core/tree/dev/homeassistant/components/openai_conversation` |
-| Conversation platform source | `https://github.com/home-assistant/core/tree/dev/homeassistant/components/conversation` |
-| Conversation entity developer docs | `https://developers.home-assistant.io/docs/core/entity/conversation/` |
-| Home Assistant LLM API docs | `https://developers.home-assistant.io/docs/core/llm/` |
-| Home Assistant LLM helper source | `https://github.com/home-assistant/core/blob/dev/homeassistant/helpers/llm.py` |
-| Config flow developer docs | `https://developers.home-assistant.io/docs/config_entries_config_flow_handler/` |
-| Options flow developer docs | `https://developers.home-assistant.io/docs/config_entries_options_flow_handler/` |
-| Translations developer docs | `https://developers.home-assistant.io/docs/internationalization/core/` |
-| Diagnostics developer docs | `https://developers.home-assistant.io/docs/core/integration-quality-scale/rules/diagnostics/` |
-| Repairs developer docs | `https://developers.home-assistant.io/docs/core/platform/repairs/` |
-| Integration quality scale | `https://developers.home-assistant.io/docs/core/integration-quality-scale/` |
-| Home Assistant frontend Assist chat | `https://github.com/home-assistant/frontend/blob/dev/src/components/ha-assist-chat.ts` |
-| Assist pipeline frontend data | `https://github.com/home-assistant/frontend/blob/dev/src/data/assist_pipeline.ts` |
+| Conversation platform source             | `https://github.com/home-assistant/core/tree/dev/homeassistant/components/conversation`        |
+| Conversation entity developer docs       | `https://developers.home-assistant.io/docs/core/entity/conversation/`                          |
+| Home Assistant LLM API docs              | `https://developers.home-assistant.io/docs/core/llm/`                                          |
+| Home Assistant LLM helper source         | `https://github.com/home-assistant/core/blob/dev/homeassistant/helpers/llm.py`                 |
+| Config flow developer docs               | `https://developers.home-assistant.io/docs/config_entries_config_flow_handler/`                |
+| Options flow developer docs              | `https://developers.home-assistant.io/docs/config_entries_options_flow_handler/`               |
+| Translations developer docs              | `https://developers.home-assistant.io/docs/internationalization/core/`                         |
+| Diagnostics developer docs               | `https://developers.home-assistant.io/docs/core/integration-quality-scale/rules/diagnostics/`  |
+| Repairs developer docs                   | `https://developers.home-assistant.io/docs/core/platform/repairs/`                             |
+| Integration quality scale                | `https://developers.home-assistant.io/docs/core/integration-quality-scale/`                    |
+| Home Assistant frontend Assist chat      | `https://github.com/home-assistant/frontend/blob/dev/src/components/ha-assist-chat.ts`         |
+| Assist pipeline frontend data            | `https://github.com/home-assistant/frontend/blob/dev/src/data/assist_pipeline.ts`              |
 
 Suggested Home Assistant core components to inspect by feature:
 
-| Feature | Components to inspect |
-| --- | --- |
-| Conversation agent and streaming | `openai_conversation`, `conversation` |
-| Config flow UX and validation | `openai_conversation`, `homekit_controller`, `unifi`, `mqtt` |
-| Options flow organization | `openai_conversation`, `mqtt`, `music_assistant` if present in the target HA version |
-| Diagnostics shape | `unifi`, `homekit_controller`, `matter`, `mqtt` |
-| Repairs and reauth | `unifi`, `homekit_controller`, `google`, `nest` |
-| Translation structure | Any recently updated Platinum or Gold integration with `strings.json` and `translations/en.json` |
-| Tests for config entries | `tests/components/openai_conversation`, `tests/components/conversation`, `tests/components/mqtt` |
+| Feature                          | Components to inspect                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Conversation agent and streaming | `openai_conversation`, `conversation`                                                            |
+| Config flow UX and validation    | `openai_conversation`, `homekit_controller`, `unifi`, `mqtt`                                     |
+| Options flow organization        | `openai_conversation`, `mqtt`, `music_assistant` if present in the target HA version             |
+| Diagnostics shape                | `unifi`, `homekit_controller`, `matter`, `mqtt`                                                  |
+| Repairs and reauth               | `unifi`, `homekit_controller`, `google`, `nest`                                                  |
+| Translation structure            | Any recently updated Platinum or Gold integration with `strings.json` and `translations/en.json` |
+| Tests for config entries         | `tests/components/openai_conversation`, `tests/components/conversation`, `tests/components/mqtt` |
 
 Suggested HACS/custom integration URLs for practical examples:
 
-| Area | URLs to inspect |
-| --- | --- |
-| HACS integration packaging and repository expectations | `https://github.com/hacs/integration` |
-| HACS custom integration examples | `https://github.com/hacs/default` |
-| Large custom integration structure | `https://github.com/music-assistant/hass-music-assistant` |
-| Config flow and diagnostics in a popular custom integration | `https://github.com/alandtse/alexa_media_player` |
-| Camera/streaming-heavy custom integration patterns | `https://github.com/blakeblackshear/frigate-hass-integration` |
-| Lightweight custom integration patterns | `https://github.com/basnijholt/adaptive-lighting` |
-| Custom integration release and HACS metadata examples | `https://github.com/custom-components/ble_monitor` |
+| Area                                                        | URLs to inspect                                               |
+| ----------------------------------------------------------- | ------------------------------------------------------------- |
+| HACS integration packaging and repository expectations      | `https://github.com/hacs/integration`                         |
+| HACS custom integration examples                            | `https://github.com/hacs/default`                             |
+| Large custom integration structure                          | `https://github.com/music-assistant/hass-music-assistant`     |
+| Config flow and diagnostics in a popular custom integration | `https://github.com/alandtse/alexa_media_player`              |
+| Camera/streaming-heavy custom integration patterns          | `https://github.com/blakeblackshear/frigate-hass-integration` |
+| Lightweight custom integration patterns                     | `https://github.com/basnijholt/adaptive-lighting`             |
+| Custom integration release and HACS metadata examples       | `https://github.com/custom-components/ble_monitor`            |
 
 Suggested Pydantic AI URLs:
 
-| Area | URLs to inspect |
-| --- | --- |
-| Pydantic AI docs | `https://ai.pydantic.dev/` |
-| Agent API | `https://ai.pydantic.dev/api/agent/` |
-| Agents and streaming | `https://ai.pydantic.dev/agents/` |
-| Toolsets | `https://ai.pydantic.dev/toolsets/` |
-| Thinking/reasoning | `https://ai.pydantic.dev/thinking/` |
-| OpenAI model/provider docs | `https://ai.pydantic.dev/models/openai/` |
-| Pydantic AI repository | `https://github.com/pydantic/pydantic-ai` |
+| Area                       | URLs to inspect                           |
+| -------------------------- | ----------------------------------------- |
+| Pydantic AI docs           | `https://ai.pydantic.dev/`                |
+| Agent API                  | `https://ai.pydantic.dev/api/agent/`      |
+| Agents and streaming       | `https://ai.pydantic.dev/agents/`         |
+| Toolsets                   | `https://ai.pydantic.dev/toolsets/`       |
+| Thinking/reasoning         | `https://ai.pydantic.dev/thinking/`       |
+| OpenAI model/provider docs | `https://ai.pydantic.dev/models/openai/`  |
+| Pydantic AI repository     | `https://github.com/pydantic/pydantic-ai` |
 
 Implementation checklist before coding each feature:
 
@@ -181,11 +189,11 @@ integration subentry actions.
 
 Example instances:
 
-| Instance title | Provider mode | Model | HA tools |
-| --- | --- | --- | --- |
-| `Pydantic AI Agent - Home` | OpenAI | `gpt-5.1` | Enabled |
+| Instance title              | Provider mode     | Model           | HA tools |
+| --------------------------- | ----------------- | --------------- | -------- |
+| `Pydantic AI Agent - Home`  | OpenAI            | `gpt-5.1`       | Enabled  |
 | `Pydantic AI Agent - Local` | OpenAI-compatible | `llama-3.3-70b` | Disabled |
-| `Pydantic AI Agent - Admin` | OpenAI | `gpt-5.1` | Enabled |
+| `Pydantic AI Agent - Admin` | OpenAI            | `gpt-5.1`       | Enabled  |
 
 Each conversation subentry appears as a separate selectable conversation agent in
 Home Assistant Assist configuration. Changing one conversation subentry must not
@@ -302,11 +310,16 @@ subentry shell without registering the Home Assistant AI task platform.
 ### Diagnostics
 
 - The integration must provide diagnostics suitable for HACS troubleshooting.
-- During the POC phase, diagnostics must not redact integration data. Full
-  details are useful for development and troubleshooting; production redaction is
-  deferred to a later security hardening phase.
-- Diagnostics may include provider mode, base URL, model, option values, feature
-  flags, prompt values, credential fields, and last error details.
+- Diagnostics must redact sensitive data with Home Assistant's
+  `async_redact_data()` helper before returning data to Home Assistant.
+- Diagnostics may include provider mode, base URL when it is not secret, model,
+  option values, feature flags, configured model setting keys, and safe last error
+  details.
+- Diagnostics must not expose API keys, auth headers, bearer tokens, cookies,
+  passwords, secret/token fields, extra headers, raw prompts/instructions, or
+  provider payloads that may contain private Home Assistant state.
+- Redaction must be recursive so sensitive keys inside `model_settings`,
+  `extra_headers`, `extra_body`, and provider metadata are masked as well.
 - Diagnostics must still be structured and concise. Do not include tracebacks or
   noisy internal dumps in normal diagnostics output.
 
@@ -317,16 +330,16 @@ subentry shell without registering the Home Assistant AI task platform.
 The config flow should collect only values required to create a working,
 independent instance.
 
-| Field | Required | Stored in | Notes |
-| --- | --- | --- | --- |
-| Service name | Yes | Config entry title/data | User-facing name for the provider/service connection. |
-| Provider mode | Yes | Data | Example: `openai`, `openai_compatible`. |
-| API key | Provider-dependent | Data | Credential used for provider validation and requests. |
-| Base URL | Provider-dependent | Data | Required for OpenAI-compatible providers; optional otherwise. |
-| Initial agent name | Yes | Conversation subentry title/data | User-facing Assist agent name. |
-| Model | Yes | Conversation subentry data | Entered by the user and validated with a lightweight Pydantic AI probe. |
-| Enable HA tools | No | Conversation subentry data | Security-sensitive; may be shown during setup. |
-| HA LLM API | No | Conversation subentry data | Default should be Home Assistant's Assist API when tools are enabled. |
+| Field              | Required           | Stored in                        | Notes                                                                   |
+| ------------------ | ------------------ | -------------------------------- | ----------------------------------------------------------------------- |
+| Service name       | Yes                | Config entry title/data          | User-facing name for the provider/service connection.                   |
+| Provider mode      | Yes                | Data                             | Example: `openai`, `openai_compatible`.                                 |
+| API key            | Provider-dependent | Data                             | Credential used for provider validation and requests.                   |
+| Base URL           | Provider-dependent | Data                             | Required for OpenAI-compatible providers; optional otherwise.           |
+| Initial agent name | Yes                | Conversation subentry title/data | User-facing Assist agent name.                                          |
+| Model              | Yes                | Conversation subentry data       | Entered by the user and validated with a lightweight Pydantic AI probe. |
+| Enable HA tools    | No                 | Conversation subentry data       | Security-sensitive; may be shown during setup.                          |
+| HA LLM API         | No                 | Conversation subentry data       | Default should be Home Assistant's Assist API when tools are enabled.   |
 
 Provider-specific required fields belong in the config flow when the instance
 cannot be validated or used without them.
@@ -355,22 +368,22 @@ The `conversation` config subentry reconfigure flow should hold mutable Assist
 agent behavior. Changing these values should update or reload the subentry
 without recreating the parent provider/service entry.
 
-| Option | Purpose |
-| --- | --- |
-| Model | Change model after setup. |
-| System prompt/instructions | Customize assistant behavior. |
-| HA LLM API selection | Choose which Home Assistant LLM API to expose. |
-| HA tools enabled | Enable or disable Home Assistant control. |
-| Streaming enabled | Allow disabling streaming for troubleshooting if implemented. |
-| Temperature | Portable generation control where supported. |
-| Top-p | Provider/model-specific generation control where supported. |
-| Max tokens | Bound response size where supported. |
-| Timeout | Bound provider and tool waits. |
-| Reasoning/thinking effort | Provider-dependent reasoning control. |
-| Reasoning summary mode | Provider-dependent displayable summary control. |
-| Max tool iterations | Prevent infinite model/tool loops. |
-| History/window policy | Bound prompt size and provider context usage. |
-| Usage limits | Pydantic AI per-run usage controls. |
+| Option                       | Purpose                                                       |
+| ---------------------------- | ------------------------------------------------------------- |
+| Model                        | Change model after setup.                                     |
+| System prompt/instructions   | Customize assistant behavior.                                 |
+| HA LLM API selection         | Choose which Home Assistant LLM API to expose.                |
+| HA tools enabled             | Enable or disable Home Assistant control.                     |
+| Streaming enabled            | Allow disabling streaming for troubleshooting if implemented. |
+| Temperature                  | Portable generation control where supported.                  |
+| Top-p                        | Provider/model-specific generation control where supported.   |
+| Max tokens                   | Bound response size where supported.                          |
+| Timeout                      | Bound provider and tool waits.                                |
+| Reasoning/thinking effort    | Provider-dependent reasoning control.                         |
+| Reasoning summary mode       | Provider-dependent displayable summary control.               |
+| Max tool iterations          | Prevent infinite model/tool loops.                            |
+| History/window policy        | Bound prompt size and provider context usage.                 |
+| Usage limits                 | Pydantic AI per-run usage controls.                           |
 | Provider advanced parameters | Explicit provider-specific options hidden behind advanced UI. |
 
 Subentry reconfigure UX requirements:
@@ -427,11 +440,11 @@ the problem. Useful placeholders include:
 
 Examples:
 
-| Bad message | Better message |
-| --- | --- |
+| Bad message        | Better message                                                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Error connecting` | `Connection to {base_url} for {provider} was refused: {error_message}. Check that the server is running and the URL is reachable from Home Assistant.` |
-| `Invalid model` | `Provider {provider} rejected model {model}: {error_message}. Choose a model available to this API key or endpoint.` |
-| `Tool failed` | `Home Assistant tool {tool_name} failed for call {tool_call_id}: {error_message}. Check the exposed entity and tool arguments.` |
+| `Invalid model`    | `Provider {provider} rejected model {model}: {error_message}. Choose a model available to this API key or endpoint.`                                   |
+| `Tool failed`      | `Home Assistant tool {tool_name} failed for call {tool_call_id}: {error_message}. Check the exposed entity and tool arguments.`                        |
 
 Rules:
 
@@ -441,9 +454,10 @@ Rules:
   diagnostics, or normal warning/error logs.
 - Do not dump noisy internal state when one concrete cause is available.
 - Prefer one concise user-facing sentence plus one concrete suggested action.
-- During the POC phase, do not redact message placeholders. If a credential,
-  prompt, base URL, response body, or tool payload is the useful detail, surface
-  it as-is. Security redaction will be specified later.
+- Preserve useful low-level provider and network detail, but redact or omit
+  credentials, prompts, auth headers, bearer tokens, cookies, and sensitive
+  provider payload fields before they reach diagnostics, logs, repairs, or normal
+  user-facing messages.
 
 ### Entity and Device Attributes
 
@@ -504,18 +518,18 @@ custom_components/pydantic_ai_agent/
 
 ### Module Responsibilities
 
-| Module | Responsibility |
-| --- | --- |
-| `__init__.py` | Config entry setup/unload, runtime data creation, platform forwarding, options update listener. |
-| `manifest.json` | Home Assistant metadata, HACS version, requirements, config flow declaration. |
-| `const.py` | Domain, config keys, option keys, defaults, provider IDs. |
-| `config_flow.py` | Initial config flow, subentry flow, reauth flow, provider validation. |
-| `conversation.py` | `ConversationEntity` implementation and Home Assistant conversation lifecycle. |
-| `agent_factory.py` | Build Pydantic AI models, providers, agents, model settings, and dependencies. |
-| `ha_toolset.py` | Convert Home Assistant LLM API tools into Pydantic AI tools/toolsets. |
-| `stream_adapter.py` | Convert Pydantic AI stream events into Home Assistant `ChatLog` deltas. |
-| `diagnostics.py` | POC diagnostics for config entries; intentionally unredacted until the security hardening phase. |
-| `translations/en.json` | Config flow, subentry flow, actionable errors, aborts, progress/info text, and operator-facing templates. |
+| Module                 | Responsibility                                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `__init__.py`          | Config entry setup/unload, runtime data creation, platform forwarding, options update listener.                                 |
+| `manifest.json`        | Home Assistant metadata, HACS version, requirements, config flow declaration.                                                   |
+| `const.py`             | Domain, config keys, option keys, defaults, provider IDs.                                                                       |
+| `config_flow.py`       | Initial config flow, subentry flow, reauth flow, provider validation.                                                           |
+| `conversation.py`      | `ConversationEntity` implementation and Home Assistant conversation lifecycle.                                                  |
+| `agent_factory.py`     | Build Pydantic AI models, providers, agents, model settings, and dependencies.                                                  |
+| `ha_toolset.py`        | Convert Home Assistant LLM API tools into Pydantic AI tools/toolsets.                                                           |
+| `stream_adapter.py`    | Convert Pydantic AI stream events into Home Assistant `ChatLog` deltas.                                                         |
+| `diagnostics.py`       | Redacted config entry diagnostics for provider settings, subentry summaries, model settings, feature flags, and runtime status. |
+| `translations/en.json` | Config flow, subentry flow, actionable errors, aborts, progress/info text, and operator-facing templates.                       |
 
 ### Runtime Data
 
@@ -662,17 +676,17 @@ details from the rest of the integration.
 
 It must map:
 
-| Pydantic AI event concept | Home Assistant output concept |
-| --- | --- |
-| Text delta | Assistant content delta |
-| Displayable thinking delta | `thinking_content` delta |
-| Tool call start | Tool call placeholder/metadata |
-| Tool call argument delta | Accumulated tool call args |
-| Tool call complete | Home Assistant `ToolInput` equivalent |
-| Tool result | Tool result content |
-| Final result | Final assistant content state |
-| Usage data | Trace/diagnostic metadata where safe |
-| Provider error | User-safe error response and logs |
+| Pydantic AI event concept  | Home Assistant output concept         |
+| -------------------------- | ------------------------------------- |
+| Text delta                 | Assistant content delta               |
+| Displayable thinking delta | `thinking_content` delta              |
+| Tool call start            | Tool call placeholder/metadata        |
+| Tool call argument delta   | Accumulated tool call args            |
+| Tool call complete         | Home Assistant `ToolInput` equivalent |
+| Tool result                | Tool result content                   |
+| Final result               | Final assistant content state         |
+| Usage data                 | Trace/diagnostic metadata where safe  |
+| Provider error             | User-safe error response and logs     |
 
 The adapter must handle partial tool-call arguments, missing provider IDs,
 provider-specific native events, cancellation, and incomplete streams.
@@ -706,9 +720,9 @@ provider registry.
 
 Initial provider modes:
 
-| Provider mode | Purpose |
-| --- | --- |
-| `openai` | OpenAI provider through Pydantic AI. |
+| Provider mode       | Purpose                                                             |
+| ------------------- | ------------------------------------------------------------------- |
+| `openai`            | OpenAI provider through Pydantic AI.                                |
 | `openai_compatible` | OpenAI-compatible provider with user-provided base URL and API key. |
 
 Each provider mode must define:
@@ -826,15 +840,15 @@ low-level message where available.
 Runtime failures should be converted into Home Assistant-friendly conversation
 responses and logs.
 
-| Failure | Behavior |
-| --- | --- |
-| Credential rejected | Trigger reauth or repair; tell user configuration needs attention. |
-| Provider timeout | Return a concise failure response; log the pertinent timeout details. |
-| Provider rate limit | Return a rate-limit response; optionally expose safe attribute/diagnostic. |
-| Tool validation error | Add tool error result to conversation; allow model to recover if possible. |
-| Tool execution error | Add an actionable tool error result; log the pertinent error details without a traceback. |
-| Stream interrupted | Stop appending deltas and return a safe partial/failure response. |
-| Unsupported option | Fail validation before runtime where possible. |
+| Failure               | Behavior                                                                                  |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| Credential rejected   | Trigger reauth or repair; tell user configuration needs attention.                        |
+| Provider timeout      | Return a concise failure response; log the pertinent timeout details.                     |
+| Provider rate limit   | Return a rate-limit response; optionally expose safe attribute/diagnostic.                |
+| Tool validation error | Add tool error result to conversation; allow model to recover if possible.                |
+| Tool execution error  | Add an actionable tool error result; log the pertinent error details without a traceback. |
+| Stream interrupted    | Stop appending deltas and return a safe partial/failure response.                         |
+| Unsupported option    | Fail validation before runtime where possible.                                            |
 
 Runtime errors should preserve the most pertinent lower-level detail in logs and
 user-visible summaries without emitting tracebacks or noisy dumps. For example,
@@ -849,12 +863,9 @@ Logs must never include:
 - Generic summaries that hide the actionable lower-level cause.
 
 Debug logs may include config entry ID, provider mode, model name, event type,
-exception class, request details, and response details when useful.
-
-During the POC phase, logs do not redact integration details. If a full request,
-response body, prompt, credential field, base URL, or tool payload is the
-pertinent debugging detail, it may be logged by explicit debug/test paths.
-Production redaction and masking requirements are deferred.
+exception class, and safe request or response details when useful. Logs must not
+include credentials, auth headers, bearer tokens, cookies, raw prompts, or
+provider payloads that may contain private Home Assistant state.
 
 ## Security and Privacy
 
@@ -872,9 +883,9 @@ Requirements:
 - Make Home Assistant tool access explicit in user-facing options.
 - Document that selected model providers may receive prompts, conversation text,
   exposed entity metadata, and tool results when tool access is enabled.
-- POC phase diagnostics, logs, and test artifacts intentionally do not redact
-  details. Security redaction, masking, and filtering will be specified in a
-  later hardening phase.
+- Diagnostics, logs, repair issues, and test artifacts must redact or avoid
+  credentials, auth headers, bearer tokens, cookies, raw prompts, and sensitive
+  provider payload fields.
 
 ## Manifest and Packaging Requirements
 
@@ -892,14 +903,16 @@ custom_components/pydantic_ai_agent/
 - `config_flow`: `true`.
 - `requirements`: pinned or constrained Pydantic AI dependencies compatible with
   the target Home Assistant dependency constraints. For Home Assistant 2026.5.1,
-  use `pydantic-ai-slim==1.90.0` plus `openai==2.21.0` for the OpenAI
-  provider path. Do not use `pydantic-ai-slim[openai]` or newer Pydantic AI
-  releases until verified against Home Assistant's OpenAI SDK pin.
+  the executable dependency is `pydantic-ai-slim[openai]==1.90.0` in both
+  `pyproject.toml` and `manifest.json`. This supplies the OpenAI-compatible
+  provider path used by the current async provider probe.
 - `documentation`: repository documentation URL once known.
 - `issue_tracker`: repository issue URL once known.
 - `codeowners`: repository owner(s) once known.
 
-The repository-level `hacs.json` should use the display name `Pydantic AI Agent`.
+The repository-level `hacs.json` should use the display name
+`Pydantic AI Agent`, the target Home Assistant version, and an explicit minimum
+HACS version.
 
 The integration must include `translations/en.json` with helpful user-facing
 strings for the config flow, subentry flows, errors, warnings, aborts, and info
@@ -909,6 +922,22 @@ messages before the config flow is considered complete.
 
 Tests should be added under `tests/` and use Home Assistant custom component
 test helpers.
+
+Repository-owned scripts are the supported local and CI entrypoints:
+
+```text
+scripts/setup
+scripts/lint-check
+scripts/type-check
+scripts/yaml-check
+scripts/markdown-check
+scripts/test
+scripts/check
+scripts/format
+```
+
+Do not document or add new validation paths that bypass these wrappers unless a
+tool cannot reasonably run through them.
 
 Required test coverage:
 
@@ -929,16 +958,18 @@ Required test coverage:
 - Provider timeout and error handling.
 - Translation coverage for config flow and subentry flow keys.
 - Actionable error template rendering with concrete low-level details.
-- POC diagnostics and debug/test paths that intentionally preserve unredacted
-  details.
+- Diagnostics redaction for credentials, prompts, extra headers, tokens, and
+  nested sensitive provider/model settings.
+- Repair issue creation and cleanup for reconfigurable stored model validation
+  failures.
 - Async cleanup and cancellation behavior for setup, unload, reload, streaming,
   and provider client lifecycles.
 - Capability detection and response-shape validation for provider/model features,
   Pydantic AI stream events, and Home Assistant LLM API/tool data.
 
-The earlier production-oriented redaction tests are not part of the POC. Security
-redaction tests must be added later when the hardening phase specifies exact
-redaction rules.
+Redaction tests are part of the current default suite. Tests must assert that
+credentials, auth headers, raw prompts, tokens, and nested sensitive settings do
+not leak through diagnostics, logs, repair issue data, or user-facing messages.
 
 Repository test rules:
 
@@ -1047,7 +1078,9 @@ The MVP is complete when all of the following are true:
 - Displayable reasoning or thinking summaries are surfaced only when explicitly
   supported and configured.
 - Unloading or reloading one config entry does not affect another.
-- POC diagnostics and debug/test logs preserve full details without redaction.
+- Diagnostics, repair issues, logs, and debug/test artifacts avoid or redact
+  credentials, auth headers, bearer tokens, cookies, raw prompts, and sensitive
+  provider payload fields.
 - Async setup, streaming, tool execution, reload, unload, and provider cleanup do
   not block the Home Assistant event loop and do not leak large tracebacks into
   normal Home Assistant logs.
@@ -1085,8 +1118,9 @@ Potential extensions:
 - The first supported OpenAI-compatible validation strategy must be defined.
 - The default reasoning visibility mode must be selected conservatively during
   UX implementation.
-- The final manifest dependency constraints must be chosen after implementation
-  verifies the Pydantic AI APIs used by `stream_adapter.py`.
-- Exact POC-to-production redaction requirements must be specified after the POC
-  phase; this document intentionally requires no redaction for current POC
-  diagnostics, logs, and tests.
+- Future runtime modules must verify whether the current
+  `pydantic-ai-slim[openai]==1.90.0` pin remains sufficient for the Pydantic AI
+  APIs used by `agent_factory.py`, `ha_toolset.py`, and `stream_adapter.py`.
+- Exact streaming/runtime redaction requirements for provider-native event data
+  must be revisited when `stream_adapter.py` and real conversation processing are
+  implemented.

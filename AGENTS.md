@@ -18,15 +18,17 @@
 
 ## Commands
 
-- Install/update dev environment: `uv sync --locked --group dev`.
-- CI lint command: `uv run ruff check custom_components/pydantic_ai_agent tests/components/pydantic_ai_agent`.
-- Format before committing: `uv run ruff format custom_components/pydantic_ai_agent tests/components/pydantic_ai_agent`.
-- Full test suite for this integration: `uv run pytest --timeout=10 tests/components/pydantic_ai_agent`.
-- Focused test example: `uv run pytest --timeout=10 tests/components/pydantic_ai_agent/test_config_flow.py -k provider_validation`.
+- Install/update dev environment: `scripts/setup`.
+- Run all local validation: `scripts/check`.
+- Lint only: `scripts/lint-check`.
+- Type check only: `scripts/type-check`.
+- Format before committing: `scripts/format`.
+- Full test suite for this integration: `scripts/test`.
+- Focused test example: `scripts/test -k provider_validation`.
 
 ## Current Architecture
 
-- `__init__.py` owns setup/unload, typed `entry.runtime_data`, update reloads, and setup-time validation of configured subentry models.
+- `__init__.py` owns setup/unload, typed `entry.runtime_data`, update reloads, setup-time validation of configured subentry models, and repair issue creation/cleanup for reconfigurable validation failures.
 - `config_flow.py` owns parent provider config, reauth/reconfigure, `conversation` and `ai_task_data` subentry flows, model settings parsing, and the async Pydantic AI provider probe.
 - `conversation.py` registers one Home Assistant conversation entity per `conversation` subentry and advertises `CONTROL` only when `CONF_LLM_HASS_API` is configured.
 - `ai_task_data` subentries are configurable but no AI task platform is registered yet.
@@ -48,14 +50,14 @@
 
 ## Workflow Constraints
 
-- Pre-commit runs Ruff check, Ruff format, JSON/YAML checks, end-of-file fixing, and trailing-whitespace cleanup.
+- Pre-commit runs Ruff check, Ruff format, JSON/YAML checks, yamllint, markdownlint, end-of-file fixing, and trailing-whitespace cleanup.
 - CI also runs HACS validation and Hassfest; treat manifest, translations, services, and integration structure as first-class validation surfaces, not just Python tests.
 - Do not create new permanent docs or instruction files unless they are clearly needed; update `AGENTS.md`, `README.md`, or `docs/pydantic_ai_agent_spec.md` in place when possible.
 - Do not amend, squash, or rebase commits that have already been pushed to a PR branch; reviewers need incremental history.
 
 ## References
 
-- HACS integration blueprint patterns: https://github.com/jpawlowski/hacs.integration_blueprint
-- Home Assistant Integration Quality Scale: https://developers.home-assistant.io/docs/core/integration-quality-scale/
-- Home Assistant developer docs: https://developers.home-assistant.io/
-- OpenRouter core integration reference: https://github.com/home-assistant/core/tree/dev/homeassistant/components/open_router
+- HACS integration blueprint patterns: <https://github.com/jpawlowski/hacs.integration_blueprint>
+- Home Assistant Integration Quality Scale: <https://developers.home-assistant.io/docs/core/integration-quality-scale/>
+- Home Assistant developer docs: <https://developers.home-assistant.io/>
+- OpenRouter core integration reference: <https://github.com/home-assistant/core/tree/dev/homeassistant/components/open_router>

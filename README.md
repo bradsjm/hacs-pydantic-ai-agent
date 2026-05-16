@@ -43,13 +43,12 @@ ID is the Home Assistant conversation agent ID.
 Use Python 3.14.2 or newer.
 
 ```bash
-uv sync --locked --group dev
-uv run ruff check custom_components/pydantic_ai_agent tests/components/pydantic_ai_agent
-uv run pytest --timeout=10 tests/components/pydantic_ai_agent
+scripts/setup
+scripts/check
 ```
 
 ## Support
 
-Issues: https://github.com/bradsjm/hacs-pydantic-agent/issues
+Issues: <https://github.com/bradsjm/hacs-pydantic-agent/issues>
 
 Code owner: `@bradsjm`
