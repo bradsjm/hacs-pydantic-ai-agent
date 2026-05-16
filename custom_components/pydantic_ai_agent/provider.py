@@ -25,12 +25,16 @@ def openai_chat_model(
     model_name: str,
 ) -> Any:
     """Build a Pydantic AI OpenAI chat model."""
+    # Keep the OpenAI extra import local so provider construction is the only
+    # place that depends on the optional Pydantic AI OpenAI package surface.
     from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.openai import OpenAIProvider
 
     provider = OpenAIProvider(
         api_key=api_key,
         base_url=normalise_base_url(base_url),
+        # Reuse Home Assistant's shared async client for its SSL, proxy, and
+        # connection-pooling configuration.
         http_client=get_async_client(hass),
     )
     return OpenAIChatModel(model_name, provider=provider)

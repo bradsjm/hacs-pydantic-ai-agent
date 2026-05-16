@@ -31,7 +31,9 @@ async def chat_log_content_to_model_messages(
     messages: list[ModelMessage] = []
     for item in content:
         if isinstance(item, conversation.SystemContent):
-            messages.append(ModelRequest(parts=[SystemPromptPart(content=item.content)]))
+            messages.append(
+                ModelRequest(parts=[SystemPromptPart(content=item.content)])
+            )
         elif isinstance(item, conversation.UserContent):
             messages.append(
                 ModelRequest(
@@ -47,6 +49,8 @@ async def chat_log_content_to_model_messages(
         elif isinstance(item, conversation.AssistantContent):
             messages.append(ModelResponse(parts=_assistant_parts_from_ha_content(item)))
         elif isinstance(item, conversation.ToolResultContent):
+            # Tool results are model input in Pydantic AI, so they are replayed as
+            # a request part rather than assistant response history.
             messages.append(
                 ModelRequest(
                     parts=[
@@ -64,10 +68,12 @@ async def chat_log_content_to_model_messages(
 async def _user_prompt_content_from_ha_content(
     hass: HomeAssistant, content: conversation.UserContent
 ) -> str | Sequence[Any]:
-    """Return a Pydantic AI user prompt content payload."""
+    """Return text-only or mixed text/binary content for a user message."""
     if not content.attachments:
         return content.content
 
+    # Pydantic AI represents multimodal user prompts as text mixed with binary
+    # content parts; Home Assistant stores attachments separately on the message.
     parts: list[Any] = [content.content]
     for attachment in content.attachments:
         parts.append(await _binary_content_from_attachment(hass, attachment))
@@ -77,12 +83,14 @@ async def _user_prompt_content_from_ha_content(
 async def _binary_content_from_attachment(
     hass: HomeAssistant, attachment: conversation.Attachment
 ) -> BinaryContent:
-    """Read a Home Assistant attachment as Pydantic AI binary content."""
+    """Read supported Home Assistant attachments off the event loop."""
     mime_type = attachment.mime_type
     if not _is_supported_attachment_mime_type(mime_type):
         raise HomeAssistantError(f"Unsupported attachment type: {mime_type}")
 
     try:
+        # Attachment payloads may be backed by files, so keep reads off the event
+        # loop before handing bytes to Pydantic AI.
         data = await hass.async_add_executor_job(attachment.path.read_bytes)
     except OSError as err:
         raise HomeAssistantError("Unable to read attachment") from err
@@ -99,8 +107,10 @@ def _is_supported_attachment_mime_type(mime_type: str) -> bool:
 def _assistant_parts_from_ha_content(
     content: conversation.AssistantContent,
 ) -> list[TextPart | ThinkingPart | ToolCallPart]:
-    """Convert Home Assistant assistant content into Pydantic AI response parts."""
+    """Preserve assistant text, thinking, and tool calls for model history."""
     parts: list[TextPart | ThinkingPart | ToolCallPart] = []
+    # Preserve HA's assistant-content order when reconstructing Pydantic AI
+    # response parts for the next streamed request.
     if content.content:
         parts.append(TextPart(content=content.content))
     if content.thinking_content:

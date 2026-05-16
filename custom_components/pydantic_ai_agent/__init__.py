@@ -19,6 +19,7 @@ from .const import (
     CONF_BASE_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
+    CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -29,6 +30,7 @@ from .repairs import (
     async_delete_stale_model_validation_issues,
     model_validation_issue_id,
 )
+from .structured_output import structured_output_mode
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,15 +41,14 @@ _RECONFIGURABLE_MODEL_FAILURE_REASONS = {
     "model_does_not_support_streaming",
     "permission_denied",
 }
-_MODEL_VALIDATION_MODE_KEY = "_pydantic_ai_agent_validation"
-_MODEL_VALIDATION_NATIVE_STRUCTURED_OUTPUT = "native_structured_output"
+_MODEL_VALIDATION_OUTPUT_MODE_KEY = "_pydantic_ai_agent_output_mode"
 
 PLATFORMS: tuple[Platform, ...] = (Platform.CONVERSATION, Platform.AI_TASK)
 
 
 @dataclass(frozen=True, kw_only=True)
 class PydanticAIAgentRuntimeData:
-    """Runtime data for one provider/service config entry."""
+    """Provider connection data shared by subentry-backed entities."""
 
     provider_mode: str
     name: str
@@ -61,7 +62,7 @@ type PydanticAIAgentConfigEntry = ConfigEntry[PydanticAIAgentRuntimeData]
 async def async_setup_entry(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> bool:
-    """Set up Pydantic AI Agent from a config entry."""
+    """Validate configured subentries, then set up entity platforms."""
     await _async_validate_configured_models(hass, entry)
 
     entry.runtime_data = PydanticAIAgentRuntimeData(
@@ -97,10 +98,10 @@ def _normalise_model_settings(settings: Mapping[str, Any]) -> str:
 
 def _configured_subentry_models(
     entry: PydanticAIAgentConfigEntry,
-) -> list[tuple[str, dict[str, Any], bool]]:
-    """Return configured subentry models and settings, deduped in storage order."""
-    models: list[tuple[str, dict[str, Any], bool]] = []
-    seen: set[tuple[str, str, bool]] = set()
+) -> list[tuple[str, dict[str, Any], str | None]]:
+    """Return unique model probes needed before the entry can load."""
+    models: list[tuple[str, dict[str, Any], str | None]] = []
+    seen: set[tuple[str, str, str | None]] = set()
     for subentry in entry.subentries.values():
         if subentry.subentry_type not in (
             SUBENTRY_TYPE_CONVERSATION,
@@ -112,57 +113,63 @@ def _configured_subentry_models(
         if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
             settings = subentry.data.get(CONF_MODEL_SETTINGS)
             model_settings = dict(settings) if isinstance(settings, Mapping) else {}
-            require_native_structured_output = False
+            output_mode = None
         else:
             model_settings = {}
-            require_native_structured_output = True
+            output_mode = structured_output_mode(subentry.data.get(CONF_OUTPUT_MODE))
         dedupe_key = (
             model,
             _normalise_model_settings(model_settings),
-            require_native_structured_output,
+            output_mode,
         )
+        # Several subentries can target the same model/settings pair, so probe
+        # each unique runtime capability once during setup.
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
-        models.append((model, model_settings, require_native_structured_output))
+        models.append((model, model_settings, output_mode))
     return models
 
 
 def _repair_issue_model_settings(
-    model_settings: Mapping[str, Any], require_native_structured_output: bool
+    model_settings: Mapping[str, Any], output_mode: str | None
 ) -> dict[str, Any]:
-    """Return model settings key material for setup validation repair issues."""
-    if not require_native_structured_output:
+    """Return settings material that separates chat and structured probes."""
+    if output_mode is None:
         return dict(model_settings)
+    # Repair issue ids include the output mode so probes for the same model do
+    # not collide when different subentries require different capabilities.
     return {
         **model_settings,
-        _MODEL_VALIDATION_MODE_KEY: _MODEL_VALIDATION_NATIVE_STRUCTURED_OUTPUT,
+        _MODEL_VALIDATION_OUTPUT_MODE_KEY: output_mode,
     }
 
 
 async def _async_validate_configured_models(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> None:
-    """Validate configured models before marking an entry loaded."""
+    """Probe configured models and surface user-fixable failures as repairs."""
     current_issue_ids: set[str] = set()
-    for model, model_settings, require_native_structured_output in (
-        _configured_subentry_models(entry)
-    ):
+    for (
+        model,
+        model_settings,
+        output_mode,
+    ) in _configured_subentry_models(entry):
         repair_settings = _repair_issue_model_settings(
-            model_settings, require_native_structured_output
+            model_settings, output_mode
         )
         current_issue_ids.add(model_validation_issue_id(entry, model, repair_settings))
         try:
-            if require_native_structured_output:
+            if output_mode is None:
+                await async_probe_model(hass, entry.data, model, model_settings)
+            else:
                 await async_probe_model(
                     hass,
                     entry.data,
                     model,
                     model_settings,
-                    require_native_structured_output=True,
+                    structured_output_mode=output_mode,
                 )
-            else:
-                await async_probe_model(hass, entry.data, model, model_settings)
         except ProviderValidationError as err:
             _LOGGER.warning(
                 'Provider validation failed during setup for model "%s": '
@@ -171,6 +178,8 @@ async def _async_validate_configured_models(
                 err.reason,
                 err.status_code,
             )
+            # Auth failures require reauth, model/configuration failures can be
+            # repaired after load, and transient provider failures should retry.
             if err.reason in _AUTH_FAILURE_REASONS:
                 raise ConfigEntryAuthFailed(err.message) from err
             if err.reason in _RECONFIGURABLE_MODEL_FAILURE_REASONS:

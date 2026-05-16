@@ -18,6 +18,7 @@ from pydantic_ai import (
     PartStartEvent,
     TextPart,
     TextPartDelta,
+    ToolCallPart,
 )
 from pydantic_ai.messages import ModelResponseStreamEvent
 from pydantic_ai.direct import model_request_stream
@@ -28,7 +29,6 @@ from pydantic_ai.exceptions import (
     UserError,
 )
 from pydantic_ai.models import ModelRequestParameters
-from pydantic_ai.output import OutputObjectDefinition
 from pydantic_ai.settings import ModelSettings
 import voluptuous as vol
 
@@ -67,20 +67,31 @@ from .const import (
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
+    CONF_OUTPUT_MODE,
     CONF_PROMPT,
     CONF_PROVIDER_MODE,
     DEFAULT_AGENT_NAME,
     DEFAULT_CONVERSATION_OPTIONS,
+    DEFAULT_OUTPUT_MODE,
     DEFAULT_SERVICE_NAME,
     DEFAULT_TIMEOUT,
     DOMAIN,
+    OUTPUT_MODE_NATIVE,
+    OUTPUT_MODE_PROMPTED,
+    OUTPUT_MODE_TOOL,
     PROVIDER_MODES,
     PROVIDER_OPENAI,
     PROVIDER_OPENAI_COMPATIBLE,
+    STRUCTURED_OUTPUT_MODES,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
 from .provider import normalise_base_url, openai_chat_model_from_config
+from .structured_output import (
+    structured_model_request_parameters,
+    structured_output_mode as normalise_structured_output_mode,
+    structured_output_name,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -146,6 +157,12 @@ _ADVANCED_MODEL_SETTING_KEYS = {
     _MODEL_SETTING_EXTRA_BODY,
 }
 _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "xhigh")
+_OUTPUT_MODE_OPTIONS = tuple(
+    SelectOptionDict(value=value, label=value) for value in STRUCTURED_OUTPUT_MODES
+)
+_STRUCTURED_PROBE_OUTPUT_NAME = structured_output_name(
+    "probe_response", "probe_response"
+)
 _STRUCTURED_PROBE_SCHEMA = {
     "type": "object",
     "properties": {"ok": {"type": "boolean"}},
@@ -156,7 +173,7 @@ _STRUCTURED_PROBE_SCHEMA = {
 
 @dataclass(slots=True)
 class ProviderValidationError(Exception):
-    """Provider validation failed."""
+    """Provider validation failed with a translation-ready reason."""
 
     reason: str
     message: str
@@ -206,8 +223,8 @@ async def _validate_configured_models_for_provider_update(
     step: str,
     skip_reconfigurable_model_errors: bool,
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Validate provider updates with configured models when possible."""
-    seen: set[tuple[str, str, bool]] = set()
+    """Probe existing subentry models against new provider settings."""
+    seen: set[tuple[str, str, str | None]] = set()
     for subentry in entry.subentries.values():
         if subentry.subentry_type not in (
             SUBENTRY_TYPE_CONVERSATION,
@@ -216,33 +233,34 @@ async def _validate_configured_models_for_provider_update(
             continue
         if not (model := subentry.data.get(CONF_MODEL)):
             continue
-        require_native_structured_output = (
-            subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
-        )
         if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
             settings = subentry.data.get(CONF_MODEL_SETTINGS)
             model_settings = dict(settings) if isinstance(settings, Mapping) else {}
+            output_mode = None
         else:
             model_settings = {}
+            output_mode = normalise_structured_output_mode(
+                subentry.data.get(CONF_OUTPUT_MODE)
+            )
         dedupe_key = (
             model,
             json.dumps(model_settings, sort_keys=True, separators=(",", ":")),
-            require_native_structured_output,
+            output_mode,
         )
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
         try:
-            if require_native_structured_output:
+            if output_mode is None:
+                await async_probe_model(hass, data, model, model_settings)
+            else:
                 await async_probe_model(
                     hass,
                     data,
                     model,
                     model_settings,
-                    require_native_structured_output=True,
+                    structured_output_mode=output_mode,
                 )
-            else:
-                await async_probe_model(hass, data, model, model_settings)
         except ProviderValidationError as err:
             _log_provider_validation_failure(step=step, model_name=model, err=err)
             if (
@@ -306,7 +324,7 @@ def _metadata_redaction_keys(metadata: object) -> set[object]:
 
 
 def _format_metadata(metadata: object) -> str:
-    """Return compact provider metadata for config-flow display."""
+    """Return redacted, bounded provider metadata for config-flow display."""
     redaction_keys = _metadata_redaction_keys(metadata)
     redacted = (
         async_redact_data(metadata, redaction_keys) if redaction_keys else metadata
@@ -364,6 +382,9 @@ def _format_connection_error(err: BaseException) -> str | None:
             if item.errno in (errno.ENETUNREACH, errno.EHOSTUNREACH):
                 return "Network unreachable."
 
+        # Provider/network clients do not expose every connection failure as a
+        # stable typed exception, so keep the user-facing flow error specific
+        # when only the exception text carries the condition.
         name = type(item).__name__.lower()
         text = str(item).lower()
         if "timeout" in name or "timed out" in text or "timeout" in text:
@@ -410,6 +431,8 @@ def _map_http_error(err: ModelHTTPError) -> ProviderValidationError:
     elif status_code == 429:
         reason = "rate_limited"
     elif status_code == 400:
+        # OpenAI-compatible providers often report unknown models as 400 instead
+        # of 404, so both statuses drive the same reconfigure path.
         reason = "invalid_model"
     else:
         reason = "provider_error"
@@ -423,15 +446,28 @@ def _openai_chat_model(
     return openai_chat_model_from_config(hass, data, model_name)
 
 
+def _structured_probe_request_parameters(
+    output_mode: str,
+) -> ModelRequestParameters:
+    """Return request parameters for a structured-output capability probe."""
+    return structured_model_request_parameters(
+        function_tools=[],
+        output_mode=output_mode,
+        output_name=_STRUCTURED_PROBE_OUTPUT_NAME,
+        json_schema=_STRUCTURED_PROBE_SCHEMA,
+        strict=True,
+    )
+
+
 async def async_probe_model(
     hass: HomeAssistant,
     data: Mapping[str, Any],
     model_name: str,
     model_settings: Mapping[str, Any] | None = None,
     *,
-    require_native_structured_output: bool = False,
+    structured_output_mode: str | None = None,
 ) -> None:
-    """Validate provider credentials and model access with a minimal stream."""
+    """Probe model access with the same streaming path used at runtime."""
     provider_mode = data[CONF_PROVIDER_MODE]
     base_url = _normalise_base_url(data)
     if provider_mode == PROVIDER_OPENAI_COMPATIBLE and not base_url:
@@ -444,26 +480,20 @@ async def async_probe_model(
         settings.setdefault(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT)
         model = _openai_chat_model(hass, data, model_name)
         model_request_parameters = None
-        if require_native_structured_output:
-            model_request_parameters = ModelRequestParameters(
-                output_mode="native",
-                output_object=OutputObjectDefinition(
-                    json_schema=_STRUCTURED_PROBE_SCHEMA,
-                    name="probe_response",
-                    strict=True,
-                ),
-            )
+        if structured_output_mode is not None:
+            output_mode = normalise_structured_output_mode(structured_output_mode)
+            model_request_parameters = _structured_probe_request_parameters(output_mode)
         messages = [
             ModelRequest.user_text_prompt(
                 (
                     'Reply with exactly "OK". No explanation.'
-                    if not require_native_structured_output
-                    else 'Reply with JSON where "ok" is true.'
+                    if structured_output_mode is None
+                    else 'Return structured data where "ok" is true.'
                 ),
                 instructions=(
                     "Reply only with OK."
-                    if not require_native_structured_output
-                    else "Reply only with JSON matching the requested schema."
+                    if structured_output_mode is None
+                    else "Return only data matching the requested schema."
                 ),
             )
         ]
@@ -473,8 +503,11 @@ async def async_probe_model(
             model_settings=ModelSettings(**settings),
             model_request_parameters=model_request_parameters,
         ) as stream:
-            if require_native_structured_output:
-                await _validate_structured_probe_stream(stream)
+            if structured_output_mode is not None:
+                await _validate_structured_probe_stream(
+                    stream,
+                    normalise_structured_output_mode(structured_output_mode),
+                )
                 return
             async for _event in stream:
                 return
@@ -499,14 +532,25 @@ async def async_probe_model(
 
 async def _validate_structured_probe_stream(
     stream: AsyncIterable[ModelResponseStreamEvent],
+    output_mode: str,
 ) -> None:
-    """Validate that native structured-output probing returns schema data."""
+    """Validate that structured-output probing returns schema data."""
     text_parts: list[str] = []
+    output_tool_data: object | None = None
     async for event in stream:
         if isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
             text_parts.append(event.part.content)
-        elif isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
+        elif isinstance(event, PartDeltaEvent) and isinstance(
+            event.delta, TextPartDelta
+        ):
             text_parts.append(event.delta.content_delta)
+        elif (
+            output_mode == OUTPUT_MODE_TOOL
+            and isinstance(event, PartEndEvent)
+            and isinstance(event.part, ToolCallPart)
+            and event.part.tool_name == _STRUCTURED_PROBE_OUTPUT_NAME
+        ):
+            output_tool_data = event.part.args
         elif (
             isinstance(event, PartEndEvent)
             and isinstance(event.part, TextPart)
@@ -514,22 +558,50 @@ async def _validate_structured_probe_stream(
         ):
             text_parts.append(event.part.content)
 
-    if not text_parts:
+    if output_tool_data is not None:
+        data = _structured_probe_data_from_tool_args(output_tool_data)
+    elif text_parts:
+        try:
+            data = json.loads("".join(text_parts))
+        except json.JSONDecodeError as err:
+            raise ProviderValidationError(
+                "invalid_provider_config",
+                _invalid_structured_output_message(output_mode),
+            ) from err
+    else:
         raise ProviderValidationError(
             "provider_error", "The provider returned an empty structured response."
         )
-    try:
-        data = json.loads("".join(text_parts))
-    except json.JSONDecodeError as err:
-        raise ProviderValidationError(
-            "invalid_provider_config",
-            "The provider did not return valid native structured output.",
-        ) from err
+
     if not isinstance(data, Mapping) or data.get("ok") is not True:
         raise ProviderValidationError(
             "invalid_provider_config",
-            "The provider returned native structured output that did not match the schema.",
+            "The provider returned structured output that did not match the schema.",
         )
+
+
+def _structured_probe_data_from_tool_args(args: object) -> object:
+    """Return parsed output-tool arguments for a structured probe."""
+    if isinstance(args, Mapping):
+        return args
+    if isinstance(args, str):
+        try:
+            return json.loads(args)
+        except json.JSONDecodeError as err:
+            raise ProviderValidationError(
+                "invalid_provider_config",
+                _invalid_structured_output_message(OUTPUT_MODE_TOOL),
+            ) from err
+    return None
+
+
+def _invalid_structured_output_message(output_mode: str) -> str:
+    """Return a validation error for malformed structured output."""
+    if output_mode == OUTPUT_MODE_NATIVE:
+        return "The provider did not return valid native structured output."
+    if output_mode == OUTPUT_MODE_PROMPTED:
+        return "The provider did not return valid prompted structured output."
+    return "The provider did not return valid tool structured output."
 
 
 def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
@@ -562,7 +634,7 @@ def _provider_data_matches(left: Mapping[str, Any], right: Mapping[str, Any]) ->
 def _conversation_schema(
     hass: HomeAssistant, options: Mapping[str, Any] | None = None
 ) -> vol.Schema:
-    """Return the conversation subentry schema."""
+    """Return the conversation subentry schema, pruning unavailable HA APIs."""
     options = dict(options or {})
     model_settings = options.get(CONF_MODEL_SETTINGS, {})
     if not isinstance(model_settings, Mapping):
@@ -828,6 +900,8 @@ def _parse_model_settings(
             continue
         value = user_input[key]
         if _is_blank(value):
+            # Blank fields mean "unset" in the HA form and must delete any
+            # previously stored Pydantic AI model setting.
             cleared.add(key)
             continue
         try:
@@ -879,7 +953,7 @@ def _model_settings_from_options(options: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _conversation_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
-    """Return persisted conversation fields from submitted form data."""
+    """Return conversation fields, leaving model settings for separate storage."""
     data = {
         key: value
         for key, value in user_input.items()
@@ -900,6 +974,8 @@ def _merge_model_settings(
 ) -> dict[str, Any]:
     """Return model settings with parsed values applied and cleared keys removed."""
     merged = dict(existing)
+    # Subentry setup spans basic and advanced forms, so each save patches the
+    # existing model settings instead of replacing the whole mapping blindly.
     for key in cleared:
         merged.pop(key, None)
     merged.update(parsed)
@@ -925,8 +1001,51 @@ def _ai_task_data_schema(options: Mapping[str, Any] | None = None) -> vol.Schema
                 CONF_MODEL,
                 default=options.get(CONF_MODEL, ""),
             ): TextSelector(TextSelectorConfig()),
+            vol.Optional(
+                CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+                default=False,
+            ): BooleanSelector(),
         }
     )
+
+
+def _ai_task_output_mode_schema(
+    options: Mapping[str, Any] | None = None,
+) -> vol.Schema:
+    """Return the AI task advanced structured output schema."""
+    options = dict(options or {})
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_OUTPUT_MODE,
+                default=normalise_structured_output_mode(
+                    options.get(CONF_OUTPUT_MODE, DEFAULT_OUTPUT_MODE)
+                ),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=list(_OUTPUT_MODE_OPTIONS),
+                    mode=SelectSelectorMode.DROPDOWN,
+                    translation_key=CONF_OUTPUT_MODE,
+                )
+            ),
+        }
+    )
+
+
+def _ai_task_data_from_user_input(
+    user_input: Mapping[str, Any], options: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Return AI task subentry data with a selected structured output mode."""
+    data = {
+        key: value
+        for key, value in user_input.items()
+        if key != CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS
+    }
+    data.setdefault(
+        CONF_OUTPUT_MODE,
+        normalise_structured_output_mode(options.get(CONF_OUTPUT_MODE)),
+    )
+    return data
 
 
 class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -937,7 +1056,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the provider connection step."""
+        """Store provider credentials; model access is validated by subentries."""
         errors: dict[str, str] = {}
         description_placeholders: dict[str, str] = {}
 
@@ -1189,7 +1308,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
         model_settings: Mapping[str, Any],
         error_step: str = "init",
     ) -> SubentryFlowResult:
-        """Validate and persist conversation options."""
+        """Probe the selected chat model, then create or update the subentry."""
         entry = self._get_entry()
         _store_model_settings(data, model_settings)
         try:
@@ -1250,6 +1369,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing AI task data subentries."""
 
     _options: dict[str, Any]
+    _pending_ai_task_data: dict[str, Any]
 
     @property
     def _is_new(self) -> bool:
@@ -1273,47 +1393,96 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Manage AI task data options."""
+        """Manage AI task model options."""
         entry = self._get_entry()
         if entry.state != ConfigEntryState.LOADED:
             return self.async_abort(reason="entry_not_loaded")
 
         if user_input is not None:
-            data = dict(user_input)
-            try:
-                await async_probe_model(
-                    self.hass,
-                    entry.data,
-                    data[CONF_MODEL],
-                    require_native_structured_output=True,
-                )
-            except ProviderValidationError as err:
-                _log_provider_validation_failure(
-                    step="AI task subentry", model_name=data[CONF_MODEL], err=err
-                )
+            data = _ai_task_data_from_user_input(user_input, self._options)
+            if user_input.get(CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS):
+                self._pending_ai_task_data = data
                 return self.async_show_form(
-                    step_id="init",
-                    data_schema=_ai_task_data_schema(self._options | data),
-                    errors={"base": err.reason},
-                    description_placeholders=_provider_validation_placeholders(err),
+                    step_id="output_mode",
+                    data_schema=_ai_task_output_mode_schema(self._options | data),
                 )
-            except Exception:
-                _LOGGER.exception("Unexpected exception validating AI task model")
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=_ai_task_data_schema(self._options | data),
-                    errors={"base": "unknown"},
-                )
-            if self._is_new:
-                return self.async_create_entry(title=data[CONF_MODEL], data=data)
-            return self.async_update_and_abort(
-                entry,
-                self._get_reconfigure_subentry(),
-                title=data[CONF_MODEL],
-                data=data,
-            )
+            return await self._async_finish_ai_task_options(data)
 
         return self.async_show_form(
             step_id="init",
             data_schema=_ai_task_data_schema(self._options),
+        )
+
+    async def async_step_output_mode(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Manage advanced structured output settings."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="output_mode",
+                data_schema=_ai_task_output_mode_schema(
+                    self._options | self._pending_ai_task_data
+                ),
+            )
+        data = self._pending_ai_task_data | {
+            CONF_OUTPUT_MODE: normalise_structured_output_mode(
+                user_input[CONF_OUTPUT_MODE]
+            )
+        }
+        return await self._async_finish_ai_task_options(
+            data,
+            error_step="output_mode",
+        )
+
+    async def _async_finish_ai_task_options(
+        self,
+        data: dict[str, Any],
+        error_step: str = "init",
+    ) -> SubentryFlowResult:
+        """Probe the selected AI task model, then create or update the subentry."""
+        entry = self._get_entry()
+        try:
+            await async_probe_model(
+                self.hass,
+                entry.data,
+                data[CONF_MODEL],
+                structured_output_mode=data[CONF_OUTPUT_MODE],
+            )
+        except ProviderValidationError as err:
+            _log_provider_validation_failure(
+                step="AI task subentry", model_name=data[CONF_MODEL], err=err
+            )
+            if error_step == "output_mode":
+                return self.async_show_form(
+                    step_id="output_mode",
+                    data_schema=_ai_task_output_mode_schema(self._options | data),
+                    errors={"base": err.reason},
+                    description_placeholders=_provider_validation_placeholders(err),
+                )
+            return self.async_show_form(
+                step_id="init",
+                data_schema=_ai_task_data_schema(self._options | data),
+                errors={"base": err.reason},
+                description_placeholders=_provider_validation_placeholders(err),
+            )
+        except Exception:
+            _LOGGER.exception("Unexpected exception validating AI task model")
+            if error_step == "output_mode":
+                return self.async_show_form(
+                    step_id="output_mode",
+                    data_schema=_ai_task_output_mode_schema(self._options | data),
+                    errors={"base": "unknown"},
+                )
+            return self.async_show_form(
+                step_id="init",
+                data_schema=_ai_task_data_schema(self._options | data),
+                errors={"base": "unknown"},
+            )
+        if self._is_new:
+            return self.async_create_entry(title=data[CONF_MODEL], data=data)
+        return self.async_update_and_abort(
+            entry,
+            self._get_reconfigure_subentry(),
+            title=data[CONF_MODEL],
+            data=data,
         )

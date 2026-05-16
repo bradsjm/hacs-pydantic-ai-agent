@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14.2"
 license = "Apache-2.0"
 dependencies = [
-  "pydantic-ai-slim[openai]==1.90.0",
+  "pydantic-ai-slim[openai]==1.97.0",
 ]
 
 [tool.uv]
@@ -36,6 +36,9 @@ src = ["custom_components", "tests", "scripts"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["."]
+markers = [
+  "real_server: calls a real OpenAI-compatible provider",
+]
 
 [tool.pyright]
 include = ["custom_components/pydantic_ai_agent", "tests/components/pydantic_ai_agent"]

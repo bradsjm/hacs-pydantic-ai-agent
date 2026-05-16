@@ -9,6 +9,6 @@
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/bradsjm/hacs-pydantic-agent/issues",
-  "requirements": ["pydantic-ai-slim[openai]==1.90.0"],
+  "requirements": ["pydantic-ai-slim[openai]==1.97.0"],
   "version": "0.1.0"
 }

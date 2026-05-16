@@ -80,9 +80,23 @@
       "step": {
         "init": {
           "title": "Configure AI task",
-          "description": "Choose a model that supports native structured output for Home Assistant AI task data generation.",
+          "description": "Choose the model for Home Assistant AI task data generation. Structured output defaults to tool output.",
           "data": {
-            "model": "Model"
+            "model": "Model",
+            "configure_advanced_model_settings": "Configure advanced structured output"
+          },
+          "data_description": {
+            "configure_advanced_model_settings": "Open a second step to choose how Pydantic AI asks the model for structured data."
+          }
+        },
+        "output_mode": {
+          "title": "Advanced structured output",
+          "description": "Choose the Pydantic AI structured output mode for this AI task model.",
+          "data": {
+            "output_mode": "Structured output mode"
+          },
+          "data_description": {
+            "output_mode": "Tool output is the default and works with providers that support tool calls. Native uses the provider's JSON schema support. Prompted asks for JSON in the prompt and validates the result."
           }
         }
       },
@@ -201,12 +215,19 @@
         "high": "High",
         "xhigh": "Extra high"
       }
+    },
+    "output_mode": {
+      "options": {
+        "tool": "Tool",
+        "native": "Native",
+        "prompted": "Prompted"
+      }
     }
   },
   "issues": {
     "model_validation_failed": {
       "title": "Pydantic AI Agent model validation failed",
-      "description": "Provider connection {entry_title} could not validate model {model}: {error_message} Reason: {reason}. Reconfigure the affected conversation agent or provider credentials, then reload the integration."
+      "description": "Provider connection {entry_title} could not validate model {model}: {error_message} Reason: {reason}. Reconfigure the affected conversation agent, AI task, or provider credentials, then reload the integration."
     }
   }
 }

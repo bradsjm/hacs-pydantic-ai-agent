@@ -4,7 +4,7 @@
 
 - This is the `pydantic_ai_agent` Home Assistant custom integration, distributed through HACS from `custom_components/pydantic_ai_agent`.
 - Treat `docs/pydantic_ai_agent_spec.md` as the product/architecture direction, not proof that a feature is implemented. Verify against source before documenting or relying on behavior.
-- Runtime dependency is pinned in both `pyproject.toml` and `manifest.json`: `pydantic-ai-slim[openai]==1.90.0`; use `OpenAIChatModel`/`OpenAIProvider`, not deprecated aliases.
+- Runtime dependency is pinned in both `pyproject.toml` and `manifest.json`: `pydantic-ai-slim[openai]==1.97.0`; use `OpenAIChatModel`/`OpenAIProvider`, not deprecated aliases.
 
 ## Home Assistant Patterns
 

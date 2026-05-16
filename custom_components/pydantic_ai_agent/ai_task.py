@@ -12,8 +12,9 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
-from .const import SUBENTRY_TYPE_AI_TASK
+from .const import CONF_OUTPUT_MODE, SUBENTRY_TYPE_AI_TASK
 from .entity import PydanticAIBaseLLMEntity
+from .structured_output import structured_output_mode
 
 
 async def async_setup_entry(
@@ -31,10 +32,8 @@ async def async_setup_entry(
         )
 
 
-class PydanticAIAgentAITaskEntity(
-    PydanticAIBaseLLMEntity, ai_task.AITaskEntity
-):
-    """Pydantic AI data-generation task entity."""
+class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity):
+    """AI task entity that requests structured output from the model."""
 
     _attr_has_entity_name = True
     _attr_name = None
@@ -55,6 +54,9 @@ class PydanticAIAgentAITaskEntity(
         return {
             "provider_mode": self.entry.runtime_data.provider_mode,
             "model": self.subentry.data[CONF_MODEL],
+            "output_mode": structured_output_mode(
+                self.subentry.data.get(CONF_OUTPUT_MODE)
+            ),
         }
 
     async def _async_generate_data(
@@ -62,7 +64,7 @@ class PydanticAIAgentAITaskEntity(
         task: ai_task.GenDataTask,
         chat_log: conversation.ChatLog,
     ) -> ai_task.GenDataTaskResult:
-        """Generate data for an AI task."""
+        """Generate task data and validate structured responses when requested."""
         await self._async_handle_chat_log(
             chat_log,
             structure_name=task.name,
@@ -70,6 +72,8 @@ class PydanticAIAgentAITaskEntity(
             max_iterations=1000,
         )
 
+        # After all tool calls resolve, ChatLog's final assistant message carries
+        # the model output that Home Assistant expects for the task result.
         last_content = chat_log.content[-1]
         if not isinstance(last_content, conversation.AssistantContent):
             raise HomeAssistantError("Provider did not return an assistant response")
@@ -77,6 +81,8 @@ class PydanticAIAgentAITaskEntity(
         data: object = last_content.content or ""
         if task.structure is not None:
             try:
+                # HA receives streamed assistant content for every structured
+                # output mode and validates the final JSON before returning it.
                 data = json.loads(last_content.content or "")
                 data = task.structure(data)
             except json.JSONDecodeError as err:

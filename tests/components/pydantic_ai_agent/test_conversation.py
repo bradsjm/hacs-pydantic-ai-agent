@@ -1,6 +1,7 @@
 """Test Pydantic AI Agent conversation entities."""
 
-from collections.abc import Iterable
+from collections.abc import AsyncGenerator, Iterable
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 from homeassistant import config_entries
@@ -11,6 +12,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers import llm
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pydantic_ai import PartEndEvent, PartStartEvent, TextPart
 
 from custom_components.pydantic_ai_agent import PydanticAIAgentRuntimeData
 from custom_components.pydantic_ai_agent.const import (
@@ -25,6 +27,38 @@ from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
     async_setup_entry,
 )
+
+
+class _EventStream:
+    """Async iterator over Pydantic AI stream events."""
+
+    def __init__(self, text: str) -> None:
+        """Initialize the event stream."""
+        self._events = iter(
+            (
+                PartStartEvent(index=0, part=TextPart(content=text)),
+                PartEndEvent(index=0, part=TextPart(content=text)),
+            )
+        )
+
+    def __aiter__(self) -> "_EventStream":
+        """Return the async iterator."""
+        return self
+
+    async def __anext__(self) -> object:
+        """Return the next stream event."""
+        try:
+            return next(self._events)
+        except StopIteration as err:
+            raise StopAsyncIteration from err
+
+
+@asynccontextmanager
+async def _model_stream(
+    *_args: object, **_kwargs: object
+) -> AsyncGenerator[_EventStream]:
+    """Return a deterministic model stream."""
+    yield _EventStream("runtime response")
 
 
 def _entry(llm_hass_api: list[str] | None) -> MockConfigEntry:
@@ -120,6 +154,16 @@ def test_conversation_entity_controls_home_assistant_with_llm_api() -> None:
     assert entity.extra_state_attributes["ha_llm_api"] == [llm.LLM_API_ASSIST]
 
 
+def test_conversation_entity_advertises_streaming() -> None:
+    """Test conversation entities advertise streaming support."""
+    entry = _entry(None)
+    subentry = next(iter(entry.subentries.values()))
+
+    entity = PydanticAIConversationEntity(entry, subentry)
+
+    assert entity.supports_streaming is True
+
+
 def test_conversation_entity_without_llm_api_has_no_control() -> None:
     """Test missing LLM API leaves Home Assistant control support disabled."""
     entry = _entry(None)
@@ -202,14 +246,27 @@ async def test_conversation_entity_id_dispatches_assist_agent(
         conversation.async_get_agent(hass, entity_id) for entity_id in entity_ids
     )
 
-    result = await conversation.async_converse(
-        hass,
-        "hello",
-        None,
-        Context(),
-        agent_id=entity_ids[0],
+    kitchen_entity_id = next(
+        entity_id for entity_id in entity_ids if entity_id.endswith("kitchen_agent")
     )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            return_value=object(),
+        ) as chat_model,
+        patch(
+            "custom_components.pydantic_ai_agent.entity.model_request_stream",
+            side_effect=_model_stream,
+        ),
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=kitchen_entity_id,
+        )
 
-    assert result.response.speech["plain"]["speech"] == (
-        "Pydantic AI Agent is configured, but provider chat runtime is not implemented yet."
-    )
+    assert result.response.speech["plain"]["speech"] == "runtime response"
+    assert chat_model.call_args is not None
+    assert chat_model.call_args.kwargs["model_name"] == "gpt-kitchen"

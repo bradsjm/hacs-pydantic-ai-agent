@@ -37,7 +37,7 @@ async def async_setup_entry(
 class PydanticAIConversationEntity(
     PydanticAIBaseLLMEntity, conversation.ConversationEntity
 ):
-    """Pydantic AI conversation agent foundation."""
+    """Conversation entity backed by Pydantic AI direct model streaming."""
 
     _attr_has_entity_name = True
     _attr_name = None
@@ -49,6 +49,8 @@ class PydanticAIConversationEntity(
         """Initialize the conversation entity."""
         super().__init__(entry, subentry, name=subentry.data[CONF_AGENT_NAME])
         if subentry.data.get(CONF_LLM_HASS_API):
+            # CONTROL means the agent can call HA tools/services, which is only
+            # true when an HA LLM API is attached to this subentry.
             self._attr_supported_features = (
                 conversation.ConversationEntityFeature.CONTROL
             )
@@ -73,7 +75,7 @@ class PydanticAIConversationEntity(
         user_input: conversation.ConversationInput,
         chat_log: conversation.ChatLog,
     ) -> conversation.ConversationResult:
-        """Process user input with Pydantic AI direct model streaming."""
+        """Prepare HA LLM context and stream the model response into ChatLog."""
         try:
             await chat_log.async_provide_llm_data(
                 user_input.as_llm_context(DOMAIN),

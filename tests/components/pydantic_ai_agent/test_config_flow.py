@@ -1,6 +1,6 @@
 """Test the Pydantic AI Agent config flow."""
 
-from collections.abc import AsyncIterator, Generator
+from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager
 import errno
 import logging
@@ -9,6 +9,7 @@ import ssl
 from unittest.mock import AsyncMock, call, patch
 
 from _pytest.logging import LogCaptureFixture
+from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 import pytest
 
@@ -32,9 +33,14 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
+    CONF_OUTPUT_MODE,
     CONF_PROMPT,
     CONF_PROVIDER_MODE,
+    DEFAULT_OUTPUT_MODE,
     DOMAIN,
+    OUTPUT_MODE_NATIVE,
+    OUTPUT_MODE_PROMPTED,
+    OUTPUT_MODE_TOOL,
     PROVIDER_OPENAI,
     PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_AI_TASK,
@@ -269,7 +275,7 @@ async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
     stream_events = _SingleEventStream()
 
     @asynccontextmanager
-    async def stream(*_: object, **__: object) -> AsyncIterator[_SingleEventStream]:
+    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
         yield stream_events
 
     with (
@@ -290,6 +296,246 @@ async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
     assert stream_events.events_yielded == 1
 
 
+async def test_probe_model_can_require_native_structured_output(
+    hass: HomeAssistant,
+) -> None:
+    """Test provider validation can require native structured output."""
+    data = {
+        CONF_NAME: "Hosted OpenAI",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_API_KEY: "sk-test",
+    }
+
+    class StructuredEventStream:
+        """Async stream with a structured probe response."""
+
+        def __init__(self) -> None:
+            """Initialize the stream."""
+            self._events = iter(
+                (
+                    PartStartEvent(index=0, part=TextPart(content='{"ok":true}')),
+                    PartEndEvent(index=0, part=TextPart(content='{"ok":true}')),
+                )
+            )
+
+        def __aiter__(self) -> "StructuredEventStream":
+            """Return the async iterator."""
+            return self
+
+        async def __anext__(self) -> object:
+            """Return the next stream event."""
+            try:
+                return next(self._events)
+            except StopIteration as err:
+                raise StopAsyncIteration from err
+
+    stream_events = StructuredEventStream()
+
+    @asynccontextmanager
+    async def stream(*_: object, **__: object) -> AsyncGenerator[StructuredEventStream]:
+        yield stream_events
+
+    with (
+        patch("custom_components.pydantic_ai_agent.config_flow._openai_chat_model"),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            side_effect=stream,
+        ) as model_request_stream,
+    ):
+        await async_probe_model(
+            hass,
+            data,
+            "gpt-test",
+            structured_output_mode=OUTPUT_MODE_NATIVE,
+        )
+
+    request_parameters = model_request_stream.call_args.kwargs[
+        "model_request_parameters"
+    ]
+    assert request_parameters.output_mode == "native"
+    assert request_parameters.output_object.name == "pydantic_ai_agent_output_probe_response"
+    assert request_parameters.output_object.json_schema["required"] == ["ok"]
+
+
+async def test_probe_model_can_require_tool_structured_output(
+    hass: HomeAssistant,
+) -> None:
+    """Test provider probing can request tool structured output."""
+    data = {
+        CONF_NAME: "Hosted OpenAI",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_API_KEY: "sk-test",
+    }
+
+    class StructuredEventStream:
+        """Async stream with a structured output tool response."""
+
+        def __init__(self) -> None:
+            """Initialize the stream."""
+            self._events = iter(
+                (
+                    PartEndEvent(
+                        index=0,
+                        part=ToolCallPart(
+                            tool_name="pydantic_ai_agent_output_probe_response",
+                            args={"ok": True},
+                            tool_call_id="tool-1",
+                        ),
+                    ),
+                )
+            )
+
+        def __aiter__(self) -> "StructuredEventStream":
+            """Return the async iterator."""
+            return self
+
+        async def __anext__(self) -> object:
+            """Return the next stream event."""
+            try:
+                return next(self._events)
+            except StopIteration as err:
+                raise StopAsyncIteration from err
+
+    @asynccontextmanager
+    async def stream(*_: object, **__: object) -> AsyncGenerator[StructuredEventStream]:
+        yield StructuredEventStream()
+
+    with (
+        patch("custom_components.pydantic_ai_agent.config_flow._openai_chat_model"),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            side_effect=stream,
+        ) as model_request_stream,
+    ):
+        await async_probe_model(
+            hass,
+            data,
+            "gpt-test",
+            structured_output_mode=OUTPUT_MODE_TOOL,
+        )
+
+    request_parameters = model_request_stream.call_args.kwargs[
+        "model_request_parameters"
+    ]
+    assert request_parameters.output_mode == "tool"
+    assert request_parameters.allow_text_output is False
+    assert request_parameters.output_tools[0].name == "pydantic_ai_agent_output_probe_response"
+    assert request_parameters.output_tools[0].kind == "output"
+
+
+async def test_probe_model_can_require_prompted_structured_output(
+    hass: HomeAssistant,
+) -> None:
+    """Test provider probing can request prompted structured output."""
+    data = {
+        CONF_NAME: "Hosted OpenAI",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_API_KEY: "sk-test",
+    }
+
+    class StructuredEventStream:
+        """Async stream with a structured probe response."""
+
+        def __init__(self) -> None:
+            """Initialize the stream."""
+            self._events = iter(
+                (
+                    PartStartEvent(index=0, part=TextPart(content='{"ok":true}')),
+                    PartEndEvent(index=0, part=TextPart(content='{"ok":true}')),
+                )
+            )
+
+        def __aiter__(self) -> "StructuredEventStream":
+            """Return the async iterator."""
+            return self
+
+        async def __anext__(self) -> object:
+            """Return the next stream event."""
+            try:
+                return next(self._events)
+            except StopIteration as err:
+                raise StopAsyncIteration from err
+
+    @asynccontextmanager
+    async def stream(*_: object, **__: object) -> AsyncGenerator[StructuredEventStream]:
+        yield StructuredEventStream()
+
+    with (
+        patch("custom_components.pydantic_ai_agent.config_flow._openai_chat_model"),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            side_effect=stream,
+        ) as model_request_stream,
+    ):
+        await async_probe_model(
+            hass,
+            data,
+            "gpt-test",
+            structured_output_mode=OUTPUT_MODE_PROMPTED,
+        )
+
+    request_parameters = model_request_stream.call_args.kwargs[
+        "model_request_parameters"
+    ]
+    assert request_parameters.output_mode == "prompted"
+    assert request_parameters.output_object.name == "pydantic_ai_agent_output_probe_response"
+
+
+async def test_probe_model_rejects_invalid_native_structured_output(
+    hass: HomeAssistant,
+) -> None:
+    """Test native structured output probing rejects non-JSON responses."""
+    data = {
+        CONF_NAME: "Hosted OpenAI",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_API_KEY: "sk-test",
+    }
+
+    class TextEventStream:
+        """Async stream with a plain text response."""
+
+        def __init__(self) -> None:
+            """Initialize the stream."""
+            self._events = iter(
+                (
+                    PartStartEvent(index=0, part=TextPart(content="OK")),
+                    PartEndEvent(index=0, part=TextPart(content="OK")),
+                )
+            )
+
+        def __aiter__(self) -> "TextEventStream":
+            """Return the async iterator."""
+            return self
+
+        async def __anext__(self) -> object:
+            """Return the next stream event."""
+            try:
+                return next(self._events)
+            except StopIteration as err:
+                raise StopAsyncIteration from err
+
+    @asynccontextmanager
+    async def stream(*_: object, **__: object) -> AsyncGenerator[TextEventStream]:
+        yield TextEventStream()
+
+    with (
+        patch("custom_components.pydantic_ai_agent.config_flow._openai_chat_model"),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            side_effect=stream,
+        ),
+        pytest.raises(ProviderValidationError) as exc_info,
+    ):
+        await async_probe_model(
+            hass,
+            data,
+            "gpt-test",
+            structured_output_mode=OUTPUT_MODE_NATIVE,
+        )
+
+    assert exc_info.value.reason == "invalid_provider_config"
+
+
 async def test_probe_model_merges_configured_model_settings(
     hass: HomeAssistant,
 ) -> None:
@@ -302,7 +548,7 @@ async def test_probe_model_merges_configured_model_settings(
     stream_events = _SingleEventStream()
 
     @asynccontextmanager
-    async def stream(*_: object, **__: object) -> AsyncIterator[_SingleEventStream]:
+    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
         yield stream_events
 
     with (
@@ -340,7 +586,7 @@ async def test_probe_model_openai_compatible_uses_normalized_base_url(
     stream_events = _SingleEventStream()
 
     @asynccontextmanager
-    async def stream(*_: object, **__: object) -> AsyncIterator[_SingleEventStream]:
+    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
         yield stream_events
 
     with (
@@ -731,8 +977,55 @@ async def test_create_ai_task_data_subentry(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "gpt-test"
-    assert result["data"] == {CONF_MODEL: "gpt-test"}
-    mock_probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test")
+    assert result["data"] == {
+        CONF_MODEL: "gpt-test",
+        CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+    }
+    mock_probe_model.assert_awaited_once_with(
+        hass,
+        entry.data,
+        "gpt-test",
+        structured_output_mode=OUTPUT_MODE_TOOL,
+    )
+
+
+@pytest.mark.parametrize(
+    "output_mode",
+    [OUTPUT_MODE_TOOL, OUTPUT_MODE_NATIVE, OUTPUT_MODE_PROMPTED],
+)
+async def test_create_ai_task_data_subentry_with_output_mode(
+    hass: HomeAssistant, mock_probe_model: AsyncMock, output_mode: str
+) -> None:
+    """Test adding an AI task data subentry with an output mode."""
+    entry = await _loaded_entry(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_MODEL: "gpt-test",
+            CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS: True,
+        },
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "output_mode"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {CONF_OUTPUT_MODE: output_mode},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {CONF_MODEL: "gpt-test", CONF_OUTPUT_MODE: output_mode}
+    mock_probe_model.assert_awaited_once_with(
+        hass,
+        entry.data,
+        "gpt-test",
+        structured_output_mode=output_mode,
+    )
 
 
 async def test_reconfigure_conversation_subentry(
@@ -941,7 +1234,13 @@ async def test_reconfigure_ai_task_data_subentry(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert subentry.data[CONF_MODEL] == "new-model"
-    mock_probe_model.assert_awaited_once_with(hass, entry.data, "new-model")
+    assert subentry.data[CONF_OUTPUT_MODE] == DEFAULT_OUTPUT_MODE
+    mock_probe_model.assert_awaited_once_with(
+        hass,
+        entry.data,
+        "new-model",
+        structured_output_mode=OUTPUT_MODE_TOOL,
+    )
 
 
 @pytest.mark.parametrize(
@@ -1449,9 +1748,20 @@ async def test_reauth_replaces_provider_data_and_preserves_model(
                 "old-model",
                 {},
             ),
+            call(
+                hass,
+                {
+                    CONF_NAME: "Hosted OpenAI",
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                    CONF_API_KEY: "new-key",
+                },
+                "task-model",
+                {},
+                structured_output_mode=OUTPUT_MODE_TOOL,
+            ),
         ]
     )
-    assert mock_probe_model.await_count == 1
+    assert mock_probe_model.await_count == 2
 
 
 async def test_reauth_validates_each_subentry_model_settings(

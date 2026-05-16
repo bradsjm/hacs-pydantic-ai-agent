@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-uv run pytest --timeout=10 tests/components/pydantic_ai_agent "$@"
+uv run pytest --timeout=10 -m "not real_server" tests/components/pydantic_ai_agent "$@"

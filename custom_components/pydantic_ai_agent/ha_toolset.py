@@ -17,6 +17,8 @@ def tool_definitions_from_llm_api(
         ToolDefinition(
             name=tool.name,
             description=tool.description,
+            # HA LLM tools expose voluptuous schemas; Pydantic AI needs JSON
+            # Schema for model-visible tool definitions.
             parameters_json_schema=convert(
                 tool.parameters,
                 custom_serializer=api_instance.custom_serializer,

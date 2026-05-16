@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, call, patch
 
 import pytest
 from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_NAME
+from homeassistant.const import CONF_API_KEY, CONF_NAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
@@ -13,14 +13,21 @@ from homeassistant.exceptions import (
 from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pydantic_ai_agent import async_setup_entry, async_unload_entry
+from custom_components.pydantic_ai_agent import (
+    PLATFORMS,
+    async_setup_entry,
+    async_unload_entry,
+)
 from custom_components.pydantic_ai_agent.config_flow import ProviderValidationError
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
+    CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
     DOMAIN,
+    OUTPUT_MODE_NATIVE,
+    OUTPUT_MODE_TOOL,
     PROVIDER_OPENAI,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -41,10 +48,13 @@ def _conversation_subentry() -> dict[str, object]:
     }
 
 
-def _ai_task_subentry() -> dict[str, object]:
+def _ai_task_subentry(output_mode: str | None = None) -> dict[str, object]:
     """Return an AI task data config subentry."""
+    data = {CONF_MODEL: "task-model"}
+    if output_mode is not None:
+        data[CONF_OUTPUT_MODE] = output_mode
     return {
-        "data": {CONF_MODEL: "task-model"},
+        "data": data,
         "subentry_type": SUBENTRY_TYPE_AI_TASK,
         "title": "Task Model",
         "unique_id": None,
@@ -91,7 +101,53 @@ async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
     assert entry.runtime_data.name == "Hosted OpenAI"
     assert entry.runtime_data.api_key == "sk-test"
     assert entry.runtime_data.base_url is None
-    probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
+    probe_model.assert_has_awaits(
+        [
+            call(hass, entry.data, "gpt-test", {}),
+            call(
+                hass,
+                entry.data,
+                "task-model",
+                {},
+                structured_output_mode=OUTPUT_MODE_TOOL,
+            ),
+        ]
+    )
+    assert probe_model.await_count == 2
+
+
+async def test_setup_entry_validates_ai_task_selected_output_mode(
+    hass: HomeAssistant,
+) -> None:
+    """Test setup validates AI task models with their configured output mode."""
+    entry = _entry((_ai_task_subentry(OUTPUT_MODE_NATIVE),))
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.async_probe_model",
+            new_callable=AsyncMock,
+        ) as probe_model,
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    probe_model.assert_awaited_once_with(
+        hass,
+        entry.data,
+        "task-model",
+        {},
+        structured_output_mode=OUTPUT_MODE_NATIVE,
+    )
+
+
+def test_platforms_include_conversation_and_ai_task() -> None:
+    """Test setup forwards both runtime platforms."""
+    assert PLATFORMS == (Platform.CONVERSATION, Platform.AI_TASK)
 
 
 async def test_setup_entry_validates_each_subentry_model_settings(
