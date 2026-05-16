@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "skills": {
+    "building-pydantic-ai-agents": {
+      "source": "pydantic/skills",
+      "sourceType": "github",
+      "skillPath": "skills/building-pydantic-ai-agents/SKILL.md",
+      "computedHash": "2389816a61cb173478193ba89a413c6c84296fbad88e2107c72447883168a3df"
+    },
+    "pydantic-ai-agent-creation": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "skillPath": "plugins/beagle-ai/skills/pydantic-ai-agent-creation/SKILL.md",
+      "computedHash": "fab5d021dde0396ecbb9fe62b2496d4be1daa66fda4a5a1f323d46ea8f0b176b"
+    },
+    "pydantic-ai-common-pitfalls": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "skillPath": "plugins/beagle-ai/skills/pydantic-ai-common-pitfalls/SKILL.md",
+      "computedHash": "0285eda9db41efb32a89d1ff4bbd2e27c190a28520f64051819c73a4b8eb406f"
+    },
+    "pydantic-ai-dependency-injection": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "skillPath": "plugins/beagle-ai/skills/pydantic-ai-dependency-injection/SKILL.md",
+      "computedHash": "e2ad9de09faa14430e209a2cf7d7050636fe06da6cbbcd3f79bf6430ed80ae0c"
+    },
+    "pydantic-ai-model-integration": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "skillPath": "plugins/beagle-ai/skills/pydantic-ai-model-integration/SKILL.md",
+      "computedHash": "332b836292c88e70f8f165281ce9fbb5a34d53a4ee82938f6fbc61e64b65b048"
+    },
+    "pydantic-ai-testing": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "skillPath": "plugins/beagle-ai/skills/pydantic-ai-testing/SKILL.md",
+      "computedHash": "e76bb7514adf3c4c808f03bde2ec1ebdd7969987b73b5c84e8b7d22fbff6ce02"
+    },
+    "pydantic-ai-tool-system": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "skillPath": "plugins/beagle-ai/skills/pydantic-ai-tool-system/SKILL.md",
+      "computedHash": "b4407a629e458a41d00b8ad234905e19d5871fd92defed1f9a943a54c99f2c40"
+    }
+  }
+}
