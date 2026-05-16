@@ -38,6 +38,19 @@ configured agent returns a placeholder response until runtime support is added.
 Each Assist agent is represented by its own `conversation.*` entity. That entity
 ID is the Home Assistant conversation agent ID.
 
+### Logfire Tracing
+
+Provider setup includes optional Logfire tracing fields. Leave the Logfire token
+blank to disable Logfire for that provider connection. When a token is provided,
+the integration adds Home Assistant metadata such as entry, subentry, entity,
+model, and conversation IDs to Pydantic AI traces.
+
+The `Include prompt and response content in Logfire` option is disabled by
+default. Enable it only if you want Logfire to capture prompt, completion, and
+tool payload content. Logfire is configured process-wide in Home Assistant: the
+first loaded provider entry with a token wins, later entries with a different
+token are left loaded but get a repair warning and do not emit Logfire traces.
+
 ## Development
 
 Use Python 3.14.2 or newer.

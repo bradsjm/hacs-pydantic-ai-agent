@@ -44,6 +44,7 @@ from .const import (
 )
 from .ha_toolset import tool_definitions_from_llm_api, tools_from_llm_api
 from .history import chat_log_content_to_model_messages, split_last_user_prompt
+from .logfire_support import agent_run_span, instrument_agent
 from .mcp import MCPValidationError, async_runtime_mcp_toolsets
 from .provider import openai_chat_model
 from .structured_output import (
@@ -138,39 +139,49 @@ class PydanticAIBaseLLMEntity:
             toolsets=mcp_toolsets,
             max_concurrency=1,
         )
+        instrument_agent(self.entry, agent)
         usage_limits = UsageLimits(
             request_limit=max_iterations,
         )
         try:
             async with agent:
-                if structure is None:
+                with agent_run_span(
+                    self.hass,
+                    self.entry,
+                    self.subentry,
+                    entity_id=agent_id,
+                    conversation_id=chat_log.conversation_id,
+                ):
+                    if structure is None:
+                        result = await agent.run(
+                            user_prompt,
+                            message_history=message_history,
+                            model_settings=model_settings,
+                            usage_limits=usage_limits,
+                        )
+                        await _append_agent_messages(
+                            chat_log, agent_id, result.new_messages()
+                        )
+                        return result.output
+
                     result = await agent.run(
                         user_prompt,
                         message_history=message_history,
                         model_settings=model_settings,
                         usage_limits=usage_limits,
                     )
+                    output = result.output
                     await _append_agent_messages(
-                        chat_log, agent_id, result.new_messages()
+                        chat_log,
+                        agent_id,
+                        result.new_messages(),
+                        output_tool_names=structured_output_tool_names,
                     )
-                    return result.output
-
-                result = await agent.run(
-                    user_prompt,
-                    message_history=message_history,
-                    model_settings=model_settings,
-                    usage_limits=usage_limits,
-                )
-                output = result.output
-                await _append_agent_messages(
-                    chat_log,
-                    agent_id,
-                    result.new_messages(),
-                    output_tool_names=structured_output_tool_names,
-                )
-                if not isinstance(chat_log.content[-1], conversation.AssistantContent):
-                    await _append_text(chat_log, agent_id, _json_output(output))
-                return output
+                    if not isinstance(
+                        chat_log.content[-1], conversation.AssistantContent
+                    ):
+                        await _append_text(chat_log, agent_id, _json_output(output))
+                    return output
         except ModelHTTPError as err:
             # Convert provider/runtime failures into HA-facing errors so
             # conversation and AI task platforms report consistent failures.

@@ -8,12 +8,25 @@ from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.redact import async_redact_data
 
-from .const import CONF_BASE_URL, CONF_MODEL, CONF_MODEL_SETTINGS, CONF_PROMPT
+from .const import (
+    CONF_BASE_URL,
+    CONF_LOGFIRE_TOKEN,
+    CONF_MODEL,
+    CONF_MODEL_SETTINGS,
+    CONF_PROMPT,
+)
 from .const import CONF_MCP_HEADERS, CONF_MCP_URL
+from .logfire_support import (
+    logfire_active_for_entry,
+    logfire_enabled,
+    logfire_include_content,
+    logfire_token_conflict,
+)
 from .mcp import redact_mcp_url_password
 
 _SENSITIVE_KEYS = {
     CONF_API_KEY,
+    CONF_LOGFIRE_TOKEN,
     CONF_PROMPT,
     "api_key",
     "authorization",
@@ -92,6 +105,10 @@ async def async_get_config_entry_diagnostics(
             "state": entry.state.value,
             "data": dict(entry.data),
             "base_url_configured": bool(entry.data.get(CONF_BASE_URL)),
+            "logfire_enabled": logfire_enabled(entry),
+            "logfire_active": logfire_active_for_entry(entry),
+            "logfire_include_content": logfire_include_content(entry),
+            "logfire_token_conflict": logfire_token_conflict(entry),
         },
         "subentries": subentries,
         "runtime": {

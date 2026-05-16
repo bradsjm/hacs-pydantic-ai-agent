@@ -26,6 +26,11 @@ from .const import (
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
+from .logfire_support import (
+    configure_logfire,
+    logfire_enabled,
+    logfire_include_content,
+)
 from .mcp import (
     MCPValidationError,
     async_refresh_mcp_tools,
@@ -33,6 +38,7 @@ from .mcp import (
     mcp_subentries,
 )
 from .repairs import (
+    async_delete_logfire_token_conflict_issue,
     async_create_model_validation_issue,
     async_delete_model_validation_issue,
     async_delete_stale_model_validation_issues,
@@ -73,6 +79,8 @@ class PydanticAIAgentRuntimeData:
     name: str
     api_key: str
     base_url: str | None
+    logfire_enabled: bool
+    logfire_include_content: bool
     mcp_servers: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -112,12 +120,15 @@ async def async_setup_entry(
 ) -> bool:
     """Validate configured subentries, then set up entity platforms."""
     await _async_validate_configured_models(hass, entry)
+    configure_logfire(hass, entry)
 
     entry.runtime_data = PydanticAIAgentRuntimeData(
         provider_mode=entry.data[CONF_PROVIDER_MODE],
         name=entry.data[CONF_NAME],
         api_key=entry.data[CONF_API_KEY],
         base_url=entry.data.get(CONF_BASE_URL),
+        logfire_enabled=logfire_enabled(entry),
+        logfire_include_content=logfire_include_content(entry),
         mcp_servers=[
             {CONF_NAME: subentry.title, **dict(subentry.data)}
             for subentry in mcp_subentries(entry)
@@ -133,7 +144,10 @@ async def async_unload_entry(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        async_delete_logfire_token_conflict_issue(hass, entry)
+    return unloaded
 
 
 async def async_update_entry(

@@ -85,6 +85,8 @@ def _entry(output_mode: str | None = None) -> MockConfigEntry:
         name="Hosted OpenAI",
         api_key="sk-test",
         base_url=None,
+        logfire_enabled=False,
+        logfire_include_content=False,
     )
     return entry
 

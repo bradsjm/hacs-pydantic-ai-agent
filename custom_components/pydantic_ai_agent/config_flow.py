@@ -66,6 +66,8 @@ from .const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+    CONF_LOGFIRE_INCLUDE_CONTENT,
+    CONF_LOGFIRE_TOKEN,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
     CONF_MCP_SERVER_IDS,
@@ -196,7 +198,8 @@ class ProviderValidationError(Exception):
 
 def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     """Return the provider connection schema."""
-    provider_mode = (user_input or {}).get(CONF_PROVIDER_MODE, PROVIDER_OPENAI)
+    data = user_input or {}
+    provider_mode = data.get(CONF_PROVIDER_MODE, PROVIDER_OPENAI)
     schema: VolDictType = {
         vol.Required(CONF_NAME, default=DEFAULT_SERVICE_NAME): str,
         vol.Required(CONF_PROVIDER_MODE, default=provider_mode): SelectSelector(
@@ -211,6 +214,15 @@ def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
         ),
     }
     schema[vol.Optional(CONF_BASE_URL)] = str
+    schema[vol.Optional(CONF_LOGFIRE_TOKEN)] = TextSelector(
+        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+    )
+    schema[
+        vol.Optional(
+            CONF_LOGFIRE_INCLUDE_CONTENT,
+            default=bool(data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False)),
+        )
+    ] = BooleanSelector()
     return vol.Schema(schema)
 
 
@@ -635,6 +647,17 @@ def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
         or not data[CONF_BASE_URL]
     ):
         data.pop(CONF_BASE_URL, None)
+    token = data.get(CONF_LOGFIRE_TOKEN)
+    if isinstance(token, str):
+        token = token.strip()
+    if token:
+        data[CONF_LOGFIRE_TOKEN] = token
+        data[CONF_LOGFIRE_INCLUDE_CONTENT] = bool(
+            data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False)
+        )
+    else:
+        data.pop(CONF_LOGFIRE_TOKEN, None)
+        data.pop(CONF_LOGFIRE_INCLUDE_CONTENT, None)
     return data
 
 
@@ -1281,6 +1304,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                     _base_schema(entry_data), entry_data
                 ),
             )
+        entry = self._get_reauth_entry()
         data = _normalise_provider_data(user_input)
         try:
             _validate_provider_data(data)
@@ -1295,7 +1319,6 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         self._async_abort_entries_match(_dedupe_data(data))
-        entry = self._get_reauth_entry()
         (
             errors,
             description_placeholders,

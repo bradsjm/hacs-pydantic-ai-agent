@@ -13,6 +13,7 @@ from .config_flow import ProviderValidationError
 from .const import DOMAIN
 
 MODEL_VALIDATION_ISSUE_PREFIX = "model_validation"
+LOGFIRE_TOKEN_CONFLICT_ISSUE_ID = "logfire_token_conflict"
 
 
 def model_validation_issue_id(
@@ -57,6 +58,36 @@ def async_create_model_validation_issue(
             "reason": err.reason,
             "error_message": err.message,
         },
+    )
+
+
+@callback
+def async_create_logfire_token_conflict_issue(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> None:
+    """Create a repair issue when an entry cannot use its Logfire token."""
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        f"{LOGFIRE_TOKEN_CONFLICT_ISSUE_ID}_{entry.entry_id}",
+        data={"entry_id": entry.entry_id},
+        is_fixable=False,
+        is_persistent=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=LOGFIRE_TOKEN_CONFLICT_ISSUE_ID,
+        translation_placeholders={"entry_title": entry.title},
+    )
+
+
+@callback
+def async_delete_logfire_token_conflict_issue(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> None:
+    """Delete the Logfire token conflict repair issue for an entry."""
+    ir.async_delete_issue(
+        hass, DOMAIN, f"{LOGFIRE_TOKEN_CONFLICT_ISSUE_ID}_{entry.entry_id}"
     )
 
 

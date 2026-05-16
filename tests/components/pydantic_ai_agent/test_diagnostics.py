@@ -1,5 +1,6 @@
 """Test diagnostics for Pydantic AI Agent."""
 
+import pytest
 from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
@@ -9,6 +10,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
+    CONF_LOGFIRE_INCLUDE_CONTENT,
+    CONF_LOGFIRE_TOKEN,
     CONF_MCP_HEADERS,
     CONF_MCP_URL,
     CONF_MODEL,
@@ -27,8 +30,17 @@ from custom_components.pydantic_ai_agent.diagnostics import (
 
 async def test_diagnostics_redacts_sensitive_config_entry_data(
     hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test diagnostics redact credentials, prompts, and sensitive headers."""
+    monkeypatch.setattr(
+        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
+        "lf-secret",
+    )
+    monkeypatch.setattr(
+        "custom_components.pydantic_ai_agent.logfire_support._configured_include_content",
+        True,
+    )
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Local Provider",
@@ -37,6 +49,8 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
             CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "sk-secret",
             CONF_BASE_URL: "http://localhost:11434/v1",
+            CONF_LOGFIRE_TOKEN: "lf-secret",
+            CONF_LOGFIRE_INCLUDE_CONTENT: True,
         },
         source=config_entries.SOURCE_USER,
         subentries_data=(
@@ -78,7 +92,10 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
     assert diagnostics["entry"]["data"][CONF_API_KEY] == REDACTED
+    assert diagnostics["entry"]["data"][CONF_LOGFIRE_TOKEN] == REDACTED
     assert diagnostics["entry"]["data"][CONF_BASE_URL] == "http://localhost:11434/v1"
+    assert diagnostics["entry"]["logfire_enabled"] is True
+    assert diagnostics["entry"]["logfire_include_content"] is True
     subentry_data = diagnostics["subentries"][0]["data"]
     assert subentry_data[CONF_PROMPT] == REDACTED
     assert subentry_data[CONF_MODEL_SETTINGS]["max_tokens"] == 500

@@ -8,10 +8,14 @@
           "name": "Service name",
           "provider_mode": "Provider mode",
           "api_key": "API key",
-          "base_url": "Base URL"
+          "base_url": "Base URL",
+          "logfire_token": "Logfire token",
+          "logfire_include_content": "Include prompt and response content in Logfire"
         },
         "data_description": {
-          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1."
+          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1.",
+          "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
+          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces."
         }
       },
       "reauth_confirm": {
@@ -21,10 +25,14 @@
           "name": "Service name",
           "provider_mode": "Provider mode",
           "api_key": "API key",
-          "base_url": "Base URL"
+          "base_url": "Base URL",
+          "logfire_token": "Logfire token",
+          "logfire_include_content": "Include prompt and response content in Logfire"
         },
         "data_description": {
-          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1."
+          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1.",
+          "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
+          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces."
         }
       },
       "reconfigure": {
@@ -34,10 +42,14 @@
           "name": "Service name",
           "provider_mode": "Provider mode",
           "api_key": "API key",
-          "base_url": "Base URL"
+          "base_url": "Base URL",
+          "logfire_token": "Logfire token",
+          "logfire_include_content": "Include prompt and response content in Logfire"
         },
         "data_description": {
-          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1."
+          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1.",
+          "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
+          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces."
         }
       }
     },
@@ -306,6 +318,10 @@
     "model_validation_failed": {
       "title": "Pydantic AI Agent model validation failed",
       "description": "Provider connection {entry_title} could not validate model {model}: {error_message} Reason: {reason}. Reconfigure the affected conversation agent, AI task, or provider credentials, then reload the integration."
+    },
+    "logfire_token_conflict": {
+      "title": "Pydantic AI Agent Logfire token conflict",
+      "description": "Provider connection {entry_title} has a Logfire token that differs from the token already active in this Home Assistant process. Logfire traces are disabled for this entry until Home Assistant restarts with only one token configured, or this entry is reconfigured to use the active token."
     }
   }
 }

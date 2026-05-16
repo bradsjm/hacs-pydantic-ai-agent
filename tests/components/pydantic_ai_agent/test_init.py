@@ -1,6 +1,8 @@
 """Test setup for Pydantic AI Agent."""
 
-from unittest.mock import AsyncMock, call, patch
+import sys
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, call, patch
 
 import pytest
 from homeassistant import config_entries
@@ -24,6 +26,8 @@ from custom_components.pydantic_ai_agent import (
 from custom_components.pydantic_ai_agent.config_flow import ProviderValidationError
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
+    CONF_LOGFIRE_INCLUDE_CONTENT,
+    CONF_LOGFIRE_TOKEN,
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
@@ -37,6 +41,7 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
 )
+from custom_components.pydantic_ai_agent.logfire_support import logfire_include_content
 from custom_components.pydantic_ai_agent.repairs import model_validation_issue_id
 
 
@@ -79,16 +84,22 @@ def _mcp_server_subentry() -> dict[str, object]:
     }
 
 
-def _entry(subentries_data: tuple[dict[str, object], ...] = ()) -> MockConfigEntry:
+def _entry(
+    subentries_data: tuple[dict[str, object], ...] = (),
+    data_extra: dict[str, object] | None = None,
+) -> MockConfigEntry:
     """Return a config entry."""
+    data: dict[str, object] = {
+        CONF_NAME: "Hosted OpenAI",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_API_KEY: "sk-test",
+    }
+    if data_extra is not None:
+        data.update(data_extra)
     return MockConfigEntry(
         domain=DOMAIN,
         title="Hosted OpenAI",
-        data={
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
-            CONF_API_KEY: "sk-test",
-        },
+        data=data,
         source=config_entries.SOURCE_USER,
         subentries_data=subentries_data,
         options={},
@@ -121,6 +132,8 @@ async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
     assert entry.runtime_data.name == "Hosted OpenAI"
     assert entry.runtime_data.api_key == "sk-test"
     assert entry.runtime_data.base_url is None
+    assert entry.runtime_data.logfire_enabled is False
+    assert entry.runtime_data.logfire_include_content is False
     assert entry.runtime_data.mcp_servers == [
         {
             CONF_NAME: "Filesystem MCP",
@@ -140,6 +153,171 @@ async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
         ]
     )
     assert probe_model.await_count == 2
+
+
+async def test_setup_entry_configures_logfire_before_platform_setup(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test setup configures Logfire after validation and before platforms."""
+    events: list[str] = []
+    configure = Mock(side_effect=lambda **_kwargs: events.append("configure"))
+    monkeypatch.setitem(
+        sys.modules,
+        "logfire",
+        SimpleNamespace(configure=configure),
+    )
+    monkeypatch.setattr(
+        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
+        None,
+    )
+    monkeypatch.setattr(
+        "custom_components.pydantic_ai_agent.logfire_support._configured_include_content",
+        False,
+    )
+    entry = _entry(
+        (_conversation_subentry(),),
+        {CONF_LOGFIRE_TOKEN: " lf-token ", CONF_LOGFIRE_INCLUDE_CONTENT: True},
+    )
+    entry.add_to_hass(hass)
+
+    async def probe(*_args: object, **_kwargs: object) -> None:
+        events.append("probe")
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.async_probe_model",
+            new_callable=AsyncMock,
+            side_effect=probe,
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new_callable=AsyncMock,
+            side_effect=lambda *_args, **_kwargs: events.append("platforms"),
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    assert events == ["probe", "configure", "platforms"]
+    configure.assert_called_once_with(
+        send_to_logfire=True,
+        token="lf-token",
+        service_name=DOMAIN,
+        console=False,
+        inspect_arguments=False,
+    )
+    assert entry.runtime_data.logfire_enabled is True
+    assert entry.runtime_data.logfire_include_content is True
+
+
+async def test_setup_entry_does_not_configure_logfire_when_validation_fails(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test invalid entries do not lock Logfire to their token."""
+    configure = Mock()
+    monkeypatch.setitem(
+        sys.modules,
+        "logfire",
+        SimpleNamespace(configure=configure),
+    )
+    monkeypatch.setattr(
+        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
+        None,
+    )
+    entry = _entry((_conversation_subentry(),), {CONF_LOGFIRE_TOKEN: "lf-token"})
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+        side_effect=ProviderValidationError("invalid_auth", "Invalid API key"),
+    ):
+        with pytest.raises(ConfigEntryAuthFailed):
+            await async_setup_entry(hass, entry)
+
+    configure.assert_not_called()
+
+
+async def test_setup_entry_logfire_conflict_creates_repair_issue(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test a later different Logfire token does not reconfigure Logfire."""
+    configure = Mock()
+    monkeypatch.setitem(
+        sys.modules,
+        "logfire",
+        SimpleNamespace(configure=configure),
+    )
+    monkeypatch.setattr(
+        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
+        "first-token",
+    )
+    entry = _entry(data_extra={CONF_LOGFIRE_TOKEN: "second-token"})
+    entry.add_to_hass(hass)
+
+    with patch.object(
+        hass.config_entries,
+        "async_forward_entry_setups",
+        new_callable=AsyncMock,
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    configure.assert_not_called()
+    assert entry.runtime_data.logfire_enabled is False
+    assert entry.runtime_data.logfire_include_content is False
+    assert (
+        DOMAIN,
+        f"logfire_token_conflict_{entry.entry_id}",
+    ) in ir.async_get(hass).issues
+
+
+async def test_setup_entry_logfire_configure_failure_is_non_fatal(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test optional Logfire setup failures do not block entry setup."""
+    monkeypatch.setitem(sys.modules, "logfire", SimpleNamespace())
+    monkeypatch.setattr(
+        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
+        None,
+    )
+    entry = _entry(data_extra={CONF_LOGFIRE_TOKEN: "lf-token"})
+    entry.add_to_hass(hass)
+
+    with patch.object(
+        hass.config_entries,
+        "async_forward_entry_setups",
+        new_callable=AsyncMock,
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    assert entry.runtime_data.logfire_enabled is False
+    assert entry.runtime_data.logfire_include_content is False
+
+
+def test_logfire_include_content_uses_first_token_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test same-token entries cannot widen the global content-capture setting."""
+    monkeypatch.setattr(
+        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
+        "lf-token",
+    )
+    monkeypatch.setattr(
+        "custom_components.pydantic_ai_agent.logfire_support._configured_include_content",
+        False,
+    )
+    entry = _entry(
+        data_extra={
+            CONF_LOGFIRE_TOKEN: "lf-token",
+            CONF_LOGFIRE_INCLUDE_CONTENT: True,
+        }
+    )
+
+    assert logfire_include_content(entry) is False
 
 
 async def test_setup_registers_mcp_response_services(hass: HomeAssistant) -> None:
@@ -600,6 +778,15 @@ async def test_unload_entry_unloads_platforms(hass: HomeAssistant) -> None:
     """Test unload delegates platform cleanup."""
     entry = _entry()
     entry.add_to_hass(hass)
+    issue_id = f"logfire_token_conflict_{entry.entry_id}"
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="logfire_token_conflict",
+    )
 
     with patch.object(
         hass.config_entries,
@@ -610,3 +797,4 @@ async def test_unload_entry_unloads_platforms(hass: HomeAssistant) -> None:
         assert await async_unload_entry(hass, entry)
 
     unload_platforms.assert_awaited_once()
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None

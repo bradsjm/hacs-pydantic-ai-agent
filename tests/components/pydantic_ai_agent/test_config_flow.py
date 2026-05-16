@@ -6,7 +6,9 @@ import errno
 import logging
 import socket
 import ssl
-from unittest.mock import AsyncMock, call, patch
+import sys
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, call, patch
 
 from _pytest.logging import LogCaptureFixture
 from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
@@ -32,6 +34,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+    CONF_LOGFIRE_INCLUDE_CONTENT,
+    CONF_LOGFIRE_TOKEN,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
     CONF_MCP_URL,
@@ -59,6 +63,16 @@ from custom_components.pydantic_ai_agent.mcp import (
     async_validate_mcp_url,
     redact_mcp_url_password,
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_logfire_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent real Logfire exporter threads in config flow tests."""
+    monkeypatch.setitem(
+        sys.modules,
+        "logfire",
+        SimpleNamespace(configure=Mock(), instrument_pydantic_ai=Mock()),
+    )
 
 
 class _SingleEventStream:
@@ -117,17 +131,22 @@ class _HTTPErrorStreamContext:
 
 
 async def _loaded_entry(
-    hass: HomeAssistant, subentries_data: tuple[dict[str, object], ...] = ()
+    hass: HomeAssistant,
+    subentries_data: tuple[dict[str, object], ...] = (),
+    data_extra: dict[str, object] | None = None,
 ) -> MockConfigEntry:
     """Return a loaded provider config entry."""
+    data: dict[str, object] = {
+        CONF_NAME: "Hosted OpenAI",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_API_KEY: "sk-test",
+    }
+    if data_extra is not None:
+        data.update(data_extra)
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Hosted OpenAI",
-        data={
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
-            CONF_API_KEY: "sk-test",
-        },
+        data=data,
         source=config_entries.SOURCE_USER,
         subentries_data=subentries_data,
         options={},
@@ -704,13 +723,43 @@ def mock_probe_model() -> Generator[AsyncMock]:
                 CONF_BASE_URL: "http://localhost:11434/v1",
             },
         ),
+        (
+            {
+                CONF_NAME: "Hosted OpenAI",
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_API_KEY: "sk-test",
+                CONF_LOGFIRE_TOKEN: "   ",
+                CONF_LOGFIRE_INCLUDE_CONTENT: True,
+            },
+            {
+                CONF_NAME: "Hosted OpenAI",
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_API_KEY: "sk-test",
+            },
+        ),
+        (
+            {
+                CONF_NAME: "Hosted OpenAI",
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_API_KEY: "sk-test",
+                CONF_LOGFIRE_TOKEN: " lf-token ",
+                CONF_LOGFIRE_INCLUDE_CONTENT: True,
+            },
+            {
+                CONF_NAME: "Hosted OpenAI",
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_API_KEY: "sk-test",
+                CONF_LOGFIRE_TOKEN: "lf-token",
+                CONF_LOGFIRE_INCLUDE_CONTENT: True,
+            },
+        ),
     ],
 )
 async def test_config_flow_success_creates_service_entry(
     hass: HomeAssistant,
     mock_probe_model: AsyncMock,
-    user_input: dict[str, str],
-    expected_data: dict[str, str],
+    user_input: dict[str, object],
+    expected_data: dict[str, object],
 ) -> None:
     """Test config flow success creates a service entry."""
     result = await hass.config_entries.flow.async_init(
@@ -1695,6 +1744,37 @@ async def test_reconfigure_provider_data_updates_entry(
         CONF_API_KEY: "local-key",
         CONF_BASE_URL: "http://localhost:11434/v1",
     }
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_reconfigure_provider_blank_logfire_token_disables_logfire(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test provider reconfigure removes Logfire fields when left blank."""
+    entry = await _loaded_entry(
+        hass,
+        data_extra={
+            CONF_LOGFIRE_TOKEN: "lf-token",
+            CONF_LOGFIRE_INCLUDE_CONTENT: True,
+        },
+    )
+
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Hosted OpenAI",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_API_KEY: "sk-test-updated",
+            CONF_LOGFIRE_TOKEN: "",
+            CONF_LOGFIRE_INCLUDE_CONTENT: False,
+        },
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert CONF_LOGFIRE_TOKEN not in entry.data
+    assert CONF_LOGFIRE_INCLUDE_CONTENT not in entry.data
     mock_probe_model.assert_not_awaited()
 
 

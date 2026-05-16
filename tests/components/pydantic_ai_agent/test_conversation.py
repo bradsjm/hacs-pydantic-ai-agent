@@ -2,8 +2,11 @@
 
 from collections.abc import AsyncGenerator, Iterable
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, patch
+import sys
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
 from homeassistant import config_entries
 from homeassistant.components import conversation
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
@@ -17,6 +20,8 @@ from pydantic_ai import ModelResponse, TextPart
 from custom_components.pydantic_ai_agent import PydanticAIAgentRuntimeData
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
+    CONF_LOGFIRE_INCLUDE_CONTENT,
+    CONF_LOGFIRE_TOKEN,
     CONF_MODEL,
     CONF_PROVIDER_MODE,
     DOMAIN,
@@ -123,20 +128,26 @@ def _entry(llm_hass_api: list[str] | None) -> MockConfigEntry:
         name="Hosted OpenAI",
         api_key="sk-test",
         base_url=None,
+        logfire_enabled=False,
+        logfire_include_content=False,
     )
     return entry
 
 
-def _entry_with_conversation_subentries() -> MockConfigEntry:
+def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigEntry:
     """Return a config entry with two conversation subentries."""
+    data: dict[str, object] = {
+        CONF_NAME: "Hosted OpenAI",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_API_KEY: "sk-test",
+    }
+    if logfire:
+        data[CONF_LOGFIRE_TOKEN] = "lf-token"
+        data[CONF_LOGFIRE_INCLUDE_CONTENT] = True
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Hosted OpenAI",
-        data={
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
-            CONF_API_KEY: "sk-test",
-        },
+        data=data,
         source=config_entries.SOURCE_USER,
         subentries_data=(
             {
@@ -166,8 +177,20 @@ def _entry_with_conversation_subentries() -> MockConfigEntry:
         name="Hosted OpenAI",
         api_key="sk-test",
         base_url=None,
+        logfire_enabled=logfire,
+        logfire_include_content=logfire,
     )
     return entry
+
+
+class _Span:
+    """Synchronous context manager returned by the Logfire span mock."""
+
+    def __enter__(self) -> None:
+        """Enter the mocked span."""
+
+    def __exit__(self, *_args: object) -> None:
+        """Exit the mocked span."""
 
 
 def test_conversation_entity_controls_home_assistant_with_llm_api() -> None:
@@ -299,3 +322,124 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     assert chat_model.call_args is not None
     assert chat_model.call_args.kwargs["model_name"] == "gpt-kitchen"
     assert agent_class.call_args.kwargs["output_type"] is str
+
+
+async def test_conversation_logfire_instruments_agent_with_ha_metadata(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test active Logfire entries instrument agents and add HA trace metadata."""
+    instrument = Mock()
+    span = Mock(return_value=_Span())
+    monkeypatch.setitem(
+        sys.modules,
+        "logfire",
+        SimpleNamespace(instrument_pydantic_ai=instrument, span=span),
+    )
+    monkeypatch.setattr(
+        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
+        "lf-token",
+    )
+    entry = _entry_with_conversation_subentries(logfire=True)
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_ids = sorted(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    kitchen_entity_id = next(
+        entity_id for entity_id in entity_ids if entity_id.endswith("kitchen_agent")
+    )
+    agent = _Agent()
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ),
+    ):
+        await conversation.async_converse(
+            hass,
+            "hello",
+            "conversation-test",
+            Context(),
+            agent_id=kitchen_entity_id,
+        )
+
+    instrument.assert_called_once_with(agent, include_content=True)
+    span.assert_called_once()
+    assert span.call_args.args == ("Run Pydantic AI agent",)
+    assert span.call_args.kwargs["ha.domain"] == DOMAIN
+    assert span.call_args.kwargs["ha.entry_id"] == entry.entry_id
+    assert span.call_args.kwargs["ha.subentry_title"] == "Kitchen Agent"
+    assert span.call_args.kwargs["ha.model"] == "gpt-kitchen"
+    assert span.call_args.kwargs["ha.entity_id"] == kitchen_entity_id
+    assert span.call_args.kwargs["ha.conversation_id"] == "conversation-test"
+    assert span.call_args.kwargs["ha.logfire_include_content"] is True
+
+
+async def test_conversation_logfire_failures_do_not_block_agent_run(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test optional Logfire runtime failures do not block the provider call."""
+    monkeypatch.setitem(
+        sys.modules,
+        "logfire",
+        SimpleNamespace(
+            instrument_pydantic_ai=Mock(side_effect=RuntimeError("instrument failed")),
+            span=Mock(side_effect=RuntimeError("span failed")),
+        ),
+    )
+    monkeypatch.setattr(
+        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
+        "lf-token",
+    )
+    entry = _entry_with_conversation_subentries(logfire=True)
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_ids = sorted(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    kitchen_entity_id = next(
+        entity_id for entity_id in entity_ids if entity_id.endswith("kitchen_agent")
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=_Agent(),
+        ),
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            "conversation-test",
+            Context(),
+            agent_id=kitchen_entity_id,
+        )
+
+    assert result.response.speech["plain"]["speech"] == "runtime response"
