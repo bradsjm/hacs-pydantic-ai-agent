@@ -46,7 +46,6 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import llm
-from homeassistant.helpers.redact import async_redact_data
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
@@ -63,6 +62,7 @@ from homeassistant.helpers.selector import (
 )
 from homeassistant.helpers.typing import VolDictType
 
+from ._redaction import redact_data
 from .const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
@@ -369,26 +369,9 @@ def _log_provider_validation_failure(
     )
 
 
-def _metadata_redaction_keys(metadata: object) -> set[object]:
-    """Return metadata keys that should be redacted, preserving original casing."""
-    keys: set[object] = set()
-    if isinstance(metadata, Mapping):
-        for key, value in metadata.items():
-            if str(key).lower() in _SENSITIVE_METADATA_KEYS:
-                keys.add(key)
-            keys.update(_metadata_redaction_keys(value))
-    elif isinstance(metadata, list):
-        for item in metadata:
-            keys.update(_metadata_redaction_keys(item))
-    return keys
-
-
 def _format_metadata(metadata: object) -> str:
     """Return redacted, bounded provider metadata for config-flow display."""
-    redaction_keys = _metadata_redaction_keys(metadata)
-    redacted = (
-        async_redact_data(metadata, redaction_keys) if redaction_keys else metadata
-    )
+    redacted = redact_data(metadata, _SENSITIVE_METADATA_KEYS)
     formatted = repr(redacted)
     if len(formatted) > _MAX_METADATA_REPR_LENGTH:
         return f"{formatted[:_MAX_METADATA_REPR_LENGTH]}..."

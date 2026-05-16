@@ -1,12 +1,9 @@
 """Constants for Pydantic AI Agent."""
 
-from logging import getLogger
-
 from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.helpers import llm
 
 DOMAIN = "pydantic_ai_agent"
-LOGGER = getLogger(__package__)
 
 CONF_AGENT_NAME = "agent_name"
 CONF_BASE_URL = "base_url"

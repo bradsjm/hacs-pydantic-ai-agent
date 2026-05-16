@@ -6,7 +6,7 @@ from hashlib import sha256
 import json
 import logging
 from typing import Any
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 from fastmcp.client import Client as FastMCPClient
 from fastmcp.client.transports import StreamableHttpTransport
@@ -18,8 +18,11 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.util import slugify
+from homeassistant.util.ssl import SSL_ALPN_HTTP11, client_context
 
+from ._redaction import redact_data
 from .const import (
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
@@ -31,7 +34,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_SENSITIVE_KEYS = {
+_MCP_SENSITIVE_KEYS = {
     "api_key",
     "authorization",
     "cookie",
@@ -64,45 +67,9 @@ class ValidatedMCPURL:
     port: int
 
 
-def _redact_value(key: object, value: object) -> object:
-    """Return a log-safe value for a potentially sensitive mapping field."""
-    if key == CONF_MCP_URL and isinstance(value, str):
-        return redact_mcp_url_password(value)
-    key_text = str(key).lower()
-    if key_text in _SENSITIVE_KEYS or key_text.endswith(("_token", "-token")):
-        return "**REDACTED**"
-    if isinstance(value, Mapping):
-        return {
-            item_key: _redact_value(item_key, item_value)
-            for item_key, item_value in value.items()
-        }
-    if isinstance(value, list):
-        return [_redact_value(key, item) for item in value]
-    return value
-
-
 def redact_for_log(data: Mapping[str, Any]) -> dict[str, Any]:
     """Return a log-safe copy of mapping data."""
-    return {key: _redact_value(key, value) for key, value in data.items()}
-
-
-def redact_mcp_url_password(url: str) -> str:
-    """Redact only the password portion of URL userinfo."""
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return url
-    if parsed.password is None or parsed.hostname is None:
-        return url
-
-    raw_userinfo, separator, hostport = parsed.netloc.rpartition("@")
-    if not separator:
-        return url
-    raw_username, password_separator, _raw_password = raw_userinfo.partition(":")
-    if not password_separator:
-        return url
-    netloc = f"{raw_username}:**REDACTED**@{hostport}"
-    return urlunparse(parsed._replace(netloc=netloc))
+    return redact_data(dict(data), _MCP_SENSITIVE_KEYS)
 
 
 def _jsonable(value: Any) -> Any:
@@ -126,7 +93,13 @@ def normalise_mcp_url(url: object) -> str:
     """Validate and normalize a remote MCP URL."""
     if not isinstance(url, str) or not url.strip():
         raise MCPValidationError("invalid_mcp_url", "Enter an MCP server URL.")
-    normalized = url.strip()
+    try:
+        normalized = cv.url(url.strip())
+    except vol.Invalid as err:
+        raise MCPValidationError(
+            "invalid_mcp_url",
+            "Enter an HTTP or HTTPS Streamable HTTP MCP server URL.",
+        ) from err
     parsed = urlparse(normalized)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise MCPValidationError(
@@ -265,31 +238,24 @@ def _mcp_config_from_data(
     }
 
 
-class _OriginGuardTransport(httpx.AsyncBaseTransport):
-    """HTTP transport that rejects requests outside the validated MCP origin."""
+def _origin_guard_hook(
+    validated_url: ValidatedMCPURL,
+) -> Any:
+    """Return an HTTPX hook that rejects requests outside the MCP origin."""
 
-    def __init__(self, validated_url: ValidatedMCPURL) -> None:
-        """Initialize the transport for a validated MCP URL."""
-        self._validated_url = validated_url
-        self._transport = httpx.AsyncHTTPTransport(trust_env=False)
-
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        """Reject redirects or requests outside the validated MCP origin."""
+    async def guard_origin(request: httpx.Request) -> None:
         request_port = _default_port(request.url.scheme, request.url.port)
         if (
-            request.url.scheme != self._validated_url.scheme
-            or request.url.host != self._validated_url.hostname
-            or request_port != self._validated_url.port
+            request.url.scheme != validated_url.scheme
+            or request.url.host != validated_url.hostname
+            or request_port != validated_url.port
         ):
             raise httpx.ConnectError(
                 "MCP redirects must stay on the validated origin.",
                 request=request,
             )
-        return await self._transport.handle_async_request(request)
 
-    async def aclose(self) -> None:
-        """Close the underlying transport."""
-        await self._transport.aclose()
+    return guard_origin
 
 
 def _mcp_http_client_factory(
@@ -309,7 +275,8 @@ def _mcp_http_client_factory(
             auth=auth,
             follow_redirects=follow_redirects,
             trust_env=False,
-            transport=_OriginGuardTransport(validated_url),
+            verify=client_context(alpn_protocols=SSL_ALPN_HTTP11),
+            event_hooks={"request": [_origin_guard_hook(validated_url)]},
         )
 
     return factory

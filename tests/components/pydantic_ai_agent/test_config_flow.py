@@ -64,10 +64,10 @@ from custom_components.pydantic_ai_agent.const import (
 from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
 )
+from custom_components.pydantic_ai_agent._redaction import redact_mcp_url_password
 from custom_components.pydantic_ai_agent.mcp import (
     MCPValidationError,
     async_validate_mcp_url,
-    redact_mcp_url_password,
 )
 from custom_components.pydantic_ai_agent.skills import AvailableSkill
 from custom_components.pydantic_ai_agent.skills import async_available_skills

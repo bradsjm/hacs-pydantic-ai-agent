@@ -6,8 +6,8 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.redact import async_redact_data
 
+from ._redaction import redact_data
 from .const import (
     CONF_BASE_URL,
     CONF_LOGFIRE_TOKEN,
@@ -15,14 +15,13 @@ from .const import (
     CONF_MODEL_SETTINGS,
     CONF_PROMPT,
 )
-from .const import CONF_MCP_HEADERS, CONF_MCP_URL
+from .const import CONF_MCP_HEADERS
 from .logfire_support import (
     logfire_active_for_entry,
     logfire_enabled,
     logfire_include_content,
     logfire_token_conflict,
 )
-from .mcp import redact_mcp_url_password
 
 _SENSITIVE_KEYS = {
     CONF_API_KEY,
@@ -40,41 +39,9 @@ _SENSITIVE_KEYS = {
 }
 
 
-def _redaction_keys(data: object) -> set[object]:
-    """Return keys that should be redacted, preserving original key casing."""
-    keys: set[object] = set()
-    if isinstance(data, Mapping):
-        for key, value in data.items():
-            key_text = str(key).lower()
-            if key in _SENSITIVE_KEYS or key_text in _SENSITIVE_KEYS:
-                keys.add(key)
-            elif key_text.endswith("_token") or key_text.endswith("-token"):
-                keys.add(key)
-            keys.update(_redaction_keys(value))
-    elif isinstance(data, list):
-        for item in data:
-            keys.update(_redaction_keys(item))
-    return keys
-
-
 def _redact(data: dict[str, Any]) -> dict[str, Any]:
     """Return diagnostics data with sensitive fields redacted."""
-    redacted = async_redact_data(data, _redaction_keys(data))
-    _redact_mcp_urls(redacted)
-    return redacted
-
-
-def _redact_mcp_urls(data: object) -> None:
-    """Redact MCP URL passwords in-place without modifying query parameters."""
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if key == CONF_MCP_URL and isinstance(value, str):
-                data[key] = redact_mcp_url_password(value)
-            else:
-                _redact_mcp_urls(value)
-    elif isinstance(data, list):
-        for item in data:
-            _redact_mcp_urls(item)
+    return redact_data(data, _SENSITIVE_KEYS)
 
 
 async def async_get_config_entry_diagnostics(
