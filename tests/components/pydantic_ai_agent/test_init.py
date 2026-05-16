@@ -10,6 +10,7 @@ from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
     ConfigEntryNotReady,
 )
+from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent import async_setup_entry, async_unload_entry
@@ -24,6 +25,7 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
+from custom_components.pydantic_ai_agent.repairs import model_validation_issue_id
 
 
 def _conversation_subentry() -> dict[str, object]:
@@ -220,6 +222,7 @@ async def test_multiple_entries_setup_and_unload_are_isolated(
         assert await async_unload_entry(hass, first_entry)
 
     unload_platforms.assert_awaited_once()
+    assert unload_platforms.await_args is not None
     assert unload_platforms.await_args.args[0] is first_entry
     assert second_entry.runtime_data.name == "Other OpenAI"
 
@@ -284,6 +287,182 @@ async def test_setup_entry_model_errors_keep_entry_reconfigurable(
     ):
         assert await async_setup_entry(hass, entry)
         forward_setups.assert_awaited_once()
+
+
+async def test_setup_entry_model_errors_create_repair_issue(
+    hass: HomeAssistant,
+) -> None:
+    """Test reconfigurable model errors create a repair issue."""
+    entry = _entry((_conversation_subentry(),))
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.async_probe_model",
+            new_callable=AsyncMock,
+            side_effect=ProviderValidationError("invalid_model", "model unavailable"),
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN, model_validation_issue_id(entry, "gpt-test", {})
+    )
+    assert issue is not None
+    assert issue.translation_key == "model_validation_failed"
+    assert issue.translation_placeholders == {
+        "entry_title": "Hosted OpenAI",
+        "model": "gpt-test",
+        "reason": "invalid_model",
+        "error_message": "model unavailable",
+    }
+
+
+async def test_setup_entry_success_clears_model_validation_repair_issue(
+    hass: HomeAssistant,
+) -> None:
+    """Test successful setup clears stale model validation repair issues."""
+    entry = _entry((_conversation_subentry(),))
+    entry.add_to_hass(hass)
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        model_validation_issue_id(entry, "gpt-test", {}),
+        is_fixable=True,
+        severity=ir.IssueSeverity.ERROR,
+        translation_key="model_validation_failed",
+    )
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.async_probe_model",
+            new_callable=AsyncMock,
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    assert (
+        ir.async_get(hass).async_get_issue(
+            DOMAIN, model_validation_issue_id(entry, "gpt-test", {})
+        )
+        is None
+    )
+
+
+async def test_setup_entry_model_errors_create_separate_repair_issues_for_settings(
+    hass: HomeAssistant,
+) -> None:
+    """Test identical models with different settings get separate repairs."""
+    first_settings = {"timeout": 20.0}
+    second_settings = {"extra_body": {"service_tier": "flex"}}
+    entry = _entry(
+        (
+            {
+                "data": {
+                    CONF_AGENT_NAME: "Kitchen Agent",
+                    CONF_MODEL: "shared-model",
+                    CONF_MODEL_SETTINGS: first_settings,
+                },
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Kitchen Agent",
+                "unique_id": None,
+            },
+            {
+                "data": {
+                    CONF_AGENT_NAME: "Garage Agent",
+                    CONF_MODEL: "shared-model",
+                    CONF_MODEL_SETTINGS: second_settings,
+                },
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Garage Agent",
+                "unique_id": None,
+            },
+        )
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.async_probe_model",
+            new_callable=AsyncMock,
+            side_effect=(
+                ProviderValidationError("invalid_model", "model unavailable"),
+                ProviderValidationError("permission_denied", "permission denied"),
+            ),
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    issue_registry = ir.async_get(hass)
+    assert (
+        issue_registry.async_get_issue(
+            DOMAIN, model_validation_issue_id(entry, "shared-model", first_settings)
+        )
+        is not None
+    )
+    assert (
+        issue_registry.async_get_issue(
+            DOMAIN, model_validation_issue_id(entry, "shared-model", second_settings)
+        )
+        is not None
+    )
+
+
+async def test_setup_entry_transient_failure_preserves_existing_repair_issue(
+    hass: HomeAssistant,
+) -> None:
+    """Test transient setup failures do not clear unrelated model repairs."""
+    entry = _entry(
+        (
+            {
+                "data": {CONF_AGENT_NAME: "First Agent", CONF_MODEL: "first-model"},
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "First Agent",
+                "unique_id": None,
+            },
+            {
+                "data": {CONF_AGENT_NAME: "Bad Agent", CONF_MODEL: "bad-model"},
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Bad Agent",
+                "unique_id": None,
+            },
+        )
+    )
+    entry.add_to_hass(hass)
+    issue_id = model_validation_issue_id(entry, "bad-model", {})
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=True,
+        severity=ir.IssueSeverity.ERROR,
+        translation_key="model_validation_failed",
+    )
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+        side_effect=ProviderValidationError("timeout", "provider unavailable"),
+    ):
+        with pytest.raises(ConfigEntryNotReady):
+            await async_setup_entry(hass, entry)
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is not None
 
 
 async def test_unload_entry_unloads_platforms(hass: HomeAssistant) -> None:

@@ -22,6 +22,12 @@ from .const import (
     CONF_PROVIDER_MODE,
     SUBENTRY_TYPE_CONVERSATION,
 )
+from .repairs import (
+    async_create_model_validation_issue,
+    async_delete_model_validation_issue,
+    async_delete_stale_model_validation_issues,
+    model_validation_issue_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -111,7 +117,9 @@ async def _async_validate_configured_models(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> None:
     """Validate configured models before marking an entry loaded."""
+    current_issue_ids: set[str] = set()
     for model, model_settings in _configured_subentry_models(entry):
+        current_issue_ids.add(model_validation_issue_id(entry, model, model_settings))
         try:
             await async_probe_model(hass, entry.data, model, model_settings)
         except ProviderValidationError as err:
@@ -125,5 +133,10 @@ async def _async_validate_configured_models(
             if err.reason in _AUTH_FAILURE_REASONS:
                 raise ConfigEntryAuthFailed(err.message) from err
             if err.reason in _RECONFIGURABLE_MODEL_FAILURE_REASONS:
+                async_create_model_validation_issue(
+                    hass, entry, model, model_settings, err
+                )
                 continue
             raise ConfigEntryNotReady(err.message) from err
+        async_delete_model_validation_issue(hass, entry, model, model_settings)
+    async_delete_stale_model_validation_issues(hass, entry, current_issue_ids)

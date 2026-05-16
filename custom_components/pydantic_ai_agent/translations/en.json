@@ -202,5 +202,11 @@
         "xhigh": "Extra high"
       }
     }
+  },
+  "issues": {
+    "model_validation_failed": {
+      "title": "Pydantic AI Agent model validation failed",
+      "description": "Provider connection {entry_title} could not validate model {model}: {error_message} Reason: {reason}. Reconfigure the affected conversation agent or provider credentials, then reload the integration."
+    }
   }
 }
