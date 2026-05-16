@@ -2,11 +2,8 @@
 
 from collections.abc import Iterable, Mapping
 from typing import Any
-from urllib.parse import urlparse, urlunparse
 
-from homeassistant.helpers.redact import async_redact_data
-
-from .const import CONF_MCP_URL
+from homeassistant.components.diagnostics import async_redact_data
 
 COMMON_SENSITIVE_KEYS = {
     "access_token",
@@ -48,9 +45,7 @@ def redact_data(
 ) -> Any:
     """Return a copy of data with sensitive values redacted by Home Assistant."""
     keys = redaction_keys(data, extra_sensitive_keys)
-    redacted = async_redact_data(data, keys) if keys else _copy_containers(data)
-    redact_mcp_urls(redacted)
-    return redacted
+    return async_redact_data(data, keys) if keys else _copy_containers(data)
 
 
 def _copy_containers(data: Any) -> Any:
@@ -60,35 +55,3 @@ def _copy_containers(data: Any) -> Any:
     if isinstance(data, list):
         return [_copy_containers(item) for item in data]
     return data
-
-
-def redact_mcp_urls(data: object) -> None:
-    """Redact MCP URL passwords in-place without modifying query parameters."""
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if key == CONF_MCP_URL and isinstance(value, str):
-                data[key] = redact_mcp_url_password(value)
-            else:
-                redact_mcp_urls(value)
-    elif isinstance(data, list):
-        for item in data:
-            redact_mcp_urls(item)
-
-
-def redact_mcp_url_password(url: str) -> str:
-    """Redact only the password portion of URL userinfo."""
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return url
-    if parsed.password is None or parsed.hostname is None:
-        return url
-
-    raw_userinfo, separator, hostport = parsed.netloc.rpartition("@")
-    if not separator:
-        return url
-    raw_username, password_separator, _raw_password = raw_userinfo.partition(":")
-    if not password_separator:
-        return url
-    netloc = f"{raw_username}:**REDACTED**@{hostport}"
-    return urlunparse(parsed._replace(netloc=netloc))

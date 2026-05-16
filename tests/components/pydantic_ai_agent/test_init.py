@@ -41,7 +41,10 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
 )
-from custom_components.pydantic_ai_agent.logfire_support import logfire_include_content
+from custom_components.pydantic_ai_agent.logfire_support import (
+    configure_logfire,
+    logfire_include_content,
+)
 from custom_components.pydantic_ai_agent.repairs import model_validation_issue_id
 
 
@@ -167,14 +170,6 @@ async def test_setup_entry_configures_logfire_before_platform_setup(
         "logfire",
         SimpleNamespace(configure=configure),
     )
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
-        None,
-    )
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.logfire_support._configured_include_content",
-        False,
-    )
     entry = _entry(
         (_conversation_subentry(),),
         {CONF_LOGFIRE_TOKEN: " lf-token ", CONF_LOGFIRE_INCLUDE_CONTENT: True},
@@ -222,10 +217,6 @@ async def test_setup_entry_does_not_configure_logfire_when_validation_fails(
         "logfire",
         SimpleNamespace(configure=configure),
     )
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
-        None,
-    )
     entry = _entry((_conversation_subentry(),), {CONF_LOGFIRE_TOKEN: "lf-token"})
     entry.add_to_hass(hass)
 
@@ -251,10 +242,8 @@ async def test_setup_entry_logfire_conflict_creates_repair_issue(
         "logfire",
         SimpleNamespace(configure=configure),
     )
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
-        "first-token",
-    )
+    first_entry = _entry(data_extra={CONF_LOGFIRE_TOKEN: "first-token"})
+    assert configure_logfire(hass, first_entry)
     entry = _entry(data_extra={CONF_LOGFIRE_TOKEN: "second-token"})
     entry.add_to_hass(hass)
 
@@ -265,7 +254,7 @@ async def test_setup_entry_logfire_conflict_creates_repair_issue(
     ):
         assert await async_setup_entry(hass, entry)
 
-    configure.assert_not_called()
+    configure.assert_called_once()
     assert entry.runtime_data.logfire_enabled is False
     assert entry.runtime_data.logfire_include_content is False
     assert (
@@ -280,10 +269,6 @@ async def test_setup_entry_logfire_configure_failure_is_non_fatal(
 ) -> None:
     """Test optional Logfire setup failures do not block entry setup."""
     monkeypatch.setitem(sys.modules, "logfire", SimpleNamespace())
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
-        None,
-    )
     entry = _entry(data_extra={CONF_LOGFIRE_TOKEN: "lf-token"})
     entry.add_to_hass(hass)
 
@@ -299,17 +284,17 @@ async def test_setup_entry_logfire_configure_failure_is_non_fatal(
 
 
 def test_logfire_include_content_uses_first_token_setting(
+    hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test same-token entries cannot widen the global content-capture setting."""
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
-        "lf-token",
+    monkeypatch.setitem(
+        sys.modules,
+        "logfire",
+        SimpleNamespace(configure=Mock()),
     )
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.logfire_support._configured_include_content",
-        False,
-    )
+    first_entry = _entry(data_extra={CONF_LOGFIRE_TOKEN: "lf-token"})
+    assert configure_logfire(hass, first_entry)
     entry = _entry(
         data_extra={
             CONF_LOGFIRE_TOKEN: "lf-token",
@@ -317,7 +302,7 @@ def test_logfire_include_content_uses_first_token_setting(
         }
     )
 
-    assert logfire_include_content(entry) is False
+    assert logfire_include_content(hass, entry) is False
 
 
 async def test_setup_registers_mcp_response_services(hass: HomeAssistant) -> None:
@@ -336,6 +321,12 @@ async def test_refresh_mcp_tools_service_returns_discovered_tools(
     entry.add_to_hass(hass)
     subentry = next(iter(entry.subentries.values()))
     await async_setup(hass, {})
+    with patch.object(
+        hass.config_entries,
+        "async_forward_entry_setups",
+        new_callable=AsyncMock,
+    ):
+        assert await async_setup_entry(hass, entry)
     tools = [
         {
             "server_id": subentry.subentry_id,

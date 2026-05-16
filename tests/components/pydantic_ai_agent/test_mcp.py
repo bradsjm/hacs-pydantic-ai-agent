@@ -67,10 +67,9 @@ async def test_origin_guard_rejects_cross_origin_redirects() -> None:
             await client.get("https://mcp.example.com/mcp")
 
 
-async def test_mcp_http_client_factory_uses_ha_ssl_context() -> None:
+async def test_mcp_http_client_factory_uses_ha_httpx_helpers() -> None:
     """Test MCP HTTP clients use Home Assistant's pre-warmed SSL context."""
     ssl_context = client_context(alpn_protocols=SSL_ALPN_HTTP11)
-
     with patch(
         "custom_components.pydantic_ai_agent.mcp.client_context",
         return_value=ssl_context,
@@ -103,20 +102,27 @@ async def test_mcp_http_client_factory_does_not_load_ssl_certs_on_loop() -> None
     await client.aclose()
 
 
+async def test_mcp_http_client_factory_closes_fastmcp_owned_clients() -> None:
+    """Test FastMCP context-manager cleanup closes per-session clients."""
+    client = _mcp_http_client_factory(_validated_url())()
+
+    async with client:
+        assert not client.is_closed
+
+    assert client.is_closed
+
+
 def test_mcp_log_redaction_uses_shared_sensitive_key_handling() -> None:
-    """Test MCP log redaction handles nested sensitive keys and URL passwords."""
+    """Test MCP log redaction handles nested sensitive keys."""
     redacted = redact_for_log(
         {
-            "mcp_url": "https://user:pass@mcp.example.com/mcp?token=visible",
+            "mcp_url": "https://mcp.example.com/mcp?token=visible",
             "headers": {"Authorization": "Bearer secret"},
             "result": {"session_token": "secret", "value": "safe"},
         }
     )
 
-    assert (
-        redacted["mcp_url"]
-        == "https://user:**REDACTED**@mcp.example.com/mcp?token=visible"
-    )
+    assert redacted["mcp_url"] == "**REDACTED**"
     assert redacted["headers"] == "**REDACTED**"
     assert redacted["result"]["session_token"] == "**REDACTED**"
     assert redacted["result"]["value"] == "safe"
@@ -129,6 +135,7 @@ def test_mcp_log_redaction_uses_shared_sensitive_key_handling() -> None:
         ("ftp://mcp.example.com/mcp", "invalid_mcp_url"),
         ("https://mcp.example.com/mcp#fragment", "invalid_mcp_url"),
         ("http://user:pass@mcp.example.com/mcp", "invalid_mcp_url"),
+        ("https://user:pass@mcp.example.com/mcp", "invalid_mcp_url"),
     ],
 )
 def test_normalise_mcp_url_uses_ha_url_validation_for_baseline(

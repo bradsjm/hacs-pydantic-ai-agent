@@ -87,6 +87,7 @@ class PydanticAIAgentRuntimeData:
     skills_folder: str
     enable_skill_script_execution: bool
     mcp_servers: list[dict[str, Any]] = field(default_factory=list)
+    mcp_tool_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 type PydanticAIAgentConfigEntry = ConfigEntry[PydanticAIAgentRuntimeData]
@@ -132,8 +133,8 @@ async def async_setup_entry(
         name=entry.data[CONF_NAME],
         api_key=entry.data[CONF_API_KEY],
         base_url=entry.data.get(CONF_BASE_URL),
-        logfire_enabled=logfire_enabled(entry),
-        logfire_include_content=logfire_include_content(entry),
+        logfire_enabled=logfire_enabled(hass, entry),
+        logfire_include_content=logfire_include_content(hass, entry),
         skills_folder=entry.data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
         enable_skill_script_execution=bool(
             entry.data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
@@ -218,7 +219,7 @@ async def _async_mcp_tools_service(
             return {"success": True, "servers": {}, "tools": []}
         for subentry_id in subentry_ids:
             try:
-                tools = None if refresh else cached_mcp_tools(hass, entry, subentry_id)
+                tools = None if refresh else cached_mcp_tools(entry, subentry_id)
                 if tools is None:
                     tools = await async_refresh_mcp_tools(hass, entry, subentry_id)
                 tools_by_server[subentry_id] = tools

@@ -2,8 +2,8 @@
 
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager, nullcontext
+from dataclasses import dataclass
 import logging
-from threading import Lock
 from typing import Any
 
 from pydantic_ai import Agent
@@ -28,48 +28,60 @@ from .repairs import (
 from .structured_output import structured_output_mode
 
 _LOGGER = logging.getLogger(__name__)
+_LOGFIRE_STATE_KEY = "logfire"
 
-_configured_token: str | None = None
-_configured_include_content = False
-_configure_lock = Lock()
+
+@dataclass(slots=True)
+class LogfireState:
+    """Process-global Logfire configuration owned by Home Assistant state."""
+
+    configured_token: str | None = None
+    configured_include_content: bool = False
+
+
+def _logfire_state(hass: HomeAssistant) -> LogfireState:
+    """Return integration-global Logfire state."""
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    state = domain_data.get(_LOGFIRE_STATE_KEY)
+    if state is None:
+        state = domain_data[_LOGFIRE_STATE_KEY] = LogfireState()
+    return state
 
 
 def configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Configure process-global Logfire once for a config entry."""
-    global _configured_include_content, _configured_token
-
     token = _entry_logfire_token(entry)
     if token is None:
         async_delete_logfire_token_conflict_issue(hass, entry)
         return False
 
     include_content = bool(entry.data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False))
-    with _configure_lock:
-        if _configured_token is None:
-            try:
-                import logfire
+    state = _logfire_state(hass)
+    if state.configured_token is None:
+        try:
+            import logfire
 
-                logfire.configure(
-                    send_to_logfire=True,
-                    token=token,
-                    service_name=DOMAIN,
-                    console=False,
-                    inspect_arguments=False,
-                )
-            except Exception:
-                _LOGGER.exception(
-                    "Failed to configure Logfire for Pydantic AI Agent entry %s",
-                    entry.entry_id,
-                )
-                return False
-            _configured_token = token
-            _configured_include_content = include_content
-            async_delete_logfire_token_conflict_issue(hass, entry)
-            return True
+            logfire.configure(
+                send_to_logfire=True,
+                token=token,
+                service_name=DOMAIN,
+                console=False,
+                inspect_arguments=False,
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Failed to configure Logfire for Pydantic AI Agent entry %s",
+                entry.entry_id,
+            )
+            return False
+        state.configured_token = token
+        state.configured_include_content = include_content
+        async_delete_logfire_token_conflict_issue(hass, entry)
+        return True
 
-        if token == _configured_token:
-            async_delete_logfire_token_conflict_issue(hass, entry)
-            return True
+    if token == state.configured_token:
+        async_delete_logfire_token_conflict_issue(hass, entry)
+        return True
 
     _LOGGER.warning(
         "Logfire is already configured by another Pydantic AI Agent entry; "
@@ -80,37 +92,40 @@ def configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return False
 
 
-def logfire_enabled(entry: ConfigEntry) -> bool:
+def logfire_enabled(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Return if Logfire is actively emitting traces for this entry."""
-    return logfire_active_for_entry(entry)
+    return logfire_active_for_entry(hass, entry)
 
 
-def logfire_active_for_entry(entry: ConfigEntry) -> bool:
+def logfire_active_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Return if Logfire should emit traces for this entry."""
     token = _entry_logfire_token(entry)
-    return token is not None and token == _configured_token
+    return token is not None and token == _logfire_state(hass).configured_token
 
 
-def logfire_include_content(entry: ConfigEntry) -> bool:
+def logfire_include_content(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Return if Logfire should include prompt and completion content."""
-    if not logfire_active_for_entry(entry):
+    if not logfire_active_for_entry(hass, entry):
         return False
-    return _configured_include_content
+    return _logfire_state(hass).configured_include_content
 
 
-def logfire_token_conflict(entry: ConfigEntry) -> bool:
+def logfire_token_conflict(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Return if the entry has a token that conflicts with active Logfire."""
     token = _entry_logfire_token(entry)
+    configured_token = _logfire_state(hass).configured_token
     return (
         token is not None
-        and _configured_token is not None
-        and token != _configured_token
+        and configured_token is not None
+        and token != configured_token
     )
 
 
-def instrument_agent(entry: ConfigEntry, agent: Agent[Any, Any]) -> None:
+def instrument_agent(
+    hass: HomeAssistant, entry: ConfigEntry, agent: Agent[Any, Any]
+) -> None:
     """Instrument one Pydantic AI agent when this entry owns active Logfire."""
-    if not logfire_active_for_entry(entry):
+    if not logfire_active_for_entry(hass, entry):
         return
 
     try:
@@ -118,7 +133,7 @@ def instrument_agent(entry: ConfigEntry, agent: Agent[Any, Any]) -> None:
 
         logfire.instrument_pydantic_ai(
             agent,
-            include_content=logfire_include_content(entry),
+            include_content=logfire_include_content(hass, entry),
         )
     except Exception:
         _LOGGER.exception(
@@ -137,7 +152,7 @@ def agent_run_span(
     conversation_id: str | None,
 ) -> Iterator[None]:
     """Wrap one Pydantic AI run with safe Home Assistant trace metadata."""
-    if not logfire_active_for_entry(entry):
+    if not logfire_active_for_entry(hass, entry):
         with nullcontext():
             yield
         return
@@ -217,5 +232,5 @@ def _span_attributes(
         "ha.ha_tools_enabled": bool(llm_api_ids),
         "ha.llm_api_ids": llm_api_ids,
         "ha.mcp_server_count": len(mcp_server_ids),
-        "ha.logfire_include_content": logfire_include_content(entry),
+        "ha.logfire_include_content": logfire_include_content(hass, entry),
     }

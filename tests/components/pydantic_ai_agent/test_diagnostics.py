@@ -1,5 +1,9 @@
 """Test diagnostics for Pydantic AI Agent."""
 
+import sys
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import pytest
 from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
@@ -26,6 +30,7 @@ from custom_components.pydantic_ai_agent.const import (
 from custom_components.pydantic_ai_agent.diagnostics import (
     async_get_config_entry_diagnostics,
 )
+from custom_components.pydantic_ai_agent.logfire_support import configure_logfire
 
 
 async def test_diagnostics_redacts_sensitive_config_entry_data(
@@ -33,13 +38,10 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test diagnostics redact credentials, prompts, and sensitive headers."""
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
-        "lf-secret",
-    )
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.logfire_support._configured_include_content",
-        True,
+    monkeypatch.setitem(
+        sys.modules,
+        "logfire",
+        SimpleNamespace(configure=Mock()),
     )
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -88,6 +90,7 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
         unique_id=None,
     )
     entry.add_to_hass(hass)
+    configure_logfire(hass, entry)
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
@@ -103,8 +106,5 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
     assert subentry_data[CONF_MODEL_SETTINGS]["extra_body"]["api_key"] == REDACTED
     assert diagnostics["subentries"][0]["ha_tools_enabled"] is True
     mcp_data = diagnostics["subentries"][1]["data"]
-    assert (
-        mcp_data[CONF_MCP_URL]
-        == "https://user:**REDACTED**@mcp.example.com/mcp?token=visible"
-    )
+    assert mcp_data[CONF_MCP_URL] == REDACTED
     assert mcp_data[CONF_MCP_HEADERS] == REDACTED

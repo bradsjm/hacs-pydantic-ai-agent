@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import json
 import logging
+from types import TracebackType
 from typing import Any
 from urllib.parse import urlparse
 
@@ -19,8 +20,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.httpx_client import (
+    DEFAULT_LIMITS,
+    SSL_ALPN_HTTP11,
+    SERVER_SOFTWARE,
+    USER_AGENT,
+    HassHttpXAsyncClient,
+    client_context,
+)
 from homeassistant.util import slugify
-from homeassistant.util.ssl import SSL_ALPN_HTTP11, client_context
 
 from ._redaction import redact_data
 from .const import (
@@ -28,7 +36,6 @@ from .const import (
     CONF_MCP_HEADERS,
     CONF_MCP_URL,
     DEFAULT_MCP_TIMEOUT,
-    DOMAIN,
     SUBENTRY_TYPE_MCP_SERVER,
 )
 
@@ -39,11 +46,25 @@ _MCP_SENSITIVE_KEYS = {
     "authorization",
     "cookie",
     "headers",
+    CONF_MCP_URL,
     "password",
     "secret",
     "token",
     "x-api-key",
 }
+
+
+class _FastMCPHttpXClient(HassHttpXAsyncClient):
+    """HA-configured HTTPX client that FastMCP owns for one session."""
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc_value: BaseException | None = None,
+        traceback: TracebackType | None = None,
+    ) -> None:
+        """Close the per-session client when FastMCP exits its context."""
+        await self.aclose()
 
 
 @dataclass(slots=True)
@@ -124,10 +145,10 @@ def normalise_mcp_url(url: object) -> str:
             "invalid_mcp_url",
             "Enter an MCP server URL without a fragment.",
         )
-    if parsed.scheme == "http" and (parsed.username or parsed.password):
+    if parsed.username or parsed.password:
         raise MCPValidationError(
             "invalid_mcp_url",
-            "Do not include credentials in HTTP MCP server URLs.",
+            "Do not include credentials in MCP server URLs.",
         )
     return normalized
 
@@ -141,16 +162,20 @@ def _default_port(scheme: str, port: int | None) -> int:
     return 443
 
 
-async def async_validate_mcp_url(hass: HomeAssistant, url: str) -> str:
+async def async_validate_mcp_url(_hass: HomeAssistant, url: str) -> str:
     """Validate an MCP URL."""
-    return (await async_validate_mcp_url_details(hass, url)).url
+    return validate_mcp_url_details(url).url
 
 
 async def async_validate_mcp_url_details(
-    hass: HomeAssistant, url: str
+    _hass: HomeAssistant, url: str
 ) -> ValidatedMCPURL:
     """Validate an MCP URL and return its exact origin."""
-    del hass
+    return validate_mcp_url_details(url)
+
+
+def validate_mcp_url_details(url: str) -> ValidatedMCPURL:
+    """Validate an MCP URL and return its exact origin."""
     normalized = normalise_mcp_url(url)
     parsed = urlparse(normalized)
     hostname = parsed.hostname
@@ -269,12 +294,13 @@ def _mcp_http_client_factory(
         auth: httpx.Auth | None = None,
         follow_redirects: bool = False,
     ) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
-            headers=headers or {},
+        return _FastMCPHttpXClient(
+            headers={USER_AGENT: SERVER_SOFTWARE, **(headers or {})},
             timeout=timeout,
             auth=auth,
             follow_redirects=follow_redirects,
             trust_env=False,
+            limits=DEFAULT_LIMITS,
             verify=client_context(alpn_protocols=SSL_ALPN_HTTP11),
             event_hooks={"request": [_origin_guard_hook(validated_url)]},
         )
@@ -283,7 +309,9 @@ def _mcp_http_client_factory(
 
 
 def _mcp_client(
-    validated_url: ValidatedMCPURL, headers: dict[str, str], timeout: float
+    validated_url: ValidatedMCPURL,
+    headers: dict[str, str],
+    timeout: float,
 ) -> FastMCPClient[Any]:
     """Return a FastMCP client pinned to Streamable HTTP transport."""
     transport = StreamableHttpTransport(
@@ -294,10 +322,15 @@ def _mcp_client(
     return FastMCPClient(transport=transport, init_timeout=timeout, timeout=timeout)
 
 
-def mcp_catalog_cache(hass: HomeAssistant) -> dict[str, Any]:
-    """Return the integration-wide MCP discovery cache."""
-    domain_data = hass.data.setdefault(DOMAIN, {})
-    return domain_data.setdefault("mcp_tool_cache", {})
+def mcp_catalog_cache(entry: ConfigEntry) -> dict[str, Any]:
+    """Return the entry-scoped MCP discovery cache."""
+    runtime_data = getattr(entry, "runtime_data", None)
+    if runtime_data is None:
+        raise MCPValidationError(
+            "config_entry_not_loaded",
+            "Pydantic AI Agent config entry is not loaded.",
+        )
+    return runtime_data.mcp_tool_cache
 
 
 def _cache_key(entry: ConfigEntry, subentry_id: str) -> str:
@@ -413,18 +446,17 @@ async def async_refresh_mcp_tools(
     """Refresh and cache tools for one MCP server subentry."""
     subentry = get_mcp_subentry(entry, subentry_id)
     tools = await async_discover_mcp_tools(hass, subentry)
-    mcp_catalog_cache(hass)[_cache_key(entry, subentry_id)] = tools
+    mcp_catalog_cache(entry)[_cache_key(entry, subentry_id)] = tools
     return tools
 
 
 def cached_mcp_tools(
-    hass: HomeAssistant,
     entry: ConfigEntry,
     subentry_id: str,
 ) -> list[dict[str, Any]] | None:
     """Return cached MCP tools for one server if available."""
     get_mcp_subentry(entry, subentry_id)
-    tools = mcp_catalog_cache(hass).get(_cache_key(entry, subentry_id))
+    tools = mcp_catalog_cache(entry).get(_cache_key(entry, subentry_id))
     if tools is None:
         return None
     return list(tools)
@@ -434,13 +466,12 @@ async def async_runtime_mcp_toolsets(
     hass: HomeAssistant,
     entry: ConfigEntry,
     selected_server_ids: Sequence[str] | None,
-) -> tuple[list[Any], list[Any]]:
-    """Return Agent MCP toolsets and HTTP clients for explicitly allowlisted servers."""
+) -> list[Any]:
+    """Return Agent MCP toolsets for explicitly allowlisted servers."""
     toolsets: list[Any] = []
-    http_clients: list[Any] = []
     selected_servers = set(selected_server_ids or [])
     if not selected_servers:
-        return toolsets, http_clients
+        return toolsets
     configured_server_ids: set[str] = set()
     for subentry in mcp_subentries(entry):
         if subentry.subentry_id not in selected_servers:
@@ -514,4 +545,4 @@ async def async_runtime_mcp_toolsets(
             "Selected MCP server subentry was not found.",
             server_id=missing_server_id,
         )
-    return toolsets, http_clients
+    return toolsets

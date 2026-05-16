@@ -13,6 +13,7 @@ import ssl
 from typing import Any
 from urllib.parse import parse_qsl, urlparse
 
+import httpx
 from pydantic_ai import (
     ModelRequest,
     PartDeltaEvent,
@@ -82,7 +83,6 @@ from .const import (
     CONF_SKILLS,
     CONF_SKILLS_FOLDER,
     DEFAULT_AGENT_NAME,
-    DEFAULT_CONVERSATION_OPTIONS,
     DEFAULT_OUTPUT_MODE,
     DEFAULT_SERVICE_NAME,
     DEFAULT_SKILLS_FOLDER,
@@ -98,6 +98,7 @@ from .const import (
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
+    default_conversation_options,
 )
 from .mcp import (
     MCPValidationError,
@@ -413,7 +414,7 @@ def _iter_exception_chain(err: BaseException) -> list[BaseException]:
 def _format_connection_error(err: BaseException) -> str | None:
     """Return a well-defined connection error message if one can be identified."""
     for item in _iter_exception_chain(err):
-        if isinstance(item, TimeoutError):
+        if isinstance(item, TimeoutError | httpx.TimeoutException):
             return "Request timed out."
         if isinstance(item, socket.gaierror):
             return "Host not found."
@@ -424,23 +425,7 @@ def _format_connection_error(err: BaseException) -> str | None:
                 return "Connection refused."
             if item.errno in (errno.ENETUNREACH, errno.EHOSTUNREACH):
                 return "Network unreachable."
-
-        # Provider/network clients do not expose every connection failure as a
-        # stable typed exception, so keep the user-facing flow error specific
-        # when only the exception text carries the condition.
-        name = type(item).__name__.lower()
-        text = str(item).lower()
-        if "timeout" in name or "timed out" in text or "timeout" in text:
-            return "Request timed out."
-        if "ssl" in name or "tls" in text or "certificate" in text:
-            return "TLS error."
-        if "name or service not known" in text or "nodename nor servname" in text:
-            return "Host not found."
-        if "connection refused" in text:
-            return "Connection refused."
-        if "network is unreachable" in text or "no route to host" in text:
-            return "Network unreachable."
-        if "connect" in name or "network" in name or "connection" in text:
+        if isinstance(item, httpx.ConnectError):
             return "Connection failed."
     return None
 
@@ -1400,21 +1385,27 @@ def _mcp_url_already_configured(
             continue
         if subentry.subentry_type != SUBENTRY_TYPE_MCP_SERVER:
             continue
-        if _mcp_url_identity(subentry.data.get(CONF_MCP_URL)) == url_identity:
+        try:
+            existing_identity = _mcp_url_identity(subentry.data.get(CONF_MCP_URL))
+        except MCPValidationError:
+            _LOGGER.warning(
+                "Ignoring invalid stored MCP URL while checking duplicates for subentry %s",
+                subentry.subentry_id,
+            )
+            continue
+        if existing_identity == url_identity:
             return True
     return False
 
 
 def _mcp_url_identity(
     url: object,
-) -> tuple[str, str, str, str, int, str, tuple[tuple[str, str], ...]]:
+) -> tuple[str, str, int, str, tuple[tuple[str, str], ...]]:
     """Return a canonical identity for duplicate MCP URL checks."""
     parsed = urlparse(normalise_mcp_url(url))
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     return (
         parsed.scheme,
-        parsed.username or "",
-        parsed.password or "",
         (parsed.hostname or "").lower().rstrip("."),
         port,
         parsed.path or "/",
@@ -1603,7 +1594,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Add a conversation subentry."""
-        self._options = DEFAULT_CONVERSATION_OPTIONS.copy()
+        self._options = default_conversation_options()
         return await self.async_step_init(user_input)
 
     async def async_step_reconfigure(

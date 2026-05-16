@@ -11,11 +11,12 @@ from ._redaction import redact_data
 from .const import (
     CONF_BASE_URL,
     CONF_LOGFIRE_TOKEN,
+    CONF_MCP_HEADERS,
+    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_PROMPT,
 )
-from .const import CONF_MCP_HEADERS
 from .logfire_support import (
     logfire_active_for_entry,
     logfire_enabled,
@@ -32,6 +33,7 @@ _SENSITIVE_KEYS = {
     "cookie",
     "extra_headers",
     CONF_MCP_HEADERS,
+    CONF_MCP_URL,
     "password",
     "secret",
     "token",
@@ -72,10 +74,10 @@ async def async_get_config_entry_diagnostics(
             "state": entry.state.value,
             "data": dict(entry.data),
             "base_url_configured": bool(entry.data.get(CONF_BASE_URL)),
-            "logfire_enabled": logfire_enabled(entry),
-            "logfire_active": logfire_active_for_entry(entry),
-            "logfire_include_content": logfire_include_content(entry),
-            "logfire_token_conflict": logfire_token_conflict(entry),
+            "logfire_enabled": logfire_enabled(hass, entry),
+            "logfire_active": logfire_active_for_entry(hass, entry),
+            "logfire_include_content": logfire_include_content(hass, entry),
+            "logfire_token_conflict": logfire_token_conflict(hass, entry),
         },
         "subentries": subentries,
         "runtime": {

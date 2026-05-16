@@ -31,11 +31,10 @@ class AvailableSkill:
 def skills_folder_path(hass: HomeAssistant, folder: object | None) -> Path:
     """Return the filesystem path for a configured skills folder."""
     configured = str(folder or DEFAULT_SKILLS_FOLDER).strip() or DEFAULT_SKILLS_FOLDER
-    config_path = Path(hass.config.path()).resolve()
     skills_root = Path(hass.config.path("skills")).resolve()
-    if configured == "/config":
-        path = config_path
-    elif configured.startswith("/config/"):
+    if configured == DEFAULT_SKILLS_FOLDER:
+        path = skills_root
+    elif configured.startswith(f"{DEFAULT_SKILLS_FOLDER}/"):
         path = Path(hass.config.path(configured.removeprefix("/config/")))
     else:
         raw_path = Path(configured)

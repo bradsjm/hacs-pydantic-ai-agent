@@ -3,16 +3,9 @@
 from typing import Any
 
 from pydantic_ai import RunContext, Tool, ToolDefinition
-from pydantic_ai._function_schema import FunctionSchema
-from pydantic_core import SchemaValidator
 from voluptuous_openapi import convert
 
 from homeassistant.helpers import llm
-
-_ANY_OBJECT_VALIDATOR = SchemaValidator(
-    {"type": "dict", "keys_schema": {"type": "str"}, "values_schema": {"type": "any"}}
-)
-
 
 def tool_definitions_from_llm_api(
     api_instance: llm.APIInstance | None,
@@ -61,13 +54,10 @@ def _tool_from_ha_tool(api_instance: llm.APIInstance, tool: llm.Tool) -> Tool[An
             )
         )
 
-    function_schema = FunctionSchema(
-        function=execute,
+    return Tool.from_schema(
+        execute,
         name=tool.name,
         description=tool.description,
-        validator=_ANY_OBJECT_VALIDATOR,
         json_schema=parameters_json_schema,
         takes_ctx=True,
-        is_async=True,
     )
-    return Tool(execute, function_schema=function_schema)

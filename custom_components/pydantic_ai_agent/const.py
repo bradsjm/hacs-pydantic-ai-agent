@@ -47,9 +47,11 @@ DEFAULT_TIMEOUT = 10.0
 DEFAULT_MCP_TIMEOUT = 10.0
 DEFAULT_SKILLS_FOLDER = "/config/skills"
 
-DEFAULT_CONVERSATION_OPTIONS = {
-    CONF_AGENT_NAME: DEFAULT_AGENT_NAME,
-    CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
-}
+def default_conversation_options() -> dict[str, object]:
+    """Return default conversation subentry options."""
+    return {
+        CONF_AGENT_NAME: DEFAULT_AGENT_NAME,
+        CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
+    }
 
 __all__ = ["CONF_LLM_HASS_API"]

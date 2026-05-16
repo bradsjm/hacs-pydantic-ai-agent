@@ -31,6 +31,7 @@ from custom_components.pydantic_ai_agent.config_flow import (
     _conversation_schema,
     _format_api_error,
     _map_http_error,
+    _mcp_url_already_configured,
     _mcp_url_identity,
 )
 from custom_components.pydantic_ai_agent.const import (
@@ -64,7 +65,6 @@ from custom_components.pydantic_ai_agent.const import (
 from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
 )
-from custom_components.pydantic_ai_agent._redaction import redact_mcp_url_password
 from custom_components.pydantic_ai_agent.mcp import (
     MCPValidationError,
     async_validate_mcp_url,
@@ -1389,6 +1389,7 @@ async def test_create_mcp_server_subentry_allows_local_http_url(
     ("url", "reason"),
     [
         ("http://user:pass@mcp.example.com/mcp", "invalid_mcp_url"),
+        ("https://user:pass@mcp.example.com/mcp", "invalid_mcp_url"),
         ("https://mcp.example.com/mcp#fragment", "invalid_mcp_url"),
     ],
 )
@@ -1415,44 +1416,50 @@ async def test_create_mcp_server_subentry_rejects_invalid_urls(
     mock_probe_model.assert_not_awaited()
 
 
-async def test_validate_mcp_url_accepts_local_lan_and_https_userinfo(
+async def test_validate_mcp_url_accepts_local_lan(
     hass: HomeAssistant,
 ) -> None:
-    """Test MCP URL validation accepts HA-local endpoints and HTTPS userinfo."""
+    """Test MCP URL validation accepts HA-local endpoints."""
 
     assert (
         await async_validate_mcp_url(hass, "http://living-room-mcp.local:8080/mcp")
         == "http://living-room-mcp.local:8080/mcp"
     )
-    assert (
-        await async_validate_mcp_url(hass, "https://user:pass@192.168.1.10/mcp?a=1")
-        == "https://user:pass@192.168.1.10/mcp?a=1"
+
+
+def test_mcp_url_identity_rejects_userinfo() -> None:
+    """Test duplicate MCP URL checks reject URL credentials."""
+    with pytest.raises(MCPValidationError):
+        _mcp_url_identity("https://alice:one@mcp.example.com/mcp")
+    assert _mcp_url_identity("https://mcp.example.com/mcp?a=1&b=2") == (
+        _mcp_url_identity("https://mcp.example.com:443/mcp?b=2&a=1")
     )
 
 
-def test_redact_mcp_url_password_only() -> None:
-    """Test MCP URL redaction only redacts userinfo passwords."""
-    assert (
-        redact_mcp_url_password("https://user:pass@mcp.example.com/mcp?token=secret")
-        == "https://user:**REDACTED**@mcp.example.com/mcp?token=secret"
-    )
-    assert (
-        redact_mcp_url_password("https://mcp.example.com/mcp?token=secret")
-        == "https://mcp.example.com/mcp?token=secret"
-    )
-    assert (
-        redact_mcp_url_password("https://alice%40example.com:p%40ss@mcp.example/mcp")
-        == "https://alice%40example.com:**REDACTED**@mcp.example/mcp"
+def test_mcp_duplicate_check_ignores_invalid_stale_urls() -> None:
+    """Test stale stored MCP URLs do not break duplicate checks."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Hosted OpenAI",
+        data={CONF_NAME: "Hosted OpenAI"},
+        source=config_entries.SOURCE_USER,
+        subentries_data=(
+            {
+                "data": {
+                    CONF_NAME: "Stale MCP",
+                    CONF_MCP_URL: "https://user:pass@mcp.example.com/mcp",
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Stale MCP",
+                "unique_id": None,
+            },
+        ),
+        options={},
+        unique_id=None,
     )
 
-
-def test_mcp_url_identity_includes_https_userinfo() -> None:
-    """Test duplicate MCP URL checks allow distinct HTTPS URL credentials."""
-    assert _mcp_url_identity("https://alice:one@mcp.example.com/mcp") != (
-        _mcp_url_identity("https://bob:two@mcp.example.com/mcp")
-    )
-    assert _mcp_url_identity("https://alice:one@mcp.example.com/mcp?a=1&b=2") == (
-        _mcp_url_identity("https://alice:one@mcp.example.com:443/mcp?b=2&a=1")
+    assert not _mcp_url_already_configured(
+        entry, "https://mcp.example.com/mcp"
     )
 
 

@@ -393,11 +393,7 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
     monkeypatch.setitem(
         sys.modules,
         "logfire",
-        SimpleNamespace(instrument_pydantic_ai=instrument, span=span),
-    )
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
-        "lf-token",
+        SimpleNamespace(configure=Mock(), instrument_pydantic_ai=instrument, span=span),
     )
     entry = _entry_with_conversation_subentries(logfire=True)
     entry.add_to_hass(hass)
@@ -457,13 +453,10 @@ async def test_conversation_logfire_failures_do_not_block_agent_run(
         sys.modules,
         "logfire",
         SimpleNamespace(
+            configure=Mock(),
             instrument_pydantic_ai=Mock(side_effect=RuntimeError("instrument failed")),
             span=Mock(side_effect=RuntimeError("span failed")),
         ),
-    )
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.logfire_support._configured_token",
-        "lf-token",
     )
     entry = _entry_with_conversation_subentries(logfire=True)
     entry.add_to_hass(hass)

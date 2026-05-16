@@ -126,7 +126,7 @@ class PydanticAIBaseLLMEntity:
 
         messages = await chat_log_content_to_model_messages(self.hass, chat_log.content)
         user_prompt, message_history = split_last_user_prompt(messages)
-        mcp_toolsets, mcp_http_clients = await async_runtime_mcp_toolsets(
+        mcp_toolsets = await async_runtime_mcp_toolsets(
             self.hass,
             self.entry,
             self.subentry.data.get(CONF_MCP_SERVER_IDS),
@@ -147,7 +147,7 @@ class PydanticAIBaseLLMEntity:
             max_concurrency=1,
             capabilities=capabilities,
         )
-        instrument_agent(self.entry, agent)
+        instrument_agent(self.hass, self.entry, agent)
         usage_limits = UsageLimits(
             request_limit=max_iterations,
         )
@@ -210,9 +210,6 @@ class PydanticAIBaseLLMEntity:
             raise HomeAssistantError(err.message) from err
         except (NotImplementedError, UserError) as err:
             raise HomeAssistantError(f"Invalid provider configuration: {err}") from err
-        finally:
-            for http_client in mcp_http_clients:
-                await http_client.aclose()
 
     def _model_settings(self) -> dict[str, Any]:
         """Return subentry model settings with the integration timeout default."""
