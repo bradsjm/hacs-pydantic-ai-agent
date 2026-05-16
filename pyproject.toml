@@ -24,6 +24,7 @@ dev = [
   "pytest-timeout>=2.4.0",
   "PyTurboJPEG>=1.8.3",
   "ruff>=0.15.12",
+  "yamllint>=1.37.1",
 ]
 
 [tool.ruff]
@@ -35,3 +36,13 @@ src = ["custom_components", "tests", "scripts"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["."]
+
+[tool.pyright]
+include = ["custom_components/pydantic_ai_agent", "tests/components/pydantic_ai_agent"]
+pythonVersion = "3.14"
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"
+reportMissingTypeStubs = false
+reportPrivateImportUsage = false
+reportTypedDictNotRequiredAccess = false

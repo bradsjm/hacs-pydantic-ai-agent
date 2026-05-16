@@ -11,3 +11,15 @@ repos:
       - id: check-yaml
       - id: end-of-file-fixer
       - id: trailing-whitespace
+  - repo: local
+    hooks:
+      - id: yamllint
+        name: yamllint
+        entry: scripts/yaml-check
+        language: system
+        files: \.(ya?ml|yamllint)$
+      - id: markdownlint
+        name: markdownlint
+        entry: scripts/markdown-check
+        language: system
+        files: \.md$

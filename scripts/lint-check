@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+uv run ruff check custom_components/pydantic_ai_agent tests/components/pydantic_ai_agent

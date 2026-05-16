@@ -12,6 +12,7 @@ module.exports = {
     {
       files: ["manifest.json", "./**/brands/*.json"],
       options: {
+        plugins: [require.resolve("prettier-plugin-sort-json")],
         // domain and name should stay at the top
         jsonSortOrder: JSON.stringify({
           domain: null,

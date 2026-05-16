@@ -1,5 +1,6 @@
 """Test Pydantic AI Agent conversation entities."""
 
+from collections.abc import Iterable
 from unittest.mock import AsyncMock, patch
 
 from homeassistant import config_entries
@@ -7,6 +8,7 @@ from homeassistant.components import conversation
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.entity import Entity
 from homeassistant.helpers import llm
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -135,14 +137,16 @@ async def test_conversation_subentries_add_separate_entity_agents(
 ) -> None:
     """Test each conversation subentry is exposed as a separate entity agent."""
     entry = _entry_with_conversation_subentries()
-    added_entities: list[tuple[list[PydanticAIConversationEntity], str | None]] = []
+    added_entities: list[tuple[list[Entity], str | None]] = []
 
     def async_add_entities(
-        entities: list[PydanticAIConversationEntity],
-        _update_before_add: bool = False,
+        new_entities: Iterable[Entity],
+        update_before_add: bool = False,
+        *,
         config_subentry_id: str | None = None,
     ) -> None:
-        added_entities.append((entities, config_subentry_id))
+        del update_before_add
+        added_entities.append((list(new_entities), config_subentry_id))
 
     await async_setup_entry(hass, entry, async_add_entities)
 

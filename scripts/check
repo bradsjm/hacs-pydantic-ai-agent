@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+scripts/lint-check
+scripts/type-check
+scripts/yaml-check
+scripts/markdown-check
+scripts/test

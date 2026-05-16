@@ -37,9 +37,12 @@ jobs:
           python-version: "3.14"
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
       - name: Install dependencies
-        run: uv sync --locked --group dev
-      - name: Ruff
-        run: uv run ruff check custom_components/pydantic_ai_agent tests/components/pydantic_ai_agent
-      - name: Pytest
-        run: uv run pytest --timeout=10 tests/components/pydantic_ai_agent
+        run: scripts/setup
+      - name: Check
+        run: scripts/check

@@ -653,6 +653,8 @@ def _parse_float_setting(value: object) -> float:
     """Return a float model setting from user input."""
     if isinstance(value, bool):
         raise ValueError
+    if not isinstance(value, (int, float, str)):
+        raise ValueError
     return float(value)
 
 
@@ -667,6 +669,8 @@ def _parse_positive_float_setting(value: object) -> float:
 def _parse_int_setting(value: object) -> int:
     """Return an integer model setting from user input."""
     if isinstance(value, bool):
+        raise ValueError
+    if not isinstance(value, (int, float, str)):
         raise ValueError
     parsed = int(value)
     if float(value) != parsed:

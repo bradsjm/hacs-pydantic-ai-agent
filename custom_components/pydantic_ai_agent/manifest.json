@@ -1,14 +1,14 @@
 {
   "domain": "pydantic_ai_agent",
   "name": "Pydantic AI Agent",
-  "version": "0.1.0",
+  "after_dependencies": ["assist_pipeline", "intent"],
+  "codeowners": ["@bradsjm"],
   "config_flow": true,
   "dependencies": ["conversation"],
-  "after_dependencies": ["assist_pipeline", "intent"],
   "documentation": "https://github.com/bradsjm/hacs-pydantic-agent",
-  "issue_tracker": "https://github.com/bradsjm/hacs-pydantic-agent/issues",
-  "codeowners": ["@bradsjm"],
-  "requirements": ["pydantic-ai-slim[openai]==1.90.0"],
+  "integration_type": "service",
   "iot_class": "cloud_polling",
-  "integration_type": "service"
+  "issue_tracker": "https://github.com/bradsjm/hacs-pydantic-agent/issues",
+  "requirements": ["pydantic-ai-slim[openai]==1.90.0"],
+  "version": "0.1.0"
 }
