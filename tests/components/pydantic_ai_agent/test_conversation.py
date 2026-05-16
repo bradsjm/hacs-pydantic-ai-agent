@@ -24,6 +24,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_LOGFIRE_TOKEN,
     CONF_MODEL,
     CONF_PROVIDER_MODE,
+    CONF_SKILLS,
+    DEFAULT_SKILLS_FOLDER,
     DOMAIN,
     PROVIDER_OPENAI,
     SUBENTRY_TYPE_CONVERSATION,
@@ -94,7 +96,9 @@ class _Agent:
         return _StreamResult()
 
 
-def _entry(llm_hass_api: list[str] | None) -> MockConfigEntry:
+def _entry(
+    llm_hass_api: list[str] | None, skills: list[str] | None = None
+) -> MockConfigEntry:
     """Return a config entry with one conversation subentry."""
     subentry_data: dict[str, object] = {
         CONF_AGENT_NAME: "Kitchen Agent",
@@ -102,6 +106,8 @@ def _entry(llm_hass_api: list[str] | None) -> MockConfigEntry:
     }
     if llm_hass_api is not None:
         subentry_data[CONF_LLM_HASS_API] = llm_hass_api
+    if skills is not None:
+        subentry_data[CONF_SKILLS] = skills
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -130,6 +136,8 @@ def _entry(llm_hass_api: list[str] | None) -> MockConfigEntry:
         base_url=None,
         logfire_enabled=False,
         logfire_include_content=False,
+        skills_folder=DEFAULT_SKILLS_FOLDER,
+        enable_skill_script_execution=False,
     )
     return entry
 
@@ -179,6 +187,8 @@ def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigE
         base_url=None,
         logfire_enabled=logfire,
         logfire_include_content=logfire,
+        skills_folder=DEFAULT_SKILLS_FOLDER,
+        enable_skill_script_execution=False,
     )
     return entry
 
@@ -322,6 +332,55 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     assert chat_model.call_args is not None
     assert chat_model.call_args.kwargs["model_name"] == "gpt-kitchen"
     assert agent_class.call_args.kwargs["output_type"] is str
+
+
+async def test_conversation_runtime_passes_selected_skills_capabilities(
+    hass: HomeAssistant,
+) -> None:
+    """Test selected conversation skills become Agent capabilities."""
+    entry = _entry(None, skills=["kitchen-skill"])
+    entry.add_to_hass(hass)
+    capability = object()
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.async_skills_capabilities",
+            new_callable=AsyncMock,
+            return_value=[capability],
+        ) as skills_capabilities,
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=_Agent(),
+        ) as agent_class,
+    ):
+        await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    skills_capabilities.assert_awaited_once_with(
+        hass, entry, ["kitchen-skill"]
+    )
+    assert agent_class.call_args.kwargs["capabilities"] == [capability]
 
 
 async def test_conversation_logfire_instruments_agent_with_ha_metadata(

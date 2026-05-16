@@ -8,6 +8,7 @@ license = "Apache-2.0"
 dependencies = [
   "fastmcp==3.3.1",
   "logfire==4.33.0",
+  "pydantic-ai-skills==0.10.0",
   "pydantic-ai-slim[openai,mcp]==1.97.0",
 ]
 

@@ -13,6 +13,7 @@ CONF_BASE_URL = "base_url"
 CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS = "configure_advanced_model_settings"
 CONF_LOGFIRE_INCLUDE_CONTENT = "logfire_include_content"
 CONF_LOGFIRE_TOKEN = "logfire_token"
+CONF_ENABLE_SKILL_SCRIPT_EXECUTION = "enable_skill_script_execution"
 CONF_MODEL = "model"
 CONF_MODEL_SETTINGS = "model_settings"
 CONF_MCP_ALLOWED_TOOLS = "mcp_allowed_tools"
@@ -22,6 +23,8 @@ CONF_MCP_URL = "mcp_url"
 CONF_OUTPUT_MODE = "output_mode"
 CONF_PROMPT = "prompt"
 CONF_PROVIDER_MODE = "provider_mode"
+CONF_SKILLS = "skills"
+CONF_SKILLS_FOLDER = "skills_folder"
 
 PROVIDER_OPENAI = "openai"
 PROVIDER_OPENAI_COMPATIBLE = "openai_compatible"
@@ -45,6 +48,7 @@ DEFAULT_AGENT_NAME = "Pydantic AI Agent"
 DEFAULT_SERVICE_NAME = "Pydantic AI Agent"
 DEFAULT_TIMEOUT = 10.0
 DEFAULT_MCP_TIMEOUT = 10.0
+DEFAULT_SKILLS_FOLDER = "/config/skills"
 
 DEFAULT_CONVERSATION_OPTIONS = {
     CONF_AGENT_NAME: DEFAULT_AGENT_NAME,

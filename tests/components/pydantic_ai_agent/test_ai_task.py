@@ -27,6 +27,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
+    CONF_SKILLS,
+    DEFAULT_SKILLS_FOLDER,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
@@ -55,11 +57,15 @@ class _TextStream:
             raise StopAsyncIteration from err
 
 
-def _entry(output_mode: str | None = None) -> MockConfigEntry:
+def _entry(
+    output_mode: str | None = None, skills: list[str] | None = None
+) -> MockConfigEntry:
     """Return a config entry with one AI task subentry."""
-    subentry_data = {CONF_MODEL: "task-model"}
+    subentry_data: dict[str, object] = {CONF_MODEL: "task-model"}
     if output_mode is not None:
         subentry_data[CONF_OUTPUT_MODE] = output_mode
+    if skills is not None:
+        subentry_data[CONF_SKILLS] = skills
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Hosted OpenAI",
@@ -87,15 +93,17 @@ def _entry(output_mode: str | None = None) -> MockConfigEntry:
         base_url=None,
         logfire_enabled=False,
         logfire_include_content=False,
+        skills_folder=DEFAULT_SKILLS_FOLDER,
+        enable_skill_script_execution=False,
     )
     return entry
 
 
 async def _setup_ai_task_entity(
-    hass: HomeAssistant, output_mode: str | None = None
+    hass: HomeAssistant, output_mode: str | None = None, skills: list[str] | None = None
 ) -> str:
     """Set up an AI task config entry and return its entity ID."""
-    entry = _entry(output_mode)
+    entry = _entry(output_mode, skills)
     entry.add_to_hass(hass)
 
     with patch(
@@ -261,6 +269,40 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
         )
 
     assert result.data == "plain result"
+
+
+async def test_ai_task_runtime_passes_selected_skills_capabilities(
+    hass: HomeAssistant,
+) -> None:
+    """Test selected AI task skills become Agent capabilities."""
+    entity_id = await _setup_ai_task_entity(hass, skills=["report-skill"])
+    capability = object()
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.async_skills_capabilities",
+            new_callable=AsyncMock,
+            return_value=[capability],
+        ) as skills_capabilities,
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(stream_text="plain result"),
+        ) as agent_class,
+    ):
+        result = await ai_task.async_generate_data(
+            hass,
+            task_name="Plain task",
+            entity_id=entity_id,
+            instructions="Generate text",
+        )
+
+    assert result.data == "plain result"
+    assert skills_capabilities.call_args.args[2] == ["report-skill"]
+    assert agent_class.call_args.kwargs["capabilities"] == [capability]
 
 
 @pytest.mark.parametrize(

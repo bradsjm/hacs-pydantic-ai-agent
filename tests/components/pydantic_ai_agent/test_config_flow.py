@@ -25,6 +25,9 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.pydantic_ai_agent.config_flow import (
     ProviderValidationError,
     async_probe_model,
+    _ai_task_data_schema,
+    _ai_task_data_from_user_input,
+    _conversation_data_from_user_input,
     _conversation_schema,
     _format_api_error,
     _map_http_error,
@@ -34,6 +37,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+    CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MCP_ALLOWED_TOOLS,
@@ -44,6 +48,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_OUTPUT_MODE,
     CONF_PROMPT,
     CONF_PROVIDER_MODE,
+    CONF_SKILLS,
+    CONF_SKILLS_FOLDER,
     DEFAULT_OUTPUT_MODE,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
@@ -63,6 +69,8 @@ from custom_components.pydantic_ai_agent.mcp import (
     async_validate_mcp_url,
     redact_mcp_url_password,
 )
+from custom_components.pydantic_ai_agent.skills import AvailableSkill
+from custom_components.pydantic_ai_agent.skills import async_available_skills
 
 
 @pytest.fixture(autouse=True)
@@ -683,6 +691,139 @@ def test_conversation_schema_does_not_default_existing_disabled_tools(
     assert CONF_LLM_HASS_API not in data
 
 
+def test_conversation_schema_filters_unavailable_skills(hass: HomeAssistant) -> None:
+    """Test stale skill names are not preselected in reconfigure forms."""
+    data = _conversation_schema(
+        hass,
+        {
+            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_MODEL: "gpt-test",
+            CONF_SKILLS: ["stale-skill", "kitchen-skill"],
+        },
+        available_skills=[
+            AvailableSkill(
+                name="kitchen-skill", description="Kitchen helper", has_scripts=False
+            )
+        ],
+    )({})
+
+    assert data[CONF_SKILLS] == ["kitchen-skill"]
+
+
+def test_ai_task_schema_filters_unavailable_skills() -> None:
+    """Test stale AI task skill names are not preselected."""
+    data = _ai_task_data_schema(
+        {
+            CONF_MODEL: "gpt-test",
+            CONF_SKILLS: ["stale-skill", "report-skill"],
+        },
+        available_skills=[
+            AvailableSkill(name="report-skill", description="Reports", has_scripts=False)
+        ],
+    )({})
+
+    assert data[CONF_SKILLS] == ["report-skill"]
+
+
+async def test_available_skills_hides_script_skills_until_enabled(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test script-backed skills are unavailable until execution is enabled."""
+    monkeypatch.setitem(
+        sys.modules,
+        "pydantic_ai_skills",
+        SimpleNamespace(
+            discover_skills=Mock(
+                return_value=[
+                    SimpleNamespace(
+                        name="plain-skill", description="Plain", scripts=[]
+                    ),
+                    SimpleNamespace(
+                        name="script-skill", description="Script", scripts=[object()]
+                    ),
+                ]
+            )
+        ),
+    )
+
+    skills = await async_available_skills(hass, {})
+    script_skills = await async_available_skills(
+        hass, {CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True}
+    )
+
+    assert [skill.name for skill in skills] == ["plain-skill"]
+    assert [skill.name for skill in script_skills] == [
+        "plain-skill",
+        "script-skill",
+    ]
+
+
+def test_subentry_data_preserves_skills_when_field_not_rendered() -> None:
+    """Test reconfigure does not drop skills when discovery hides the field."""
+    conversation_data = _conversation_data_from_user_input(
+        {CONF_AGENT_NAME: "Kitchen Agent", CONF_MODEL: "gpt-test"},
+        {CONF_SKILLS: ["kitchen-skill"]},
+    )
+    ai_task_data = _ai_task_data_from_user_input(
+        {CONF_MODEL: "gpt-test"},
+        {CONF_OUTPUT_MODE: OUTPUT_MODE_NATIVE, CONF_SKILLS: ["report-skill"]},
+    )
+
+    assert conversation_data[CONF_SKILLS] == ["kitchen-skill"]
+    assert ai_task_data[CONF_SKILLS] == ["report-skill"]
+
+
+def test_subentry_data_clears_skills_when_field_rendered_empty() -> None:
+    """Test reconfigure can remove the last selected skill."""
+    conversation_data = _conversation_data_from_user_input(
+        {CONF_AGENT_NAME: "Kitchen Agent", CONF_MODEL: "gpt-test", CONF_SKILLS: []},
+        {CONF_SKILLS: ["kitchen-skill"]},
+        available_skills=[
+            AvailableSkill(name="kitchen-skill", description="Kitchen", has_scripts=False)
+        ],
+    )
+    ai_task_data = _ai_task_data_from_user_input(
+        {CONF_MODEL: "gpt-test", CONF_SKILLS: []},
+        {CONF_OUTPUT_MODE: OUTPUT_MODE_NATIVE, CONF_SKILLS: ["report-skill"]},
+        available_skills=[
+            AvailableSkill(name="report-skill", description="Reports", has_scripts=False)
+        ],
+    )
+
+    assert CONF_SKILLS not in conversation_data
+    assert CONF_SKILLS not in ai_task_data
+
+
+def test_subentry_data_preserves_hidden_skills_with_rendered_field() -> None:
+    """Test stale hidden skills are not dropped during unrelated reconfigure."""
+    conversation_data = _conversation_data_from_user_input(
+        {
+            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_MODEL: "gpt-test",
+            CONF_SKILLS: ["visible-skill"],
+        },
+        {CONF_SKILLS: ["hidden-skill", "visible-skill"]},
+        available_skills=[
+            AvailableSkill(name="visible-skill", description="Visible", has_scripts=False)
+        ],
+    )
+
+    assert conversation_data[CONF_SKILLS] == ["visible-skill", "hidden-skill"]
+
+
+def test_subentry_data_clears_hidden_skills_with_empty_selection() -> None:
+    """Test explicitly empty skill selections clear hidden stale skills too."""
+    data = _ai_task_data_from_user_input(
+        {CONF_MODEL: "gpt-test", CONF_SKILLS: []},
+        {CONF_OUTPUT_MODE: OUTPUT_MODE_NATIVE, CONF_SKILLS: ["hidden-skill"]},
+        available_skills=[
+            AvailableSkill(name="visible-skill", description="Visible", has_scripts=False)
+        ],
+    )
+
+    assert CONF_SKILLS not in data
+
+
 @pytest.fixture
 def mock_probe_model() -> Generator[AsyncMock]:
     """Mock provider model probing."""
@@ -753,6 +894,22 @@ def mock_probe_model() -> Generator[AsyncMock]:
                 CONF_LOGFIRE_INCLUDE_CONTENT: True,
             },
         ),
+        (
+            {
+                CONF_NAME: "Hosted OpenAI",
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_API_KEY: "sk-test",
+                CONF_SKILLS_FOLDER: "/config/skills/custom",
+                CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
+            },
+            {
+                CONF_NAME: "Hosted OpenAI",
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_API_KEY: "sk-test",
+                CONF_SKILLS_FOLDER: "/config/skills/custom",
+                CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
+            },
+        ),
     ],
 )
 async def test_config_flow_success_creates_service_entry(
@@ -799,6 +956,32 @@ async def test_openai_compatible_config_flow_requires_base_url(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "user"
     assert result["errors"] == {"base": "invalid_base_url"}
+    mock_probe_model.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "skills_folder", ["../../skills", "/tmp/skills", "/config", ".", "/config/custom"]
+)
+async def test_config_flow_rejects_skills_folder_outside_config(
+    hass: HomeAssistant, mock_probe_model: AsyncMock, skills_folder: str
+) -> None:
+    """Test skills folders must stay inside the dedicated skills folder."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Hosted OpenAI",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_API_KEY: "sk-test",
+            CONF_SKILLS_FOLDER: skills_folder,
+        },
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_skills_folder"}
     mock_probe_model.assert_not_awaited()
 
 
@@ -857,6 +1040,37 @@ async def test_create_conversation_subentry_without_control(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert CONF_LLM_HASS_API not in result["data"]
     assert CONF_MODEL_SETTINGS not in result["data"]
+    mock_probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
+
+
+async def test_create_conversation_subentry_with_skills(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test adding a conversation subentry with selected skills."""
+    entry = await _loaded_entry(hass)
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flow.async_available_skills",
+        new_callable=AsyncMock,
+        return_value=[
+            AvailableSkill(name="kitchen-skill", description="Kitchen", has_scripts=False)
+        ],
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+            context={"source": config_entries.SOURCE_USER},
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_AGENT_NAME: "Kitchen Agent",
+                CONF_MODEL: "gpt-test",
+                CONF_SKILLS: ["kitchen-skill"],
+            },
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_SKILLS] == ["kitchen-skill"]
     mock_probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
 
 
@@ -1048,6 +1262,42 @@ async def test_create_ai_task_data_subentry(
     assert result["data"] == {
         CONF_MODEL: "gpt-test",
         CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+    }
+    mock_probe_model.assert_awaited_once_with(
+        hass,
+        entry.data,
+        "gpt-test",
+        structured_output_mode=OUTPUT_MODE_TOOL,
+    )
+
+
+async def test_create_ai_task_data_subentry_with_skills(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test adding an AI task data subentry with selected skills."""
+    entry = await _loaded_entry(hass)
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flow.async_available_skills",
+        new_callable=AsyncMock,
+        return_value=[
+            AvailableSkill(name="report-skill", description="Reports", has_scripts=False)
+        ],
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
+            context={"source": config_entries.SOURCE_USER},
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_MODEL: "gpt-test", CONF_SKILLS: ["report-skill"]},
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_MODEL: "gpt-test",
+        CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+        CONF_SKILLS: ["report-skill"],
     }
     mock_probe_model.assert_awaited_once_with(
         hass,
@@ -1716,6 +1966,42 @@ async def test_duplicate_config_flow_aborts(
     mock_probe_model.assert_not_awaited()
 
 
+async def test_config_flow_allows_same_provider_with_different_skills_folder(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test skills settings are part of provider entry identity."""
+    data = {
+        CONF_NAME: "Hosted OpenAI",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_API_KEY: "sk-test",
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Hosted OpenAI",
+        data=data,
+        source=config_entries.SOURCE_USER,
+        options={},
+        unique_id=None,
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        data
+        | {
+            CONF_NAME: "Trusted Skills",
+            CONF_SKILLS_FOLDER: "/config/skills/trusted",
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_SKILLS_FOLDER] == "/config/skills/trusted"
+    mock_probe_model.assert_not_awaited()
+
+
 async def test_reconfigure_provider_data_updates_entry(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
@@ -1745,6 +2031,45 @@ async def test_reconfigure_provider_data_updates_entry(
         CONF_BASE_URL: "http://localhost:11434/v1",
     }
     mock_probe_model.assert_not_awaited()
+
+
+async def test_reconfigure_provider_skill_source_clears_subentry_skills(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test provider skill-source changes require skill reselection."""
+    entry = await _loaded_entry(
+        hass,
+        (
+            {
+                "data": {
+                    CONF_AGENT_NAME: "Kitchen Agent",
+                    CONF_MODEL: "gpt-test",
+                    CONF_SKILLS: ["kitchen-skill"],
+                },
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Kitchen Agent",
+                "unique_id": None,
+            },
+        ),
+    )
+    subentry = next(iter(entry.subentries.values()))
+
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Hosted OpenAI",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_API_KEY: "sk-test",
+            CONF_SKILLS_FOLDER: "/config/skills/trusted",
+        },
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert CONF_SKILLS not in subentry.data
+    assert entry.data[CONF_SKILLS_FOLDER] == "/config/skills/trusted"
+    mock_probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
 
 
 async def test_reconfigure_provider_blank_logfire_token_disables_logfire(

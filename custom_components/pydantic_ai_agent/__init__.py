@@ -18,10 +18,13 @@ import voluptuous as vol
 from .config_flow import ProviderValidationError, async_probe_model
 from .const import (
     CONF_BASE_URL,
+    CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
+    CONF_SKILLS_FOLDER,
+    DEFAULT_SKILLS_FOLDER,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -81,6 +84,8 @@ class PydanticAIAgentRuntimeData:
     base_url: str | None
     logfire_enabled: bool
     logfire_include_content: bool
+    skills_folder: str
+    enable_skill_script_execution: bool
     mcp_servers: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -129,6 +134,10 @@ async def async_setup_entry(
         base_url=entry.data.get(CONF_BASE_URL),
         logfire_enabled=logfire_enabled(entry),
         logfire_include_content=logfire_include_content(entry),
+        skills_folder=entry.data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
+        enable_skill_script_execution=bool(
+            entry.data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
+        ),
         mcp_servers=[
             {CONF_NAME: subentry.title, **dict(subentry.data)}
             for subentry in mcp_subentries(entry)

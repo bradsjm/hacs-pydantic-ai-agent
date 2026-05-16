@@ -38,6 +38,7 @@ from .const import (
     CONF_MODEL_SETTINGS,
     CONF_MCP_SERVER_IDS,
     CONF_OUTPUT_MODE,
+    CONF_SKILLS,
     DEFAULT_TIMEOUT,
     DOMAIN,
     SUBENTRY_TYPE_CONVERSATION,
@@ -47,6 +48,7 @@ from .history import chat_log_content_to_model_messages, split_last_user_prompt
 from .logfire_support import agent_run_span, instrument_agent
 from .mcp import MCPValidationError, async_runtime_mcp_toolsets
 from .provider import openai_chat_model
+from .skills import async_skills_capabilities
 from .structured_output import (
     default_structure_serializer,
     output_tool_names,
@@ -129,6 +131,11 @@ class PydanticAIBaseLLMEntity:
             self.entry,
             self.subentry.data.get(CONF_MCP_SERVER_IDS),
         )
+        capabilities = await async_skills_capabilities(
+            self.hass,
+            self.entry,
+            self.subentry.data.get(CONF_SKILLS),
+        )
         agent = Agent(
             model,
             output_type=cast(Any, agent_output_type),
@@ -138,6 +145,7 @@ class PydanticAIBaseLLMEntity:
             tools=tools_from_llm_api(chat_log.llm_api),
             toolsets=mcp_toolsets,
             max_concurrency=1,
+            capabilities=capabilities,
         )
         instrument_agent(self.entry, agent)
         usage_limits = UsageLimits(
