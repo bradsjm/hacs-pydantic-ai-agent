@@ -1,0 +1,206 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Pydantic AI Agent",
+        "description": "Enter provider credentials for Pydantic AI Agent.",
+        "data": {
+          "name": "Service name",
+          "provider_mode": "Provider mode",
+          "api_key": "API key",
+          "base_url": "Base URL"
+        },
+        "data_description": {
+          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Pydantic AI Agent",
+        "description": "Update provider credentials.",
+        "data": {
+          "name": "Service name",
+          "provider_mode": "Provider mode",
+          "api_key": "API key",
+          "base_url": "Base URL"
+        },
+        "data_description": {
+          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Pydantic AI Agent",
+        "description": "Update provider credentials and connection settings.",
+        "data": {
+          "name": "Service name",
+          "provider_mode": "Provider mode",
+          "api_key": "API key",
+          "base_url": "Base URL"
+        },
+        "data_description": {
+          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "{error_message}",
+      "invalid_auth": "{error_message}",
+      "invalid_base_url": "{error_message}",
+      "invalid_model": "{error_message}",
+      "model_does_not_support_streaming": "{error_message}",
+      "invalid_provider_config": "{error_message}",
+      "permission_denied": "{error_message}",
+      "provider_error": "{error_message}",
+      "rate_limited": "{error_message}",
+      "timeout": "{error_message}",
+      "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
+    },
+    "abort": {
+      "already_configured": "This provider connection is already configured.",
+      "entry_not_loaded": "The provider connection is not loaded.",
+      "reauth_successful": "Pydantic AI Agent was reauthenticated successfully.",
+      "invalid_auth": "{error_message}",
+      "cannot_connect": "{error_message}",
+      "invalid_model": "{error_message}",
+      "model_does_not_support_streaming": "{error_message}",
+      "invalid_provider_config": "{error_message}",
+      "permission_denied": "{error_message}",
+      "provider_error": "{error_message}",
+      "rate_limited": "{error_message}",
+      "reconfigure_successful": "Pydantic AI Agent was reconfigured successfully.",
+      "timeout": "{error_message}"
+    }
+  },
+  "config_subentries": {
+    "ai_task_data": {
+      "entry_type": "AI task",
+      "initiate_flow": {
+        "reconfigure": "Reconfigure AI task",
+        "user": "Add AI task"
+      },
+      "step": {
+        "init": {
+          "title": "Configure AI task",
+          "description": "Choose the model to use for Home Assistant AI task data generation. Runtime AI task entities are not enabled yet.",
+          "data": {
+            "model": "Model"
+          }
+        }
+      },
+      "error": {
+        "cannot_connect": "{error_message}",
+        "invalid_auth": "{error_message}",
+        "invalid_base_url": "{error_message}",
+        "invalid_model": "{error_message}",
+        "model_does_not_support_streaming": "{error_message}",
+        "invalid_provider_config": "{error_message}",
+        "permission_denied": "{error_message}",
+        "provider_error": "{error_message}",
+        "rate_limited": "{error_message}",
+        "timeout": "{error_message}",
+        "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
+      },
+      "abort": {
+        "entry_not_loaded": "The provider connection is not loaded.",
+        "reconfigure_successful": "AI task configuration updated."
+      }
+    },
+    "conversation": {
+      "entry_type": "Conversation agent",
+      "initiate_flow": {
+        "reconfigure": "Reconfigure conversation agent",
+        "user": "Add conversation agent"
+      },
+      "step": {
+        "init": {
+          "title": "Configure Assist agent",
+          "description": "Choose the model and Home Assistant tool access for this Assist agent. The model is validated with a streaming test request.",
+          "data": {
+            "agent_name": "Agent name",
+            "model": "Model",
+            "prompt": "Instructions",
+            "llm_hass_api": "Control Home Assistant",
+            "temperature": "Temperature",
+            "thinking": "Thinking",
+            "configure_advanced_model_settings": "Configure advanced model settings"
+          },
+          "data_description": {
+            "prompt": "Instruct how the LLM should respond. This can be a template.",
+            "llm_hass_api": "Select which tools the model can use to interact with your devices and entities.",
+            "temperature": "Controls response randomness. Leave empty to use the provider or model default.",
+            "thinking": "Optional reasoning effort or boolean thinking control. Provider and model support varies.",
+            "configure_advanced_model_settings": "Open a second step for token limits, sampling, timeout, tool-call behavior, seed, penalties, and JSON overrides."
+          }
+        },
+        "model_settings": {
+          "title": "Advanced model settings",
+          "description": "Set optional Pydantic AI ModelSettings values for this Assist agent. Leave fields empty to use provider defaults.",
+          "data": {
+            "max_tokens": "Max tokens",
+            "top_p": "Top P",
+            "timeout": "Timeout",
+            "parallel_tool_calls": "Parallel tool calls",
+            "seed": "Seed",
+            "presence_penalty": "Presence penalty",
+            "frequency_penalty": "Frequency penalty",
+            "extra_headers": "Extra headers",
+            "extra_body": "Extra body"
+          },
+          "data_description": {
+            "max_tokens": "Maximum tokens the model may generate. Must be a positive integer.",
+            "top_p": "Nucleus sampling value. Leave empty to use the provider default.",
+            "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
+            "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
+            "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
+            "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
+            "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
+            "extra_headers": "JSON object of string headers to send with model requests. These values are stored in Home Assistant config entry storage; do not use this for API secrets.",
+            "extra_body": "JSON object merged into provider request bodies for provider-specific options."
+          }
+        }
+      },
+      "error": {
+        "cannot_connect": "{error_message}",
+        "invalid_auth": "{error_message}",
+        "invalid_base_url": "{error_message}",
+        "invalid_model": "{error_message}",
+        "model_does_not_support_streaming": "{error_message}",
+        "invalid_provider_config": "{error_message}",
+        "permission_denied": "{error_message}",
+        "invalid_headers": "Enter a JSON object with string keys and string values.",
+        "invalid_integer": "Enter an integer value in this field.",
+        "invalid_json": "Enter valid JSON.",
+        "invalid_number": "Enter a valid number in this field.",
+        "invalid_object": "Enter a JSON object, not an array or scalar value.",
+        "provider_error": "{error_message}",
+        "positive_number": "Enter a number greater than zero.",
+        "rate_limited": "{error_message}",
+        "timeout": "{error_message}",
+        "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
+      },
+      "abort": {
+        "entry_not_loaded": "The provider connection is not loaded.",
+        "reconfigure_successful": "Assist agent configuration updated."
+      }
+    }
+  },
+  "selector": {
+    "provider_mode": {
+      "options": {
+        "openai": "OpenAI",
+        "openai_compatible": "OpenAI-compatible"
+      }
+    },
+    "thinking": {
+      "options": {
+        "": "Provider default",
+        "true": "Enabled",
+        "false": "Disabled",
+        "minimal": "Minimal",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "xhigh": "Extra high"
+      }
+    }
+  }
+}
