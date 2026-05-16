@@ -1,4 +1,4 @@
-"""Structured output helpers for Pydantic AI direct model requests."""
+"""Structured output helpers for Pydantic AI model and Agent requests."""
 
 from collections.abc import Iterable
 import hashlib
@@ -6,7 +6,14 @@ from typing import Any, cast
 
 from pydantic_ai import ToolDefinition
 from pydantic_ai.models import ModelRequestParameters
-from pydantic_ai.output import OutputMode, OutputObjectDefinition
+from pydantic_ai.output import (
+    NativeOutput,
+    OutputMode,
+    OutputObjectDefinition,
+    PromptedOutput,
+    StructuredDict,
+    ToolOutput,
+)
 from voluptuous_openapi import convert
 
 from homeassistant.helpers import llm
@@ -114,3 +121,20 @@ def output_tool_names(output_mode: str, output_name: str) -> set[str]:
 def default_structure_serializer(api_instance: llm.APIInstance | None) -> Any:
     """Return the serializer Home Assistant uses for AI task schemas."""
     return api_instance.custom_serializer if api_instance else llm.selector_serializer
+
+
+def structured_agent_output_type(
+    *,
+    output_mode: str,
+    output_name: str,
+    json_schema: dict[str, Any],
+) -> object:
+    """Return a Pydantic AI Agent output type for a structured HA schema."""
+    output_type = StructuredDict(json_schema, name=output_name)
+    if output_mode == OUTPUT_MODE_TOOL:
+        return ToolOutput(output_type, name=output_name)
+    if output_mode == OUTPUT_MODE_NATIVE:
+        return NativeOutput(output_type, name=output_name)
+    if output_mode == OUTPUT_MODE_PROMPTED:
+        return PromptedOutput(output_type, name=output_name)
+    raise ValueError(f"Unsupported structured output mode: {output_mode}")

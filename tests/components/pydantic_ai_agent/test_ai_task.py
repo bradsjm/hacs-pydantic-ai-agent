@@ -2,10 +2,12 @@
 
 from collections.abc import AsyncGenerator, Iterable
 from contextlib import asynccontextmanager
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
+from pydantic_ai import ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.output import NativeOutput, PromptedOutput, ToolOutput
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -34,14 +36,14 @@ from custom_components.pydantic_ai_agent.const import (
 )
 
 
-class _EventStream:
-    """Async iterator over Pydantic AI stream events."""
+class _TextStream:
+    """Async iterator over text chunks."""
 
     def __init__(self, *events: object) -> None:
         """Initialize the event stream."""
         self._events = iter(events)
 
-    def __aiter__(self) -> "_EventStream":
+    def __aiter__(self) -> "_TextStream":
         """Return the async iterator."""
         return self
 
@@ -106,36 +108,97 @@ async def _setup_ai_task_entity(
     return entity_ids[0]
 
 
-def _model_stream_factory(text: str):
-    """Return a model stream side effect for the given text."""
+class _StreamResult:
+    """Minimal Agent streamed result for AI task tests."""
+
+    def __init__(self, text: str) -> None:
+        """Initialize the streamed result."""
+        self._text = text
+
+    def stream_text(self, *, delta: bool = False) -> _TextStream:
+        """Return streamed text chunks."""
+        del delta
+        return _TextStream(self._text)
+
+    def get_output(self) -> str:
+        """Return final output."""
+        return self._text
+
+    def new_messages(self) -> list[ModelResponse]:
+        """Return final Agent messages."""
+        return [ModelResponse(parts=[TextPart(content=self._text)])]
+
+
+class _RunResult:
+    """Minimal Agent run result for AI task tests."""
+
+    def __init__(
+        self, output: object, messages: list[ModelResponse] | None = None
+    ) -> None:
+        """Initialize the run result."""
+        self.output = output
+        self._messages = messages
+
+    def new_messages(self) -> list[ModelResponse]:
+        """Return final Agent messages."""
+        if self._messages is not None:
+            return self._messages
+        content = (
+            self.output if isinstance(self.output, str) else json.dumps(self.output)
+        )
+        return [ModelResponse(parts=[TextPart(content=content)])]
+
+
+class _Agent:
+    """Minimal async-context Agent test double."""
+
+    def __init__(
+        self,
+        *,
+        stream_text: str = "",
+        output: object = None,
+        messages: list[ModelResponse] | None = None,
+    ) -> None:
+        """Initialize the agent."""
+        self._stream_text = stream_text
+        self._output = output
+        self._messages = messages
+
+    async def __aenter__(self) -> "_Agent":
+        """Enter the agent context."""
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        """Exit the agent context."""
 
     @asynccontextmanager
-    async def stream(*_args: object, **_kwargs: object) -> AsyncGenerator[_EventStream]:
-        yield _EventStream(
-            PartStartEvent(index=0, part=TextPart(content=text)),
-            PartEndEvent(index=0, part=TextPart(content=text)),
+    async def run_stream(
+        self, *_args: object, **_kwargs: object
+    ) -> AsyncGenerator[_StreamResult]:
+        """Return a deterministic streamed result."""
+        yield _StreamResult(self._stream_text)
+
+    async def run(self, *_args: object, **_kwargs: object) -> _RunResult:
+        """Return a deterministic run result."""
+        return _RunResult(self._output, self._messages)
+
+
+def _agent_factory(
+    *,
+    stream_text: str = "",
+    output: object = None,
+    messages: list[ModelResponse] | None = None,
+):
+    """Return an Agent constructor test double."""
+
+    def factory(*_args: object, **_kwargs: object) -> _Agent:
+        return _Agent(
+            stream_text=stream_text,
+            output=stream_text if output is None else output,
+            messages=messages,
         )
 
-    return stream
-
-
-def _tool_output_stream_factory(args: dict[str, object]):
-    """Return a model stream side effect for output tool data."""
-
-    @asynccontextmanager
-    async def stream(*_args: object, **_kwargs: object) -> AsyncGenerator[_EventStream]:
-        yield _EventStream(
-            PartEndEvent(
-                index=0,
-                part=ToolCallPart(
-                    tool_name="pydantic_ai_agent_output_structured_task",
-                    args=args,
-                    tool_call_id="tool-1",
-                ),
-            )
-        )
-
-    return stream
+    return factory
 
 
 async def test_ai_task_subentries_add_separate_entities(
@@ -184,8 +247,8 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
             return_value=object(),
         ),
         patch(
-            "custom_components.pydantic_ai_agent.entity.model_request_stream",
-            side_effect=_model_stream_factory("plain result"),
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(stream_text="plain result"),
         ),
     ):
         result = await ai_task.async_generate_data(
@@ -199,17 +262,34 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.parametrize(
-    ("output_mode", "stream_factory"),
+    ("output_mode", "output", "output_type", "messages"),
     [
-        (OUTPUT_MODE_TOOL, _tool_output_stream_factory({"name": "Kitchen"})),
-        (OUTPUT_MODE_NATIVE, _model_stream_factory('{"name":"Kitchen"}')),
-        (OUTPUT_MODE_PROMPTED, _model_stream_factory('{"name":"Kitchen"}')),
+        (
+            OUTPUT_MODE_TOOL,
+            {"name": "Kitchen"},
+            ToolOutput,
+            [
+                ModelResponse(
+                    parts=[
+                        ToolCallPart(
+                            tool_name="pydantic_ai_agent_output_structured_task",
+                            args={"name": "Kitchen"},
+                            tool_call_id="output-1",
+                        )
+                    ]
+                )
+            ],
+        ),
+        (OUTPUT_MODE_NATIVE, {"name": "Kitchen"}, NativeOutput, None),
+        (OUTPUT_MODE_PROMPTED, {"name": "Kitchen"}, PromptedOutput, None),
     ],
 )
 async def test_structured_data_task_returns_parsed_json(
     hass: HomeAssistant,
     output_mode: str,
-    stream_factory: object,
+    output: dict[str, object],
+    output_type: type,
+    messages: list[ModelResponse] | None,
 ) -> None:
     """Test a structured data task returns parsed JSON."""
     entity_id = await _setup_ai_task_entity(hass, output_mode)
@@ -220,9 +300,9 @@ async def test_structured_data_task_returns_parsed_json(
             return_value=object(),
         ),
         patch(
-            "custom_components.pydantic_ai_agent.entity.model_request_stream",
-            side_effect=stream_factory,
-        ) as model_request_stream,
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(output=output, messages=messages),
+        ) as agent_class,
     ):
         result = await ai_task.async_generate_data(
             hass,
@@ -233,16 +313,10 @@ async def test_structured_data_task_returns_parsed_json(
         )
 
     assert result.data == {"name": "Kitchen"}
-    request_parameters = model_request_stream.call_args.kwargs[
-        "model_request_parameters"
-    ]
-    assert request_parameters.output_mode == output_mode
-    if output_mode == OUTPUT_MODE_TOOL:
-        assert request_parameters.output_tools[0].kind == "output"
-    else:
-        assert request_parameters.output_object.name == (
-            "pydantic_ai_agent_output_structured_task"
-        )
+    assert isinstance(agent_class.call_args.kwargs["output_type"], output_type)
+    assert agent_class.call_args.kwargs["output_type"].name == (
+        "pydantic_ai_agent_output_structured_task"
+    )
 
 
 async def test_structured_data_task_rejects_malformed_json(
@@ -257,8 +331,8 @@ async def test_structured_data_task_rejects_malformed_json(
             return_value=object(),
         ),
         patch(
-            "custom_components.pydantic_ai_agent.entity.model_request_stream",
-            side_effect=_model_stream_factory("not json"),
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(output="not json"),
         ),
         pytest.raises(HomeAssistantError, match="malformed structured data"),
     ):
@@ -283,8 +357,8 @@ async def test_structured_data_task_rejects_schema_mismatch(
             return_value=object(),
         ),
         patch(
-            "custom_components.pydantic_ai_agent.entity.model_request_stream",
-            side_effect=_model_stream_factory('{"name":1}'),
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(output={"name": 1}),
         ),
         pytest.raises(HomeAssistantError, match="does not match the schema"),
     ):

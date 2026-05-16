@@ -10,6 +10,7 @@ import logging
 import socket
 import ssl
 from typing import Any
+from urllib.parse import parse_qsl, urlparse
 
 from pydantic_ai import (
     ModelRequest,
@@ -65,6 +66,10 @@ from .const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_HEADERS,
+    CONF_MCP_SERVER_IDS,
+    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
@@ -85,6 +90,15 @@ from .const import (
     STRUCTURED_OUTPUT_MODES,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
+)
+from .mcp import (
+    MCPValidationError,
+    async_discover_mcp_tools_from_config,
+    async_validate_mcp_url,
+    normalise_mcp_url,
+    parse_allowed_tools,
+    parse_mcp_headers,
 )
 from .provider import normalise_base_url, openai_chat_model_from_config
 from .structured_output import (
@@ -279,6 +293,14 @@ def _provider_validation_placeholders(
     err: ProviderValidationError,
 ) -> dict[str, str]:
     """Return translation placeholders for provider validation errors."""
+    placeholders = {"error_message": err.message}
+    if err.status_code is not None:
+        placeholders["status_code"] = str(err.status_code)
+    return placeholders
+
+
+def _mcp_validation_placeholders(err: MCPValidationError) -> dict[str, str]:
+    """Return translation placeholders for MCP validation errors."""
     placeholders = {"error_message": err.message}
     if err.status_code is not None:
         placeholders["status_code"] = str(err.status_code)
@@ -631,8 +653,47 @@ def _provider_data_matches(left: Mapping[str, Any], right: Mapping[str, Any]) ->
     return _dedupe_data(left) == _dedupe_data(right)
 
 
+def _mcp_server_select_options(entry: ConfigEntry | None) -> list[SelectOptionDict]:
+    """Return configured MCP servers as select options."""
+    if entry is None:
+        return []
+    return [
+        SelectOptionDict(label=subentry.title, value=subentry.subentry_id)
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER
+    ]
+
+
+def _selected_mcp_server_error(
+    entry: ConfigEntry, data: Mapping[str, Any]
+) -> str | None:
+    """Return a form error for selected MCP servers that cannot run."""
+    for server_id in data.get(CONF_MCP_SERVER_IDS, []):
+        subentry = entry.subentries.get(server_id)
+        if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_MCP_SERVER:
+            return "mcp_server_not_found"
+        if not parse_allowed_tools(subentry.data.get(CONF_MCP_ALLOWED_TOOLS)):
+            return "mcp_tools_not_allowlisted"
+    return None
+
+
+def _mcp_server_has_dependents(entry: ConfigEntry, server_id: str) -> bool:
+    """Return if an agent or AI task subentry references an MCP server."""
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type not in {
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        }:
+            continue
+        if server_id in subentry.data.get(CONF_MCP_SERVER_IDS, []):
+            return True
+    return False
+
+
 def _conversation_schema(
-    hass: HomeAssistant, options: Mapping[str, Any] | None = None
+    hass: HomeAssistant,
+    options: Mapping[str, Any] | None = None,
+    entry: ConfigEntry | None = None,
 ) -> vol.Schema:
     """Return the conversation subentry schema, pruning unavailable HA APIs."""
     options = dict(options or {})
@@ -692,6 +753,24 @@ def _conversation_schema(
     schema[api_schema_key] = SelectSelector(
         SelectSelectorConfig(options=hass_apis, multiple=True)
     )
+    mcp_servers = _mcp_server_select_options(entry)
+    if mcp_servers:
+        mcp_schema_key = vol.Optional(CONF_MCP_SERVER_IDS)
+        if CONF_MCP_SERVER_IDS in options:
+            configured_servers = {
+                option["value"] for option in mcp_servers if "value" in option
+            }
+            mcp_schema_key = vol.Optional(
+                CONF_MCP_SERVER_IDS,
+                default=[
+                    server_id
+                    for server_id in options[CONF_MCP_SERVER_IDS]
+                    if server_id in configured_servers
+                ],
+            )
+        schema[mcp_schema_key] = SelectSelector(
+            SelectSelectorConfig(options=mcp_servers, multiple=True)
+        )
     return vol.Schema(schema)
 
 
@@ -964,6 +1043,8 @@ def _conversation_data_from_user_input(user_input: Mapping[str, Any]) -> dict[st
     }
     if not data.get(CONF_LLM_HASS_API):
         data.pop(CONF_LLM_HASS_API, None)
+    if not data.get(CONF_MCP_SERVER_IDS):
+        data.pop(CONF_MCP_SERVER_IDS, None)
     return data
 
 
@@ -992,21 +1073,41 @@ def _store_model_settings(
         data.pop(CONF_MODEL_SETTINGS, None)
 
 
-def _ai_task_data_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
+def _ai_task_data_schema(
+    options: Mapping[str, Any] | None = None,
+    entry: ConfigEntry | None = None,
+) -> vol.Schema:
     """Return the AI task data subentry schema."""
     options = dict(options or {})
-    return vol.Schema(
-        {
-            vol.Required(
-                CONF_MODEL,
-                default=options.get(CONF_MODEL, ""),
-            ): TextSelector(TextSelectorConfig()),
-            vol.Optional(
-                CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
-                default=False,
-            ): BooleanSelector(),
-        }
-    )
+    schema: VolDictType = {
+        vol.Required(
+            CONF_MODEL,
+            default=options.get(CONF_MODEL, ""),
+        ): TextSelector(TextSelectorConfig()),
+        vol.Optional(
+            CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+            default=False,
+        ): BooleanSelector(),
+    }
+    mcp_servers = _mcp_server_select_options(entry)
+    if mcp_servers:
+        mcp_schema_key = vol.Optional(CONF_MCP_SERVER_IDS)
+        if CONF_MCP_SERVER_IDS in options:
+            configured_servers = {
+                option["value"] for option in mcp_servers if "value" in option
+            }
+            mcp_schema_key = vol.Optional(
+                CONF_MCP_SERVER_IDS,
+                default=[
+                    server_id
+                    for server_id in options[CONF_MCP_SERVER_IDS]
+                    if server_id in configured_servers
+                ],
+            )
+        schema[mcp_schema_key] = SelectSelector(
+            SelectSelectorConfig(options=mcp_servers, multiple=True)
+        )
+    return vol.Schema(schema)
 
 
 def _ai_task_output_mode_schema(
@@ -1045,7 +1146,89 @@ def _ai_task_data_from_user_input(
         CONF_OUTPUT_MODE,
         normalise_structured_output_mode(options.get(CONF_OUTPUT_MODE)),
     )
+    if not data.get(CONF_MCP_SERVER_IDS):
+        data.pop(CONF_MCP_SERVER_IDS, None)
     return data
+
+
+def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
+    """Return the remote MCP server subentry schema."""
+    options = dict(options or {})
+    allowed_tools = options.get(CONF_MCP_ALLOWED_TOOLS, [])
+    if isinstance(allowed_tools, list):
+        allowed_tools_default = ", ".join(str(tool) for tool in allowed_tools)
+    else:
+        allowed_tools_default = str(allowed_tools or "")
+    headers = options.get(CONF_MCP_HEADERS, {})
+    headers_default = json.dumps(headers, sort_keys=True) if headers else ""
+    return vol.Schema(
+        {
+            vol.Required(CONF_NAME, default=options.get(CONF_NAME, "")): TextSelector(
+                TextSelectorConfig()
+            ),
+            vol.Required(
+                CONF_MCP_URL,
+                default=options.get(CONF_MCP_URL, ""),
+            ): TextSelector(TextSelectorConfig()),
+            vol.Optional(
+                CONF_MCP_HEADERS,
+                default=headers_default,
+            ): TextSelector(TextSelectorConfig()),
+            vol.Optional(
+                CONF_MCP_ALLOWED_TOOLS,
+                default=allowed_tools_default,
+            ): TextSelector(TextSelectorConfig()),
+        }
+    )
+
+
+def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
+    """Return normalized remote MCP server subentry data."""
+    data: dict[str, Any] = {
+        CONF_NAME: str(user_input[CONF_NAME]).strip(),
+        CONF_MCP_URL: normalise_mcp_url(user_input[CONF_MCP_URL]),
+    }
+    headers = parse_mcp_headers(user_input.get(CONF_MCP_HEADERS))
+    if headers:
+        data[CONF_MCP_HEADERS] = headers
+    allowed_tools = parse_allowed_tools(user_input.get(CONF_MCP_ALLOWED_TOOLS))
+    if allowed_tools:
+        data[CONF_MCP_ALLOWED_TOOLS] = allowed_tools
+    return data
+
+
+def _mcp_url_already_configured(
+    entry: ConfigEntry,
+    url: str,
+    current_subentry_id: str | None = None,
+) -> bool:
+    """Return if another MCP server subentry already uses this URL."""
+    url_identity = _mcp_url_identity(url)
+    for subentry in entry.subentries.values():
+        if subentry.subentry_id == current_subentry_id:
+            continue
+        if subentry.subentry_type != SUBENTRY_TYPE_MCP_SERVER:
+            continue
+        if _mcp_url_identity(subentry.data.get(CONF_MCP_URL)) == url_identity:
+            return True
+    return False
+
+
+def _mcp_url_identity(
+    url: object,
+) -> tuple[str, str, str, str, int, str, tuple[tuple[str, str], ...]]:
+    """Return a canonical identity for duplicate MCP URL checks."""
+    parsed = urlparse(normalise_mcp_url(url))
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return (
+        parsed.scheme,
+        parsed.username or "",
+        parsed.password or "",
+        (parsed.hostname or "").lower().rstrip("."),
+        port,
+        parsed.path or "/",
+        tuple(sorted(parse_qsl(parsed.query, keep_blank_values=True))),
+    )
 
 
 class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -1201,6 +1384,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
         return {
             SUBENTRY_TYPE_CONVERSATION: ConversationSubentryFlowHandler,
             SUBENTRY_TYPE_AI_TASK: AITaskDataSubentryFlowHandler,
+            SUBENTRY_TYPE_MCP_SERVER: MCPServerSubentryFlowHandler,
         }
 
 
@@ -1252,9 +1436,17 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_conversation_schema(
-                        self.hass, self._options | form_options
+                        self.hass, self._options | form_options, entry
                     ),
                     errors=errors,
+                )
+            if mcp_error := _selected_mcp_server_error(entry, data):
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_conversation_schema(
+                        self.hass, self._options | data, entry
+                    ),
+                    errors={CONF_MCP_SERVER_IDS: mcp_error},
                 )
             if user_input.get(CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS):
                 self._pending_conversation_data = data
@@ -1269,7 +1461,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_conversation_schema(self.hass, self._options),
+            data_schema=_conversation_schema(self.hass, self._options, entry),
         )
 
     async def async_step_model_settings(
@@ -1311,6 +1503,14 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
         """Probe the selected chat model, then create or update the subentry."""
         entry = self._get_entry()
         _store_model_settings(data, model_settings)
+        if mcp_error := _selected_mcp_server_error(entry, data):
+            return self.async_show_form(
+                step_id="init",
+                data_schema=_conversation_schema(
+                    self.hass, self._options | data, entry
+                ),
+                errors={CONF_MCP_SERVER_IDS: mcp_error},
+            )
         try:
             await async_probe_model(
                 self.hass,
@@ -1333,7 +1533,9 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                 )
             return self.async_show_form(
                 step_id="init",
-                data_schema=_conversation_schema(self.hass, self._options | data),
+                data_schema=_conversation_schema(
+                    self.hass, self._options | data, entry
+                ),
                 errors={"base": err.reason},
                 description_placeholders=_provider_validation_placeholders(err),
             )
@@ -1349,7 +1551,9 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                 )
             return self.async_show_form(
                 step_id="init",
-                data_schema=_conversation_schema(self.hass, self._options | data),
+                data_schema=_conversation_schema(
+                    self.hass, self._options | data, entry
+                ),
                 errors={"base": "unknown"},
             )
         if self._is_new:
@@ -1400,6 +1604,12 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
 
         if user_input is not None:
             data = _ai_task_data_from_user_input(user_input, self._options)
+            if mcp_error := _selected_mcp_server_error(entry, data):
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_ai_task_data_schema(self._options | data, entry),
+                    errors={CONF_MCP_SERVER_IDS: mcp_error},
+                )
             if user_input.get(CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS):
                 self._pending_ai_task_data = data
                 return self.async_show_form(
@@ -1410,7 +1620,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_ai_task_data_schema(self._options),
+            data_schema=_ai_task_data_schema(self._options, entry),
         )
 
     async def async_step_output_mode(
@@ -1441,6 +1651,12 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Probe the selected AI task model, then create or update the subentry."""
         entry = self._get_entry()
+        if mcp_error := _selected_mcp_server_error(entry, data):
+            return self.async_show_form(
+                step_id="init",
+                data_schema=_ai_task_data_schema(self._options | data, entry),
+                errors={CONF_MCP_SERVER_IDS: mcp_error},
+            )
         try:
             await async_probe_model(
                 self.hass,
@@ -1461,7 +1677,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 )
             return self.async_show_form(
                 step_id="init",
-                data_schema=_ai_task_data_schema(self._options | data),
+                data_schema=_ai_task_data_schema(self._options | data, entry),
                 errors={"base": err.reason},
                 description_placeholders=_provider_validation_placeholders(err),
             )
@@ -1475,7 +1691,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 )
             return self.async_show_form(
                 step_id="init",
-                data_schema=_ai_task_data_schema(self._options | data),
+                data_schema=_ai_task_data_schema(self._options | data, entry),
                 errors={"base": "unknown"},
             )
         if self._is_new:
@@ -1485,4 +1701,123 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             self._get_reconfigure_subentry(),
             title=data[CONF_MODEL],
             data=data,
+        )
+
+
+class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
+    """Flow for managing remote MCP server subentries."""
+
+    _options: dict[str, Any]
+
+    @property
+    def _is_new(self) -> bool:
+        """Return if this flow creates a new subentry."""
+        return self.source == SOURCE_USER
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Add an MCP server subentry."""
+        self._options = {}
+        return await self.async_step_init(user_input)
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Reconfigure an MCP server subentry."""
+        self._options = self._get_reconfigure_subentry().data.copy()
+        return await self.async_step_init(user_input)
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Manage remote MCP server options."""
+        entry = self._get_entry()
+        if entry.state != ConfigEntryState.LOADED:
+            return self.async_abort(reason="entry_not_loaded")
+
+        if user_input is None:
+            return self.async_show_form(
+                step_id="init",
+                data_schema=_mcp_server_schema(self._options),
+            )
+
+        errors: dict[str, str] = {}
+        description_placeholders: dict[str, str] = {}
+        try:
+            data = _mcp_server_data_from_user_input(user_input)
+        except MCPValidationError as err:
+            errors[CONF_MCP_URL] = err.reason
+            description_placeholders = _mcp_validation_placeholders(err)
+            data = dict(user_input)
+        except vol.Invalid as err:
+            reason = str(err) or "invalid_mcp_headers"
+            if reason == "invalid_mcp_tools":
+                errors[CONF_MCP_ALLOWED_TOOLS] = reason
+            else:
+                errors[CONF_MCP_HEADERS] = "invalid_mcp_headers"
+            data = dict(user_input)
+        else:
+            try:
+                data[CONF_MCP_URL] = await async_validate_mcp_url(
+                    self.hass, data[CONF_MCP_URL]
+                )
+            except MCPValidationError as err:
+                errors[CONF_MCP_URL] = err.reason
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_mcp_server_schema(self._options | data),
+                    errors=errors,
+                    description_placeholders=_mcp_validation_placeholders(err),
+                )
+            current_subentry_id = None
+            if not self._is_new:
+                current_subentry_id = self._get_reconfigure_subentry().subentry_id
+                if not data.get(CONF_MCP_ALLOWED_TOOLS) and _mcp_server_has_dependents(
+                    entry, current_subentry_id
+                ):
+                    errors[CONF_MCP_ALLOWED_TOOLS] = "mcp_tools_not_allowlisted"
+                    return self.async_show_form(
+                        step_id="init",
+                        data_schema=_mcp_server_schema(self._options | data),
+                        errors=errors,
+                    )
+            if _mcp_url_already_configured(
+                entry, data[CONF_MCP_URL], current_subentry_id
+            ):
+                return self.async_abort(reason="already_configured")
+            try:
+                tools = await async_discover_mcp_tools_from_config(
+                    self.hass,
+                    data,
+                    server_id=current_subentry_id or data[CONF_NAME],
+                )
+                if not tools:
+                    raise MCPValidationError(
+                        "no_mcp_tools",
+                        "The MCP server did not expose any allowed tools.",
+                    )
+            except MCPValidationError as err:
+                target = CONF_MCP_URL if err.reason == "invalid_mcp_url" else "base"
+                errors[target] = err.reason
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_mcp_server_schema(self._options | data),
+                    errors=errors,
+                    description_placeholders=_mcp_validation_placeholders(err),
+                )
+            if self._is_new:
+                return self.async_create_entry(title=data[CONF_NAME], data=data)
+            return self.async_update_and_abort(
+                entry,
+                self._get_reconfigure_subentry(),
+                title=data[CONF_NAME],
+                data=data,
+            )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_mcp_server_schema(self._options | data),
+            errors=errors,
+            description_placeholders=description_placeholders,
         )

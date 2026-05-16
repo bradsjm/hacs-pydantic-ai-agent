@@ -15,12 +15,16 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent import (
     PLATFORMS,
+    SERVICE_LIST_MCP_TOOLS,
+    SERVICE_REFRESH_MCP_TOOLS,
+    async_setup,
     async_setup_entry,
     async_unload_entry,
 )
 from custom_components.pydantic_ai_agent.config_flow import ProviderValidationError
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
+    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
@@ -31,6 +35,7 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
 )
 from custom_components.pydantic_ai_agent.repairs import model_validation_issue_id
 
@@ -61,6 +66,19 @@ def _ai_task_subentry(output_mode: str | None = None) -> dict[str, object]:
     }
 
 
+def _mcp_server_subentry() -> dict[str, object]:
+    """Return an MCP server config subentry."""
+    return {
+        "data": {
+            CONF_NAME: "Filesystem MCP",
+            CONF_MCP_URL: "https://mcp.example.com/mcp",
+        },
+        "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+        "title": "Filesystem MCP",
+        "unique_id": None,
+    }
+
+
 def _entry(subentries_data: tuple[dict[str, object], ...] = ()) -> MockConfigEntry:
     """Return a config entry."""
     return MockConfigEntry(
@@ -80,7 +98,9 @@ def _entry(subentries_data: tuple[dict[str, object], ...] = ()) -> MockConfigEnt
 
 async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
     """Test setup stores provider runtime data."""
-    entry = _entry((_conversation_subentry(), _ai_task_subentry()))
+    entry = _entry(
+        (_conversation_subentry(), _ai_task_subentry(), _mcp_server_subentry())
+    )
     entry.add_to_hass(hass)
 
     with (
@@ -101,6 +121,12 @@ async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
     assert entry.runtime_data.name == "Hosted OpenAI"
     assert entry.runtime_data.api_key == "sk-test"
     assert entry.runtime_data.base_url is None
+    assert entry.runtime_data.mcp_servers == [
+        {
+            CONF_NAME: "Filesystem MCP",
+            CONF_MCP_URL: "https://mcp.example.com/mcp",
+        }
+    ]
     probe_model.assert_has_awaits(
         [
             call(hass, entry.data, "gpt-test", {}),
@@ -114,6 +140,55 @@ async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
         ]
     )
     assert probe_model.await_count == 2
+
+
+async def test_setup_registers_mcp_response_services(hass: HomeAssistant) -> None:
+    """Test async setup registers MCP discovery response services."""
+    assert await async_setup(hass, {})
+
+    assert hass.services.has_service(DOMAIN, SERVICE_LIST_MCP_TOOLS)
+    assert hass.services.has_service(DOMAIN, SERVICE_REFRESH_MCP_TOOLS)
+
+
+async def test_refresh_mcp_tools_service_returns_discovered_tools(
+    hass: HomeAssistant,
+) -> None:
+    """Test refresh_mcp_tools returns tools for a configured MCP server."""
+    entry = _entry((_mcp_server_subentry(),))
+    entry.add_to_hass(hass)
+    subentry = next(iter(entry.subentries.values()))
+    await async_setup(hass, {})
+    tools = [
+        {
+            "server_id": subentry.subentry_id,
+            "name": "list_files",
+            "schema_hash": "abc123",
+        }
+    ]
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_refresh_mcp_tools",
+        new_callable=AsyncMock,
+        return_value=tools,
+    ) as refresh_tools:
+        response = await hass.services.async_call(
+            DOMAIN,
+            SERVICE_REFRESH_MCP_TOOLS,
+            {
+                "config_entry_id": entry.entry_id,
+                "mcp_server_id": subentry.subentry_id,
+            },
+            blocking=True,
+            return_response=True,
+        )
+
+    assert response == {
+        "success": True,
+        "servers": {subentry.subentry_id: tools},
+        "tools": tools,
+        "errors": [],
+    }
+    refresh_tools.assert_awaited_once_with(hass, entry, subentry.subentry_id)
 
 
 async def test_setup_entry_validates_ai_task_selected_output_mode(

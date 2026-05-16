@@ -65,6 +65,28 @@ async def chat_log_content_to_model_messages(
     return messages
 
 
+def split_last_user_prompt(
+    messages: list[ModelMessage],
+) -> tuple[str | Sequence[Any] | None, list[ModelMessage]]:
+    """Split the latest user prompt from message history for Agent runs."""
+    for index in range(len(messages) - 1, -1, -1):
+        message = messages[index]
+        if not isinstance(message, ModelRequest):
+            continue
+        for part_index in range(len(message.parts) - 1, -1, -1):
+            part = message.parts[part_index]
+            if not isinstance(part, UserPromptPart):
+                continue
+            before_parts = list(message.parts[:part_index])
+            after_parts = list(message.parts[part_index + 1 :])
+            history = list(messages[:index])
+            if before_parts or after_parts:
+                history.append(ModelRequest(parts=before_parts + after_parts))
+            history.extend(messages[index + 1 :])
+            return part.content, history
+    return None, messages
+
+
 async def _user_prompt_content_from_ha_content(
     hass: HomeAssistant, content: conversation.UserContent
 ) -> str | Sequence[Any]:

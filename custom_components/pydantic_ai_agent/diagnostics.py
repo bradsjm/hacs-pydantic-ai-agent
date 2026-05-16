@@ -9,6 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.redact import async_redact_data
 
 from .const import CONF_BASE_URL, CONF_MODEL, CONF_MODEL_SETTINGS, CONF_PROMPT
+from .const import CONF_MCP_HEADERS, CONF_MCP_URL
+from .mcp import redact_mcp_url_password
 
 _SENSITIVE_KEYS = {
     CONF_API_KEY,
@@ -17,6 +19,7 @@ _SENSITIVE_KEYS = {
     "authorization",
     "cookie",
     "extra_headers",
+    CONF_MCP_HEADERS,
     "password",
     "secret",
     "token",
@@ -43,7 +46,22 @@ def _redaction_keys(data: object) -> set[object]:
 
 def _redact(data: dict[str, Any]) -> dict[str, Any]:
     """Return diagnostics data with sensitive fields redacted."""
-    return async_redact_data(data, _redaction_keys(data))
+    redacted = async_redact_data(data, _redaction_keys(data))
+    _redact_mcp_urls(redacted)
+    return redacted
+
+
+def _redact_mcp_urls(data: object) -> None:
+    """Redact MCP URL passwords in-place without modifying query parameters."""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key == CONF_MCP_URL and isinstance(value, str):
+                data[key] = redact_mcp_url_password(value)
+            else:
+                _redact_mcp_urls(value)
+    elif isinstance(data, list):
+        for item in data:
+            _redact_mcp_urls(item)
 
 
 async def async_get_config_entry_diagnostics(

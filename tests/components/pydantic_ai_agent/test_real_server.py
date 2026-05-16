@@ -5,6 +5,7 @@ import asyncio
 import os
 from pathlib import Path
 import socket
+from typing import Any
 from urllib.parse import urlparse
 
 import pytest
@@ -16,6 +17,8 @@ from pydantic_ai import (
     PartStartEvent,
     TextPart,
     TextPartDelta,
+    ToolCallPart,
+    ToolReturnPart,
 )
 from pydantic_ai.direct import model_request_stream
 from pydantic_ai.settings import ModelSettings
@@ -34,9 +37,13 @@ from custom_components.pydantic_ai_agent.config_flow import (
     ProviderValidationError,
     async_probe_model,
 )
+from custom_components.pydantic_ai_agent import entity as agent_entity_module
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_SERVER_IDS,
+    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_PROVIDER_MODE,
@@ -45,6 +52,7 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
 )
 from custom_components.pydantic_ai_agent.provider import openai_chat_model_from_config
 
@@ -58,7 +66,11 @@ _AI_TASK_SENTINEL = "PAI_E2E_AI_TASK_OK"
 _AI_TASK_STRUCTURED_SENTINEL = "PAI_E2E_AI_TASK_STRUCTURED_OK"
 _STREAM_SENTINEL = "PAI_E2E_STREAM_OK"
 _TOOL_SENTINEL = "PAI_E2E_TOOL_OK"
+_MCP_SENTINEL = "PAI_E2E_MCP_TOOL_OK"
 _TEST_LLM_API_ID = "pydantic-ai-agent-real-test"
+_MCP_ECHO_SERVER_ID = "pydantic_ai_agent_real_mcp_echo"
+_MCP_ECHO_URL_ENV = "MCP_ECHO_SERVER_URL"
+_MCP_ECHO_URL = "https://mcpplaygroundonline.com/mcp-echo-server"
 _REAL_SERVER_TIMEOUT = 60.0
 _STRUCTURED_OUTPUT_SKIP_REASONS = {"invalid_model", "invalid_provider_config"}
 
@@ -129,13 +141,23 @@ def fixture_real_server() -> RealServerConfig:
     )
 
 
+@pytest.fixture(name="mcp_echo_url")
+def fixture_mcp_echo_url() -> str:
+    """Return the hosted MCP echo server URL for real-server tests."""
+    file_values = _load_dotenv_values(_ENV_FILE)
+    return os.environ.get(
+        _MCP_ECHO_URL_ENV, file_values.get(_MCP_ECHO_URL_ENV, _MCP_ECHO_URL)
+    )
+
+
 @pytest.fixture(autouse=True)
 def enable_real_network(
     real_server: RealServerConfig,
+    mcp_echo_url: str,
     socket_enabled: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Allow real-server tests to resolve configured provider hostnames."""
+    """Allow real-server tests to resolve configured provider and MCP hostnames."""
     del socket_enabled
     monkeypatch.setattr(
         socket,
@@ -145,8 +167,11 @@ def enable_real_network(
     host = urlparse(real_server.base_url).hostname
     if host is None:
         pytest.skip("OPENAI_BASE_URL must include a hostname for real-server tests")
+    mcp_host = urlparse(mcp_echo_url).hostname
+    if mcp_host is None:
+        pytest.skip(f"{_MCP_ECHO_URL_ENV} must include a hostname")
     pytest_socket.socket_allow_hosts(
-        ["localhost", "127.0.0.1", "::1", host], allow_unix_socket=True
+        ["localhost", "127.0.0.1", "::1", host, mcp_host], allow_unix_socket=True
     )
 
 
@@ -217,7 +242,9 @@ class _EchoAPI(llm.API):
 
 
 def _conversation_subentry(
-    real_server: RealServerConfig, llm_hass_api: list[str] | None = None
+    real_server: RealServerConfig,
+    llm_hass_api: list[str] | None = None,
+    mcp_server_ids: list[str] | None = None,
 ) -> dict[str, object]:
     """Return a real-server conversation subentry."""
     data: dict[str, object] = {
@@ -227,6 +254,8 @@ def _conversation_subentry(
     }
     if llm_hass_api is not None:
         data[CONF_LLM_HASS_API] = llm_hass_api
+    if mcp_server_ids is not None:
+        data[CONF_MCP_SERVER_IDS] = mcp_server_ids
 
     return {
         "data": data,
@@ -246,16 +275,43 @@ def _ai_task_subentry(real_server: RealServerConfig) -> dict[str, object]:
     }
 
 
+def _mcp_ai_task_subentry(real_server: RealServerConfig) -> dict[str, object]:
+    """Return a real-server AI task subentry with MCP echo access."""
+    return {
+        "data": {
+            CONF_MODEL: real_server.model,
+            CONF_MCP_SERVER_IDS: [_MCP_ECHO_SERVER_ID],
+        },
+        "subentry_type": SUBENTRY_TYPE_AI_TASK,
+        "title": "Real MCP AI Task",
+        "unique_id": None,
+    }
+
+
+def _mcp_echo_subentry(mcp_echo_url: str) -> dict[str, object]:
+    """Return a hosted MCP echo server subentry."""
+    return {
+        "data": {
+            CONF_MCP_URL: mcp_echo_url,
+            CONF_MCP_ALLOWED_TOOLS: ["echo"],
+        },
+        "subentry_id": _MCP_ECHO_SERVER_ID,
+        "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+        "title": "Hosted MCP Echo",
+        "unique_id": None,
+    }
+
+
 def _entry(
-    real_server: RealServerConfig, subentry: dict[str, object]
+    real_server: RealServerConfig, *subentries: dict[str, object]
 ) -> MockConfigEntry:
-    """Return a config entry for a single real-server subentry."""
+    """Return a config entry for real-server subentries."""
     return MockConfigEntry(
         domain=DOMAIN,
         title="Real OpenAI-compatible Provider",
         data=real_server.provider_data,
         source=config_entries.SOURCE_USER,
-        subentries_data=(subentry,),
+        subentries_data=subentries,
         options={},
         unique_id=None,
     )
@@ -280,11 +336,16 @@ async def _conversation_entity_id(
     hass: HomeAssistant,
     real_server: RealServerConfig,
     llm_hass_api: list[str] | None = None,
+    mcp_echo_url: str | None = None,
 ) -> str:
     """Set up a real conversation agent and return its entity ID."""
+    mcp_server_ids = [_MCP_ECHO_SERVER_ID] if mcp_echo_url is not None else None
+    subentries = [_conversation_subentry(real_server, llm_hass_api, mcp_server_ids)]
+    if mcp_echo_url is not None:
+        subentries.append(_mcp_echo_subentry(mcp_echo_url))
     await _setup_entry(
         hass,
-        _entry(real_server, _conversation_subentry(real_server, llm_hass_api)),
+        _entry(real_server, *subentries),
     )
     entity_ids = [
         state.entity_id
@@ -301,6 +362,33 @@ async def _ai_task_entity_id(hass: HomeAssistant, real_server: RealServerConfig)
     entity_ids = [state.entity_id for state in hass.states.async_all("ai_task")]
     assert len(entity_ids) == 1
     return entity_ids[0]
+
+
+async def _mcp_ai_task_entity_id(
+    hass: HomeAssistant, real_server: RealServerConfig, mcp_echo_url: str
+) -> str:
+    """Set up a real AI task entity with hosted MCP echo access."""
+    await _setup_entry(
+        hass,
+        _entry(
+            real_server,
+            _mcp_ai_task_subentry(real_server),
+            _mcp_echo_subentry(mcp_echo_url),
+        ),
+    )
+    entity_ids = [state.entity_id for state in hass.states.async_all("ai_task")]
+    assert len(entity_ids) == 1
+    return entity_ids[0]
+
+
+def _tool_part_names(messages: list[object]) -> list[str]:
+    """Return tool call and return names from Pydantic AI messages."""
+    names: list[str] = []
+    for message in messages:
+        for part in getattr(message, "parts", ()):
+            if isinstance(part, ToolCallPart | ToolReturnPart):
+                names.append(part.tool_name)
+    return names
 
 
 def _append_text_event(text_parts: list[str], event: object) -> None:
@@ -409,6 +497,53 @@ async def test_real_server_conversation_uses_ha_llm_tool(
     assert _TOOL_SENTINEL in speech
 
 
+async def test_real_server_conversation_uses_hosted_mcp_echo_tool(
+    hass: HomeAssistant,
+    real_server: RealServerConfig,
+    mcp_echo_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test a real provider can call a hosted MCP echo tool through Agent."""
+    captured_messages: list[object] = []
+    original_append = agent_entity_module._append_agent_messages
+
+    async def capture_agent_messages(
+        chat_log: Any,
+        agent_id: str,
+        messages: list[Any],
+        output_tool_names: set[str] | None = None,
+    ) -> None:
+        captured_messages.extend(messages)
+        await original_append(chat_log, agent_id, messages, output_tool_names)
+
+    monkeypatch.setattr(
+        agent_entity_module,
+        "_append_agent_messages",
+        capture_agent_messages,
+    )
+    entity_id = await _conversation_entity_id(
+        hass,
+        real_server,
+        mcp_echo_url=mcp_echo_url,
+    )
+
+    result = await conversation.async_converse(
+        hass,
+        (
+            "Use the available MCP echo tool with message "
+            f"{_MCP_SENTINEL}. Reply with exactly the tool result. "
+            "Do not answer without calling the MCP tool."
+        ),
+        None,
+        Context(),
+        agent_id=entity_id,
+    )
+
+    await _drain_stream_cleanup(hass)
+    assert any(name.endswith("echo") for name in _tool_part_names(captured_messages))
+    assert _MCP_SENTINEL in result.response.speech["plain"]["speech"]
+
+
 async def test_real_server_ai_task_plain_generation(
     hass: HomeAssistant, real_server: RealServerConfig
 ) -> None:
@@ -448,3 +583,49 @@ async def test_real_server_ai_task_structured_generation(
     await _drain_stream_cleanup(hass)
     assert isinstance(result.data, dict)
     assert result.data["result"] == _AI_TASK_STRUCTURED_SENTINEL
+
+
+async def test_real_server_ai_task_uses_hosted_mcp_echo_tool(
+    hass: HomeAssistant,
+    real_server: RealServerConfig,
+    mcp_echo_url: str,
+    tool_structured_output: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test a real AI task can call a hosted MCP echo tool through Agent."""
+    del tool_structured_output
+    captured_messages: list[object] = []
+    original_append = agent_entity_module._append_agent_messages
+
+    async def capture_agent_messages(
+        chat_log: Any,
+        agent_id: str,
+        messages: list[Any],
+        output_tool_names: set[str] | None = None,
+    ) -> None:
+        captured_messages.extend(messages)
+        await original_append(chat_log, agent_id, messages, output_tool_names)
+
+    monkeypatch.setattr(
+        agent_entity_module,
+        "_append_agent_messages",
+        capture_agent_messages,
+    )
+    entity_id = await _mcp_ai_task_entity_id(hass, real_server, mcp_echo_url)
+
+    result = await ai_task.async_generate_data(
+        hass,
+        task_name="Real MCP structured task",
+        entity_id=entity_id,
+        instructions=(
+            "Use the available MCP echo tool with message "
+            f"{_MCP_SENTINEL}. Generate data where result is exactly the tool result. "
+            "Do not generate the result without calling the MCP tool."
+        ),
+        structure=vol.Schema({vol.Required("result"): str}),
+    )
+
+    await _drain_stream_cleanup(hass)
+    assert any(name.endswith("echo") for name in _tool_part_names(captured_messages))
+    assert isinstance(result.data, dict)
+    assert result.data["result"] == _MCP_SENTINEL

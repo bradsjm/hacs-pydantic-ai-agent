@@ -9,6 +9,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
+    CONF_MCP_HEADERS,
+    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_PROMPT,
@@ -16,6 +18,7 @@ from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
 )
 from custom_components.pydantic_ai_agent.diagnostics import (
     async_get_config_entry_diagnostics,
@@ -53,6 +56,19 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
                 "title": "Kitchen Agent",
                 "unique_id": None,
             },
+            {
+                "data": {
+                    CONF_NAME: "Filesystem MCP",
+                    CONF_MCP_URL: "https://user:pass@mcp.example.com/mcp?token=visible",
+                    CONF_MCP_HEADERS: {
+                        "Authorization": "Bearer mcp-secret",
+                        "X-API-Key": "nested-secret",
+                    },
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Filesystem MCP",
+                "unique_id": None,
+            },
         ),
         options={},
         unique_id=None,
@@ -69,3 +85,9 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
     assert subentry_data[CONF_MODEL_SETTINGS]["extra_headers"] == REDACTED
     assert subentry_data[CONF_MODEL_SETTINGS]["extra_body"]["api_key"] == REDACTED
     assert diagnostics["subentries"][0]["ha_tools_enabled"] is True
+    mcp_data = diagnostics["subentries"][1]["data"]
+    assert (
+        mcp_data[CONF_MCP_URL]
+        == "https://user:**REDACTED**@mcp.example.com/mcp?token=visible"
+    )
+    assert mcp_data[CONF_MCP_HEADERS] == REDACTED

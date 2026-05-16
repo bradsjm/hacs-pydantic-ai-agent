@@ -1,18 +1,19 @@
 """Pydantic AI Agent integration."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, CONF_NAME, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
     ConfigEntryNotReady,
 )
+import voluptuous as vol
 
 from .config_flow import ProviderValidationError, async_probe_model
 from .const import (
@@ -21,8 +22,15 @@ from .const import (
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
+    DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+)
+from .mcp import (
+    MCPValidationError,
+    async_refresh_mcp_tools,
+    cached_mcp_tools,
+    mcp_subentries,
 )
 from .repairs import (
     async_create_model_validation_issue,
@@ -44,6 +52,17 @@ _RECONFIGURABLE_MODEL_FAILURE_REASONS = {
 _MODEL_VALIDATION_OUTPUT_MODE_KEY = "_pydantic_ai_agent_output_mode"
 
 PLATFORMS: tuple[Platform, ...] = (Platform.CONVERSATION, Platform.AI_TASK)
+SERVICE_LIST_MCP_TOOLS = "list_mcp_tools"
+SERVICE_REFRESH_MCP_TOOLS = "refresh_mcp_tools"
+ATTR_CONFIG_ENTRY_ID = "config_entry_id"
+ATTR_MCP_SERVER_ID = "mcp_server_id"
+
+_MCP_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_CONFIG_ENTRY_ID): str,
+        vol.Optional(ATTR_MCP_SERVER_ID): str,
+    }
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -54,9 +73,38 @@ class PydanticAIAgentRuntimeData:
     name: str
     api_key: str
     base_url: str | None
+    mcp_servers: list[dict[str, Any]] = field(default_factory=list)
 
 
 type PydanticAIAgentConfigEntry = ConfigEntry[PydanticAIAgentRuntimeData]
+
+
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+    """Set up integration-wide MCP discovery services."""
+
+    async def async_list_mcp_tools(call: ServiceCall) -> dict[str, Any]:
+        """Return cached MCP tools, discovering them if needed."""
+        return await _async_mcp_tools_service(hass, call, refresh=False)
+
+    async def async_refresh_mcp_tools(call: ServiceCall) -> dict[str, Any]:
+        """Refresh and return MCP tools."""
+        return await _async_mcp_tools_service(hass, call, refresh=True)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_LIST_MCP_TOOLS,
+        async_list_mcp_tools,
+        schema=_MCP_SERVICE_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REFRESH_MCP_TOOLS,
+        async_refresh_mcp_tools,
+        schema=_MCP_SERVICE_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    return True
 
 
 async def async_setup_entry(
@@ -70,6 +118,10 @@ async def async_setup_entry(
         name=entry.data[CONF_NAME],
         api_key=entry.data[CONF_API_KEY],
         base_url=entry.data.get(CONF_BASE_URL),
+        mcp_servers=[
+            {CONF_NAME: subentry.title, **dict(subentry.data)}
+            for subentry in mcp_subentries(entry)
+        ],
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -89,6 +141,80 @@ async def async_update_entry(
 ) -> None:
     """Reload the entry after config entry or subentry updates."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+def _mcp_error_response(err: MCPValidationError) -> dict[str, Any]:
+    """Return a response-service error payload for an expected MCP failure."""
+    return {
+        "reason": err.reason,
+        "message": err.message,
+        "action": "Check the MCP server configuration and try again.",
+        "status_code": err.status_code,
+        "server_id": err.server_id,
+        "tool_name": err.tool_name,
+    }
+
+
+def _config_entry_for_service(
+    hass: HomeAssistant, entry_id: str
+) -> PydanticAIAgentConfigEntry:
+    """Return a config entry for an MCP response service."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None or entry.domain != DOMAIN:
+        raise MCPValidationError(
+            "config_entry_not_found",
+            "Pydantic AI Agent config entry was not found.",
+        )
+    return entry
+
+
+def _mcp_service_subentry_ids(
+    entry: PydanticAIAgentConfigEntry, requested_id: str | None
+) -> list[str]:
+    """Return target MCP subentry IDs for a response service call."""
+    if requested_id is not None:
+        return [requested_id]
+    return [subentry.subentry_id for subentry in mcp_subentries(entry)]
+
+
+async def _async_mcp_tools_service(
+    hass: HomeAssistant,
+    call: ServiceCall,
+    *,
+    refresh: bool,
+) -> dict[str, Any]:
+    """List or refresh MCP tools for one config entry."""
+    errors: list[dict[str, Any]] = []
+    tools_by_server: dict[str, list[dict[str, Any]]] = {}
+    try:
+        entry = _config_entry_for_service(hass, call.data[ATTR_CONFIG_ENTRY_ID])
+        subentry_ids = _mcp_service_subentry_ids(
+            entry, call.data.get(ATTR_MCP_SERVER_ID)
+        )
+        if not subentry_ids:
+            return {"success": True, "servers": {}, "tools": []}
+        for subentry_id in subentry_ids:
+            try:
+                tools = None if refresh else cached_mcp_tools(hass, entry, subentry_id)
+                if tools is None:
+                    tools = await async_refresh_mcp_tools(hass, entry, subentry_id)
+                tools_by_server[subentry_id] = tools
+            except MCPValidationError as err:
+                _LOGGER.warning(
+                    "MCP tool discovery failed: reason=%s server_id=%s",
+                    err.reason,
+                    err.server_id,
+                )
+                errors.append(_mcp_error_response(err))
+    except MCPValidationError as err:
+        errors.append(_mcp_error_response(err))
+    flat_tools = [tool for tools in tools_by_server.values() for tool in tools]
+    return {
+        "success": not errors,
+        "servers": tools_by_server,
+        "tools": flat_tools,
+        "errors": errors,
+    }
 
 
 def _normalise_model_settings(settings: Mapping[str, Any]) -> str:
@@ -155,9 +281,7 @@ async def _async_validate_configured_models(
         model_settings,
         output_mode,
     ) in _configured_subentry_models(entry):
-        repair_settings = _repair_issue_model_settings(
-            model_settings, output_mode
-        )
+        repair_settings = _repair_issue_model_settings(model_settings, output_mode)
         current_issue_ids.add(model_validation_issue_id(entry, model, repair_settings))
         try:
             if output_mode is None:

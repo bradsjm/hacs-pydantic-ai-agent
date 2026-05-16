@@ -26,11 +26,15 @@ from custom_components.pydantic_ai_agent.config_flow import (
     _conversation_schema,
     _format_api_error,
     _map_http_error,
+    _mcp_url_identity,
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_HEADERS,
+    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
@@ -45,9 +49,15 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
 )
 from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
+)
+from custom_components.pydantic_ai_agent.mcp import (
+    MCPValidationError,
+    async_validate_mcp_url,
+    redact_mcp_url_password,
 )
 
 
@@ -353,7 +363,10 @@ async def test_probe_model_can_require_native_structured_output(
         "model_request_parameters"
     ]
     assert request_parameters.output_mode == "native"
-    assert request_parameters.output_object.name == "pydantic_ai_agent_output_probe_response"
+    assert (
+        request_parameters.output_object.name
+        == "pydantic_ai_agent_output_probe_response"
+    )
     assert request_parameters.output_object.json_schema["required"] == ["ok"]
 
 
@@ -419,7 +432,10 @@ async def test_probe_model_can_require_tool_structured_output(
     ]
     assert request_parameters.output_mode == "tool"
     assert request_parameters.allow_text_output is False
-    assert request_parameters.output_tools[0].name == "pydantic_ai_agent_output_probe_response"
+    assert (
+        request_parameters.output_tools[0].name
+        == "pydantic_ai_agent_output_probe_response"
+    )
     assert request_parameters.output_tools[0].kind == "output"
 
 
@@ -478,7 +494,10 @@ async def test_probe_model_can_require_prompted_structured_output(
         "model_request_parameters"
     ]
     assert request_parameters.output_mode == "prompted"
-    assert request_parameters.output_object.name == "pydantic_ai_agent_output_probe_response"
+    assert (
+        request_parameters.output_object.name
+        == "pydantic_ai_agent_output_probe_response"
+    )
 
 
 async def test_probe_model_rejects_invalid_native_structured_output(
@@ -989,6 +1008,190 @@ async def test_create_ai_task_data_subentry(
     )
 
 
+async def test_create_mcp_server_subentry(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test adding a remote MCP server subentry."""
+    entry = await _loaded_entry(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.async_validate_mcp_url",
+            new_callable=AsyncMock,
+            return_value="https://8.8.8.8/mcp",
+        ) as validate_url,
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
+            new_callable=AsyncMock,
+            return_value=[{"name": "read_file"}],
+        ) as discover_tools,
+    ):
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Filesystem MCP",
+                CONF_MCP_URL: "https://8.8.8.8/mcp",
+                CONF_MCP_HEADERS: '{"Authorization": "Bearer token"}',
+                CONF_MCP_ALLOWED_TOOLS: "read_file, list_files",
+            },
+        )
+
+    validate_url.assert_awaited_once_with(hass, "https://8.8.8.8/mcp")
+    discover_tools.assert_awaited_once()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Filesystem MCP"
+    assert result["data"] == {
+        CONF_NAME: "Filesystem MCP",
+        CONF_MCP_URL: "https://8.8.8.8/mcp",
+        CONF_MCP_HEADERS: {"Authorization": "Bearer token"},
+        CONF_MCP_ALLOWED_TOOLS: ["list_files", "read_file"],
+    }
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_create_mcp_server_subentry_allows_local_http_url(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test MCP server subentries allow local HTTP endpoints."""
+    entry = await _loaded_entry(hass)
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
+        new_callable=AsyncMock,
+        return_value=[{"name": "local_tool"}],
+    ) as discover_tools:
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Local MCP",
+                CONF_MCP_URL: "http://localhost:8080/mcp?token=plain",
+                CONF_MCP_ALLOWED_TOOLS: "local_tool",
+            },
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_MCP_URL] == "http://localhost:8080/mcp?token=plain"
+    discover_tools.assert_awaited_once()
+    mock_probe_model.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("url", "reason"),
+    [
+        ("http://user:pass@mcp.example.com/mcp", "invalid_mcp_url"),
+        ("https://mcp.example.com/mcp#fragment", "invalid_mcp_url"),
+    ],
+)
+async def test_create_mcp_server_subentry_rejects_invalid_urls(
+    hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
+    url: str,
+    reason: str,
+) -> None:
+    """Test MCP server URLs reject invalid transport-sensitive URL shapes."""
+    entry = await _loaded_entry(hass)
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {CONF_NAME: "Credential MCP", CONF_MCP_URL: url},
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_MCP_URL: reason}
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_validate_mcp_url_accepts_local_lan_and_https_userinfo(
+    hass: HomeAssistant,
+) -> None:
+    """Test MCP URL validation accepts HA-local endpoints and HTTPS userinfo."""
+
+    assert (
+        await async_validate_mcp_url(hass, "http://living-room-mcp.local:8080/mcp")
+        == "http://living-room-mcp.local:8080/mcp"
+    )
+    assert (
+        await async_validate_mcp_url(hass, "https://user:pass@192.168.1.10/mcp?a=1")
+        == "https://user:pass@192.168.1.10/mcp?a=1"
+    )
+
+
+def test_redact_mcp_url_password_only() -> None:
+    """Test MCP URL redaction only redacts userinfo passwords."""
+    assert (
+        redact_mcp_url_password("https://user:pass@mcp.example.com/mcp?token=secret")
+        == "https://user:**REDACTED**@mcp.example.com/mcp?token=secret"
+    )
+    assert (
+        redact_mcp_url_password("https://mcp.example.com/mcp?token=secret")
+        == "https://mcp.example.com/mcp?token=secret"
+    )
+    assert (
+        redact_mcp_url_password("https://alice%40example.com:p%40ss@mcp.example/mcp")
+        == "https://alice%40example.com:**REDACTED**@mcp.example/mcp"
+    )
+
+
+def test_mcp_url_identity_includes_https_userinfo() -> None:
+    """Test duplicate MCP URL checks allow distinct HTTPS URL credentials."""
+    assert _mcp_url_identity("https://alice:one@mcp.example.com/mcp") != (
+        _mcp_url_identity("https://bob:two@mcp.example.com/mcp")
+    )
+    assert _mcp_url_identity("https://alice:one@mcp.example.com/mcp?a=1&b=2") == (
+        _mcp_url_identity("https://alice:one@mcp.example.com:443/mcp?b=2&a=1")
+    )
+
+
+async def test_create_mcp_server_subentry_validates_endpoint(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test MCP server subentry creation validates the remote MCP endpoint."""
+    entry = await _loaded_entry(hass)
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.async_validate_mcp_url",
+            new_callable=AsyncMock,
+            return_value="https://mcp.example.com/mcp",
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
+            new_callable=AsyncMock,
+            side_effect=MCPValidationError(
+                "cannot_connect", "Could not connect to the MCP server."
+            ),
+        ) as discover_tools,
+    ):
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+    discover_tools.assert_awaited_once()
+    mock_probe_model.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "output_mode",
     [OUTPUT_MODE_TOOL, OUTPUT_MODE_NATIVE, OUTPUT_MODE_PROMPTED],
@@ -1245,7 +1448,7 @@ async def test_reconfigure_ai_task_data_subentry(
 
 @pytest.mark.parametrize(
     "subentry_type",
-    [SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK],
+    [SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK, SUBENTRY_TYPE_MCP_SERVER],
 )
 async def test_subentry_flow_aborts_when_entry_not_loaded(
     hass: HomeAssistant,

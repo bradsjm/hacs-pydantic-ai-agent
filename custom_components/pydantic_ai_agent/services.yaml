@@ -1,0 +1,22 @@
+list_mcp_tools:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: pydantic_ai_agent
+    mcp_server_id:
+      required: false
+      selector:
+        text:
+refresh_mcp_tools:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: pydantic_ai_agent
+    mcp_server_id:
+      required: false
+      selector:
+        text:

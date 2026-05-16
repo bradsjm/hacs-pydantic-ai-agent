@@ -83,9 +83,11 @@
           "description": "Choose the model for Home Assistant AI task data generation. Structured output defaults to tool output.",
           "data": {
             "model": "Model",
+            "mcp_server_ids": "MCP servers",
             "configure_advanced_model_settings": "Configure advanced structured output"
           },
           "data_description": {
+            "mcp_server_ids": "Optional MCP servers this AI task model may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
             "configure_advanced_model_settings": "Open a second step to choose how Pydantic AI asks the model for structured data."
           }
         },
@@ -105,6 +107,8 @@
         "invalid_auth": "{error_message}",
         "invalid_base_url": "{error_message}",
         "invalid_model": "{error_message}",
+        "mcp_server_not_found": "Selected MCP server was not found.",
+        "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
         "model_does_not_support_streaming": "{error_message}",
         "invalid_provider_config": "{error_message}",
         "permission_denied": "{error_message}",
@@ -133,6 +137,7 @@
             "model": "Model",
             "prompt": "Instructions",
             "llm_hass_api": "Control Home Assistant",
+            "mcp_server_ids": "MCP servers",
             "temperature": "Temperature",
             "thinking": "Thinking",
             "configure_advanced_model_settings": "Configure advanced model settings"
@@ -140,6 +145,7 @@
           "data_description": {
             "prompt": "Instruct how the LLM should respond. This can be a template.",
             "llm_hass_api": "Select which tools the model can use to interact with your devices and entities.",
+            "mcp_server_ids": "Optional MCP servers this Assist agent may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
             "temperature": "Controls response randomness. Leave empty to use the provider or model default.",
             "thinking": "Optional reasoning effort or boolean thinking control. Provider and model support varies.",
             "configure_advanced_model_settings": "Open a second step for token limits, sampling, timeout, tool-call behavior, seed, penalties, and JSON overrides."
@@ -177,6 +183,8 @@
         "invalid_auth": "{error_message}",
         "invalid_base_url": "{error_message}",
         "invalid_model": "{error_message}",
+        "mcp_server_not_found": "Selected MCP server was not found.",
+        "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
         "model_does_not_support_streaming": "{error_message}",
         "invalid_provider_config": "{error_message}",
         "permission_denied": "{error_message}",
@@ -194,6 +202,76 @@
       "abort": {
         "entry_not_loaded": "The provider connection is not loaded.",
         "reconfigure_successful": "Assist agent configuration updated."
+      }
+    },
+    "mcp_server": {
+      "entry_type": "MCP server",
+      "initiate_flow": {
+        "reconfigure": "Reconfigure MCP server",
+        "user": "Add MCP server"
+      },
+      "step": {
+        "init": {
+          "title": "Configure MCP server",
+          "description": "Add a remote Streamable HTTP MCP server. Stdio/local command servers are not supported by this integration.",
+          "data": {
+            "name": "Server name",
+            "mcp_url": "MCP server URL",
+            "mcp_headers": "HTTP headers",
+            "mcp_allowed_tools": "Allowed tools"
+          },
+          "data_description": {
+            "mcp_url": "HTTP or HTTPS URL for the remote Streamable HTTP MCP endpoint. Local, LAN, mDNS, and public hosts are supported. HTTPS is recommended when using headers or sensitive tool data.",
+            "mcp_headers": "Optional JSON object of string HTTP headers. Values are redacted in diagnostics.",
+            "mcp_allowed_tools": "Optional comma-separated allowlist. Leave empty to discover all tools, then narrow this list before enabling runtime use."
+          }
+        }
+      },
+      "error": {
+        "cannot_connect": "{error_message}",
+        "invalid_auth": "{error_message}",
+        "invalid_mcp_headers": "Enter a JSON object with string header names and string values.",
+        "invalid_mcp_tools": "Enter comma-separated tool names.",
+        "invalid_mcp_url": "{error_message}",
+        "mcp_tools_not_allowlisted": "This MCP server is selected by an agent or AI task. Keep at least one allowed tool before runtime use.",
+        "no_mcp_tools": "{error_message}",
+        "timeout": "{error_message}",
+        "unknown": "Unexpected error while validating the MCP server. Check Home Assistant logs for details."
+      },
+      "abort": {
+        "already_configured": "This MCP server URL is already configured.",
+        "entry_not_loaded": "The provider connection is not loaded.",
+        "reconfigure_successful": "MCP server configuration updated."
+      }
+    }
+  },
+  "services": {
+    "list_mcp_tools": {
+      "name": "List MCP tools",
+      "description": "List cached MCP tools for a configured server, discovering them if no cache exists.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry",
+          "description": "Pydantic AI Agent provider config entry."
+        },
+        "mcp_server_id": {
+          "name": "MCP server ID",
+          "description": "Optional MCP server subentry ID. If omitted, all configured MCP servers are listed."
+        }
+      }
+    },
+    "refresh_mcp_tools": {
+      "name": "Refresh MCP tools",
+      "description": "Reconnect to configured MCP servers and refresh their tool catalogs.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry",
+          "description": "Pydantic AI Agent provider config entry."
+        },
+        "mcp_server_id": {
+          "name": "MCP server ID",
+          "description": "Optional MCP server subentry ID. If omitted, all configured MCP servers are refreshed."
+        }
       }
     }
   },
