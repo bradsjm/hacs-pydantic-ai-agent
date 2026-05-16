@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import AsyncIterable, Mapping
 from dataclasses import dataclass
 import errno
 import json
@@ -11,9 +11,24 @@ import socket
 import ssl
 from typing import Any
 
-from pydantic_ai import ModelRequest
+from pydantic_ai import (
+    ModelRequest,
+    PartDeltaEvent,
+    PartEndEvent,
+    PartStartEvent,
+    TextPart,
+    TextPartDelta,
+)
+from pydantic_ai.messages import ModelResponseStreamEvent
 from pydantic_ai.direct import model_request_stream
-from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError, UserError
+from pydantic_ai.exceptions import (
+    ModelAPIError,
+    ModelHTTPError,
+    UnexpectedModelBehavior,
+    UserError,
+)
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.output import OutputObjectDefinition
 from pydantic_ai.settings import ModelSettings
 import voluptuous as vol
 
@@ -29,7 +44,6 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import llm
-from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers.redact import async_redact_data
 from homeassistant.helpers.selector import (
     BooleanSelector,
@@ -66,6 +80,7 @@ from .const import (
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
+from .provider import normalise_base_url, openai_chat_model_from_config
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -131,6 +146,12 @@ _ADVANCED_MODEL_SETTING_KEYS = {
     _MODEL_SETTING_EXTRA_BODY,
 }
 _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "xhigh")
+_STRUCTURED_PROBE_SCHEMA = {
+    "type": "object",
+    "properties": {"ok": {"type": "boolean"}},
+    "required": ["ok"],
+    "additionalProperties": False,
+}
 
 
 @dataclass(slots=True)
@@ -164,10 +185,7 @@ def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
 
 def _normalise_base_url(data: Mapping[str, Any]) -> str | None:
     """Return a normalized base URL if one is configured."""
-    base_url = data.get(CONF_BASE_URL)
-    if not base_url:
-        return None
-    return str(base_url).rstrip("/")
+    return normalise_base_url(data.get(CONF_BASE_URL))
 
 
 def _dedupe_data(data: Mapping[str, Any]) -> dict[str, Any]:
@@ -189,28 +207,42 @@ async def _validate_configured_models_for_provider_update(
     skip_reconfigurable_model_errors: bool,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Validate provider updates with configured models when possible."""
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, str, bool]] = set()
     for subentry in entry.subentries.values():
-        if subentry.subentry_type != SUBENTRY_TYPE_CONVERSATION:
+        if subentry.subentry_type not in (
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        ):
             continue
         if not (model := subentry.data.get(CONF_MODEL)):
             continue
-        settings = subentry.data.get(CONF_MODEL_SETTINGS)
-        model_settings = dict(settings) if isinstance(settings, Mapping) else {}
+        require_native_structured_output = (
+            subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
+        )
+        if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
+            settings = subentry.data.get(CONF_MODEL_SETTINGS)
+            model_settings = dict(settings) if isinstance(settings, Mapping) else {}
+        else:
+            model_settings = {}
         dedupe_key = (
             model,
             json.dumps(model_settings, sort_keys=True, separators=(",", ":")),
+            require_native_structured_output,
         )
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
         try:
-            await async_probe_model(
-                hass,
-                data,
-                model,
-                model_settings,
-            )
+            if require_native_structured_output:
+                await async_probe_model(
+                    hass,
+                    data,
+                    model,
+                    model_settings,
+                    require_native_structured_output=True,
+                )
+            else:
+                await async_probe_model(hass, data, model, model_settings)
         except ProviderValidationError as err:
             _log_provider_validation_failure(step=step, model_name=model, err=err)
             if (
@@ -388,15 +420,7 @@ def _openai_chat_model(
     hass: HomeAssistant, data: Mapping[str, Any], model_name: str
 ) -> Any:
     """Build a Pydantic AI OpenAI chat model for provider validation."""
-    from pydantic_ai.models.openai import OpenAIChatModel
-    from pydantic_ai.providers.openai import OpenAIProvider
-
-    provider = OpenAIProvider(
-        api_key=data[CONF_API_KEY],
-        base_url=_normalise_base_url(data),
-        http_client=get_async_client(hass),
-    )
-    return OpenAIChatModel(model_name, provider=provider)
+    return openai_chat_model_from_config(hass, data, model_name)
 
 
 async def async_probe_model(
@@ -404,6 +428,8 @@ async def async_probe_model(
     data: Mapping[str, Any],
     model_name: str,
     model_settings: Mapping[str, Any] | None = None,
+    *,
+    require_native_structured_output: bool = False,
 ) -> None:
     """Validate provider credentials and model access with a minimal stream."""
     provider_mode = data[CONF_PROVIDER_MODE]
@@ -417,17 +443,39 @@ async def async_probe_model(
         settings = dict(model_settings or {})
         settings.setdefault(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT)
         model = _openai_chat_model(hass, data, model_name)
+        model_request_parameters = None
+        if require_native_structured_output:
+            model_request_parameters = ModelRequestParameters(
+                output_mode="native",
+                output_object=OutputObjectDefinition(
+                    json_schema=_STRUCTURED_PROBE_SCHEMA,
+                    name="probe_response",
+                    strict=True,
+                ),
+            )
         messages = [
             ModelRequest.user_text_prompt(
-                'Reply with exactly "OK". No explanation.',
-                instructions="Reply only with OK.",
+                (
+                    'Reply with exactly "OK". No explanation.'
+                    if not require_native_structured_output
+                    else 'Reply with JSON where "ok" is true.'
+                ),
+                instructions=(
+                    "Reply only with OK."
+                    if not require_native_structured_output
+                    else "Reply only with JSON matching the requested schema."
+                ),
             )
         ]
         async with model_request_stream(
             model,
             messages,
             model_settings=ModelSettings(**settings),
+            model_request_parameters=model_request_parameters,
         ) as stream:
+            if require_native_structured_output:
+                await _validate_structured_probe_stream(stream)
+                return
             async for _event in stream:
                 return
         raise ProviderValidationError(
@@ -441,10 +489,47 @@ async def async_probe_model(
         raise ProviderValidationError(
             "model_does_not_support_streaming", str(err)
         ) from err
+    except UnexpectedModelBehavior as err:
+        raise ProviderValidationError("provider_error", str(err)) from err
     except TimeoutError as err:
         raise ProviderValidationError("timeout", "Request timed out.") from err
     except (ImportError, UserError) as err:
         raise ProviderValidationError("invalid_provider_config", str(err)) from err
+
+
+async def _validate_structured_probe_stream(
+    stream: AsyncIterable[ModelResponseStreamEvent],
+) -> None:
+    """Validate that native structured-output probing returns schema data."""
+    text_parts: list[str] = []
+    async for event in stream:
+        if isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
+            text_parts.append(event.part.content)
+        elif isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
+            text_parts.append(event.delta.content_delta)
+        elif (
+            isinstance(event, PartEndEvent)
+            and isinstance(event.part, TextPart)
+            and not text_parts
+        ):
+            text_parts.append(event.part.content)
+
+    if not text_parts:
+        raise ProviderValidationError(
+            "provider_error", "The provider returned an empty structured response."
+        )
+    try:
+        data = json.loads("".join(text_parts))
+    except json.JSONDecodeError as err:
+        raise ProviderValidationError(
+            "invalid_provider_config",
+            "The provider did not return valid native structured output.",
+        ) from err
+    if not isinstance(data, Mapping) or data.get("ok") is not True:
+        raise ProviderValidationError(
+            "invalid_provider_config",
+            "The provider returned native structured output that did not match the schema.",
+        )
 
 
 def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
@@ -1196,7 +1281,12 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
         if user_input is not None:
             data = dict(user_input)
             try:
-                await async_probe_model(self.hass, entry.data, data[CONF_MODEL])
+                await async_probe_model(
+                    self.hass,
+                    entry.data,
+                    data[CONF_MODEL],
+                    require_native_structured_output=True,
+                )
             except ProviderValidationError as err:
                 _log_provider_validation_failure(
                     step="AI task subentry", model_name=data[CONF_MODEL], err=err

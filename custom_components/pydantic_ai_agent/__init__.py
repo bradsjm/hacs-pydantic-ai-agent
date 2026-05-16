@@ -20,6 +20,7 @@ from .const import (
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_PROVIDER_MODE,
+    SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
 from .repairs import (
@@ -38,8 +39,10 @@ _RECONFIGURABLE_MODEL_FAILURE_REASONS = {
     "model_does_not_support_streaming",
     "permission_denied",
 }
+_MODEL_VALIDATION_MODE_KEY = "_pydantic_ai_agent_validation"
+_MODEL_VALIDATION_NATIVE_STRUCTURED_OUTPUT = "native_structured_output"
 
-PLATFORMS: tuple[Platform, ...] = (Platform.CONVERSATION,)
+PLATFORMS: tuple[Platform, ...] = (Platform.CONVERSATION, Platform.AI_TASK)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -94,23 +97,47 @@ def _normalise_model_settings(settings: Mapping[str, Any]) -> str:
 
 def _configured_subentry_models(
     entry: PydanticAIAgentConfigEntry,
-) -> list[tuple[str, dict[str, Any]]]:
+) -> list[tuple[str, dict[str, Any], bool]]:
     """Return configured subentry models and settings, deduped in storage order."""
-    models: list[tuple[str, dict[str, Any]]] = []
-    seen: set[tuple[str, str]] = set()
+    models: list[tuple[str, dict[str, Any], bool]] = []
+    seen: set[tuple[str, str, bool]] = set()
     for subentry in entry.subentries.values():
-        if subentry.subentry_type != SUBENTRY_TYPE_CONVERSATION:
+        if subentry.subentry_type not in (
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        ):
             continue
         if not (model := subentry.data.get(CONF_MODEL)):
             continue
-        settings = subentry.data.get(CONF_MODEL_SETTINGS)
-        model_settings = dict(settings) if isinstance(settings, Mapping) else {}
-        dedupe_key = (model, _normalise_model_settings(model_settings))
+        if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
+            settings = subentry.data.get(CONF_MODEL_SETTINGS)
+            model_settings = dict(settings) if isinstance(settings, Mapping) else {}
+            require_native_structured_output = False
+        else:
+            model_settings = {}
+            require_native_structured_output = True
+        dedupe_key = (
+            model,
+            _normalise_model_settings(model_settings),
+            require_native_structured_output,
+        )
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
-        models.append((model, model_settings))
+        models.append((model, model_settings, require_native_structured_output))
     return models
+
+
+def _repair_issue_model_settings(
+    model_settings: Mapping[str, Any], require_native_structured_output: bool
+) -> dict[str, Any]:
+    """Return model settings key material for setup validation repair issues."""
+    if not require_native_structured_output:
+        return dict(model_settings)
+    return {
+        **model_settings,
+        _MODEL_VALIDATION_MODE_KEY: _MODEL_VALIDATION_NATIVE_STRUCTURED_OUTPUT,
+    }
 
 
 async def _async_validate_configured_models(
@@ -118,10 +145,24 @@ async def _async_validate_configured_models(
 ) -> None:
     """Validate configured models before marking an entry loaded."""
     current_issue_ids: set[str] = set()
-    for model, model_settings in _configured_subentry_models(entry):
-        current_issue_ids.add(model_validation_issue_id(entry, model, model_settings))
+    for model, model_settings, require_native_structured_output in (
+        _configured_subentry_models(entry)
+    ):
+        repair_settings = _repair_issue_model_settings(
+            model_settings, require_native_structured_output
+        )
+        current_issue_ids.add(model_validation_issue_id(entry, model, repair_settings))
         try:
-            await async_probe_model(hass, entry.data, model, model_settings)
+            if require_native_structured_output:
+                await async_probe_model(
+                    hass,
+                    entry.data,
+                    model,
+                    model_settings,
+                    require_native_structured_output=True,
+                )
+            else:
+                await async_probe_model(hass, entry.data, model, model_settings)
         except ProviderValidationError as err:
             _LOGGER.warning(
                 'Provider validation failed during setup for model "%s": '
@@ -134,9 +175,9 @@ async def _async_validate_configured_models(
                 raise ConfigEntryAuthFailed(err.message) from err
             if err.reason in _RECONFIGURABLE_MODEL_FAILURE_REASONS:
                 async_create_model_validation_issue(
-                    hass, entry, model, model_settings, err
+                    hass, entry, model, repair_settings, err
                 )
                 continue
             raise ConfigEntryNotReady(err.message) from err
-        async_delete_model_validation_issue(hass, entry, model, model_settings)
+        async_delete_model_validation_issue(hass, entry, model, repair_settings)
     async_delete_stale_model_validation_issues(hass, entry, current_issue_ids)

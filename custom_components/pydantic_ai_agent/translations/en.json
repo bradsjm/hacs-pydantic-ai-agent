@@ -80,7 +80,7 @@
       "step": {
         "init": {
           "title": "Configure AI task",
-          "description": "Choose the model to use for Home Assistant AI task data generation. Runtime AI task entities are not enabled yet.",
+          "description": "Choose a model that supports native structured output for Home Assistant AI task data generation.",
           "data": {
             "model": "Model"
           }

@@ -6,12 +6,17 @@ from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_LLM_HASS_API, MATCH_ALL
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, intent
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.util import ulid
 
 from . import PydanticAIAgentConfigEntry
-from .const import CONF_AGENT_NAME, CONF_MODEL, DOMAIN, SUBENTRY_TYPE_CONVERSATION
+from .const import (
+    CONF_AGENT_NAME,
+    CONF_MODEL,
+    CONF_PROMPT,
+    DOMAIN,
+    SUBENTRY_TYPE_CONVERSATION,
+)
+from .entity import PydanticAIBaseLLMEntity
 
 
 async def async_setup_entry(
@@ -29,27 +34,20 @@ async def async_setup_entry(
         )
 
 
-class PydanticAIConversationEntity(conversation.ConversationEntity):
+class PydanticAIConversationEntity(
+    PydanticAIBaseLLMEntity, conversation.ConversationEntity
+):
     """Pydantic AI conversation agent foundation."""
 
     _attr_has_entity_name = True
     _attr_name = None
-    _attr_supports_streaming = False
+    _attr_supports_streaming = True
 
     def __init__(
         self, entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
     ) -> None:
         """Initialize the conversation entity."""
-        self.entry = entry
-        self.subentry = subentry
-        self._attr_unique_id = subentry.subentry_id
-        self._attr_device_info = dr.DeviceInfo(
-            identifiers={(DOMAIN, subentry.subentry_id)},
-            name=subentry.data[CONF_AGENT_NAME],
-            manufacturer="Pydantic AI",
-            model=subentry.data[CONF_MODEL],
-            entry_type=dr.DeviceEntryType.SERVICE,
-        )
+        super().__init__(entry, subentry, name=subentry.data[CONF_AGENT_NAME])
         if subentry.data.get(CONF_LLM_HASS_API):
             self._attr_supported_features = (
                 conversation.ConversationEntityFeature.CONTROL
@@ -70,15 +68,21 @@ class PydanticAIConversationEntity(conversation.ConversationEntity):
             "ha_llm_api": self.subentry.data.get(CONF_LLM_HASS_API),
         }
 
-    async def async_process(
-        self, user_input: conversation.ConversationInput
+    async def _async_handle_message(
+        self,
+        user_input: conversation.ConversationInput,
+        chat_log: conversation.ChatLog,
     ) -> conversation.ConversationResult:
-        """Process user input with a foundation placeholder response."""
-        response = intent.IntentResponse(language=user_input.language)
-        response.async_set_speech(
-            "Pydantic AI Agent is configured, but provider chat runtime is not implemented yet."
-        )
-        return conversation.ConversationResult(
-            response=response,
-            conversation_id=user_input.conversation_id or ulid.ulid_now(),
-        )
+        """Process user input with Pydantic AI direct model streaming."""
+        try:
+            await chat_log.async_provide_llm_data(
+                user_input.as_llm_context(DOMAIN),
+                self.subentry.data.get(CONF_LLM_HASS_API),
+                self.subentry.data.get(CONF_PROMPT),
+                user_input.extra_system_prompt,
+            )
+        except conversation.ConverseError as err:
+            return err.as_conversation_result()
+
+        await self._async_handle_chat_log(chat_log)
+        return conversation.async_get_result_from_chat_log(user_input, chat_log)
