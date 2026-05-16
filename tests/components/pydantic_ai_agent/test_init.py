@@ -89,7 +89,7 @@ async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
     assert entry.runtime_data.name == "Hosted OpenAI"
     assert entry.runtime_data.api_key == "sk-test"
     assert entry.runtime_data.base_url is None
-    assert probe_model.await_count == 2
+    probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
 
 
 async def test_setup_entry_validates_each_subentry_model_settings(

@@ -20,6 +20,7 @@ from .const import (
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_PROVIDER_MODE,
+    SUBENTRY_TYPE_CONVERSATION,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -92,6 +93,8 @@ def _configured_subentry_models(
     models: list[tuple[str, dict[str, Any]]] = []
     seen: set[tuple[str, str]] = set()
     for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_CONVERSATION:
+            continue
         if not (model := subentry.data.get(CONF_MODEL)):
             continue
         settings = subentry.data.get(CONF_MODEL_SETTINGS)

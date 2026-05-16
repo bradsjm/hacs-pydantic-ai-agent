@@ -191,6 +191,8 @@ async def _validate_configured_models_for_provider_update(
     """Validate provider updates with configured models when possible."""
     seen: set[tuple[str, str]] = set()
     for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_CONVERSATION:
+            continue
         if not (model := subentry.data.get(CONF_MODEL)):
             continue
         settings = subentry.data.get(CONF_MODEL_SETTINGS)

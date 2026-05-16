@@ -1449,18 +1449,9 @@ async def test_reauth_replaces_provider_data_and_preserves_model(
                 "old-model",
                 {},
             ),
-            call(
-                hass,
-                {
-                    CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI,
-                    CONF_API_KEY: "new-key",
-                },
-                "task-model",
-                {},
-            ),
         ]
     )
+    assert mock_probe_model.await_count == 1
 
 
 async def test_reauth_validates_each_subentry_model_settings(
@@ -1593,10 +1584,9 @@ async def test_reauth_validation_error_stays_on_form(
         unique_id=None,
     )
     entry.add_to_hass(hass)
-    mock_probe_model.side_effect = [
-        None,
-        ProviderValidationError("invalid_auth", "The provider rejected the API key."),
-    ]
+    mock_probe_model.side_effect = ProviderValidationError(
+        "invalid_auth", "The provider rejected the API key."
+    )
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -1631,18 +1621,9 @@ async def test_reauth_validation_error_stays_on_form(
                 "old-model",
                 {},
             ),
-            call(
-                hass,
-                {
-                    CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI,
-                    CONF_API_KEY: "bad-key",
-                },
-                "task-model",
-                {},
-            ),
         ]
     )
+    assert mock_probe_model.await_count == 1
 
 
 async def test_reauth_model_validation_error_still_updates_provider_data(
