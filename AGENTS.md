@@ -14,9 +14,26 @@
 - For config entries, subentries, translations, diagnostics, repairs, entities, and tests, prefer current Home Assistant core examples and Platinum/Gold integrations over memory or generic Python patterns.
 - If adding Home Assistant service actions, define the schema/strings and register handlers in `async_setup()`, not `async_setup_entry()`.
 - Provider credentials belong on the parent config entry; per-agent settings belong in `conversation` config subentries. Do not introduce global singleton agents or shared conversation memory across entries.
+- Store per-entry runtime objects, caches, clients, and discovered data on typed `entry.runtime_data`. Use `hass.data[DOMAIN]` only for intentional integration process-global state that cannot belong to one config entry, such as Logfire's process-global configuration.
 - Keep HACS/Core metadata current when behavior changes: `manifest.json`, `hacs.json`, translations, diagnostics, repairs, and README status should not drift from source.
 - Always use Home Assistant-native and Pydantic AI helpers where available instead of custom code workarounds especially for async or network related activities.
 - Always plan to work within the Home Assistant and Pydantic AI ecosystem instead of around it.
+- For network clients, start with HA helper-managed configuration and lifecycle (`get_async_client`, `async_get_clientsession`, HA SSL context, HA cleanup hooks). If a third-party library must own a per-session client, wrap the HA helper configuration in the smallest closeable adapter and test that the library's context manager closes it.
+- Use HA lifecycle helpers for background work and cleanup (`hass.async_create_task`, `entry.async_create_background_task`, `entry.async_on_unload`, executor jobs for blocking file I/O). Do not create ad-hoc event loops, orphan tasks, or unmanaged client/session globals.
+- Keep Logfire and other process-global integrations explicit and HA-owned. Do not add module-level mutable globals or `threading.Lock` state for Home Assistant runtime coordination.
+- Use public Pydantic AI APIs only. For HA LLM tool conversion use documented surfaces such as `Tool.from_schema`; do not import private modules such as `pydantic_ai._*`.
+- Classify provider and network failures with typed exceptions (`ModelHTTPError`, `ModelAPIError`, `httpx` errors, `OSError.errno`, `ssl.SSLError`, etc.). Do not branch on exception class-name strings or localized message text.
+- Use `hass.config.path(...)` for Home Assistant config-relative paths and then enforce the integration's containment rules. For skills, all configured folders must stay under `/config/skills`.
+- Do not keep production code, tests, or docs for streaming paths unless streaming is actually wired into runtime behavior.
+
+## MCP Server Rules
+
+- MCP support is remote Streamable HTTP only. Do not add stdio, SSE, local command, or arbitrary process execution MCP support unless explicitly requested and designed through HA lifecycle/security patterns.
+- MCP server URLs must not contain username, password, or other URL userinfo. Reject URL credentials during validation; authentication belongs in configured HTTP headers.
+- Treat persisted or stale MCP URLs as sensitive. Redact the full `mcp_url` value in diagnostics and logs rather than trying to preserve part of the URL.
+- If older stored MCP subentries contain invalid URLs, skip them during duplicate checks and surface controlled validation errors when the user edits or uses that server. Do not let stale invalid data crash unrelated config flows.
+- MCP tool discovery caches are scoped to the provider config entry through `entry.runtime_data.mcp_tool_cache`; do not reintroduce domain-global MCP caches in `hass.data`.
+- Runtime MCP tools must be explicitly allowlisted per server before they are exposed to an agent.
 
 ## Commands
 
