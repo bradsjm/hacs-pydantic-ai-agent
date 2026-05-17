@@ -993,10 +993,10 @@ custom_components/pydantic_ai_agent/
 - `requirements`: pinned or constrained Pydantic AI dependencies compatible with
   the target Home Assistant dependency constraints. For Home Assistant 2026.5.1,
   executable dependencies include `pydantic-ai-slim[openai,mcp]==1.97.0`,
-  `fastmcp==3.3.1`, `logfire==4.33.0`, and
-  `pydantic-ai-skills==0.10.0` in both `pyproject.toml` and `manifest.json`.
-  These supply the OpenAI-compatible provider path, remote MCP support, optional
-  Logfire tracing, and local skill capabilities.
+  `logfire==4.33.0`, and `pydantic-ai-skills==0.10.0` in both
+  `pyproject.toml` and `manifest.json`. These supply the OpenAI-compatible
+  provider path, remote MCP support, FastMCP client support through Pydantic AI's
+  `mcp` extra, optional Logfire tracing, and local skill capabilities.
 - `documentation`: repository documentation URL once known.
 - `issue_tracker`: repository issue URL once known.
 - `codeowners`: repository owner(s) once known.

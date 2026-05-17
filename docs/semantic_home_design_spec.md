@@ -69,8 +69,8 @@ Verified current behavior:
 - MCP server authentication is represented by configured HTTP headers. MCP URLs
   with username/password userinfo are invalid, and diagnostics redact the full
   `mcp_url` value to protect stale persisted data.
-- Current package dependencies include `fastmcp==3.3.1` and
-  `pydantic-ai-slim[openai,mcp]==1.97.0`.
+- Current package dependencies include `pydantic-ai-slim[openai,mcp]==1.97.0`.
+  FastMCP client support is supplied transitively by Pydantic AI's `mcp` extra.
 
 ## Real Home Data Used For Design
 

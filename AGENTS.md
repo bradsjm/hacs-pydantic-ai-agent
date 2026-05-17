@@ -4,7 +4,7 @@
 
 - This is the `pydantic_ai_agent` Home Assistant custom integration, distributed through HACS from `custom_components/pydantic_ai_agent`.
 - Treat `docs/pydantic_ai_agent_spec.md` as the product/architecture direction, not proof that a feature is implemented. Verify against source before documenting or relying on behavior.
-- Runtime dependencies are pinned in both `pyproject.toml` and `manifest.json`: `pydantic-ai-slim[openai,mcp]==1.97.0`, `fastmcp==3.3.1`, `logfire==4.33.0`, and `pydantic-ai-skills==0.10.0`; use `OpenAIChatModel`/`OpenAIProvider`, not deprecated aliases.
+- Runtime dependencies are pinned in both `pyproject.toml` and `manifest.json`: `pydantic-ai-slim[openai,mcp]==1.97.0`, `logfire==4.33.0`, and `pydantic-ai-skills==0.10.0`; use `OpenAIChatModel`/`OpenAIProvider`, not deprecated aliases. FastMCP client support is provided transitively by Pydantic AI's `mcp` extra; do not add a separate full `fastmcp` dependency unless source changes prove it is required.
 
 ## Home Assistant Patterns
 
