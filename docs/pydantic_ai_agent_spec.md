@@ -752,7 +752,9 @@ settings, Home Assistant LLM API tools, selected remote MCP toolsets, selected
 WebFetch capability, selected skills capabilities, automatic sliding-window
 context management, `max_concurrency=1`, `tool_retries=0`, and
 `output_retries=2`. Runtime bounds are enforced with Pydantic AI
-`UsageLimits(request_limit=max_iterations)`.
+`UsageLimits(request_limit=max_iterations)`. Model profiles may set an optional
+`max_iterations` override; otherwise conversation requests default to 10 and AI
+task requests default to 30.
 
 Home Assistant `ChatLog` remains the canonical conversation history for each
 conversation turn. The integration converts ChatLog content into Pydantic AI

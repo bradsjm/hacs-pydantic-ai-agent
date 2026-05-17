@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from homeassistant import config_entries
 from homeassistant.components import conversation
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME, __version__
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import Entity
@@ -22,13 +22,16 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
+    CONF_MAX_ITERATIONS,
     CONF_MODEL,
+    CONF_MODEL_SETTINGS,
     CONF_MODEL_SUBENTRY_ID,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_WEB_FETCH_ENABLED,
     DEFAULT_SKILLS_FOLDER,
     DOMAIN,
+    OUTPUT_MODE_TOOL,
     PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MODEL,
@@ -61,10 +64,22 @@ class _TextStream:
             raise StopAsyncIteration from err
 
 
+class _Usage:
+    """Minimal Pydantic AI usage test double."""
+
+    def opentelemetry_attributes(self) -> dict[str, int]:
+        """Return deterministic token usage attributes."""
+        return {
+            "gen_ai.usage.input_tokens": 10,
+            "gen_ai.usage.output_tokens": 2,
+        }
+
+
 class _StreamResult:
     """Minimal Agent streamed result for conversation tests."""
 
     output = "runtime response"
+    usage = _Usage()
 
     def stream_text(self, *, delta: bool = False) -> _TextStream:
         """Return streamed text chunks."""
@@ -83,6 +98,10 @@ class _StreamResult:
 class _Agent:
     """Minimal async-context Agent test double."""
 
+    def __init__(self) -> None:
+        """Initialize recorded run state."""
+        self.run_kwargs: dict[str, object] = {}
+
     async def __aenter__(self) -> "_Agent":
         """Enter the agent context."""
         return self
@@ -97,8 +116,9 @@ class _Agent:
         """Return a deterministic streamed result."""
         yield _StreamResult()
 
-    async def run(self, *_args: object, **_kwargs: object) -> _StreamResult:
+    async def run(self, *_args: object, **kwargs: object) -> _StreamResult:
         """Return a deterministic run result."""
+        self.run_kwargs = kwargs
         return _StreamResult()
 
 
@@ -107,6 +127,7 @@ def _entry(
     skills: list[str] | None = None,
     *,
     web_fetch_enabled: bool = False,
+    model_settings: dict[str, object] | None = None,
 ) -> MockConfigEntry:
     """Return a config entry with one conversation subentry."""
     subentry_data: dict[str, object] = {
@@ -119,6 +140,13 @@ def _entry(
         subentry_data[CONF_SKILLS] = skills
     if web_fetch_enabled:
         subentry_data[CONF_WEB_FETCH_ENABLED] = True
+
+    model_subentry_data: dict[str, object] = {
+        CONF_NAME: "Fast GPT",
+        CONF_MODEL: "gpt-test",
+    }
+    if model_settings is not None:
+        model_subentry_data[CONF_MODEL_SETTINGS] = model_settings
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -138,7 +166,7 @@ def _entry(
             },
             {
                 "subentry_id": "model_profile_1",
-                "data": {CONF_NAME: "Fast GPT", CONF_MODEL: "gpt-test"},
+                "data": model_subentry_data,
                 "subentry_type": SUBENTRY_TYPE_MODEL,
                 "title": "Fast GPT",
                 "unique_id": None,
@@ -228,11 +256,28 @@ def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigE
 class _Span:
     """Synchronous context manager returned by the Logfire span mock."""
 
+    def __init__(self) -> None:
+        """Initialize recorded attributes."""
+        self.attributes: dict[str, int] = {}
+
     def __enter__(self) -> None:
         """Enter the mocked span."""
 
     def __exit__(self, *_args: object) -> None:
         """Exit the mocked span."""
+
+    def set_attributes(self, attributes: dict[str, int]) -> None:
+        """Record attributes set on the mocked span."""
+        self.attributes.update(attributes)
+
+
+class _FailingSetAttributesSpan(_Span):
+    """Span that fails when usage attributes are copied."""
+
+    def set_attributes(self, attributes: dict[str, int]) -> None:
+        """Raise while setting attributes."""
+        del attributes
+        raise RuntimeError("set attributes failed")
 
 
 def _assert_context_management_capability(capabilities: list[object]) -> None:
@@ -375,6 +420,88 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     assert chat_model.call_args.args[2].model_name == "gpt-kitchen"
     assert agent_class.call_args.kwargs["output_type"] is str
     _assert_context_management_capability(agent_class.call_args.kwargs["capabilities"])
+
+
+async def test_conversation_runtime_uses_configured_max_iterations(
+    hass: HomeAssistant,
+) -> None:
+    """Test conversation runs use the model profile iteration limit."""
+    entry = _entry(None, model_settings={CONF_MAX_ITERATIONS: 24})
+    entry.add_to_hass(hass)
+    agent = _Agent()
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ),
+    ):
+        await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert getattr(agent.run_kwargs["usage_limits"], "request_limit") == 24
+
+
+async def test_conversation_runtime_defaults_max_iterations(
+    hass: HomeAssistant,
+) -> None:
+    """Test conversation runs keep the default iteration limit when unset."""
+    entry = _entry(None)
+    entry.add_to_hass(hass)
+    agent = _Agent()
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ),
+    ):
+        await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert getattr(agent.run_kwargs["usage_limits"], "request_limit") == 10
 
 
 async def test_conversation_runtime_passes_selected_skills_capabilities(
@@ -527,12 +654,69 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
     span.assert_called_once()
     assert span.call_args.args == ("Run Pydantic AI agent",)
     assert span.call_args.kwargs["ha.domain"] == DOMAIN
+    assert span.call_args.kwargs["ha.version"] == __version__
     assert span.call_args.kwargs["ha.entry_id"] == entry.entry_id
     assert span.call_args.kwargs["ha.subentry_title"] == "Kitchen Agent"
     assert span.call_args.kwargs["ha.model"] == "gpt-kitchen"
+    assert span.call_args.kwargs["ha.structured_output_mode"] == OUTPUT_MODE_TOOL
+    assert "ha.output_mode" not in span.call_args.kwargs
     assert span.call_args.kwargs["ha.entity_id"] == kitchen_entity_id
     assert span.call_args.kwargs["ha.conversation_id"] == "conversation-test"
     assert span.call_args.kwargs["ha.logfire_include_content"] is True
+    assert span.return_value.attributes == {
+        "gen_ai.usage.input_tokens": 10,
+        "gen_ai.usage.output_tokens": 2,
+    }
+
+
+async def test_conversation_logfire_usage_failures_do_not_block_agent_run(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test optional wrapper usage attributes do not block provider responses."""
+    monkeypatch.setitem(
+        sys.modules,
+        "logfire",
+        SimpleNamespace(
+            configure=Mock(),
+            instrument_pydantic_ai=Mock(),
+            span=Mock(return_value=_FailingSetAttributesSpan()),
+        ),
+    )
+    entry = _entry_with_conversation_subentries(logfire=True)
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id.endswith("kitchen_agent")
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=_Agent(),
+        ),
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            "conversation-test",
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert result.response.speech["plain"]["speech"] == "runtime response"
 
 
 async def test_conversation_logfire_failures_do_not_block_agent_run(

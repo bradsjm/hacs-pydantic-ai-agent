@@ -73,6 +73,7 @@ from .const import (
     CONF_FALLBACK_MODEL_SUBENTRY_IDS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
+    CONF_MAX_ITERATIONS,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
     CONF_MCP_SERVER_IDS,
@@ -155,6 +156,7 @@ _HTTP_STATUS_LABELS = {
 }
 
 _MODEL_SETTING_MAX_TOKENS = "max_tokens"
+_MODEL_SETTING_MAX_ITERATIONS = CONF_MAX_ITERATIONS
 _MODEL_SETTING_TEMPERATURE = "temperature"
 _MODEL_SETTING_TOP_P = "top_p"
 _MODEL_SETTING_TIMEOUT = "timeout"
@@ -185,6 +187,7 @@ _MAIN_MODEL_SETTING_KEYS = {
 }
 _ADVANCED_MODEL_SETTING_KEYS = {
     _MODEL_SETTING_MAX_TOKENS,
+    _MODEL_SETTING_MAX_ITERATIONS,
     _MODEL_SETTING_TOP_P,
     _MODEL_SETTING_TIMEOUT,
     _MODEL_SETTING_PARALLEL_TOOL_CALLS,
@@ -375,9 +378,11 @@ def _configured_model_probes(
             return
         settings = profile.data.get(CONF_MODEL_SETTINGS)
         model_settings = dict(settings) if isinstance(settings, Mapping) else {}
+        provider_settings = dict(model_settings)
+        provider_settings.pop(_MODEL_SETTING_MAX_ITERATIONS, None)
         dedupe_key = (
             model,
-            json.dumps(model_settings, sort_keys=True, separators=(",", ":")),
+            json.dumps(provider_settings, sort_keys=True, separators=(",", ":")),
             output_mode,
         )
         if dedupe_key in seen:
@@ -600,6 +605,7 @@ async def async_probe_model(
     """Probe model access with the same streaming path used at runtime."""
     try:
         settings = dict(model_settings or {})
+        settings.pop(_MODEL_SETTING_MAX_ITERATIONS, None)
         settings.setdefault(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT)
         model = _openai_compatible_chat_model(hass, data, model_name)
         model_request_parameters = None
@@ -1139,6 +1145,14 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
             ),
             vol.Optional(
+                _MODEL_SETTING_MAX_ITERATIONS,
+                description={
+                    "suggested_value": model_settings.get(_MODEL_SETTING_MAX_ITERATIONS)
+                },
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
+            ),
+            vol.Optional(
                 _MODEL_SETTING_TOP_P,
                 description={
                     "suggested_value": model_settings.get(_MODEL_SETTING_TOP_P)
@@ -1322,7 +1336,7 @@ def _parse_model_settings(
             cleared.add(key)
             continue
         try:
-            if key == _MODEL_SETTING_MAX_TOKENS:
+            if key in {_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_MAX_ITERATIONS}:
                 settings[key] = _parse_positive_int_setting(value)
             elif key == _MODEL_SETTING_SEED:
                 settings[key] = _parse_non_negative_int_setting(value)
@@ -1352,7 +1366,11 @@ def _model_setting_error(key: str, detail: str) -> str:
     """Return a translation key for a model setting validation error."""
     if detail in {"invalid_json", "invalid_key_value", "duplicate_key"}:
         return detail
-    if key in {_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_SEED}:
+    if key in {
+        _MODEL_SETTING_MAX_TOKENS,
+        _MODEL_SETTING_MAX_ITERATIONS,
+        _MODEL_SETTING_SEED,
+    }:
         return "invalid_integer"
     if key == _MODEL_SETTING_TIMEOUT:
         return "positive_number"

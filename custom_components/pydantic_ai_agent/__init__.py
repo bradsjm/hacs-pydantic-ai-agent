@@ -20,6 +20,7 @@ from .const import (
     CONF_BASE_URL,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_FALLBACK_MODEL_SUBENTRY_IDS,
+    CONF_MAX_ITERATIONS,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_MODEL_SUBENTRY_ID,
@@ -249,7 +250,9 @@ async def _async_mcp_tools_service(
 
 def _normalise_model_settings(settings: Mapping[str, Any]) -> str:
     """Return a stable representation of model settings for de-duplication."""
-    return json.dumps(settings, sort_keys=True, separators=(",", ":"))
+    provider_settings = dict(settings)
+    provider_settings.pop(CONF_MAX_ITERATIONS, None)
+    return json.dumps(provider_settings, sort_keys=True, separators=(",", ":"))
 
 
 def _configured_subentry_models(

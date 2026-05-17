@@ -11,6 +11,7 @@ from pydantic_ai.settings import ModelSettings
 
 from .const import (
     CONF_FALLBACK_MODEL_SUBENTRY_IDS,
+    CONF_MAX_ITERATIONS,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_MODEL_SUBENTRY_ID,
@@ -79,8 +80,17 @@ def model_profile_chain(
 def model_settings(profile: ModelProfile) -> ModelSettings:
     """Return Pydantic AI model settings for one profile."""
     settings = dict(profile.model_settings)
+    settings.pop(CONF_MAX_ITERATIONS, None)
     settings.setdefault("timeout", DEFAULT_TIMEOUT)
     return ModelSettings(**settings)
+
+
+def max_iterations(profile: ModelProfile, default: int) -> int:
+    """Return the configured agent iteration limit for one profile."""
+    value = profile.model_settings.get(CONF_MAX_ITERATIONS)
+    if type(value) is int and value > 0:
+        return value
+    return default
 
 
 def model_display_names(profiles: list[ModelProfile]) -> list[str]:

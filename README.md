@@ -82,8 +82,9 @@ Conversation agents support:
 - Optional Web fetch URL content fetching. Web fetch is disabled by default and
   can be enabled without selecting any MCP servers.
 - Optional local skill selection from the configured skills folder.
-- Optional model settings including temperature, thinking, max tokens, top P,
-  timeout, parallel tool calls, seed, penalties, and extra body fields.
+- Optional model settings including temperature, thinking, max tokens, max
+  iterations, top P, timeout, parallel tool calls, seed, penalties, and extra body
+  fields.
 - Optional provider HTTP headers configured on the provider entry and used for
   model discovery and model requests.
 - Automatic hidden context trimming for very long conversations. Stored Assist
@@ -109,6 +110,8 @@ and can be changed to native or prompted output in the advanced AI task settings
 Each AI task can also enable Web fetch independently of MCP server selection.
 AI task requests use the same automatic model-request context trimming as
 conversation agents, including active-run preservation.
+AI tasks default to 30 agent request iterations unless the selected language model
+profile sets a max iterations override.
 
 ### MCP Servers
 

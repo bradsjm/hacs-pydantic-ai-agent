@@ -46,6 +46,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
+    CONF_MAX_ITERATIONS,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
     CONF_MCP_SERVER_IDS,
@@ -697,7 +698,7 @@ async def test_probe_model_merges_configured_model_settings(
             hass,
             data,
             "gpt-test",
-            {"temperature": 0.7, "timeout": 30.0},
+            {"temperature": 0.7, "timeout": 30.0, CONF_MAX_ITERATIONS: 20},
         )
 
     assert model_request_stream.call_args.kwargs["model_settings"] == {
@@ -1399,6 +1400,7 @@ async def test_create_model_profile_with_advanced_model_settings(
         result["flow_id"],
         {
             "max_tokens": 1024,
+            CONF_MAX_ITERATIONS: 25,
             "top_p": 0.9,
             "timeout": 30.0,
             "parallel_tool_calls": True,
@@ -1413,6 +1415,7 @@ async def test_create_model_profile_with_advanced_model_settings(
         "temperature": 0.4,
         "thinking": True,
         "max_tokens": 1024,
+        CONF_MAX_ITERATIONS: 25,
         "top_p": 0.9,
         "timeout": 30.0,
         "parallel_tool_calls": True,
@@ -1436,6 +1439,8 @@ async def test_create_model_profile_with_advanced_model_settings(
     ("advanced_input", "expected_errors"),
     [
         ({"max_tokens": 0}, {"max_tokens": "invalid_integer"}),
+        ({CONF_MAX_ITERATIONS: 0}, {CONF_MAX_ITERATIONS: "invalid_integer"}),
+        ({CONF_MAX_ITERATIONS: "1.5"}, {CONF_MAX_ITERATIONS: "invalid_integer"}),
         ({"timeout": -1}, {"timeout": "positive_number"}),
         ({"extra_body": "missing-separator"}, {"extra_body": "invalid_key_value"}),
         ({"extra_body": "foo: not-json"}, {"extra_body": "invalid_json"}),

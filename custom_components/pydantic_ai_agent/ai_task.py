@@ -86,7 +86,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
             chat_log,
             structure_name=task.name,
             structure=task.structure,
-            max_iterations=1000,
+            max_iterations=30,
         )
 
         # After all tool calls resolve, ChatLog's final assistant message carries

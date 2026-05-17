@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 import logging
 from typing import Any
@@ -10,7 +10,7 @@ from typing import Any
 from pydantic_ai import Agent
 
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
-from homeassistant.const import CONF_LLM_HASS_API
+from homeassistant.const import CONF_LLM_HASS_API, __version__
 from homeassistant.core import HomeAssistant
 
 from .const import (
@@ -156,11 +156,10 @@ def agent_run_span(
     entity_id: str,
     conversation_id: str | None,
     model_name: str,
-) -> Iterator[None]:
+) -> Iterator[Any | None]:
     """Wrap one Pydantic AI run with safe Home Assistant trace metadata."""
     if not logfire_active_for_entry(hass, entry):
-        with nullcontext():
-            yield
+        yield None
         return
 
     try:
@@ -178,7 +177,7 @@ def agent_run_span(
             "Failed to start Logfire span for Pydantic AI Agent entry %s",
             entry.entry_id,
         )
-        yield
+        yield None
         return
 
     exc_info: tuple[type[BaseException] | None, BaseException | None, object] = (
@@ -187,7 +186,7 @@ def agent_run_span(
         None,
     )
     try:
-        yield
+        yield span
     except BaseException as err:
         exc_info = (type(err), err, err.__traceback__)
         raise
@@ -227,7 +226,7 @@ def _span_attributes(
         mcp_server_ids = []
     return {
         "ha.domain": DOMAIN,
-        "ha.version": getattr(hass, "version", None),
+        "ha.version": __version__,
         "ha.entry_id": entry.entry_id,
         "ha.entry_title": entry.title,
         "ha.subentry_id": subentry.subentry_id,
@@ -237,7 +236,9 @@ def _span_attributes(
         "ha.conversation_id": conversation_id,
         "ha.provider_mode": entry.data.get(CONF_PROVIDER_MODE),
         "ha.model": model_name,
-        "ha.output_mode": structured_output_mode(subentry.data.get(CONF_OUTPUT_MODE)),
+        "ha.structured_output_mode": structured_output_mode(
+            subentry.data.get(CONF_OUTPUT_MODE)
+        ),
         "ha.ha_tools_enabled": bool(llm_api_ids),
         "ha.llm_api_ids": llm_api_ids,
         "ha.mcp_server_count": len(mcp_server_ids),

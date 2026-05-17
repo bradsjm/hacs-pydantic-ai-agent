@@ -53,6 +53,7 @@ from .mcp import MCPValidationError, async_runtime_mcp_toolsets
 from .model_profiles import (
     ModelProfile,
     chat_model_for_profile,
+    max_iterations as profile_max_iterations,
     model_display_names,
     model_profile_chain,
     model_settings,
@@ -137,12 +138,12 @@ class PydanticAIBaseLLMEntity:
         if self.subentry.data.get(CONF_WEB_FETCH_ENABLED):
             capabilities.append(WebFetch(local=True))
         capabilities.append(SlidingWindowContextCapability())
-        usage_limits = UsageLimits(
-            request_limit=max_iterations,
-        )
         errors: list[BaseException] = []
         for index, profile in enumerate(profiles):
             settings = model_settings(profile)
+            usage_limits = UsageLimits(
+                request_limit=profile_max_iterations(profile, max_iterations),
+            )
             mcp_toolsets = await async_runtime_mcp_toolsets(
                 self.hass,
                 self.entry,
@@ -210,7 +211,7 @@ class PydanticAIBaseLLMEntity:
                     entity_id=agent_id,
                     conversation_id=chat_log.conversation_id,
                     model_name=profile.model_name,
-                ):
+                ) as span:
                     if not has_structure:
                         result = await agent.run(
                             user_prompt,
@@ -218,6 +219,8 @@ class PydanticAIBaseLLMEntity:
                             model_settings=settings,
                             usage_limits=usage_limits,
                         )
+                        if span is not None:
+                            _set_span_usage_attributes(span, result)
                         await _append_agent_messages(
                             chat_log, agent_id, result.new_messages()
                         )
@@ -229,6 +232,8 @@ class PydanticAIBaseLLMEntity:
                         model_settings=settings,
                         usage_limits=usage_limits,
                     )
+                    if span is not None:
+                        _set_span_usage_attributes(span, result)
                     output = result.output
                     await _append_agent_messages(
                         chat_log,
@@ -323,6 +328,16 @@ def _has_connection_failure(err: BaseException) -> bool:
             return True
         current = current.__cause__ or current.__context__
     return False
+
+
+def _set_span_usage_attributes(span: Any, result: Any) -> None:
+    """Copy aggregate Pydantic AI usage to the wrapper span without blocking runs."""
+    try:
+        usage_attributes = result.usage.opentelemetry_attributes()
+        if usage_attributes:
+            span.set_attributes(usage_attributes)
+    except Exception:
+        _LOGGER.exception("Failed to add usage attributes to Logfire span")
 
 
 async def _append_agent_messages(

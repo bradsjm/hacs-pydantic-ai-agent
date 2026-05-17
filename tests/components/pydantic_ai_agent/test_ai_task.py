@@ -25,7 +25,9 @@ from custom_components.pydantic_ai_agent.ai_task import (
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_AI_TASK_NAME,
+    CONF_MAX_ITERATIONS,
     CONF_MODEL,
+    CONF_MODEL_SETTINGS,
     CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
@@ -70,6 +72,7 @@ def _entry(
     *,
     legacy_task_name: bool = False,
     web_fetch_enabled: bool = False,
+    model_settings: dict[str, object] | None = None,
 ) -> MockConfigEntry:
     """Return a config entry with one AI task subentry."""
     subentry_data: dict[str, object] = {CONF_MODEL_SUBENTRY_ID: "task_model_profile"}
@@ -81,6 +84,13 @@ def _entry(
         subentry_data[CONF_SKILLS] = skills
     if web_fetch_enabled:
         subentry_data[CONF_WEB_FETCH_ENABLED] = True
+    model_subentry_data: dict[str, object] = {
+        CONF_NAME: "Task Model",
+        CONF_MODEL: "task-model",
+    }
+    if model_settings is not None:
+        model_subentry_data[CONF_MODEL_SETTINGS] = model_settings
+
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Hosted OpenAI",
@@ -99,7 +109,7 @@ def _entry(
             },
             {
                 "subentry_id": "task_model_profile",
-                "data": {CONF_NAME: "Task Model", CONF_MODEL: "task-model"},
+                "data": model_subentry_data,
                 "subentry_type": SUBENTRY_TYPE_MODEL,
                 "title": "Task Model",
                 "unique_id": None,
@@ -127,9 +137,15 @@ async def _setup_ai_task_entity(
     skills: list[str] | None = None,
     *,
     web_fetch_enabled: bool = False,
+    model_settings: dict[str, object] | None = None,
 ) -> str:
     """Set up an AI task config entry and return its entity ID."""
-    entry = _entry(output_mode, skills, web_fetch_enabled=web_fetch_enabled)
+    entry = _entry(
+        output_mode,
+        skills,
+        web_fetch_enabled=web_fetch_enabled,
+        model_settings=model_settings,
+    )
     entry.add_to_hass(hass)
 
     with patch(
@@ -199,6 +215,7 @@ class _Agent:
         self._stream_text = stream_text
         self._output = output
         self._messages = messages
+        self.run_kwargs: dict[str, object] = {}
 
     async def __aenter__(self) -> "_Agent":
         """Enter the agent context."""
@@ -214,8 +231,9 @@ class _Agent:
         """Return a deterministic streamed result."""
         yield _StreamResult(self._stream_text)
 
-    async def run(self, *_args: object, **_kwargs: object) -> _RunResult:
+    async def run(self, *_args: object, **kwargs: object) -> _RunResult:
         """Return a deterministic run result."""
+        self.run_kwargs = kwargs
         return _RunResult(self._output, self._messages)
 
 
@@ -326,6 +344,62 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
 
     assert result.data == "plain result"
     _assert_context_management_capability(agent_class.call_args.kwargs["capabilities"])
+
+
+async def test_ai_task_runtime_uses_configured_max_iterations(
+    hass: HomeAssistant,
+) -> None:
+    """Test AI task runs use the model profile iteration limit."""
+    entity_id = await _setup_ai_task_entity(
+        hass, model_settings={CONF_MAX_ITERATIONS: 26}
+    )
+    agent = _Agent(stream_text="plain result", output="plain result")
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ),
+    ):
+        result = await ai_task.async_generate_data(
+            hass,
+            task_name="Plain task",
+            entity_id=entity_id,
+            instructions="Generate text",
+        )
+
+    assert result.data == "plain result"
+    assert getattr(agent.run_kwargs["usage_limits"], "request_limit") == 26
+
+
+async def test_ai_task_runtime_defaults_max_iterations(hass: HomeAssistant) -> None:
+    """Test AI task runs default to 30 iterations when unset."""
+    entity_id = await _setup_ai_task_entity(hass)
+    agent = _Agent(stream_text="plain result", output="plain result")
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ),
+    ):
+        result = await ai_task.async_generate_data(
+            hass,
+            task_name="Plain task",
+            entity_id=entity_id,
+            instructions="Generate text",
+        )
+
+    assert result.data == "plain result"
+    assert getattr(agent.run_kwargs["usage_limits"], "request_limit") == 30
 
 
 async def test_ai_task_runtime_passes_selected_skills_capabilities(
