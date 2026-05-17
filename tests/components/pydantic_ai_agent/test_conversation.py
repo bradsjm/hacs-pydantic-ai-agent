@@ -28,7 +28,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_WEB_FETCH_ENABLED,
     DEFAULT_SKILLS_FOLDER,
     DOMAIN,
-    PROVIDER_OPENAI,
+    PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_CONVERSATION,
 )
 from custom_components.pydantic_ai_agent.context_management import (
@@ -123,7 +123,7 @@ def _entry(
         title="Hosted OpenAI",
         data={
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "sk-test",
         },
         source=config_entries.SOURCE_USER,
@@ -139,7 +139,7 @@ def _entry(
         unique_id=None,
     )
     entry.runtime_data = PydanticAIAgentRuntimeData(
-        provider_mode=PROVIDER_OPENAI,
+        provider_mode=PROVIDER_OPENAI_COMPATIBLE,
         name="Hosted OpenAI",
         api_key="sk-test",
         base_url=None,
@@ -155,7 +155,7 @@ def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigE
     """Return a config entry with two conversation subentries."""
     data: dict[str, object] = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
     if logfire:
@@ -190,7 +190,7 @@ def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigE
         unique_id=None,
     )
     entry.runtime_data = PydanticAIAgentRuntimeData(
-        provider_mode=PROVIDER_OPENAI,
+        provider_mode=PROVIDER_OPENAI_COMPATIBLE,
         name="Hosted OpenAI",
         api_key="sk-test",
         base_url=None,
@@ -331,7 +331,7 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     )
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
             return_value=object(),
         ) as chat_model,
         patch(
@@ -376,7 +376,7 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
     )
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
             return_value=object(),
         ),
         patch(
@@ -427,7 +427,7 @@ async def test_conversation_runtime_adds_web_fetch_capability(
     )
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
             return_value=object(),
         ),
         patch(
@@ -486,7 +486,7 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
     agent = _Agent()
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
             return_value=object(),
         ),
         patch(
@@ -548,7 +548,7 @@ async def test_conversation_logfire_failures_do_not_block_agent_run(
     )
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
             return_value=object(),
         ),
         patch(

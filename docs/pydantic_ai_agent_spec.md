@@ -14,7 +14,8 @@ provider validation, repair issues for reconfigurable model validation failures,
 Pydantic AI `Agent` runtime execution, Home Assistant LLM tool conversion,
 remote Streamable HTTP MCP toolsets, per-agent/per-task WebFetch capability,
 local `pydantic-ai-skills` capabilities, ChatLog history conversion, and
-Pydantic AI message adaptation.
+Pydantic AI message adaptation through the in-repo OpenAI-compatible
+Chat Completions client and Pydantic AI model/provider adapter.
 
 Known remaining gaps include runtime capability detection beyond validation
 probes, translation coverage tests, cleanup/cancellation lifecycle tests, and
@@ -195,11 +196,11 @@ integration subentry actions.
 
 Example instances:
 
-| Instance title              | Provider mode     | Model           | HA tools |
-| --------------------------- | ----------------- | --------------- | -------- |
-| `Pydantic AI Agent - Home`  | OpenAI            | `gpt-5.1`       | Enabled  |
-| `Pydantic AI Agent - Local` | OpenAI-compatible | `llama-3.3-70b` | Disabled |
-| `Pydantic AI Agent - Admin` | OpenAI            | `gpt-5.1`       | Enabled  |
+| Instance title              | Provider mode       | Model           | HA tools |
+| --------------------------- | ------------------- | --------------- | -------- |
+| `Pydantic AI Agent - Home`  | OpenAI-compatible   | `gpt-5.1`       | Enabled  |
+| `Pydantic AI Agent - Local` | OpenAI-compatible   | `llama-3.3-70b` | Disabled |
+| `Pydantic AI Agent - Admin` | OpenAI-compatible   | `gpt-5.1`       | Enabled  |
 
 Each conversation subentry appears as a separate selectable conversation agent in
 Home Assistant Assist configuration. Changing one conversation subentry must not
@@ -340,9 +341,9 @@ independent instance.
 | Field              | Required           | Stored in                        | Notes                                                         |
 | ------------------ | ------------------ | -------------------------------- | ------------------------------------------------------------- |
 | Service name       | Yes                | Config entry title/data          | User-facing name for the provider/service connection.         |
-| Provider mode      | Yes                | Data                             | Example: `openai`, `openai_compatible`.                       |
+| Provider mode      | Yes                | Data                             | Current value: `openai_compatible`.                           |
 | API key            | Yes                | Data                             | Credential used for provider validation and requests.         |
-| Base URL           | Provider-dependent | Data                             | Required for OpenAI-compatible providers; optional otherwise. |
+| Base URL           | No                 | Data                             | Defaults to `https://api.openai.com/v1` when omitted.         |
 | Logfire token      | No                 | Data                             | Enables optional Logfire tracing for the provider entry.      |
 | Skills folder      | No                 | Data                             | Must be `/config/skills` or a subfolder when configured.      |
 | Initial agent name | No                 | Conversation subentry title/data | Collected by the conversation subentry flow.                  |
@@ -512,11 +513,12 @@ custom_components/pydantic_ai_agent/
 ├── provider.py
 ├── history.py
 ├── ha_toolset.py
-├── stream_adapter.py
 ├── ai_task.py
 ├── mcp.py
 ├── skills.py
 ├── structured_output.py
+├── openai_compatible_client/
+├── pydantic_ai_openai_compatible/
 ├── logfire_support.py
 ├── diagnostics.py
 ├── repairs.py
@@ -548,14 +550,12 @@ custom_components/pydantic_ai_agent/
   conversation lifecycle.
 - `entity.py`: Shared Pydantic AI `Agent` runtime, model settings handling, Home
   Assistant LLM API tools, MCP toolsets, WebFetch capability, skills
-  capabilities, usage limits, and tool loop.
-- `provider.py`: Build Pydantic AI `OpenAIChatModel` and `OpenAIProvider`
-  instances from provider config.
+  capabilities, usage limits, tool loop, and Home Assistant `ChatLog` deltas.
+- `provider.py`: Build in-repo `OpenAICompatibleChatModel` and
+  `OpenAICompatibleProvider` instances from provider config.
 - `history.py`: Convert Home Assistant `ChatLog` content and attachments into
   Pydantic AI model messages.
 - `ha_toolset.py`: Convert Home Assistant LLM API tools into Pydantic AI tools.
-- `stream_adapter.py`: Convert Pydantic AI message parts and tool calls into
-  Home Assistant `ChatLog` deltas.
 - `ai_task.py`: Home Assistant AI task entity implementation for data generation,
   attachment input, and structured validation.
 - `mcp.py`: Remote Streamable HTTP MCP server validation, tool discovery/cache
@@ -564,6 +564,10 @@ custom_components/pydantic_ai_agent/
   selected-skill capability construction, and script execution gating.
 - `structured_output.py`: Pydantic AI structured output mode helpers for tool,
   native, and prompted output.
+- `openai_compatible_client/`: Lightweight async Chat Completions client and SSE
+  parser without the OpenAI SDK.
+- `pydantic_ai_openai_compatible/`: Pydantic AI `Model`/`Provider` adapter,
+  message mapping, streaming response adapter, usage mapping, and error mapping.
 - `logfire_support.py`: Optional Logfire configuration, per-run instrumentation
   metadata, and Logfire conflict repair data.
 - `diagnostics.py`: Redacted config entry diagnostics for provider settings,
@@ -691,7 +695,7 @@ Pydantic AI Agent runtime
 Pydantic AI response/new messages
         │
         ▼
-entity.py / stream_adapter.py
+entity.py
         │
         ▼
 Home Assistant ChatLog deltas
@@ -774,12 +778,11 @@ is not implemented.
 The MVP should implement explicit provider modes rather than an unbounded generic
 provider registry.
 
-Initial provider modes:
+Implemented provider modes:
 
-| Provider mode       | Purpose                                                             |
-| ------------------- | ------------------------------------------------------------------- |
-| `openai`            | OpenAI provider through Pydantic AI.                                |
-| `openai_compatible` | OpenAI-compatible provider with user-provided base URL and API key. |
+| Provider mode       | Purpose                                                               |
+| ------------------- | --------------------------------------------------------------------- |
+| `openai_compatible` | OpenAI-compatible Chat Completions provider with optional custom URL. |
 
 Each provider mode must define:
 
@@ -794,6 +797,11 @@ Each provider mode must define:
 Future provider modes may include Anthropic, Google, local providers, or other
 Pydantic AI-supported model backends once their configuration and event semantics
 are explicitly specified.
+
+The current OpenAI-compatible mode is implemented by
+`openai_compatible_client/` and `pydantic_ai_openai_compatible/`, not by the
+OpenAI SDK-backed Pydantic AI classes. See
+`docs/openai_compatible_provider_design.md` for rationale and adapter details.
 
 ### Capability Detection and Shape Validation
 
@@ -824,6 +832,8 @@ Current implementation note: capability detection is not generally implemented.
 Conversation entities do not advertise streaming support. Home Assistant control
 is advertised when an LLM API is configured, and structured-output support is
 validated for AI task models through the configured Pydantic AI output mode.
+The provider validation probe uses Pydantic AI's streaming request path, but
+runtime conversation responses remain non-streaming Home Assistant responses.
 
 Examples:
 
@@ -831,6 +841,9 @@ Examples:
   it accepts OpenAI-shaped requests.
 - Do not assume a model supports reasoning summaries because another model from
   the same provider does.
+- Preserve `reasoning` and `reasoning_content` fields in assistant tool-call
+  history. Some OpenAI-compatible reasoning providers reject follow-up tool
+  result requests unless this metadata is passed back unchanged.
 - Do not assume Pydantic AI message or event objects contain complete tool-call
   arguments without validation; validate the final object.
 - Do not assume Home Assistant frontend details render every possible delta type;
@@ -1023,13 +1036,13 @@ custom_components/pydantic_ai_agent/
 - `config_flow`: `true`.
 - `requirements`: pinned or constrained Pydantic AI dependencies compatible with
   the target Home Assistant dependency constraints. For Home Assistant 2026.5.1,
-  executable dependencies include
-  `pydantic-ai-slim[openai,mcp,web-fetch]==1.97.0`, `logfire==4.33.0`, and
-  `pydantic-ai-skills==0.10.0` in both
-  `pyproject.toml` and `manifest.json`. These supply the OpenAI-compatible
-  provider path, remote MCP support, FastMCP client support through Pydantic AI's
-  `mcp` extra, WebFetch support through Pydantic AI's `web-fetch` extra,
-  optional Logfire tracing, and local skill capabilities.
+  executable dependencies include `pydantic-ai-slim==1.97.0`,
+  `logfire==4.33.0`, `pydantic-ai-skills==0.10.0`, `tiktoken>=0.12.0`,
+  `fastmcp-slim[client,server]>=3.3.0`, and `markdownify>=1.2` in both
+  `pyproject.toml` and `manifest.json`. These supply the in-repo
+  OpenAI-compatible provider path, remote MCP support, WebFetch content
+  conversion, token counting, optional Logfire tracing, and local skill
+  capabilities without depending on the OpenAI SDK.
 - `documentation`: repository documentation URL once known.
 - `issue_tracker`: repository issue URL once known.
 - `codeowners`: repository owner(s) once known.
@@ -1078,6 +1091,7 @@ Required test coverage:
 - Non-streaming conversation response handling.
 - Thinking/reasoning summary mapping when supported.
 - Tool call and tool result mapping.
+- Reasoning metadata round-trip for tool-call follow-up requests.
 - Tool execution through Home Assistant LLM API mocks.
 - Provider timeout and error handling.
 - Translation coverage for config flow and subentry flow keys.
@@ -1093,9 +1107,9 @@ Required test coverage:
 
 Current known coverage gaps:
 
-- Real-server tests, `pytest.mark.real_server`, `.env.example`, and
-  `scripts/test-real-server` exist, but they are outside the default test suite
-  and require explicit credentials and endpoint configuration.
+- Real-server tests, `pytest.mark.real_server`, and `.env.example` exist, but
+  they are outside the default test suite and require explicit credentials and
+  endpoint configuration.
 - Translation coverage and concrete error-template rendering need direct tests.
 - Cleanup/cancellation behavior for provider calls, MCP clients, and provider
   lifecycle needs direct tests.
@@ -1120,11 +1134,8 @@ development.
 
 Requirements:
 
-- Add scripts under `scripts/` that exercise real Pydantic AI provider
-  connectivity, model calls, non-streaming conversation responses, and tool-call
-  behavior.
-- Add pytest integration tests that can connect to real OpenAI or
-  OpenAI-compatible servers through Pydantic AI.
+- Add pytest integration tests that can connect to real OpenAI-compatible
+  servers through the in-repo Pydantic AI adapter.
 - Load credentials and provider details from a `.env` file only in test and
   script contexts.
 - Do not load `.env` from Home Assistant integration runtime code.
@@ -1147,8 +1158,8 @@ OPENAI_BASE_URL=
 
 Key usage rules:
 
-- `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_BASE_URL` drive both the hosted
-  OpenAI path and OpenAI-compatible endpoint exploration.
+- `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_BASE_URL` drive
+  OpenAI-compatible endpoint exploration.
 - `OPENAI_BASE_URL` may point to the default hosted OpenAI endpoint or to an
   OpenAI-compatible server under test.
 - `.env` values must be consumed only by scripts and tests. The Home Assistant
@@ -1163,9 +1174,13 @@ Real-server validation should cover:
 - Plain chat completion.
 - Non-streaming conversation responses.
 - Provider/model rejection details.
-- Pydantic AI message/event shape used by `entity.py` and `stream_adapter.py`.
+- Pydantic AI message/event shape used by `entity.py` and the in-repo
+  OpenAI-compatible adapter.
 - Home Assistant LLM API tool adapter behavior with mocked HA tools and a real
   provider model call where feasible.
+- Remote MCP tool call behavior with a real provider model call where feasible.
+- Reasoning metadata preservation for providers that require
+  `reasoning_content` in tool-result follow-up requests.
 - Capability detection results for the configured provider, model, and base URL.
 - Response-shape validation for the actual Pydantic AI messages/events emitted
   by the configured provider and model.

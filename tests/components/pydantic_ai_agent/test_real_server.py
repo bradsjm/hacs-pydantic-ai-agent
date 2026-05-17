@@ -54,7 +54,7 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
 )
-from custom_components.pydantic_ai_agent.provider import openai_chat_model_from_config
+from custom_components.pydantic_ai_agent.provider import openai_compatible_chat_model_from_config
 
 pytestmark = [pytest.mark.real_server, pytest.mark.usefixtures("socket_enabled")]
 
@@ -411,13 +411,14 @@ async def test_real_server_probe_succeeds(
         real_server.model,
         {"timeout": _REAL_SERVER_TIMEOUT},
     )
+    await _drain_stream_cleanup(hass)
 
 
 async def test_real_server_stream_events_include_text(
     hass: HomeAssistant, real_server: RealServerConfig
 ) -> None:
     """Test the configured provider emits usable Pydantic AI text stream events."""
-    model = openai_chat_model_from_config(
+    model = openai_compatible_chat_model_from_config(
         hass, real_server.provider_data, real_server.model
     )
     text_parts: list[str] = []
@@ -489,11 +490,6 @@ async def test_real_server_conversation_uses_ha_llm_tool(
     await _drain_stream_cleanup(hass)
     assert tool_calls == [_TOOL_SENTINEL]
     speech = result.response.speech["plain"]["speech"]
-    if "HTTP 400" in speech:
-        pytest.skip(
-            "Configured real-server provider called the HA tool but rejected "
-            "the tool-result follow-up request."
-        )
     assert _TOOL_SENTINEL in speech
 
 
@@ -540,8 +536,9 @@ async def test_real_server_conversation_uses_hosted_mcp_echo_tool(
     )
 
     await _drain_stream_cleanup(hass)
+    speech = result.response.speech["plain"]["speech"]
     assert any(name.endswith("echo") for name in _tool_part_names(captured_messages))
-    assert _MCP_SENTINEL in result.response.speech["plain"]["speech"]
+    assert _MCP_SENTINEL in speech
 
 
 async def test_real_server_ai_task_plain_generation(

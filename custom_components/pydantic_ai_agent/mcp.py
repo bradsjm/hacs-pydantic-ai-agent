@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import json
 import logging
+import re
 from types import TracebackType
 from typing import Any
 from urllib.parse import urlparse
@@ -52,6 +53,7 @@ _MCP_SENSITIVE_KEYS = {
     "token",
     "x-api-key",
 }
+_HTTP_HEADER_NAME_PATTERN = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 
 
 class _FastMCPHttpXClient(HassHttpXAsyncClient):
@@ -188,19 +190,29 @@ def validate_mcp_url_details(url: str) -> ValidatedMCPURL:
 
 
 def parse_mcp_headers(value: object) -> dict[str, str]:
-    """Parse an optional JSON object of HTTP headers."""
-    if value is None or value == "":
+    """Parse optional one-header-per-line HTTP headers."""
+    if value is None:
         return {}
     if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except json.JSONDecodeError as err:
-            raise vol.Invalid("invalid_mcp_headers") from err
+        headers: dict[str, str] = {}
+        for line in value.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            name, separator, header_value = line.partition(":")
+            name = name.strip()
+            if not separator or not _HTTP_HEADER_NAME_PATTERN.fullmatch(name):
+                raise vol.Invalid("invalid_mcp_headers")
+            headers[name] = header_value.strip()
+        return headers
     if not isinstance(value, Mapping):
         raise vol.Invalid("invalid_mcp_headers")
     headers = dict(value)
     if not all(
-        isinstance(key, str) and isinstance(item, str) for key, item in headers.items()
+        isinstance(key, str)
+        and _HTTP_HEADER_NAME_PATTERN.fullmatch(key)
+        and isinstance(item, str)
+        for key, item in headers.items()
     ):
         raise vol.Invalid("invalid_mcp_headers")
     return headers
@@ -367,13 +379,14 @@ async def async_discover_mcp_tools_from_config(
     data: Mapping[str, Any],
     *,
     server_id: str | None = None,
+    apply_allowlist: bool = True,
     timeout: float = DEFAULT_MCP_TIMEOUT,
 ) -> list[dict[str, Any]]:
     """Discover tools exposed by one remote MCP server configuration."""
     config = _mcp_config_from_data(data, server_id=server_id)
     validated_url = await async_validate_mcp_url_details(hass, config[CONF_MCP_URL])
     config[CONF_MCP_URL] = validated_url.url
-    allowed_tools = set(config[CONF_MCP_ALLOWED_TOOLS])
+    allowed_tools = set(config[CONF_MCP_ALLOWED_TOOLS]) if apply_allowlist else set()
     server_id = server_id or str(config[CONF_NAME])
     _LOGGER.info(
         "Discovering MCP tools for server %s (%s)",
@@ -430,8 +443,9 @@ async def async_discover_mcp_tools_from_config(
             }
         )
     _LOGGER.info(
-        "Discovered %s allowed MCP tools for server %s",
+        "Discovered %s %s MCP tools for server %s",
         len(discovered),
+        "allowed" if apply_allowlist else "available",
         server_id,
     )
     _LOGGER.debug("MCP server config used for discovery: %s", redact_for_log(config))

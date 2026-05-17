@@ -1,6 +1,9 @@
 """Test setup for Pydantic AI Agent."""
 
+import json
+from pathlib import Path
 import sys
+import tomllib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, call, patch
 
@@ -36,7 +39,7 @@ from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_TOOL,
-    PROVIDER_OPENAI,
+    PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
@@ -46,6 +49,16 @@ from custom_components.pydantic_ai_agent.logfire_support import (
     logfire_include_content,
 )
 from custom_components.pydantic_ai_agent.repairs import model_validation_issue_id
+
+_REPO_ROOT = Path(__file__).parents[3]
+_EXPLICIT_RUNTIME_REQUIREMENTS = {
+    "logfire==4.33.0",
+    "pydantic-ai-slim==1.97.0",
+    "pydantic-ai-skills==0.10.0",
+    "tiktoken>=0.12.0",
+    "fastmcp-slim[client,server]>=3.3.0",
+    "markdownify>=1.2",
+}
 
 
 def _conversation_subentry() -> dict[str, object]:
@@ -94,7 +107,7 @@ def _entry(
     """Return a config entry."""
     data: dict[str, object] = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
     if data_extra is not None:
@@ -108,6 +121,20 @@ def _entry(
         options={},
         unique_id=None,
     )
+
+
+def test_runtime_requirements_are_explicit_for_home_assistant_installer() -> None:
+    """Test runtime requirements do not rely on nested extras installation."""
+    manifest = json.loads(
+        (_REPO_ROOT / "custom_components/pydantic_ai_agent/manifest.json").read_text()
+    )
+    pyproject = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text())
+
+    manifest_requirements = set(manifest["requirements"])
+    pyproject_dependencies = set(pyproject["project"]["dependencies"])
+
+    assert _EXPLICIT_RUNTIME_REQUIREMENTS <= manifest_requirements
+    assert _EXPLICIT_RUNTIME_REQUIREMENTS <= pyproject_dependencies
 
 
 async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
@@ -131,7 +158,7 @@ async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
         assert await async_setup_entry(hass, entry)
         forward_setups.assert_awaited_once()
 
-    assert entry.runtime_data.provider_mode == PROVIDER_OPENAI
+    assert entry.runtime_data.provider_mode == PROVIDER_OPENAI_COMPATIBLE
     assert entry.runtime_data.name == "Hosted OpenAI"
     assert entry.runtime_data.api_key == "sk-test"
     assert entry.runtime_data.base_url is None
@@ -475,7 +502,7 @@ async def test_setup_entry_without_subentries_stores_runtime_data(
     ):
         assert await async_setup_entry(hass, entry)
 
-    assert entry.runtime_data.provider_mode == PROVIDER_OPENAI
+    assert entry.runtime_data.provider_mode == PROVIDER_OPENAI_COMPATIBLE
 
 
 async def test_multiple_entries_setup_and_unload_are_isolated(
@@ -488,7 +515,7 @@ async def test_multiple_entries_setup_and_unload_are_isolated(
         title="Other OpenAI",
         data={
             CONF_NAME: "Other OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "other-key",
         },
         source=config_entries.SOURCE_USER,

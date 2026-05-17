@@ -50,7 +50,7 @@ from .ha_toolset import tool_definitions_from_llm_api, tools_from_llm_api
 from .history import chat_log_content_to_model_messages, split_last_user_prompt
 from .logfire_support import agent_run_span, instrument_agent
 from .mcp import MCPValidationError, async_runtime_mcp_toolsets
-from .provider import openai_chat_model
+from .provider import openai_compatible_chat_model
 from .skills import async_skills_capabilities
 from .structured_output import (
     default_structure_serializer,
@@ -99,7 +99,7 @@ class PydanticAIBaseLLMEntity:
     ) -> object | None:
         """Run a Pydantic AI Agent and stream its response into ChatLog."""
         runtime_data = self.entry.runtime_data
-        model = openai_chat_model(
+        model = openai_compatible_chat_model(
             self.hass,
             api_key=runtime_data.api_key,
             base_url=runtime_data.base_url,

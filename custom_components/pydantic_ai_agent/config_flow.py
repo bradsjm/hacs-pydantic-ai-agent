@@ -93,7 +93,6 @@ from .const import (
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
     PROVIDER_MODES,
-    PROVIDER_OPENAI,
     PROVIDER_OPENAI_COMPATIBLE,
     STRUCTURED_OUTPUT_MODES,
     SUBENTRY_TYPE_AI_TASK,
@@ -109,7 +108,7 @@ from .mcp import (
     parse_allowed_tools,
     parse_mcp_headers,
 )
-from .provider import normalise_base_url, openai_chat_model_from_config
+from .provider import normalise_base_url, openai_compatible_chat_model_from_config
 from .skills import (
     AvailableSkill,
     async_available_skills,
@@ -122,6 +121,8 @@ from .structured_output import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+_MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH = 80
 
 _RECONFIGURABLE_MODEL_VALIDATION_REASONS = {
     "invalid_model",
@@ -211,7 +212,7 @@ class ProviderValidationError(Exception):
 def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     """Return the provider connection schema."""
     data = user_input or {}
-    provider_mode = data.get(CONF_PROVIDER_MODE, PROVIDER_OPENAI)
+    provider_mode = data.get(CONF_PROVIDER_MODE, PROVIDER_OPENAI_COMPATIBLE)
     schema: VolDictType = {
         vol.Required(CONF_NAME, default=DEFAULT_SERVICE_NAME): str,
         vol.Required(CONF_PROVIDER_MODE, default=provider_mode): SelectSelector(
@@ -468,11 +469,11 @@ def _map_http_error(err: ModelHTTPError) -> ProviderValidationError:
     return ProviderValidationError(reason, _format_http_error(err), status_code)
 
 
-def _openai_chat_model(
+def _openai_compatible_chat_model(
     hass: HomeAssistant, data: Mapping[str, Any], model_name: str
 ) -> Any:
-    """Build a Pydantic AI OpenAI chat model for provider validation."""
-    return openai_chat_model_from_config(hass, data, model_name)
+    """Build a Pydantic AI OpenAI-compatible chat model for validation."""
+    return openai_compatible_chat_model_from_config(hass, data, model_name)
 
 
 def _structured_probe_request_parameters(
@@ -497,17 +498,10 @@ async def async_probe_model(
     structured_output_mode: str | None = None,
 ) -> None:
     """Probe model access with the same streaming path used at runtime."""
-    provider_mode = data[CONF_PROVIDER_MODE]
-    base_url = _normalise_base_url(data)
-    if provider_mode == PROVIDER_OPENAI_COMPATIBLE and not base_url:
-        raise ProviderValidationError(
-            "invalid_base_url", "OpenAI-compatible providers require a base URL."
-        )
-
     try:
         settings = dict(model_settings or {})
         settings.setdefault(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT)
-        model = _openai_chat_model(hass, data, model_name)
+        model = _openai_compatible_chat_model(hass, data, model_name)
         model_request_parameters = None
         if structured_output_mode is not None:
             output_mode = normalise_structured_output_mode(structured_output_mode)
@@ -538,11 +532,14 @@ async def async_probe_model(
                     normalise_structured_output_mode(structured_output_mode),
                 )
                 return
+            saw_event = False
             async for _event in stream:
-                return
-        raise ProviderValidationError(
-            "provider_error", "The provider returned an empty streamed response."
-        )
+                saw_event = True
+            if not saw_event:
+                raise ProviderValidationError(
+                    "provider_error", "The provider returned an empty streamed response."
+                )
+            return
     except ModelHTTPError as err:
         raise _map_http_error(err) from err
     except ModelAPIError as err:
@@ -675,12 +672,6 @@ def _normalise_skills_folder(folder: object) -> str:
 
 def _validate_provider_data(data: Mapping[str, Any]) -> None:
     """Validate provider data that does not require a model."""
-    if data[CONF_PROVIDER_MODE] == PROVIDER_OPENAI_COMPATIBLE and not data.get(
-        CONF_BASE_URL
-    ):
-        raise ProviderValidationError(
-            "invalid_base_url", "OpenAI-compatible providers require a base URL."
-        )
     _validate_skills_folder(data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER))
 
 
@@ -798,19 +789,6 @@ def _selected_mcp_server_error(
         if not parse_allowed_tools(subentry.data.get(CONF_MCP_ALLOWED_TOOLS)):
             return "mcp_tools_not_allowlisted"
     return None
-
-
-def _mcp_server_has_dependents(entry: ConfigEntry, server_id: str) -> bool:
-    """Return if an agent or AI task subentry references an MCP server."""
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type not in {
-            SUBENTRY_TYPE_CONVERSATION,
-            SUBENTRY_TYPE_AI_TASK,
-        }:
-            continue
-        if server_id in subentry.data.get(CONF_MCP_SERVER_IDS, []):
-            return True
-    return False
 
 
 def _conversation_schema(
@@ -1347,13 +1325,6 @@ def _ai_task_data_from_user_input(
 def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
     """Return the remote MCP server subentry schema."""
     options = dict(options or {})
-    allowed_tools = options.get(CONF_MCP_ALLOWED_TOOLS, [])
-    if isinstance(allowed_tools, list):
-        allowed_tools_default = ", ".join(str(tool) for tool in allowed_tools)
-    else:
-        allowed_tools_default = str(allowed_tools or "")
-    headers = options.get(CONF_MCP_HEADERS, {})
-    headers_default = json.dumps(headers, sort_keys=True) if headers else ""
     return vol.Schema(
         {
             vol.Required(CONF_NAME, default=options.get(CONF_NAME, "")): TextSelector(
@@ -1365,12 +1336,67 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
             ): TextSelector(TextSelectorConfig()),
             vol.Optional(
                 CONF_MCP_HEADERS,
-                default=headers_default,
-            ): TextSelector(TextSelectorConfig()),
-            vol.Optional(
+                default=_format_mcp_headers(options.get(CONF_MCP_HEADERS)),
+            ): TextSelector(TextSelectorConfig(multiline=True)),
+        }
+    )
+
+
+def _format_mcp_headers(headers: object) -> str:
+    """Return headers as one HTTP header per line for the config form."""
+    if headers is None:
+        return ""
+    if isinstance(headers, str):
+        return headers
+    if not isinstance(headers, Mapping):
+        return ""
+    return "\n".join(f"{name}: {headers[name]}" for name in sorted(headers))
+
+
+def _truncate_mcp_tool_description(description: str) -> str:
+    """Return a compact single-line MCP tool description for selector labels."""
+    description = " ".join(description.split())
+    if len(description) <= _MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH:
+        return description
+    return f"{description[: _MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH - 3].rstrip()}..."
+
+
+def _mcp_tool_options(
+    tools: Iterable[Mapping[str, Any]],
+    extra_tool_names: Iterable[str] = (),
+) -> list[SelectOptionDict]:
+    """Return sorted MCP tool selector options from discovered metadata."""
+    options_by_name: dict[str, SelectOptionDict] = {}
+    for tool in tools:
+        name = str(tool.get("name", "")).strip()
+        if not name or name in options_by_name:
+            continue
+        description = _truncate_mcp_tool_description(
+            str(tool.get("description", "")).strip()
+        )
+        label = f"{name} ({description})" if description else name
+        options_by_name[name] = SelectOptionDict(label=label, value=name)
+    for name in extra_tool_names:
+        if name and name not in options_by_name:
+            options_by_name[name] = SelectOptionDict(label=name, value=name)
+    return [options_by_name[name] for name in sorted(options_by_name)]
+
+
+def _mcp_tools_schema(
+    tool_options: list[SelectOptionDict], default_tool_names: list[str]
+) -> vol.Schema:
+    """Return the MCP discovered tools selection schema."""
+    return vol.Schema(
+        {
+            vol.Required(
                 CONF_MCP_ALLOWED_TOOLS,
-                default=allowed_tools_default,
-            ): TextSelector(TextSelectorConfig()),
+                default=default_tool_names,
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=tool_options,
+                    multiple=True,
+                )
+            )
         }
     )
 
@@ -1943,6 +1969,8 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing remote MCP server subentries."""
 
     _options: dict[str, Any]
+    _pending_data: dict[str, Any]
+    _tool_options: list[SelectOptionDict]
 
     @property
     def _is_new(self) -> bool:
@@ -1954,6 +1982,8 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Add an MCP server subentry."""
         self._options = {}
+        self._pending_data = {}
+        self._tool_options = []
         return await self.async_step_init(user_input)
 
     async def async_step_reconfigure(
@@ -1961,6 +1991,8 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Reconfigure an MCP server subentry."""
         self._options = self._get_reconfigure_subentry().data.copy()
+        self._pending_data = {}
+        self._tool_options = []
         return await self.async_step_init(user_input)
 
     async def async_step_init(
@@ -1993,6 +2025,9 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 errors[CONF_MCP_HEADERS] = "invalid_mcp_headers"
             data = dict(user_input)
         else:
+            form_data = self._options | data | {
+                CONF_MCP_HEADERS: user_input.get(CONF_MCP_HEADERS, "")
+            }
             try:
                 data[CONF_MCP_URL] = await async_validate_mcp_url(
                     self.hass, data[CONF_MCP_URL]
@@ -2001,22 +2036,13 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 errors[CONF_MCP_URL] = err.reason
                 return self.async_show_form(
                     step_id="init",
-                    data_schema=_mcp_server_schema(self._options | data),
+                    data_schema=_mcp_server_schema(form_data),
                     errors=errors,
                     description_placeholders=_mcp_validation_placeholders(err),
                 )
             current_subentry_id = None
             if not self._is_new:
                 current_subentry_id = self._get_reconfigure_subentry().subentry_id
-                if not data.get(CONF_MCP_ALLOWED_TOOLS) and _mcp_server_has_dependents(
-                    entry, current_subentry_id
-                ):
-                    errors[CONF_MCP_ALLOWED_TOOLS] = "mcp_tools_not_allowlisted"
-                    return self.async_show_form(
-                        step_id="init",
-                        data_schema=_mcp_server_schema(self._options | data),
-                        errors=errors,
-                    )
             if _mcp_url_already_configured(
                 entry, data[CONF_MCP_URL], current_subentry_id
             ):
@@ -2026,33 +2052,80 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                     self.hass,
                     data,
                     server_id=current_subentry_id or data[CONF_NAME],
+                    apply_allowlist=False,
                 )
-                if not tools:
+                existing_allowed_tools = parse_allowed_tools(
+                    self._options.get(CONF_MCP_ALLOWED_TOOLS)
+                )
+                self._tool_options = _mcp_tool_options(tools, existing_allowed_tools)
+                if not self._tool_options:
                     raise MCPValidationError(
                         "no_mcp_tools",
-                        "The MCP server did not expose any allowed tools.",
+                        "The MCP server did not expose any tools.",
                     )
             except MCPValidationError as err:
                 target = CONF_MCP_URL if err.reason == "invalid_mcp_url" else "base"
                 errors[target] = err.reason
                 return self.async_show_form(
                     step_id="init",
-                    data_schema=_mcp_server_schema(self._options | data),
+                    data_schema=_mcp_server_schema(form_data),
                     errors=errors,
                     description_placeholders=_mcp_validation_placeholders(err),
                 )
-            if self._is_new:
-                return self.async_create_entry(title=data[CONF_NAME], data=data)
-            return self.async_update_and_abort(
-                entry,
-                self._get_reconfigure_subentry(),
-                title=data[CONF_NAME],
-                data=data,
-            )
+            self._pending_data = data
+            return await self.async_step_tools()
 
         return self.async_show_form(
             step_id="init",
             data_schema=_mcp_server_schema(self._options | data),
             errors=errors,
             description_placeholders=description_placeholders,
+        )
+
+    async def async_step_tools(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Select the discovered MCP tools to allow."""
+        if not self._pending_data or not self._tool_options:
+            return await self.async_step_init()
+
+        tool_names = [option["value"] for option in self._tool_options]
+        default_tool_names = (
+            tool_names
+            if self._is_new
+            else [
+                tool_name
+                for tool_name in parse_allowed_tools(
+                    self._options.get(CONF_MCP_ALLOWED_TOOLS)
+                )
+                if tool_name in tool_names
+            ]
+        )
+
+        if user_input is None:
+            return self.async_show_form(
+                step_id="tools",
+                data_schema=_mcp_tools_schema(self._tool_options, default_tool_names),
+            )
+
+        allowed_tools = [
+            tool_name
+            for tool_name in parse_allowed_tools(user_input.get(CONF_MCP_ALLOWED_TOOLS))
+            if tool_name in tool_names
+        ]
+        if not allowed_tools:
+            return self.async_show_form(
+                step_id="tools",
+                data_schema=_mcp_tools_schema(self._tool_options, default_tool_names),
+                errors={CONF_MCP_ALLOWED_TOOLS: "mcp_tools_not_allowlisted"},
+            )
+
+        data = {**self._pending_data, CONF_MCP_ALLOWED_TOOLS: allowed_tools}
+        if self._is_new:
+            return self.async_create_entry(title=data[CONF_NAME], data=data)
+        return self.async_update_and_abort(
+            self._get_entry(),
+            self._get_reconfigure_subentry(),
+            title=data[CONF_NAME],
+            data=data,
         )

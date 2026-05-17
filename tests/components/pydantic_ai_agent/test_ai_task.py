@@ -34,7 +34,7 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
-    PROVIDER_OPENAI,
+    PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_AI_TASK,
 )
 from custom_components.pydantic_ai_agent.context_management import (
@@ -80,7 +80,7 @@ def _entry(
         title="Hosted OpenAI",
         data={
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "sk-test",
         },
         source=config_entries.SOURCE_USER,
@@ -96,7 +96,7 @@ def _entry(
         unique_id=None,
     )
     entry.runtime_data = PydanticAIAgentRuntimeData(
-        provider_mode=PROVIDER_OPENAI,
+        provider_mode=PROVIDER_OPENAI_COMPATIBLE,
         name="Hosted OpenAI",
         api_key="sk-test",
         base_url=None,
@@ -274,7 +274,7 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
             return_value=object(),
         ),
         patch(
@@ -302,7 +302,7 @@ async def test_ai_task_runtime_passes_selected_skills_capabilities(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
             return_value=object(),
         ),
         patch(
@@ -338,7 +338,7 @@ async def test_ai_task_runtime_adds_web_fetch_capability(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
             return_value=object(),
         ),
         patch(
@@ -399,7 +399,7 @@ async def test_structured_data_task_returns_parsed_json(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
             return_value=object(),
         ),
         patch(
@@ -430,7 +430,7 @@ async def test_structured_data_task_rejects_malformed_json(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
             return_value=object(),
         ),
         patch(
@@ -456,7 +456,7 @@ async def test_structured_data_task_rejects_schema_mismatch(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
             return_value=object(),
         ),
         patch(

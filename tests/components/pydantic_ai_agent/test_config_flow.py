@@ -30,7 +30,9 @@ from custom_components.pydantic_ai_agent.config_flow import (
     _conversation_data_from_user_input,
     _conversation_schema,
     _format_api_error,
+    _format_mcp_headers,
     _map_http_error,
+    _mcp_tool_options,
     _mcp_url_already_configured,
     _mcp_url_identity,
 )
@@ -43,6 +45,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_LOGFIRE_TOKEN,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
+    CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
@@ -57,7 +60,6 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
-    PROVIDER_OPENAI,
     PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -147,7 +149,7 @@ async def _loaded_entry(
     """Return a loaded provider config entry."""
     data: dict[str, object] = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
     if data_extra is not None:
@@ -284,12 +286,12 @@ async def test_probe_model_streaming_not_supported_reported(
     """Test non-streaming models are reported explicitly."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_chat_model"),
+        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             return_value=_FailingStreamContext(),
@@ -306,7 +308,7 @@ async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
     """Test provider validation completes a streaming response."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
     stream_result = AsyncMock()
@@ -318,7 +320,7 @@ async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_chat_model",
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model",
             return_value=stream_result,
         ),
         patch(
@@ -340,7 +342,7 @@ async def test_probe_model_can_require_native_structured_output(
     """Test provider validation can require native structured output."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
 
@@ -374,7 +376,7 @@ async def test_probe_model_can_require_native_structured_output(
         yield stream_events
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_chat_model"),
+        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             side_effect=stream,
@@ -404,7 +406,7 @@ async def test_probe_model_can_require_tool_structured_output(
     """Test provider probing can request tool structured output."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
 
@@ -442,7 +444,7 @@ async def test_probe_model_can_require_tool_structured_output(
         yield StructuredEventStream()
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_chat_model"),
+        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             side_effect=stream,
@@ -473,7 +475,7 @@ async def test_probe_model_can_require_prompted_structured_output(
     """Test provider probing can request prompted structured output."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
 
@@ -505,7 +507,7 @@ async def test_probe_model_can_require_prompted_structured_output(
         yield StructuredEventStream()
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_chat_model"),
+        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             side_effect=stream,
@@ -534,7 +536,7 @@ async def test_probe_model_rejects_invalid_native_structured_output(
     """Test native structured output probing rejects non-JSON responses."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
 
@@ -566,7 +568,7 @@ async def test_probe_model_rejects_invalid_native_structured_output(
         yield TextEventStream()
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_chat_model"),
+        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             side_effect=stream,
@@ -589,7 +591,7 @@ async def test_probe_model_merges_configured_model_settings(
     """Test provider validation preserves configured model settings."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
     stream_events = _SingleEventStream()
@@ -599,7 +601,7 @@ async def test_probe_model_merges_configured_model_settings(
         yield stream_events
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_chat_model"),
+        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             side_effect=stream,
@@ -638,13 +640,13 @@ async def test_probe_model_openai_compatible_uses_normalized_base_url(
 
     with (
         patch(
-            "pydantic_ai.providers.openai.OpenAIProvider",
+            "custom_components.pydantic_ai_agent.provider.OpenAICompatibleProvider",
             return_value=provider,
-        ) as openai_provider,
+        ) as compatible_provider,
         patch(
-            "pydantic_ai.models.openai.OpenAIChatModel",
+            "custom_components.pydantic_ai_agent.provider.OpenAICompatibleChatModel",
             return_value=model,
-        ) as openai_chat_model,
+        ) as compatible_chat_model,
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             side_effect=stream,
@@ -652,11 +654,11 @@ async def test_probe_model_openai_compatible_uses_normalized_base_url(
     ):
         await async_probe_model(hass, data, "local-model")
 
-    openai_provider.assert_called_once()
-    assert openai_provider.call_args.kwargs["api_key"] == "local-key"
-    assert openai_provider.call_args.kwargs["base_url"] == "http://localhost:11434/v1"
-    assert openai_provider.call_args.kwargs["http_client"] is not None
-    openai_chat_model.assert_called_once_with("local-model", provider=provider)
+    compatible_provider.assert_called_once()
+    assert compatible_provider.call_args.kwargs["api_key"] == "local-key"
+    assert compatible_provider.call_args.kwargs["base_url"] == "http://localhost:11434/v1"
+    assert compatible_provider.call_args.kwargs["http_client"] is not None
+    compatible_chat_model.assert_called_once_with("local-model", provider=provider)
     assert model_request_stream.call_args.args[0] is model
     assert stream_events.events_yielded == 1
 
@@ -842,12 +844,12 @@ def mock_probe_model() -> Generator[AsyncMock]:
         (
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                 CONF_API_KEY: "sk-test",
             },
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                 CONF_API_KEY: "sk-test",
             },
         ),
@@ -868,28 +870,28 @@ def mock_probe_model() -> Generator[AsyncMock]:
         (
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                 CONF_API_KEY: "sk-test",
                 CONF_LOGFIRE_TOKEN: "   ",
                 CONF_LOGFIRE_INCLUDE_CONTENT: True,
             },
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                 CONF_API_KEY: "sk-test",
             },
         ),
         (
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                 CONF_API_KEY: "sk-test",
                 CONF_LOGFIRE_TOKEN: " lf-token ",
                 CONF_LOGFIRE_INCLUDE_CONTENT: True,
             },
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                 CONF_API_KEY: "sk-test",
                 CONF_LOGFIRE_TOKEN: "lf-token",
                 CONF_LOGFIRE_INCLUDE_CONTENT: True,
@@ -898,14 +900,14 @@ def mock_probe_model() -> Generator[AsyncMock]:
         (
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                 CONF_API_KEY: "sk-test",
                 CONF_SKILLS_FOLDER: "/config/skills/custom",
                 CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
             },
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                 CONF_API_KEY: "sk-test",
                 CONF_SKILLS_FOLDER: "/config/skills/custom",
                 CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
@@ -937,10 +939,10 @@ async def test_config_flow_success_creates_service_entry(
     mock_probe_model.assert_not_awaited()
 
 
-async def test_openai_compatible_config_flow_requires_base_url(
+async def test_openai_compatible_config_flow_allows_default_base_url(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
-    """Test OpenAI-compatible config flow requires a base URL."""
+    """Test OpenAI-compatible config flow can use the default base URL."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -954,9 +956,12 @@ async def test_openai_compatible_config_flow_requires_base_url(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "invalid_base_url"}
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_NAME: "Local LLM",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_API_KEY: "local-key",
+    }
     mock_probe_model.assert_not_awaited()
 
 
@@ -975,7 +980,7 @@ async def test_config_flow_rejects_skills_folder_outside_config(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "sk-test",
             CONF_SKILLS_FOLDER: skills_folder,
         },
@@ -1388,7 +1393,10 @@ async def test_create_mcp_server_subentry(
         patch(
             "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
             new_callable=AsyncMock,
-            return_value=[{"name": "read_file"}],
+            return_value=[
+                {"name": "read_file", "description": "Read files from disk"},
+                {"name": "list_files", "description": "List files"},
+            ],
         ) as discover_tools,
     ):
         result = await hass.config_entries.subentries.async_configure(
@@ -1396,22 +1404,69 @@ async def test_create_mcp_server_subentry(
             {
                 CONF_NAME: "Filesystem MCP",
                 CONF_MCP_URL: "https://8.8.8.8/mcp",
-                CONF_MCP_HEADERS: '{"Authorization": "Bearer token"}',
-                CONF_MCP_ALLOWED_TOOLS: "read_file, list_files",
+                CONF_MCP_HEADERS: "Authorization: Bearer token",
             },
+        )
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "tools"
+        data_schema = result["data_schema"]
+        assert data_schema is not None
+        assert data_schema({}) == {CONF_MCP_ALLOWED_TOOLS: ["list_files", "read_file"]}
+
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_MCP_ALLOWED_TOOLS: ["read_file"]},
         )
 
     validate_url.assert_awaited_once_with(hass, "https://8.8.8.8/mcp")
-    discover_tools.assert_awaited_once()
+    discover_tools.assert_awaited_once_with(
+        hass,
+        {
+            CONF_NAME: "Filesystem MCP",
+            CONF_MCP_URL: "https://8.8.8.8/mcp",
+            CONF_MCP_HEADERS: {"Authorization": "Bearer token"},
+        },
+        server_id="Filesystem MCP",
+        apply_allowlist=False,
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Filesystem MCP"
     assert result["data"] == {
         CONF_NAME: "Filesystem MCP",
         CONF_MCP_URL: "https://8.8.8.8/mcp",
         CONF_MCP_HEADERS: {"Authorization": "Bearer token"},
-        CONF_MCP_ALLOWED_TOOLS: ["list_files", "read_file"],
+        CONF_MCP_ALLOWED_TOOLS: ["read_file"],
     }
     mock_probe_model.assert_not_awaited()
+
+
+def test_mcp_tool_options_include_truncated_descriptions() -> None:
+    """Test MCP tool selector options show descriptions without changing values."""
+    options = _mcp_tool_options(
+        [
+            {"name": "echo", "description": "Return text"},
+            {
+                "name": "long_tool",
+                "description": " ".join(["long"] * 30),
+            },
+            {"name": "plain"},
+        ]
+    )
+
+    assert options[0] == {"label": "echo (Return text)", "value": "echo"}
+    assert options[1]["value"] == "long_tool"
+    assert options[1]["label"].startswith("long_tool (long long")
+    assert options[1]["label"].endswith("...)")
+    assert options[2] == {"label": "plain", "value": "plain"}
+
+
+def test_format_mcp_headers_uses_multiline_header_syntax() -> None:
+    """Test stored MCP headers render as one header per line."""
+    assert _format_mcp_headers({"X-Z": "last", "Authorization": "Bearer token"}) == (
+        "Authorization: Bearer token\nX-Z: last"
+    )
+    assert _format_mcp_headers("X-Raw: value") == "X-Raw: value"
+    assert _format_mcp_headers(None) == ""
 
 
 async def test_create_mcp_server_subentry_allows_local_http_url(
@@ -1434,8 +1489,11 @@ async def test_create_mcp_server_subentry_allows_local_http_url(
             {
                 CONF_NAME: "Local MCP",
                 CONF_MCP_URL: "http://localhost:8080/mcp?token=plain",
-                CONF_MCP_ALLOWED_TOOLS: "local_tool",
             },
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_MCP_ALLOWED_TOOLS: ["local_tool"]},
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -1554,6 +1612,333 @@ async def test_create_mcp_server_subentry_validates_endpoint(
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
     discover_tools.assert_awaited_once()
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_create_mcp_server_subentry_rejects_empty_tool_selection(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test MCP server subentries require at least one selected tool."""
+    entry = await _loaded_entry(hass)
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
+        new_callable=AsyncMock,
+        return_value=[{"name": "echo"}],
+    ):
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_MCP_ALLOWED_TOOLS: []},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "tools"
+    assert result["errors"] == {CONF_MCP_ALLOWED_TOOLS: "mcp_tools_not_allowlisted"}
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_create_mcp_server_subentry_rejects_empty_discovery(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test MCP server subentries reject servers with no discovered tools."""
+    entry = await _loaded_entry(hass)
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
+        new_callable=AsyncMock,
+        return_value=[],
+    ):
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_NAME: "Empty MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    assert result["errors"] == {"base": "no_mcp_tools"}
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_reconfigure_mcp_server_subentry_drops_stale_tools(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test reconfiguring an MCP server removes tools no longer discovered."""
+    entry = await _loaded_entry(
+        hass,
+        subentries_data=(
+            {
+                "data": {
+                    CONF_NAME: "Echo MCP",
+                    CONF_MCP_URL: "https://mcp.example.com/mcp",
+                    CONF_MCP_ALLOWED_TOOLS: ["old_tool", "stale_tool"],
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Echo MCP",
+                "unique_id": None,
+            },
+        ),
+    )
+    subentry = next(iter(entry.subentries.values()))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
+        new_callable=AsyncMock,
+        return_value=[{"name": "old_tool"}, {"name": "new_tool"}],
+    ):
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "tools"
+
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_MCP_ALLOWED_TOOLS: ["old_tool", "new_tool"]},
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert subentry.data[CONF_MCP_ALLOWED_TOOLS] == ["new_tool", "old_tool"]
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_reconfigure_mcp_server_subentry_defaults_to_existing_allowlist(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test MCP reconfigure defaults do not allow newly discovered tools."""
+    entry = await _loaded_entry(
+        hass,
+        subentries_data=(
+            {
+                "data": {
+                    CONF_NAME: "Echo MCP",
+                    CONF_MCP_URL: "https://mcp.example.com/mcp",
+                    CONF_MCP_ALLOWED_TOOLS: ["old_tool"],
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Echo MCP",
+                "unique_id": None,
+            },
+        ),
+    )
+    subentry = next(iter(entry.subentries.values()))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
+        new_callable=AsyncMock,
+        return_value=[{"name": "old_tool"}, {"name": "new_tool"}],
+    ):
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "tools"
+        data_schema = result["data_schema"]
+        assert data_schema is not None
+        defaults = data_schema({})
+        assert defaults[CONF_MCP_ALLOWED_TOOLS] == ["old_tool"]
+
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], defaults
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert subentry.data[CONF_MCP_ALLOWED_TOOLS] == ["old_tool"]
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_reconfigure_mcp_server_subentry_clears_headers(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test clearing the headers field removes stored MCP headers."""
+    entry = await _loaded_entry(
+        hass,
+        subentries_data=(
+            {
+                "data": {
+                    CONF_NAME: "Echo MCP",
+                    CONF_MCP_URL: "https://mcp.example.com/mcp",
+                    CONF_MCP_HEADERS: {"Authorization": "Bearer token"},
+                    CONF_MCP_ALLOWED_TOOLS: ["echo"],
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Echo MCP",
+                "unique_id": None,
+            },
+        ),
+    )
+    subentry = next(iter(entry.subentries.values()))
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    assert data_schema({})[CONF_MCP_HEADERS] == "Authorization: Bearer token"
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
+        new_callable=AsyncMock,
+        return_value=[{"name": "echo"}],
+    ) as discover_tools:
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Echo MCP",
+                CONF_MCP_URL: "https://mcp.example.com/mcp",
+                CONF_MCP_HEADERS: "",
+            },
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_MCP_ALLOWED_TOOLS: ["echo"]},
+        )
+
+    discover_tools.assert_awaited_once_with(
+        hass,
+        {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        server_id=subentry.subentry_id,
+        apply_allowlist=False,
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert CONF_MCP_HEADERS not in subentry.data
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_reconfigure_mcp_server_subentry_preserves_invalid_header_input(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test invalid headers re-render without JSON escaping the submitted value."""
+    entry = await _loaded_entry(
+        hass,
+        subentries_data=(
+            {
+                "data": {
+                    CONF_NAME: "Echo MCP",
+                    CONF_MCP_URL: "https://mcp.example.com/mcp",
+                    CONF_MCP_HEADERS: {"Authorization": "Bearer token"},
+                    CONF_MCP_ALLOWED_TOOLS: ["echo"],
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Echo MCP",
+                "unique_id": None,
+            },
+        ),
+    )
+    subentry = next(iter(entry.subentries.values()))
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+
+    raw_headers = '"{\\"x\\"}"'
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Echo MCP",
+            CONF_MCP_URL: "https://mcp.example.com/mcp",
+            CONF_MCP_HEADERS: raw_headers,
+        },
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_MCP_HEADERS: "invalid_mcp_headers"}
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    assert data_schema({})[CONF_MCP_HEADERS] == raw_headers
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_reconfigure_selected_mcp_server_subentry_reaches_tool_selection(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test dependent MCP servers can still be reconfigured."""
+    entry = await _loaded_entry(
+        hass,
+        subentries_data=(
+            {
+                "subentry_id": "mcp_server_1",
+                "data": {
+                    CONF_NAME: "Echo MCP",
+                    CONF_MCP_URL: "https://mcp.example.com/mcp",
+                    CONF_MCP_ALLOWED_TOOLS: ["echo"],
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Echo MCP",
+                "unique_id": None,
+            },
+            {
+                "data": {
+                    CONF_AGENT_NAME: "Agent",
+                    CONF_MODEL: "gpt-test",
+                    CONF_MCP_SERVER_IDS: ["mcp_server_1"],
+                },
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Agent",
+                "unique_id": None,
+            },
+        ),
+    )
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": "mcp_server_1",
+        },
+    )
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
+        new_callable=AsyncMock,
+        return_value=[{"name": "echo"}],
+    ):
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "tools"
     mock_probe_model.assert_not_awaited()
 
 
@@ -1826,7 +2211,7 @@ async def test_subentry_flow_aborts_when_entry_not_loaded(
         title="Hosted OpenAI",
         data={
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "sk-test",
         },
         source=config_entries.SOURCE_USER,
@@ -1883,7 +2268,7 @@ async def test_conversation_subentry_maps_real_probe_http_error(
     )
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_chat_model"),
+        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             return_value=_HTTPErrorStreamContext(),
@@ -2006,7 +2391,7 @@ async def test_duplicate_config_flow_aborts(
     """Test duplicate provider credentials abort."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
     entry = MockConfigEntry(
@@ -2038,7 +2423,7 @@ async def test_config_flow_allows_same_provider_with_different_skills_folder(
     """Test skills settings are part of provider entry identity."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
     }
     entry = MockConfigEntry(
@@ -2125,7 +2510,7 @@ async def test_reconfigure_provider_skill_source_clears_subentry_skills(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "sk-test",
             CONF_SKILLS_FOLDER: "/config/skills/trusted",
         },
@@ -2155,7 +2540,7 @@ async def test_reconfigure_provider_blank_logfire_token_disables_logfire(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "sk-test-updated",
             CONF_LOGFIRE_TOKEN: "",
             CONF_LOGFIRE_INCLUDE_CONTENT: False,
@@ -2169,10 +2554,10 @@ async def test_reconfigure_provider_blank_logfire_token_disables_logfire(
     mock_probe_model.assert_not_awaited()
 
 
-async def test_reconfigure_provider_to_openai_drops_base_url(
+async def test_reconfigure_provider_keeps_custom_base_url(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
-    """Test OpenAI mode does not keep a stale custom base URL."""
+    """Test OpenAI-compatible mode keeps a configured custom base URL."""
     entry = await _loaded_entry(hass)
 
     result = await entry.start_reconfigure_flow(hass)
@@ -2180,7 +2565,7 @@ async def test_reconfigure_provider_to_openai_drops_base_url(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "sk-test",
             CONF_BASE_URL: "http://localhost:11434/v1/",
         },
@@ -2190,8 +2575,9 @@ async def test_reconfigure_provider_to_openai_drops_base_url(
     assert result["reason"] == "reconfigure_successful"
     assert entry.data == {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "sk-test",
+        CONF_BASE_URL: "http://localhost:11434/v1",
     }
     mock_probe_model.assert_not_awaited()
 
@@ -2206,7 +2592,7 @@ async def test_reconfigure_provider_duplicate_aborts(
         title="Other OpenAI",
         data={
             CONF_NAME: "Other OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "other-key",
         },
         source=config_entries.SOURCE_USER,
@@ -2226,7 +2612,7 @@ async def test_reconfigure_provider_duplicate_aborts(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "sk-test",
         },
     )
@@ -2237,10 +2623,10 @@ async def test_reconfigure_provider_duplicate_aborts(
     mock_probe_model.assert_not_awaited()
 
 
-async def test_reconfigure_provider_requires_base_url(
+async def test_reconfigure_provider_allows_default_base_url(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
-    """Test provider reconfigure validates provider-only fields."""
+    """Test provider reconfigure can use the default base URL."""
     entry = await _loaded_entry(hass)
 
     result = await entry.start_reconfigure_flow(hass)
@@ -2253,10 +2639,9 @@ async def test_reconfigure_provider_requires_base_url(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-    assert result["errors"] == {"base": "invalid_base_url"}
-    assert entry.data[CONF_API_KEY] == "sk-test"
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_API_KEY] == "local-key"
     mock_probe_model.assert_not_awaited()
 
 
@@ -2287,7 +2672,7 @@ async def test_reconfigure_provider_validation_error_stays_on_form(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "bad-key",
         },
     )
@@ -2327,7 +2712,7 @@ async def test_reconfigure_provider_model_validation_error_stays_on_form(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "new-key",
         },
     )
@@ -2340,7 +2725,7 @@ async def test_reconfigure_provider_model_validation_error_stays_on_form(
         hass,
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "new-key",
         },
         "old-model",
@@ -2396,7 +2781,7 @@ async def test_reauth_replaces_provider_data_and_preserves_model(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "new-key",
         },
     )
@@ -2405,7 +2790,7 @@ async def test_reauth_replaces_provider_data_and_preserves_model(
     assert result["reason"] == "reauth_successful"
     assert entry.data == {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "new-key",
     }
     subentry = next(iter(entry.subentries.values()))
@@ -2416,7 +2801,7 @@ async def test_reauth_replaces_provider_data_and_preserves_model(
                 hass,
                 {
                     CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                     CONF_API_KEY: "new-key",
                 },
                 "old-model",
@@ -2426,7 +2811,7 @@ async def test_reauth_replaces_provider_data_and_preserves_model(
                 hass,
                 {
                     CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                     CONF_API_KEY: "new-key",
                 },
                 "task-model",
@@ -2447,7 +2832,7 @@ async def test_reauth_validates_each_subentry_model_settings(
         title="Hosted OpenAI",
         data={
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "old-key",
         },
         source=config_entries.SOURCE_USER,
@@ -2500,7 +2885,7 @@ async def test_reauth_validates_each_subentry_model_settings(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "new-key",
         },
     )
@@ -2512,7 +2897,7 @@ async def test_reauth_validates_each_subentry_model_settings(
                 hass,
                 {
                     CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                     CONF_API_KEY: "new-key",
                 },
                 "shared-model",
@@ -2522,7 +2907,7 @@ async def test_reauth_validates_each_subentry_model_settings(
                 hass,
                 {
                     CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                     CONF_API_KEY: "new-key",
                 },
                 "shared-model",
@@ -2584,7 +2969,7 @@ async def test_reauth_validation_error_stays_on_form(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "bad-key",
         },
     )
@@ -2599,7 +2984,7 @@ async def test_reauth_validation_error_stays_on_form(
                 hass,
                 {
                     CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                     CONF_API_KEY: "bad-key",
                 },
                 "old-model",
@@ -2619,7 +3004,7 @@ async def test_reauth_model_validation_error_still_updates_provider_data(
         title="Hosted OpenAI",
         data={
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "old-key",
         },
         source=config_entries.SOURCE_USER,
@@ -2654,7 +3039,7 @@ async def test_reauth_model_validation_error_still_updates_provider_data(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "new-key",
         },
     )
@@ -2666,7 +3051,7 @@ async def test_reauth_model_validation_error_still_updates_provider_data(
         hass,
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "new-key",
         },
         "removed-model",

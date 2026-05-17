@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+import voluptuous as vol
 
 from homeassistant.util.ssl import SSL_ALPN_HTTP11, client_context
 
@@ -14,6 +15,7 @@ from custom_components.pydantic_ai_agent.mcp import (
     _mcp_http_client_factory,
     _origin_guard_hook,
     normalise_mcp_url,
+    parse_mcp_headers,
     redact_for_log,
 )
 
@@ -126,6 +128,39 @@ def test_mcp_log_redaction_uses_shared_sensitive_key_handling() -> None:
     assert redacted["headers"] == "**REDACTED**"
     assert redacted["result"]["session_token"] == "**REDACTED**"
     assert redacted["result"]["value"] == "safe"
+
+
+def test_parse_mcp_headers_accepts_multiline_header_lines() -> None:
+    """Test MCP headers parse from one header per line."""
+    assert parse_mcp_headers(
+        "Authorization: Bearer secret\n\nX-Trace: value:with:colons"
+    ) == {
+        "Authorization": "Bearer secret",
+        "X-Trace": "value:with:colons",
+    }
+
+
+def test_parse_mcp_headers_accepts_empty_and_mapping_values() -> None:
+    """Test MCP headers parse empty input and stored mappings."""
+    assert parse_mcp_headers("") == {}
+    assert parse_mcp_headers("\n  \n") == {}
+    assert parse_mcp_headers({"X-Test": "enabled"}) == {"X-Test": "enabled"}
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        '{"X-Test": "enabled"}',
+        "Missing separator",
+        "Bad Header: value",
+        {"Bad Header": "value"},
+        {"X-Test": 1},
+    ],
+)
+def test_parse_mcp_headers_rejects_invalid_values(headers: object) -> None:
+    """Test MCP headers reject values outside line-based header syntax."""
+    with pytest.raises(vol.Invalid):
+        parse_mcp_headers(headers)
 
 
 @pytest.mark.parametrize(

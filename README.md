@@ -9,14 +9,16 @@ generation backed by Pydantic AI.
 
 Implemented capabilities include:
 
-- OpenAI and OpenAI-compatible provider connections using Pydantic AI's
-  `OpenAIChatModel` and Home Assistant's shared async HTTP client.
+- OpenAI-compatible provider connections using the in-repo
+  `OpenAICompatibleChatModel` / `OpenAICompatibleProvider` and Home
+  Assistant's shared async HTTP client. The OpenAI SDK is not required.
 - Multiple configurable Assist conversation agents per provider connection.
 - Home Assistant control tools for conversation agents when an LLM API is
   selected for that agent.
 - AI task entities for Home Assistant data generation, including attachment
   support and structured output validation.
-- Configurable structured output modes for AI tasks: tool, native, and prompted.
+- Configurable structured output modes for AI tasks: tool, native, and prompted,
+  subject to the configured provider/model capabilities.
 - Optional remote Streamable HTTP MCP server subentries, with tool discovery,
   explicit runtime allowlists, and response services for listing or refreshing
   discovered tools.
@@ -54,9 +56,10 @@ This integration requires Home Assistant 2026.5.1 or newer.
 
 1. Go to Settings > Devices & services.
 2. Add `Pydantic AI Agent`.
-3. Configure a provider connection with an OpenAI or OpenAI-compatible API key.
-4. For OpenAI-compatible providers, enter the provider's OpenAI-compatible base
-   URL, such as `http://localhost:11434/v1`.
+3. Configure an OpenAI-compatible provider connection with an API key.
+4. Enter a custom OpenAI-compatible base URL when needed, such as
+   `http://localhost:11434/v1`. If no base URL is entered, the provider uses
+   `https://api.openai.com/v1`.
 5. Add subentries for the agents and tool sources you want to expose.
 
 Provider-level settings are shared by all subentries under that provider
@@ -86,6 +89,11 @@ Conversation agents support:
   When prior model history exceeds 100 messages, the request preserves the first
   message and the latest 50 prior-history messages. Messages from the active
   agent run are always preserved.
+- Tool-call follow-up requests preserve provider reasoning metadata such as
+  `reasoning` and `reasoning_content` for OpenAI-compatible endpoints that
+  require it.
+- Conversation entities currently return non-streamed Assist responses and do
+  not advertise Home Assistant streaming support.
 
 ### AI Tasks
 
@@ -138,6 +146,10 @@ Model, permission, provider-configuration, or streaming-capability failures that
 can be fixed by reconfiguration are surfaced as Home Assistant repair issues
 without preventing the provider entry from loading.
 
+OpenAI-compatible provider validation uses a short streamed model probe, but
+runtime conversation responses are still returned to Home Assistant as
+non-streamed results.
+
 Diagnostics redact API keys, Logfire tokens, prompts, sensitive model settings,
 MCP headers, and MCP URL passwords.
 
@@ -157,6 +169,14 @@ token are left loaded but get a repair warning and do not emit Logfire traces.
 ## Development
 
 Use Python 3.14.2 or newer.
+
+Runtime dependencies are declared in both `pyproject.toml` and
+`custom_components/pydantic_ai_agent/manifest.json`. The integration uses
+`pydantic-ai-slim`, `fastmcp-slim[client,server]`, and the in-repo
+OpenAI-compatible adapter instead of the OpenAI SDK.
+
+The adapter design is documented in
+`docs/openai_compatible_provider_design.md`.
 
 Install or update the development environment, then run the local checks:
 

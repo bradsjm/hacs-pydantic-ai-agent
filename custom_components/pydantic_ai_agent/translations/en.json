@@ -15,7 +15,7 @@
           "enable_skill_script_execution": "Allow skill script execution"
         },
         "data_description": {
-          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1.",
+          "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
           "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
           "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
           "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
@@ -36,7 +36,7 @@
           "enable_skill_script_execution": "Allow skill script execution"
         },
         "data_description": {
-          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1.",
+          "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
           "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
           "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
           "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
@@ -57,7 +57,7 @@
           "enable_skill_script_execution": "Allow skill script execution"
         },
         "data_description": {
-          "base_url": "Required for OpenAI-compatible providers, for example http://localhost:11434/v1.",
+          "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
           "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
           "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
           "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
@@ -246,27 +246,35 @@
       "step": {
         "init": {
           "title": "Configure MCP server",
-          "description": "Add a remote Streamable HTTP MCP server. Stdio/local command servers are not supported by this integration.",
+          "description": "Add a remote Streamable HTTP MCP server. Tools are discovered before saving. Stdio/local command servers are not supported by this integration.",
           "data": {
             "name": "Server name",
             "mcp_url": "MCP server URL",
-            "mcp_headers": "HTTP headers",
-            "mcp_allowed_tools": "Allowed tools"
+            "mcp_headers": "HTTP headers"
           },
           "data_description": {
             "mcp_url": "HTTP or HTTPS URL for the remote Streamable HTTP MCP endpoint. Local, LAN, mDNS, and public hosts are supported. HTTPS is recommended when using headers or sensitive tool data.",
-            "mcp_headers": "Optional JSON object of string HTTP headers. Values are redacted in diagnostics.",
-            "mcp_allowed_tools": "Optional comma-separated allowlist. Leave empty to discover all tools, then narrow this list before enabling runtime use."
+            "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value'. Values are redacted in diagnostics."
+          }
+        },
+        "tools": {
+          "title": "Select MCP tools",
+          "description": "All currently discovered tools are enabled by default. Deselect tools you do not want agents or AI tasks to use.",
+          "data": {
+            "mcp_allowed_tools": "Allowed tools"
+          },
+          "data_description": {
+            "mcp_allowed_tools": "Only selected tools are exposed at runtime."
           }
         }
       },
       "error": {
         "cannot_connect": "{error_message}",
         "invalid_auth": "{error_message}",
-        "invalid_mcp_headers": "Enter a JSON object with string header names and string values.",
+        "invalid_mcp_headers": "Enter HTTP headers one per line using 'Header-Name: value'.",
         "invalid_mcp_tools": "Enter comma-separated tool names.",
         "invalid_mcp_url": "{error_message}",
-        "mcp_tools_not_allowlisted": "This MCP server is selected by an agent or AI task. Keep at least one allowed tool before runtime use.",
+        "mcp_tools_not_allowlisted": "Select at least one tool to enable this MCP server.",
         "no_mcp_tools": "{error_message}",
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the MCP server. Check Home Assistant logs for details."
@@ -310,11 +318,10 @@
   },
   "selector": {
     "provider_mode": {
-      "options": {
-        "openai": "OpenAI",
-        "openai_compatible": "OpenAI-compatible"
-      }
-    },
+        "options": {
+          "openai_compatible": "OpenAI-compatible"
+        }
+      },
     "thinking": {
       "options": {
         "": "Provider default",

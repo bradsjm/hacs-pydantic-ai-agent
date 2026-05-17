@@ -71,10 +71,14 @@ Verified current behavior:
   `mcp_url` value to protect stale persisted data.
 - WebFetch enablement is stored on conversation and AI task subentries, defaults
   disabled, and is independent of MCP server selection.
-- Current package dependencies include
-  `pydantic-ai-slim[openai,mcp,web-fetch]==1.97.0`. FastMCP client support is
-  supplied transitively by Pydantic AI's `mcp` extra, and WebFetch support is
-  supplied by Pydantic AI's `web-fetch` extra.
+- Current package dependencies include `pydantic-ai-slim==1.97.0`,
+  `fastmcp-slim[client,server]>=3.3.0`, and `markdownify>=1.2`. FastMCP
+  support is supplied by the explicit slim dependency, and WebFetch content
+  conversion is handled without the Pydantic AI `web-fetch` extra.
+- Provider requests use the in-repo OpenAI-compatible Chat Completions adapter,
+  not the OpenAI SDK. The adapter preserves provider reasoning metadata in
+  tool-call history for reasoning providers that require it on follow-up
+  requests.
 
 ## Real Home Data Used For Design
 
@@ -268,6 +272,9 @@ Non-negotiable boundaries:
   Private modules such as `pydantic_ai._*` are not allowed.
 - Do not add or document streaming behavior until runtime streaming is actually
   implemented and tested.
+- Preserve provider-specific reasoning metadata when Semantic Home participates
+  in tool-call loops; dropping `reasoning` or `reasoning_content` can make
+  OpenAI-compatible reasoning providers reject the next request.
 
 MCP-related guardrails, if Semantic Home ever consumes MCP-derived tools or
 metadata:

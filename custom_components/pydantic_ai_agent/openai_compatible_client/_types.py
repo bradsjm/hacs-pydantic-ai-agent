@@ -1,0 +1,123 @@
+"""Pydantic models for Chat Completions responses."""
+
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict
+
+
+class OpenAICompatibleModel(BaseModel):
+    """Base model that preserves provider-specific extension fields."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CompletionTokenDetails(OpenAICompatibleModel):
+    """Token detail counts returned by some providers."""
+
+    reasoning_tokens: int | None = None
+    audio_tokens: int | None = None
+    accepted_prediction_tokens: int | None = None
+    rejected_prediction_tokens: int | None = None
+
+
+class PromptTokenDetails(OpenAICompatibleModel):
+    """Prompt token detail counts returned by some providers."""
+
+    audio_tokens: int | None = None
+    cached_tokens: int | None = None
+
+
+class CompletionUsage(OpenAICompatibleModel):
+    """Token usage for a Chat Completions response."""
+
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    completion_tokens_details: CompletionTokenDetails | None = None
+    prompt_tokens_details: PromptTokenDetails | None = None
+
+
+class FunctionCall(OpenAICompatibleModel):
+    """Function call name and JSON argument payload."""
+
+    name: str | None = None
+    arguments: str | None = None
+
+
+class ChatCompletionMessageToolCall(OpenAICompatibleModel):
+    """Tool call returned in a non-streamed assistant message."""
+
+    id: str
+    type: Literal["function"] = "function"
+    function: FunctionCall
+
+
+class ChatCompletionMessage(OpenAICompatibleModel):
+    """Assistant message returned by Chat Completions."""
+
+    role: str | None = None
+    content: str | None = None
+    refusal: str | None = None
+    tool_calls: list[ChatCompletionMessageToolCall] | None = None
+    reasoning: str | None = None
+    reasoning_content: str | None = None
+
+
+class ChatCompletionChoice(OpenAICompatibleModel):
+    """One Chat Completions choice."""
+
+    index: int
+    message: ChatCompletionMessage
+    finish_reason: str | None = None
+    logprobs: Any = None
+
+
+class ChatCompletion(OpenAICompatibleModel):
+    """Non-streamed Chat Completions response."""
+
+    id: str | None = None
+    object: str | None = None
+    created: int | None = None
+    model: str | None = None
+    choices: list[ChatCompletionChoice]
+    usage: CompletionUsage | None = None
+
+
+class ChatCompletionChunkToolCall(OpenAICompatibleModel):
+    """Tool-call delta returned by streaming Chat Completions."""
+
+    index: int
+    id: str | None = None
+    type: Literal["function"] | None = None
+    function: FunctionCall | None = None
+
+
+class ChatCompletionChunkDelta(OpenAICompatibleModel):
+    """Streaming assistant delta."""
+
+    role: str | None = None
+    content: str | None = None
+    refusal: str | None = None
+    tool_calls: list[ChatCompletionChunkToolCall] | None = None
+    reasoning: str | None = None
+    reasoning_content: str | None = None
+
+
+class ChatCompletionChunkChoice(OpenAICompatibleModel):
+    """One streaming Chat Completions choice."""
+
+    index: int
+    delta: ChatCompletionChunkDelta | None = None
+    finish_reason: str | None = None
+    logprobs: Any = None
+
+
+class ChatCompletionChunk(OpenAICompatibleModel):
+    """Streaming Chat Completions response chunk."""
+
+    id: str | None = None
+    object: str | None = None
+    created: int | None = None
+    model: str | None = None
+    choices: list[ChatCompletionChunkChoice] = []
+    usage: CompletionUsage | None = None
