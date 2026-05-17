@@ -24,6 +24,7 @@ from custom_components.pydantic_ai_agent.ai_task import (
     async_setup_entry,
 )
 from custom_components.pydantic_ai_agent.const import (
+    CONF_AI_TASK_NAME,
     CONF_MODEL,
     CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
@@ -67,10 +68,13 @@ def _entry(
     output_mode: str | None = None,
     skills: list[str] | None = None,
     *,
+    legacy_task_name: bool = False,
     web_fetch_enabled: bool = False,
 ) -> MockConfigEntry:
     """Return a config entry with one AI task subentry."""
     subentry_data: dict[str, object] = {CONF_MODEL_SUBENTRY_ID: "task_model_profile"}
+    if not legacy_task_name:
+        subentry_data[CONF_AI_TASK_NAME] = "Report task"
     if output_mode is not None:
         subentry_data[CONF_OUTPUT_MODE] = output_mode
     if skills is not None:
@@ -90,7 +94,7 @@ def _entry(
             {
                 "data": subentry_data,
                 "subentry_type": SUBENTRY_TYPE_AI_TASK,
-                "title": "Task Model",
+                "title": "Report task",
                 "unique_id": None,
             },
             {
@@ -263,6 +267,28 @@ async def test_ai_task_subentries_add_separate_entities(
     entity = added_entities[0][0][0]
     assert added_entities[0][1] == subentry.subentry_id
     assert entity.unique_id == subentry.subentry_id
+
+
+def test_ai_task_entity_uses_task_name() -> None:
+    """Test AI task entity display name uses the configured task name."""
+    entry = _entry()
+    subentry = next(iter(entry.subentries.values()))
+
+    entity = PydanticAIAgentAITaskEntity(entry, subentry)
+
+    assert entity.device_info is not None
+    assert entity.device_info["name"] == "Report task"
+
+
+def test_ai_task_entity_falls_back_to_legacy_subentry_title() -> None:
+    """Test legacy AI task subentries without task names keep their title."""
+    entry = _entry(legacy_task_name=True)
+    subentry = next(iter(entry.subentries.values()))
+
+    entity = PydanticAIAgentAITaskEntity(entry, subentry)
+
+    assert entity.device_info is not None
+    assert entity.device_info["name"] == "Report task"
 
 
 def test_ai_task_entity_features() -> None:

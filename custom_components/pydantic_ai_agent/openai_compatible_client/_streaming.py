@@ -36,7 +36,9 @@ async def raise_for_status(response: httpx.Response) -> None:
 class ChatCompletionStream:
     """Async iterator over Chat Completions SSE chunks."""
 
-    def __init__(self, response_context: AbstractAsyncContextManager[httpx.Response]) -> None:
+    def __init__(
+        self, response_context: AbstractAsyncContextManager[httpx.Response]
+    ) -> None:
         """Initialize the stream."""
         self._response_context = response_context
         self._response: httpx.Response | None = None

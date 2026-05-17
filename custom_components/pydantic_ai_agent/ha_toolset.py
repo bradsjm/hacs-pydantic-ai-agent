@@ -7,6 +7,7 @@ from voluptuous_openapi import convert
 
 from homeassistant.helpers import llm
 
+
 def tool_definitions_from_llm_api(
     api_instance: llm.APIInstance | None,
 ) -> list[ToolDefinition]:

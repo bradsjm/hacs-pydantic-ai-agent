@@ -35,7 +35,9 @@ from pydantic_ai.tools import ToolDefinition
 from typing_extensions import assert_never
 
 
-def map_tool_definition(tool: ToolDefinition, *, strict_supported: bool) -> dict[str, Any]:
+def map_tool_definition(
+    tool: ToolDefinition, *, strict_supported: bool
+) -> dict[str, Any]:
     """Map a Pydantic AI tool definition to an OpenAI-compatible function tool."""
     function: dict[str, Any] = {
         "name": tool.name,
@@ -77,10 +79,16 @@ async def map_messages(
         else:
             assert_never(message)
 
-    if instruction_parts := model._get_instruction_parts(messages, model_request_parameters):
+    if instruction_parts := model._get_instruction_parts(
+        messages, model_request_parameters
+    ):
         system_role = _system_role(model)
         first_non_system = next(
-            (i for i, item in enumerate(mapped_messages) if item.get("role") != system_role),
+            (
+                i
+                for i, item in enumerate(mapped_messages)
+                if item.get("role") != system_role
+            ),
             len(mapped_messages),
         )
         mapped_messages[first_non_system:first_non_system] = [
@@ -91,7 +99,10 @@ async def map_messages(
 
 def _system_role(model: Model[Any]) -> str:
     """Return the OpenAI-compatible system prompt role."""
-    return OpenAIModelProfile.from_profile(model.profile).openai_system_prompt_role or "system"
+    return (
+        OpenAIModelProfile.from_profile(model.profile).openai_system_prompt_role
+        or "system"
+    )
 
 
 async def _map_model_request(
@@ -142,13 +153,18 @@ def _map_model_response(message: ModelResponse) -> dict[str, Any] | None:
                 texts.append("\n".join([start_tag, item.content, end_tag]))
         elif isinstance(item, ToolCallPart):
             tool_calls.append(_map_tool_call(item))
-        elif isinstance(item, NativeToolCallPart | NativeToolReturnPart | FilePart | CompactionPart):
+        elif isinstance(
+            item, NativeToolCallPart | NativeToolReturnPart | FilePart | CompactionPart
+        ):
             pass
         else:
             assert_never(item)
     if not texts and not tool_calls:
         return None
-    mapped: dict[str, Any] = {"role": "assistant", "content": "\n\n".join(texts) if texts else ""}
+    mapped: dict[str, Any] = {
+        "role": "assistant",
+        "content": "\n\n".join(texts) if texts else "",
+    }
     for field_name, contents in thinking_fields.items():
         mapped[field_name] = "\n\n".join(contents)
     if tool_calls:
@@ -170,7 +186,11 @@ def _map_user_prompt(part: UserPromptPart) -> dict[str, Any]:
     if isinstance(part.content, str):
         content: str | list[dict[str, Any]] = part.content
     else:
-        content = [mapped for item in part.content if (mapped := _map_content_item(item)) is not None]
+        content = [
+            mapped
+            for item in part.content
+            if (mapped := _map_content_item(item)) is not None
+        ]
     return {"role": "user", "content": content}
 
 
@@ -187,13 +207,18 @@ def _map_content_item(item: Any) -> dict[str, Any] | None:
     if isinstance(item, BinaryContent):
         return _map_binary_content(item)
     if isinstance(item, DocumentUrl):
-        return {"type": "file", "file": {"file_data": item.url, "filename": f"filename.{item.format}"}}
+        return {
+            "type": "file",
+            "file": {"file_data": item.url, "filename": f"filename.{item.format}"},
+        }
     if isinstance(item, UploadedFile):
         return {"type": "file", "file": {"file_id": item.file_id}}
     if isinstance(item, CachePoint):
         return None
     if isinstance(item, AudioUrl | VideoUrl):
-        raise UserError("Audio and video URL inputs are not supported by this Chat Completions adapter")
+        raise UserError(
+            "Audio and video URL inputs are not supported by this Chat Completions adapter"
+        )
     assert_never(item)
 
 
@@ -213,5 +238,8 @@ def _map_binary_content(item: BinaryContent) -> dict[str, Any]:
         return {"type": "image_url", "image_url": image_url}
     if item.is_document:
         data = f"data:{item.media_type};base64,{base64.b64encode(item.data).decode()}"
-        return {"type": "file", "file": {"file_data": data, "filename": f"filename.{item.format}"}}
+        return {
+            "type": "file",
+            "file": {"file_data": data, "filename": f"filename.{item.format}"},
+        }
     raise UserError(f"Unsupported binary content type: {item.media_type}")

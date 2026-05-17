@@ -206,11 +206,11 @@ class PydanticAIBaseLLMEntity:
                 with agent_run_span(
                     self.hass,
                     self.entry,
-                        self.subentry,
-                        entity_id=agent_id,
-                        conversation_id=chat_log.conversation_id,
-                        model_name=profile.model_name,
-                    ):
+                    self.subentry,
+                    entity_id=agent_id,
+                    conversation_id=chat_log.conversation_id,
+                    model_name=profile.model_name,
+                ):
                     if not has_structure:
                         result = await agent.run(
                             user_prompt,

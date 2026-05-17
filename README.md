@@ -22,7 +22,7 @@ Implemented capabilities include:
 - Optional remote Streamable HTTP MCP server subentries, with tool discovery,
   explicit runtime allowlists, and response services for listing or refreshing
   discovered tools.
-- Optional WebFetch capability for individual conversation agents and AI tasks,
+- Optional Web fetch capability for individual conversation agents and AI tasks,
   disabled by default.
 - Optional local `pydantic-ai-skills` selection from `/config/skills` or a
   subfolder, with script execution disabled unless explicitly enabled on the
@@ -79,11 +79,13 @@ Conversation agents support:
   support.
 - Optional MCP server selection. Selected MCP servers must have at least one
   allowed tool configured before runtime use.
-- Optional WebFetch URL content fetching. WebFetch is disabled by default and
+- Optional Web fetch URL content fetching. Web fetch is disabled by default and
   can be enabled without selecting any MCP servers.
 - Optional local skill selection from the configured skills folder.
 - Optional model settings including temperature, thinking, max tokens, top P,
-  timeout, parallel tool calls, seed, penalties, extra headers, and extra body.
+  timeout, parallel tool calls, seed, penalties, and extra body fields.
+- Optional provider HTTP headers configured on the provider entry and used for
+  model discovery and model requests.
 - Automatic hidden context trimming for very long conversations. Stored Assist
   history is not pruned; only the model request is windowed.
   When prior model history exceeds 100 messages, the request preserves the first
@@ -97,14 +99,14 @@ Conversation agents support:
 
 ### AI Tasks
 
-Add an `AI task` subentry for each AI task model configuration you want to
-expose. Each subentry creates an `ai_task.*` entity that supports Home Assistant
-data generation and attachments.
+Add an `AI task` subentry for each AI task configuration you want to expose.
+Each subentry has its own task name and creates an `ai_task.*` entity that
+supports Home Assistant data generation and attachments.
 
 AI task entities can return plain text or validate structured results against
 the schema requested by Home Assistant. Structured output defaults to tool output
 and can be changed to native or prompted output in the advanced AI task settings.
-Each AI task can also enable WebFetch independently of MCP server selection.
+Each AI task can also enable Web fetch independently of MCP server selection.
 AI task requests use the same automatic model-request context trimming as
 conversation agents, including active-run preservation.
 

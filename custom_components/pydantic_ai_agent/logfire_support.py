@@ -114,9 +114,7 @@ def logfire_token_conflict(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     token = _entry_logfire_token(entry)
     configured_token = _logfire_state(hass).configured_token
     return (
-        token is not None
-        and configured_token is not None
-        and token != configured_token
+        token is not None and configured_token is not None and token != configured_token
     )
 
 

@@ -13,6 +13,7 @@ COMMON_SENSITIVE_KEYS = {
     "extra_headers",
     "headers",
     "password",
+    "provider_headers",
     "request_headers",
     "response_headers",
     "secret",
@@ -40,9 +41,7 @@ def redaction_keys(
     return keys
 
 
-def redact_data(
-    data: Any, extra_sensitive_keys: Iterable[object] = ()
-) -> Any:
+def redact_data(data: Any, extra_sensitive_keys: Iterable[object] = ()) -> Any:
     """Return a copy of data with sensitive values redacted by Home Assistant."""
     keys = redaction_keys(data, extra_sensitive_keys)
     return async_redact_data(data, keys) if keys else _copy_containers(data)

@@ -188,19 +188,19 @@ Implementation checklist before coding each feature:
 ## User-Facing Behavior
 
 Users can add `Pydantic AI Agent` from the Home Assistant Integrations UI as a
-provider/service connection. Each service connection owns one or more
+provider connection. Each provider connection owns one or more
 conversation subentries, and each conversation subentry creates one selectable
 Assist conversation agent. The initial setup flow creates only the provider
-service entry; users add conversation agents and AI task configurations from the
-integration subentry actions.
+connection entry; users add conversation agents and AI task configurations from
+the integration subentry actions.
 
 Example instances:
 
-| Instance title              | Provider mode       | Model           | HA tools |
-| --------------------------- | ------------------- | --------------- | -------- |
-| `Pydantic AI Agent - Home`  | OpenAI-compatible   | `gpt-5.1`       | Enabled  |
-| `Pydantic AI Agent - Local` | OpenAI-compatible   | `llama-3.3-70b` | Disabled |
-| `Pydantic AI Agent - Admin` | OpenAI-compatible   | `gpt-5.1`       | Enabled  |
+| Provider connection title | Provider mode     | Example model   | HA tools |
+| ------------------------- | ----------------- | --------------- | -------- |
+| `OpenAI Home`             | OpenAI-compatible | `gpt-5.1`       | Enabled  |
+| `Local LLM`               | OpenAI-compatible | `llama-3.3-70b` | Disabled |
+| `Admin Provider`          | OpenAI-compatible | `gpt-5.1`       | Enabled  |
 
 Each conversation subentry appears as a separate selectable conversation agent in
 Home Assistant Assist configuration. Changing one conversation subentry must not
@@ -327,7 +327,7 @@ remote Streamable HTTP MCP servers.
   passwords, secret/token fields, extra headers, raw prompts/instructions, or
   provider payloads that may contain private Home Assistant state.
 - Redaction must be recursive so sensitive keys inside `model_settings`,
-  `extra_headers`, `extra_body`, and provider metadata are masked as well.
+  provider HTTP headers, `extra_body`, and provider metadata are masked as well.
 - Diagnostics must still be structured and concise. Do not include tracebacks or
   noisy internal dumps in normal diagnostics output.
 
@@ -338,17 +338,18 @@ remote Streamable HTTP MCP servers.
 The config flow should collect only values required to create a working,
 independent instance.
 
-| Field              | Required           | Stored in                        | Notes                                                         |
-| ------------------ | ------------------ | -------------------------------- | ------------------------------------------------------------- |
-| Service name       | Yes                | Config entry title/data          | User-facing name for the provider/service connection.         |
-| Provider mode      | Yes                | Data                             | Current value: `openai_compatible`.                           |
-| API key            | Yes                | Data                             | Credential used for provider validation and requests.         |
-| Base URL           | No                 | Data                             | Defaults to `https://api.openai.com/v1` when omitted.         |
-| Logfire token      | No                 | Data                             | Enables optional Logfire tracing for the provider entry.      |
-| Skills folder      | No                 | Data                             | Must be `/config/skills` or a subfolder when configured.      |
-| Initial agent name | No                 | Conversation subentry title/data | Collected by the conversation subentry flow.                  |
-| Model              | No                 | Conversation/AI task subentry    | Entered and validated by subentry flows.                      |
-| HA LLM API         | No                 | Conversation subentry data       | Tool access is enabled when this selector has values.         |
+| Field                    | Required | Stored in                        | Notes                                                    |
+| ------------------------ | -------- | -------------------------------- | -------------------------------------------------------- |
+| Provider connection name | Yes      | Config entry title/data          | User-facing name for the provider connection.            |
+| Provider mode            | Yes      | Data                             | Current value: `openai_compatible`.                      |
+| API key                  | Yes      | Data                             | Credential used for provider validation and requests.    |
+| Base URL                 | No       | Data                             | Defaults to `https://api.openai.com/v1` when omitted.    |
+| Logfire token            | No       | Data                             | Enables optional Logfire tracing for the provider entry. |
+| Skills folder            | No       | Data                             | Must be `/config/skills` or a subfolder when configured. |
+| Initial agent name       | No       | Conversation subentry title/data | Collected by the conversation subentry flow.             |
+| AI task name             | Yes      | AI task subentry title/data      | Collected by the AI task subentry flow.                  |
+| Language model profile   | No       | Conversation/AI task subentry    | Selected and validated by subentry flows.                |
+| HA LLM API               | No       | Conversation subentry data       | Tool access is enabled when this selector has values.    |
 
 Provider-specific required fields belong in the config flow when the instance
 cannot be validated or used without them.
@@ -380,11 +381,11 @@ without recreating the parent provider/service entry.
 | Option                     | Purpose                                                     |
 | -------------------------- | ----------------------------------------------------------- |
 | Agent name                 | Set the conversation entity display name.                   |
-| Model                      | Change model after setup.                                   |
+| Language model profile     | Change model after setup.                                   |
 | System prompt/instructions | Customize assistant behavior.                               |
 | HA LLM API selection       | Choose which Home Assistant LLM API tools to expose.        |
 | MCP server selection       | Choose which configured MCP server toolsets to expose.      |
-| WebFetch                   | Allow URL content fetching through Pydantic AI WebFetch.    |
+| Web fetch                  | Allow URL content fetching through Pydantic AI WebFetch.    |
 | Skill selection            | Choose discovered local skills to expose as capabilities.   |
 | Max iterations             | Bound Pydantic AI request/tool-loop iterations.             |
 | Temperature                | Portable generation control where supported.                |
@@ -396,7 +397,6 @@ without recreating the parent provider/service entry.
 | Seed                       | Provider-specific deterministic sampling hint.              |
 | Presence penalty           | Provider-specific repetition control.                       |
 | Frequency penalty          | Provider-specific frequency control.                        |
-| Extra headers              | JSON object of string headers for provider requests.        |
 | Extra body                 | JSON object merged into provider request bodies.            |
 
 Subentry reconfigure UX requirements:
@@ -730,16 +730,16 @@ event API details from the rest of the integration.
 
 It must map:
 
-| Pydantic AI concept        | Home Assistant output concept         |
-| -------------------------- | ------------------------------------- |
-| Text content               | Assistant content                     |
-| Displayable thinking       | `thinking_content`                    |
-| Tool call                  | Tool call placeholder/metadata        |
-| Tool call arguments        | Home Assistant `ToolInput` equivalent |
-| Tool result                | Tool result content                   |
-| Final result               | Final assistant content state         |
-| Usage data                 | Trace/diagnostic metadata where safe  |
-| Provider error             | User-safe error response and logs     |
+| Pydantic AI concept  | Home Assistant output concept         |
+| -------------------- | ------------------------------------- |
+| Text content         | Assistant content                     |
+| Displayable thinking | `thinking_content`                    |
+| Tool call            | Tool call placeholder/metadata        |
+| Tool call arguments  | Home Assistant `ToolInput` equivalent |
+| Tool result          | Tool result content                   |
+| Final result         | Final assistant content state         |
+| Usage data           | Trace/diagnostic metadata where safe  |
+| Provider error       | User-safe error response and logs     |
 
 The adapter must handle missing provider IDs, provider-specific native events,
 cancellation, and incomplete model responses.
@@ -1096,7 +1096,7 @@ Required test coverage:
 - Provider timeout and error handling.
 - Translation coverage for config flow and subentry flow keys.
 - Actionable error template rendering with concrete low-level details.
-- Diagnostics redaction for credentials, prompts, extra headers, tokens, and
+- Diagnostics redaction for credentials, prompts, provider HTTP headers, tokens, and
   nested sensitive provider/model settings.
 - Repair issue creation and cleanup for reconfigurable stored model validation
   failures.

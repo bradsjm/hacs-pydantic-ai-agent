@@ -24,6 +24,7 @@ from .const import (
     CONF_MODEL_SETTINGS,
     CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
+    CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
     CONF_SKILLS_FOLDER,
     DEFAULT_SKILLS_FOLDER,
@@ -89,6 +90,7 @@ class PydanticAIAgentRuntimeData:
     logfire_include_content: bool
     skills_folder: str
     enable_skill_script_execution: bool
+    provider_headers: dict[str, str] = field(default_factory=dict)
     mcp_servers: list[dict[str, Any]] = field(default_factory=list)
     mcp_tool_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
@@ -136,6 +138,7 @@ async def async_setup_entry(
         name=entry.data[CONF_NAME],
         api_key=entry.data[CONF_API_KEY],
         base_url=entry.data.get(CONF_BASE_URL),
+        provider_headers=dict(entry.data.get(CONF_PROVIDER_HEADERS, {})),
         logfire_enabled=logfire_enabled(hass, entry),
         logfire_include_content=logfire_include_content(hass, entry),
         skills_folder=entry.data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
@@ -286,7 +289,10 @@ def _configured_subentry_models(
         add_model(profile_id, None)
 
     for subentry in entry.subentries.values():
-        if subentry.subentry_type not in (SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK):
+        if subentry.subentry_type not in (
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        ):
             continue
         primary_id = subentry.data.get(CONF_MODEL_SUBENTRY_ID)
         if not isinstance(primary_id, str) or not primary_id:

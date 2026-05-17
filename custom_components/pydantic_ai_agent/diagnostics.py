@@ -16,6 +16,7 @@ from .const import (
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_PROMPT,
+    CONF_PROVIDER_HEADERS,
     SUBENTRY_TYPE_MODEL,
 )
 from .logfire_support import (
@@ -35,6 +36,7 @@ _SENSITIVE_KEYS = {
     "extra_headers",
     CONF_MCP_HEADERS,
     CONF_MCP_URL,
+    CONF_PROVIDER_HEADERS,
     "password",
     "secret",
     "token",

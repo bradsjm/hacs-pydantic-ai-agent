@@ -14,6 +14,7 @@ from _pytest.logging import LogCaptureFixture
 from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 import pytest
+import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
@@ -35,9 +36,11 @@ from custom_components.pydantic_ai_agent.config_flow import (
     _mcp_tool_options,
     _mcp_url_already_configured,
     _mcp_url_identity,
+    _model_settings_schema,
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
+    CONF_AI_TASK_NAME,
     CONF_BASE_URL,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
     CONF_CONFIGURE_OUTPUT_MODE,
@@ -53,6 +56,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
     CONF_PROMPT,
+    CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_SKILLS_FOLDER,
@@ -324,7 +328,9 @@ async def test_probe_model_streaming_not_supported_reported(
     }
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+        ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             return_value=_FailingStreamContext(),
@@ -409,7 +415,9 @@ async def test_probe_model_can_require_native_structured_output(
         yield stream_events
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+        ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             side_effect=stream,
@@ -477,7 +485,9 @@ async def test_probe_model_can_require_tool_structured_output(
         yield StructuredEventStream()
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+        ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             side_effect=stream,
@@ -540,7 +550,9 @@ async def test_probe_model_can_require_prompted_structured_output(
         yield StructuredEventStream()
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+        ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             side_effect=stream,
@@ -601,7 +613,9 @@ async def test_probe_model_rejects_invalid_native_structured_output(
         yield TextEventStream()
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+        ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             side_effect=stream,
@@ -634,7 +648,9 @@ async def test_probe_model_merges_configured_model_settings(
         yield stream_events
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+        ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             side_effect=stream,
@@ -689,7 +705,9 @@ async def test_probe_model_openai_compatible_uses_normalized_base_url(
 
     compatible_provider.assert_called_once()
     assert compatible_provider.call_args.kwargs["api_key"] == "local-key"
-    assert compatible_provider.call_args.kwargs["base_url"] == "http://localhost:11434/v1"
+    assert (
+        compatible_provider.call_args.kwargs["base_url"] == "http://localhost:11434/v1"
+    )
     assert compatible_provider.call_args.kwargs["http_client"] is not None
     compatible_chat_model.assert_called_once_with("local-model", provider=provider)
     assert model_request_stream.call_args.args[0] is model
@@ -750,11 +768,14 @@ def test_ai_task_schema_filters_unavailable_skills() -> None:
     """Test stale AI task skill names are not preselected."""
     data = _ai_task_data_schema(
         {
+            CONF_AI_TASK_NAME: "Report task",
             CONF_MODEL: "gpt-test",
             CONF_SKILLS: ["stale-skill", "report-skill"],
         },
         available_skills=[
-            AvailableSkill(name="report-skill", description="Reports", has_scripts=False)
+            AvailableSkill(
+                name="report-skill", description="Reports", has_scripts=False
+            )
         ],
     )({})
 
@@ -801,7 +822,7 @@ def test_subentry_data_preserves_skills_when_field_not_rendered() -> None:
         {CONF_SKILLS: ["kitchen-skill"]},
     )
     ai_task_data = _ai_task_data_from_user_input(
-        {CONF_MODEL: "gpt-test"},
+        {CONF_AI_TASK_NAME: "Report task", CONF_MODEL: "gpt-test"},
         {CONF_OUTPUT_MODE: OUTPUT_MODE_NATIVE, CONF_SKILLS: ["report-skill"]},
     )
 
@@ -815,14 +836,18 @@ def test_subentry_data_clears_skills_when_field_rendered_empty() -> None:
         {CONF_AGENT_NAME: "Kitchen Agent", CONF_MODEL: "gpt-test", CONF_SKILLS: []},
         {CONF_SKILLS: ["kitchen-skill"]},
         available_skills=[
-            AvailableSkill(name="kitchen-skill", description="Kitchen", has_scripts=False)
+            AvailableSkill(
+                name="kitchen-skill", description="Kitchen", has_scripts=False
+            )
         ],
     )
     ai_task_data = _ai_task_data_from_user_input(
-        {CONF_MODEL: "gpt-test", CONF_SKILLS: []},
+        {CONF_AI_TASK_NAME: "Report task", CONF_MODEL: "gpt-test", CONF_SKILLS: []},
         {CONF_OUTPUT_MODE: OUTPUT_MODE_NATIVE, CONF_SKILLS: ["report-skill"]},
         available_skills=[
-            AvailableSkill(name="report-skill", description="Reports", has_scripts=False)
+            AvailableSkill(
+                name="report-skill", description="Reports", has_scripts=False
+            )
         ],
     )
 
@@ -840,7 +865,9 @@ def test_subentry_data_preserves_hidden_skills_with_rendered_field() -> None:
         },
         {CONF_SKILLS: ["hidden-skill", "visible-skill"]},
         available_skills=[
-            AvailableSkill(name="visible-skill", description="Visible", has_scripts=False)
+            AvailableSkill(
+                name="visible-skill", description="Visible", has_scripts=False
+            )
         ],
     )
 
@@ -850,10 +877,12 @@ def test_subentry_data_preserves_hidden_skills_with_rendered_field() -> None:
 def test_subentry_data_clears_hidden_skills_with_empty_selection() -> None:
     """Test explicitly empty skill selections clear hidden stale skills too."""
     data = _ai_task_data_from_user_input(
-        {CONF_MODEL: "gpt-test", CONF_SKILLS: []},
+        {CONF_AI_TASK_NAME: "Report task", CONF_MODEL: "gpt-test", CONF_SKILLS: []},
         {CONF_OUTPUT_MODE: OUTPUT_MODE_NATIVE, CONF_SKILLS: ["hidden-skill"]},
         available_skills=[
-            AvailableSkill(name="visible-skill", description="Visible", has_scripts=False)
+            AvailableSkill(
+                name="visible-skill", description="Visible", has_scripts=False
+            )
         ],
     )
 
@@ -868,6 +897,17 @@ def mock_probe_model() -> Generator[AsyncMock]:
         new_callable=AsyncMock,
     ) as flow_mock:
         flow_mock.return_value = None
+        yield flow_mock
+
+
+@pytest.fixture(autouse=True)
+def mock_list_provider_model_names() -> Generator[AsyncMock]:
+    """Mock provider model discovery."""
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flow.async_list_provider_model_names",
+        new_callable=AsyncMock,
+    ) as flow_mock:
+        flow_mock.return_value = ["gpt-test", "gpt-other"]
         yield flow_mock
 
 
@@ -892,12 +932,17 @@ def mock_probe_model() -> Generator[AsyncMock]:
                 CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                 CONF_API_KEY: "local-key",
                 CONF_BASE_URL: "http://localhost:11434/v1/",
+                CONF_PROVIDER_HEADERS: "X-Provider: enabled\nAuthorization: Bearer override",
             },
             {
                 CONF_NAME: "Local LLM",
                 CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
                 CONF_API_KEY: "local-key",
                 CONF_BASE_URL: "http://localhost:11434/v1",
+                CONF_PROVIDER_HEADERS: {
+                    "Authorization": "Bearer override",
+                    "X-Provider": "enabled",
+                },
             },
         ),
         (
@@ -998,6 +1043,29 @@ async def test_openai_compatible_config_flow_allows_default_base_url(
     mock_probe_model.assert_not_awaited()
 
 
+async def test_config_flow_rejects_invalid_provider_headers(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test provider headers use the MCP-style header line format."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Hosted OpenAI",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_API_KEY: "sk-test",
+            CONF_PROVIDER_HEADERS: "not a header",
+        },
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_provider_headers"}
+    mock_probe_model.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "skills_folder", ["../../skills", "/tmp/skills", "/config", ".", "/config/custom"]
 )
@@ -1069,11 +1137,11 @@ async def test_create_conversation_subentry_without_control(
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
-            {
-                CONF_AGENT_NAME: "Local Agent",
-                CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
-                CONF_LLM_HASS_API: [],
-            },
+        {
+            CONF_AGENT_NAME: "Local Agent",
+            CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+            CONF_LLM_HASS_API: [],
+        },
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -1092,7 +1160,9 @@ async def test_create_conversation_subentry_with_skills(
         "custom_components.pydantic_ai_agent.config_flow.async_available_skills",
         new_callable=AsyncMock,
         return_value=[
-            AvailableSkill(name="kitchen-skill", description="Kitchen", has_scripts=False)
+            AvailableSkill(
+                name="kitchen-skill", description="Kitchen", has_scripts=False
+            )
         ],
     ):
         result = await hass.config_entries.subentries.async_init(
@@ -1175,6 +1245,99 @@ async def test_create_model_profile_with_main_model_settings(
     )
 
 
+async def test_model_profile_uses_discovered_model_dropdown(
+    hass: HomeAssistant,
+    mock_list_provider_model_names: AsyncMock,
+) -> None:
+    """Test model profile creation restricts model selection when discovery succeeds."""
+    entry = await _loaded_entry(hass, with_model_profile=True)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODEL),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    assert (
+        data_schema({CONF_NAME: "Fast GPT", CONF_MODEL: "gpt-test"})[CONF_MODEL]
+        == "gpt-test"
+    )
+    with pytest.raises(vol.Invalid):
+        data_schema({CONF_NAME: "Fast GPT", CONF_MODEL: "not-listed"})
+    mock_list_provider_model_names.assert_awaited_once_with(hass, entry.data)
+
+
+async def test_model_profile_falls_back_to_text_when_model_discovery_fails(
+    hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
+    mock_list_provider_model_names: AsyncMock,
+) -> None:
+    """Test model profile creation allows manual model names if discovery fails."""
+    mock_list_provider_model_names.side_effect = RuntimeError("offline")
+    entry = await _loaded_entry(hass, with_model_profile=True)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODEL),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "model_list_unavailable"}
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    assert (
+        data_schema({CONF_NAME: "Manual", CONF_MODEL: "not-listed"})[CONF_MODEL]
+        == "not-listed"
+    )
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Manual",
+            CONF_MODEL: "not-listed",
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_MODEL] == "not-listed"
+    mock_probe_model.assert_awaited_once_with(hass, entry.data, "not-listed", {})
+
+
+async def test_reconfigure_model_profile_preserves_model_missing_from_discovery(
+    hass: HomeAssistant,
+    mock_list_provider_model_names: AsyncMock,
+) -> None:
+    """Test current model remains selectable if provider discovery omits it."""
+    mock_list_provider_model_names.return_value = ["gpt-other"]
+    entry = await _loaded_entry(hass, with_model_profile=True)
+    profile_id = _model_profile_id(entry)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODEL),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": profile_id,
+        },
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    assert data_schema({})[CONF_MODEL] == "gpt-test"
+
+
+def test_model_settings_schema_puts_parallel_tool_calls_first() -> None:
+    """Test advanced model settings render parallel tool calls first."""
+    data_schema = _model_settings_schema()
+
+    first_key = next(iter(data_schema.schema))
+
+    assert first_key.schema == "parallel_tool_calls"
+
+
 async def test_create_model_profile_with_advanced_model_settings(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
@@ -1196,6 +1359,9 @@ async def test_create_model_profile_with_advanced_model_settings(
     )
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "model_settings"
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    assert "extra_headers" not in {key.schema for key in data_schema.schema}
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -1207,8 +1373,7 @@ async def test_create_model_profile_with_advanced_model_settings(
             "seed": 42,
             "presence_penalty": 0.2,
             "frequency_penalty": 0.3,
-            "extra_headers": '{"X-Test": "enabled"}',
-            "extra_body": '{"reasoning": {"effort": "high"}}',
+            "extra_body": 'reasoning: {"effort": "high"}\nservice_tier: "flex"\nnullable: null',
         },
     )
 
@@ -1222,8 +1387,11 @@ async def test_create_model_profile_with_advanced_model_settings(
         "seed": 42,
         "presence_penalty": 0.2,
         "frequency_penalty": 0.3,
-        "extra_headers": {"X-Test": "enabled"},
-        "extra_body": {"reasoning": {"effort": "high"}},
+        "extra_body": {
+            "reasoning": {"effort": "high"},
+            "service_tier": "flex",
+            "nullable": None,
+        },
     }
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_MODEL_SETTINGS] == expected_settings
@@ -1237,9 +1405,9 @@ async def test_create_model_profile_with_advanced_model_settings(
     [
         ({"max_tokens": 0}, {"max_tokens": "invalid_integer"}),
         ({"timeout": -1}, {"timeout": "positive_number"}),
-        ({"extra_headers": "not-json"}, {"extra_headers": "invalid_json"}),
-        ({"extra_headers": '{"X-Test": 1}'}, {"extra_headers": "invalid_headers"}),
-        ({"extra_body": "[]"}, {"extra_body": "invalid_object"}),
+        ({"extra_body": "missing-separator"}, {"extra_body": "invalid_key_value"}),
+        ({"extra_body": "foo: not-json"}, {"extra_body": "invalid_json"}),
+        ({"extra_body": "foo: true\nfoo: false"}, {"extra_body": "duplicate_key"}),
     ],
 )
 async def test_model_profile_advanced_model_settings_validation_errors(
@@ -1322,12 +1490,16 @@ async def test_create_ai_task_data_subentry(
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
-        {CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry)},
+        {
+            CONF_AI_TASK_NAME: "Report task",
+            CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+        },
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Fast GPT"
+    assert result["title"] == "Report task"
     assert result["data"] == {
+        CONF_AI_TASK_NAME: "Report task",
         CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
         CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
     }
@@ -1350,7 +1522,9 @@ async def test_create_ai_task_data_subentry_with_skills(
         "custom_components.pydantic_ai_agent.config_flow.async_available_skills",
         new_callable=AsyncMock,
         return_value=[
-            AvailableSkill(name="report-skill", description="Reports", has_scripts=False)
+            AvailableSkill(
+                name="report-skill", description="Reports", has_scripts=False
+            )
         ],
     ):
         result = await hass.config_entries.subentries.async_init(
@@ -1360,6 +1534,7 @@ async def test_create_ai_task_data_subentry_with_skills(
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
             {
+                CONF_AI_TASK_NAME: "Report task",
                 CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
                 CONF_SKILLS: ["report-skill"],
             },
@@ -1367,6 +1542,7 @@ async def test_create_ai_task_data_subentry_with_skills(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
+        CONF_AI_TASK_NAME: "Report task",
         CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
         CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
         CONF_SKILLS: ["report-skill"],
@@ -1392,11 +1568,16 @@ async def test_create_ai_task_data_subentry_with_web_fetch(
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
-        {CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry), CONF_WEB_FETCH_ENABLED: True},
+        {
+            CONF_AI_TASK_NAME: "Report task",
+            CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+            CONF_WEB_FETCH_ENABLED: True,
+        },
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
+        CONF_AI_TASK_NAME: "Report task",
         CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
         CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
         CONF_WEB_FETCH_ENABLED: True,
@@ -1614,9 +1795,7 @@ def test_mcp_duplicate_check_ignores_invalid_stale_urls() -> None:
         unique_id=None,
     )
 
-    assert not _mcp_url_already_configured(
-        entry, "https://mcp.example.com/mcp"
-    )
+    assert not _mcp_url_already_configured(entry, "https://mcp.example.com/mcp")
 
 
 async def test_create_mcp_server_subentry_validates_endpoint(
@@ -1998,6 +2177,7 @@ async def test_create_ai_task_data_subentry_with_output_mode(
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
+            CONF_AI_TASK_NAME: "Report task",
             CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
             CONF_CONFIGURE_OUTPUT_MODE: True,
         },
@@ -2012,6 +2192,7 @@ async def test_create_ai_task_data_subentry_with_output_mode(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
+        CONF_AI_TASK_NAME: "Report task",
         CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
         CONF_OUTPUT_MODE: output_mode,
     }
@@ -2095,7 +2276,9 @@ async def test_conversation_subentry_maps_real_probe_http_error(
     )
 
     with (
-        patch("custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+        ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
             return_value=_HTTPErrorStreamContext(),
@@ -2281,11 +2464,25 @@ async def test_reconfigure_provider_data_updates_entry(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
     """Test provider reconfigure updates parent entry data."""
-    entry = await _loaded_entry(hass)
+    entry = await _loaded_entry(
+        hass, data_extra={CONF_PROVIDER_HEADERS: {"X-Old": "value"}}
+    )
 
     result = await entry.start_reconfigure_flow(hass)
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "reconfigure"
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    assert (
+        data_schema(
+            {
+                CONF_NAME: "Hosted OpenAI",
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_API_KEY: "sk-test",
+            }
+        )[CONF_PROVIDER_HEADERS]
+        == "X-Old: value"
+    )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -2294,6 +2491,7 @@ async def test_reconfigure_provider_data_updates_entry(
             CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "local-key",
             CONF_BASE_URL: "http://localhost:11434/v1/",
+            CONF_PROVIDER_HEADERS: "X-New: value",
         },
     )
 
@@ -2304,6 +2502,7 @@ async def test_reconfigure_provider_data_updates_entry(
         CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "local-key",
         CONF_BASE_URL: "http://localhost:11434/v1",
+        CONF_PROVIDER_HEADERS: {"X-New": "value"},
     }
     mock_probe_model.assert_not_awaited()
 

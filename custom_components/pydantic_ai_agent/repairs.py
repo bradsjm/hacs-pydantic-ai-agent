@@ -102,7 +102,9 @@ def async_delete_model_validation_issue(
 ) -> None:
     """Delete one model validation repair issue for a successful validation."""
     ir.async_delete_issue(
-        hass, DOMAIN, model_validation_issue_id(entry, model_subentry_id, model_settings)
+        hass,
+        DOMAIN,
+        model_validation_issue_id(entry, model_subentry_id, model_settings),
     )
 
 

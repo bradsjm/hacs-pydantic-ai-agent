@@ -79,7 +79,9 @@ class OpenAICompatibleStreamedResponse(StreamedResponse):
                     content=delta.content,
                     thinking_tags=("<think>", "</think>"),
                 ):
-                    if isinstance(event, PartStartEvent) and isinstance(event.part, ThinkingPart):
+                    if isinstance(event, PartStartEvent) and isinstance(
+                        event.part, ThinkingPart
+                    ):
                         event.part.id = "content"
                         event.part.provider_name = self.provider_name
                     yield event
@@ -93,7 +95,10 @@ class OpenAICompatibleStreamedResponse(StreamedResponse):
                 if maybe_event is not None:
                     yield maybe_event
         if self._refusal_text:
-            self.provider_details = {**(self.provider_details or {}), "refusal": self._refusal_text}
+            self.provider_details = {
+                **(self.provider_details or {}),
+                "refusal": self._refusal_text,
+            }
 
     @property
     def model_name(self) -> str:

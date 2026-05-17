@@ -99,5 +99,6 @@ def chat_model_for_profile(
         hass,
         api_key=runtime_data.api_key,
         base_url=runtime_data.base_url,
+        headers=runtime_data.provider_headers,
         model_name=profile.model_name,
     )

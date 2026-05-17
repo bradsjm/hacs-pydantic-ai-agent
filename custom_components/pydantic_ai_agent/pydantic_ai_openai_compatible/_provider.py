@@ -45,6 +45,7 @@ class OpenAICompatibleProvider(Provider[AsyncOpenAICompatible]):
         *,
         api_key: str | None,
         base_url: str | None,
+        headers: dict[str, str] | None = None,
         http_client: httpx.AsyncClient | None = None,
         client: None = None,
     ) -> None: ...
@@ -54,13 +55,21 @@ class OpenAICompatibleProvider(Provider[AsyncOpenAICompatible]):
         *,
         api_key: str | None = None,
         base_url: str | None = None,
+        headers: dict[str, str] | None = None,
         http_client: httpx.AsyncClient | None = None,
         client: AsyncOpenAICompatible | None = None,
     ) -> None:
         """Initialize the provider."""
         if client is not None:
-            if api_key is not None or base_url is not None or http_client is not None:
-                raise ValueError("client cannot be combined with api_key, base_url, or http_client")
+            if (
+                api_key is not None
+                or base_url is not None
+                or headers is not None
+                or http_client is not None
+            ):
+                raise ValueError(
+                    "client cannot be combined with api_key, base_url, headers, or http_client"
+                )
             self._client = client
             return
 
@@ -72,6 +81,7 @@ class OpenAICompatibleProvider(Provider[AsyncOpenAICompatible]):
         self._client = AsyncOpenAICompatible(
             api_key=api_key,
             base_url=base_url,
+            headers=headers,
             http_client=http_client,
         )
 

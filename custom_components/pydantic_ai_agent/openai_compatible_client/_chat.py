@@ -23,7 +23,11 @@ def serialize_payload(value: Any) -> Any:
                 result[key] = serialized
         return result
     if isinstance(value, list):
-        return [item for item in (serialize_payload(item) for item in value) if not is_omitted(item)]
+        return [
+            item
+            for item in (serialize_payload(item) for item in value)
+            if not is_omitted(item)
+        ]
     return value
 
 
@@ -35,13 +39,19 @@ class ChatCompletionsResource:
         self._client = client
 
     @overload
-    async def create(self, *, stream: Literal[False] = False, **kwargs: Any) -> ChatCompletion: ...
+    async def create(
+        self, *, stream: Literal[False] = False, **kwargs: Any
+    ) -> ChatCompletion: ...
 
     @overload
-    async def create(self, *, stream: Literal[True], **kwargs: Any) -> ChatCompletionStream: ...
+    async def create(
+        self, *, stream: Literal[True], **kwargs: Any
+    ) -> ChatCompletionStream: ...
 
     @overload
-    async def create(self, *, stream: bool, **kwargs: Any) -> ChatCompletion | ChatCompletionStream: ...
+    async def create(
+        self, *, stream: bool, **kwargs: Any
+    ) -> ChatCompletion | ChatCompletionStream: ...
 
     async def create(
         self,

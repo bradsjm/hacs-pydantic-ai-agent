@@ -11,7 +11,12 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
-from .const import CONF_OUTPUT_MODE, CONF_WEB_FETCH_ENABLED, SUBENTRY_TYPE_AI_TASK
+from .const import (
+    CONF_AI_TASK_NAME,
+    CONF_OUTPUT_MODE,
+    CONF_WEB_FETCH_ENABLED,
+    SUBENTRY_TYPE_AI_TASK,
+)
 from .entity import PydanticAIBaseLLMEntity
 from .model_profiles import model_display_names, model_profile_chain
 from .structured_output import structured_output_mode
@@ -50,7 +55,9 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
         self, entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
     ) -> None:
         """Initialize the AI task entity."""
-        super().__init__(entry, subentry, name=subentry.title)
+        super().__init__(
+            entry, subentry, name=subentry.data.get(CONF_AI_TASK_NAME, subentry.title)
+        )
 
     @property
     def extra_state_attributes(self) -> dict[str, str | bool | list[str]]:

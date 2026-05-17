@@ -6,6 +6,7 @@ from homeassistant.helpers import llm
 DOMAIN = "pydantic_ai_agent"
 
 CONF_AGENT_NAME = "agent_name"
+CONF_AI_TASK_NAME = "ai_task_name"
 CONF_BASE_URL = "base_url"
 CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS = "configure_advanced_model_settings"
 CONF_CONFIGURE_OUTPUT_MODE = "configure_output_mode"
@@ -22,6 +23,7 @@ CONF_MCP_SERVER_IDS = "mcp_server_ids"
 CONF_MCP_URL = "mcp_url"
 CONF_OUTPUT_MODE = "output_mode"
 CONF_PROMPT = "prompt"
+CONF_PROVIDER_HEADERS = "provider_headers"
 CONF_PROVIDER_MODE = "provider_mode"
 CONF_SKILLS = "skills"
 CONF_SKILLS_FOLDER = "skills_folder"
@@ -45,11 +47,13 @@ STRUCTURED_OUTPUT_MODES = (
 )
 DEFAULT_OUTPUT_MODE = OUTPUT_MODE_TOOL
 
-DEFAULT_AGENT_NAME = "Pydantic AI Agent"
-DEFAULT_SERVICE_NAME = "Pydantic AI Agent"
+DEFAULT_AGENT_NAME = "Conversation agent"
+DEFAULT_AI_TASK_NAME = "AI task"
+DEFAULT_SERVICE_NAME = "OpenAI-compatible"
 DEFAULT_TIMEOUT = 10.0
 DEFAULT_MCP_TIMEOUT = 10.0
 DEFAULT_SKILLS_FOLDER = "/config/skills"
+
 
 def default_conversation_options() -> dict[str, object]:
     """Return default conversation subentry options."""
@@ -57,5 +61,6 @@ def default_conversation_options() -> dict[str, object]:
         CONF_AGENT_NAME: DEFAULT_AGENT_NAME,
         CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
     }
+
 
 __all__ = ["CONF_LLM_HASS_API"]

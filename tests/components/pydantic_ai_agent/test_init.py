@@ -84,7 +84,9 @@ def _model_subentry(
     }
 
 
-def _conversation_subentry(model_subentry_id: str = "model_profile_1") -> dict[str, object]:
+def _conversation_subentry(
+    model_subentry_id: str = "model_profile_1",
+) -> dict[str, object]:
     """Return a conversation config subentry."""
     return {
         "data": {

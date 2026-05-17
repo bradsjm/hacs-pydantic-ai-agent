@@ -21,6 +21,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_PROMPT,
+    CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE,
@@ -51,6 +52,7 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
             CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
             CONF_API_KEY: "sk-secret",
             CONF_BASE_URL: "http://localhost:11434/v1",
+            CONF_PROVIDER_HEADERS: {"Authorization": "Bearer provider-secret"},
             CONF_LOGFIRE_TOKEN: "lf-secret",
             CONF_LOGFIRE_INCLUDE_CONTENT: True,
         },
@@ -95,6 +97,7 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
     assert diagnostics["entry"]["data"][CONF_API_KEY] == REDACTED
+    assert diagnostics["entry"]["data"][CONF_PROVIDER_HEADERS] == REDACTED
     assert diagnostics["entry"]["data"][CONF_LOGFIRE_TOKEN] == REDACTED
     assert diagnostics["entry"]["data"][CONF_BASE_URL] == "http://localhost:11434/v1"
     assert diagnostics["entry"]["logfire_enabled"] is True

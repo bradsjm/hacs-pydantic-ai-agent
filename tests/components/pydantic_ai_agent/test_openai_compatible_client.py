@@ -22,6 +22,7 @@ async def test_chat_completion_serializes_payload_and_headers() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
         captured["authorization"] = request.headers.get("authorization")
+        captured["provider"] = request.headers.get("x-provider")
         captured["custom"] = request.headers.get("x-custom")
         captured["body"] = json.loads(request.content)
         return httpx.Response(
@@ -37,7 +38,11 @@ async def test_chat_completion_serializes_payload_and_headers() -> None:
                         "finish_reason": "stop",
                     }
                 ],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 2,
+                    "total_tokens": 3,
+                },
             },
         )
 
@@ -45,6 +50,7 @@ async def test_chat_completion_serializes_payload_and_headers() -> None:
     client = AsyncOpenAICompatible(
         api_key="secret",
         base_url="https://provider.test/v1/",
+        headers={"x-provider": "configured"},
         http_client=http_client,
     )
 
@@ -61,6 +67,7 @@ async def test_chat_completion_serializes_payload_and_headers() -> None:
     assert response.choices[0].message.content == "OK"
     assert captured["url"] == "https://provider.test/v1/chat/completions"
     assert captured["authorization"] == "Bearer secret"
+    assert captured["provider"] == "configured"
     assert captured["custom"] == "value"
     assert captured["body"] == {
         "model": "test-model",
@@ -68,6 +75,63 @@ async def test_chat_completion_serializes_payload_and_headers() -> None:
         "stream": False,
         "nullable": None,
     }
+    await http_client.aclose()
+
+
+async def test_models_list_parses_ids_and_sends_headers() -> None:
+    """Test models list uses provider headers and returns sorted unique IDs."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["authorization"] = request.headers.get("authorization")
+        captured["organization"] = request.headers.get("openai-organization")
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"id": "z-model"},
+                    {"id": "a-model"},
+                    {"id": "z-model"},
+                    {"object": "model"},
+                ]
+            },
+        )
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = AsyncOpenAICompatible(
+        api_key="secret",
+        base_url="https://provider.test/v1/",
+        headers={"OpenAI-Organization": "org_123"},
+        http_client=http_client,
+    )
+
+    models = await client.models.list()
+
+    assert models == ["a-model", "z-model"]
+    assert captured == {
+        "url": "https://provider.test/v1/models",
+        "authorization": "Bearer secret",
+        "organization": "org_123",
+    }
+    await http_client.aclose()
+
+
+async def test_models_list_rejects_invalid_response_shape() -> None:
+    """Test models list rejects malformed provider responses."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": {}})
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = AsyncOpenAICompatible(
+        api_key=None,
+        base_url="https://provider.test/v1",
+        http_client=http_client,
+    )
+
+    with pytest.raises(APIConnectionError, match="Invalid models response JSON"):
+        await client.models.list()
     await http_client.aclose()
 
 
@@ -83,10 +147,14 @@ async def test_chat_completion_stream_parses_sse_chunks() -> None:
     )
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+        return httpx.Response(
+            200, content=body, headers={"content-type": "text/event-stream"}
+        )
 
     http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    client = AsyncOpenAICompatible(api_key=None, base_url="https://provider.test/v1", http_client=http_client)
+    client = AsyncOpenAICompatible(
+        api_key=None, base_url="https://provider.test/v1", http_client=http_client
+    )
 
     stream = await client.chat.completions.create(model="m", messages=[], stream=True)
     chunks = [chunk async for chunk in stream]
@@ -110,7 +178,9 @@ async def test_chat_completion_stream_status_errors_read_body() -> None:
         return httpx.Response(400, json={"error": {"message": "bad model"}})
 
     http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    client = AsyncOpenAICompatible(api_key=None, base_url="https://provider.test/v1", http_client=http_client)
+    client = AsyncOpenAICompatible(
+        api_key=None, base_url="https://provider.test/v1", http_client=http_client
+    )
 
     stream = await client.chat.completions.create(model="m", messages=[], stream=True)
     with pytest.raises(APIStatusError) as exc_info:
@@ -130,7 +200,9 @@ async def test_status_errors_include_status_and_body() -> None:
         return httpx.Response(429, json={"error": {"message": "rate limited"}})
 
     http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    client = AsyncOpenAICompatible(api_key=None, base_url="https://provider.test/v1", http_client=http_client)
+    client = AsyncOpenAICompatible(
+        api_key=None, base_url="https://provider.test/v1", http_client=http_client
+    )
 
     with pytest.raises(APIStatusError) as exc_info:
         await client.chat.completions.create(model="m", messages=[])
@@ -157,7 +229,9 @@ async def test_network_errors_are_mapped(
         raise error
 
     http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    client = AsyncOpenAICompatible(api_key=None, base_url="https://provider.test/v1", http_client=http_client)
+    client = AsyncOpenAICompatible(
+        api_key=None, base_url="https://provider.test/v1", http_client=http_client
+    )
 
     with pytest.raises(expected):
         await client.chat.completions.create(model="m", messages=[])

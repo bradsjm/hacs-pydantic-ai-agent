@@ -420,9 +420,7 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
             agent_id=entity_id,
         )
 
-    skills_capabilities.assert_awaited_once_with(
-        hass, entry, ["kitchen-skill"]
-    )
+    skills_capabilities.assert_awaited_once_with(hass, entry, ["kitchen-skill"])
     capabilities = agent_class.call_args.kwargs["capabilities"]
     assert capability in capabilities
     _assert_context_management_capability(capabilities)

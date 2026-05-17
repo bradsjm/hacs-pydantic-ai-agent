@@ -30,7 +30,9 @@ from custom_components.pydantic_ai_agent.pydantic_ai_openai_compatible import (
 _REPO_ROOT = Path(__file__).parents[3]
 
 
-def _model_with_transport(handler: httpx.MockTransport) -> tuple[OpenAICompatibleChatModel, httpx.AsyncClient]:
+def _model_with_transport(
+    handler: httpx.MockTransport,
+) -> tuple[OpenAICompatibleChatModel, httpx.AsyncClient]:
     """Return a model backed by a mock HTTP transport."""
     http_client = httpx.AsyncClient(transport=handler)
     provider = OpenAICompatibleProvider(
@@ -58,7 +60,11 @@ async def test_request_returns_text_model_response() -> None:
                         "finish_reason": "stop",
                     }
                 ],
-                "usage": {"prompt_tokens": 4, "completion_tokens": 5, "total_tokens": 9},
+                "usage": {
+                    "prompt_tokens": 4,
+                    "completion_tokens": 5,
+                    "total_tokens": 9,
+                },
             },
         )
 
@@ -96,7 +102,10 @@ async def test_request_maps_tools_and_binary_content() -> None:
                                 {
                                     "id": "call-1",
                                     "type": "function",
-                                    "function": {"name": "turn_on", "arguments": "{\"entity\":\"light.kitchen\"}"},
+                                    "function": {
+                                        "name": "turn_on",
+                                        "arguments": '{"entity":"light.kitchen"}',
+                                    },
                                 }
                             ],
                         },
@@ -168,7 +177,10 @@ async def test_tool_result_follow_up_uses_empty_assistant_content() -> None:
                                     {
                                         "id": "call-1",
                                         "type": "function",
-                                        "function": {"name": "echo", "arguments": "{\"token\":\"ok\"}"},
+                                        "function": {
+                                            "name": "echo",
+                                            "arguments": '{"token":"ok"}',
+                                        },
                                     }
                                 ],
                             },
@@ -198,7 +210,10 @@ async def test_tool_result_follow_up_uses_empty_assistant_content() -> None:
         {},
         ModelRequestParameters(
             function_tools=[
-                ToolDefinition(name="echo", parameters_json_schema={"type": "object", "properties": {}})
+                ToolDefinition(
+                    name="echo",
+                    parameters_json_schema={"type": "object", "properties": {}},
+                )
             ]
         ),
     )
@@ -211,7 +226,10 @@ async def test_tool_result_follow_up_uses_empty_assistant_content() -> None:
         {},
         ModelRequestParameters(
             function_tools=[
-                ToolDefinition(name="echo", parameters_json_schema={"type": "object", "properties": {}})
+                ToolDefinition(
+                    name="echo",
+                    parameters_json_schema={"type": "object", "properties": {}},
+                )
             ]
         ),
     )
@@ -239,7 +257,9 @@ async def test_request_stream_yields_text_and_usage() -> None:
     )
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+        return httpx.Response(
+            200, content=body, headers={"content-type": "text/event-stream"}
+        )
 
     model, http_client = _model_with_transport(httpx.MockTransport(handler))
     async with model.request_stream(
@@ -250,7 +270,10 @@ async def test_request_stream_yields_text_and_usage() -> None:
         events = [event async for event in stream]
         response = stream.get()
 
-    assert any(isinstance(event, PartStartEvent) and isinstance(event.part, TextPart) for event in events)
+    assert any(
+        isinstance(event, PartStartEvent) and isinstance(event.part, TextPart)
+        for event in events
+    )
     assert any(isinstance(event, PartDeltaEvent) for event in events)
     assert any(isinstance(event, PartEndEvent) for event in events)
     assert response.text == "OK"
@@ -263,14 +286,16 @@ async def test_request_stream_accumulates_tool_call_deltas() -> None:
     """Test streamed function tool call argument fragments are accumulated."""
     body = "".join(
         [
-            'data: {"id":"1","model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"turn_on","arguments":"{\\\"entity"}}]}}]}\n\n',
-            'data: {"id":"1","model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\\":\\\"light.kitchen\\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
+            'data: {"id":"1","model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"turn_on","arguments":"{\\"entity"}}]}}]}\n\n',
+            'data: {"id":"1","model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\":\\"light.kitchen\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
             "data: [DONE]\n\n",
         ]
     )
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+        return httpx.Response(
+            200, content=body, headers={"content-type": "text/event-stream"}
+        )
 
     model, http_client = _model_with_transport(httpx.MockTransport(handler))
     async with model.request_stream(
@@ -278,7 +303,10 @@ async def test_request_stream_accumulates_tool_call_deltas() -> None:
         {},
         ModelRequestParameters(
             function_tools=[
-                ToolDefinition(name="turn_on", parameters_json_schema={"type": "object", "properties": {}})
+                ToolDefinition(
+                    name="turn_on",
+                    parameters_json_schema={"type": "object", "properties": {}},
+                )
             ]
         ),
     ) as stream:
@@ -288,7 +316,10 @@ async def test_request_stream_accumulates_tool_call_deltas() -> None:
     tool_call = next(part for part in response.parts if isinstance(part, ToolCallPart))
     assert tool_call.tool_name == "turn_on"
     assert tool_call.args == '{"entity":"light.kitchen"}'
-    assert any(isinstance(event, PartEndEvent) and isinstance(event.part, ToolCallPart) for event in events)
+    assert any(
+        isinstance(event, PartEndEvent) and isinstance(event.part, ToolCallPart)
+        for event in events
+    )
     await http_client.aclose()
 
 

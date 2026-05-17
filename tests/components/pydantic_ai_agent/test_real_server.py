@@ -58,7 +58,9 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_MODEL,
 )
-from custom_components.pydantic_ai_agent.provider import openai_compatible_chat_model_from_config
+from custom_components.pydantic_ai_agent.provider import (
+    openai_compatible_chat_model_from_config,
+)
 
 pytestmark = [pytest.mark.real_server, pytest.mark.usefixtures("socket_enabled")]
 
@@ -203,13 +205,17 @@ def _filter_model_ids(model_ids: list[str], values: Mapping[str, str]) -> list[s
 
 def _parse_models_response(data: object) -> list[str]:
     """Return model IDs from an OpenAI-compatible /models response."""
-    if not isinstance(data, Mapping) or not isinstance(models := data.get("data"), list):
+    if not isinstance(data, Mapping) or not isinstance(
+        models := data.get("data"), list
+    ):
         return []
     model_ids: list[str] = []
     for model in models:
         if isinstance(model, str):
             model_ids.append(model)
-        elif isinstance(model, Mapping) and isinstance(model_id := model.get("id"), str):
+        elif isinstance(model, Mapping) and isinstance(
+            model_id := model.get("id"), str
+        ):
             model_ids.append(model_id)
     return model_ids
 
@@ -267,7 +273,10 @@ def _real_model_params(config: pytest.Config) -> list[object]:
                 "OPENAI_TEST_ALL_MODELS=true with at least one discovered model."
             )
         ]
-    return [pytest.param(_ModelParam(model=model), id=_model_param_id(model)) for model in model_ids]
+    return [
+        pytest.param(_ModelParam(model=model), id=_model_param_id(model))
+        for model in model_ids
+    ]
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:

@@ -66,6 +66,7 @@ from homeassistant.helpers.typing import VolDictType
 from ._redaction import redact_data
 from .const import (
     CONF_AGENT_NAME,
+    CONF_AI_TASK_NAME,
     CONF_BASE_URL,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
     CONF_CONFIGURE_OUTPUT_MODE,
@@ -82,11 +83,13 @@ from .const import (
     CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
     CONF_PROMPT,
+    CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_SKILLS_FOLDER,
     CONF_WEB_FETCH_ENABLED,
     DEFAULT_AGENT_NAME,
+    DEFAULT_AI_TASK_NAME,
     DEFAULT_OUTPUT_MODE,
     DEFAULT_SERVICE_NAME,
     DEFAULT_SKILLS_FOLDER,
@@ -112,7 +115,11 @@ from .mcp import (
     parse_allowed_tools,
     parse_mcp_headers,
 )
-from .provider import normalise_base_url, openai_compatible_chat_model_from_config
+from .provider import (
+    normalise_base_url,
+    openai_compatible_chat_model_from_config,
+    openai_compatible_client_from_config,
+)
 from .skills import (
     AvailableSkill,
     async_available_skills,
@@ -156,7 +163,6 @@ _MODEL_SETTING_PARALLEL_TOOL_CALLS = "parallel_tool_calls"
 _MODEL_SETTING_SEED = "seed"
 _MODEL_SETTING_PRESENCE_PENALTY = "presence_penalty"
 _MODEL_SETTING_FREQUENCY_PENALTY = "frequency_penalty"
-_MODEL_SETTING_EXTRA_HEADERS = "extra_headers"
 _MODEL_SETTING_THINKING = "thinking"
 _MODEL_SETTING_EXTRA_BODY = "extra_body"
 _MAX_METADATA_REPR_LENGTH = 1000
@@ -186,9 +192,9 @@ _ADVANCED_MODEL_SETTING_KEYS = {
     _MODEL_SETTING_SEED,
     _MODEL_SETTING_PRESENCE_PENALTY,
     _MODEL_SETTING_FREQUENCY_PENALTY,
-    _MODEL_SETTING_EXTRA_HEADERS,
     _MODEL_SETTING_EXTRA_BODY,
 }
+_REMOVED_MODEL_SETTING_KEYS = {"extra_headers"}
 _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "xhigh")
 _OUTPUT_MODE_OPTIONS = tuple(
     SelectOptionDict(value=value, label=value) for value in STRUCTURED_OUTPUT_MODES
@@ -213,6 +219,28 @@ class ProviderValidationError(Exception):
     status_code: int | None = None
 
 
+def _format_http_headers(headers: object) -> str:
+    """Return HTTP headers as one ``Header-Name: value`` line each."""
+    if headers is None:
+        return ""
+    if isinstance(headers, str):
+        return headers
+    if not isinstance(headers, Mapping):
+        return ""
+    return "\n".join(f"{name}: {headers[name]}" for name in sorted(headers))
+
+
+def _parse_provider_headers(value: object) -> dict[str, str]:
+    """Return provider HTTP headers from form input."""
+    try:
+        return parse_mcp_headers(value)
+    except vol.Invalid as err:
+        raise ProviderValidationError(
+            "invalid_provider_headers",
+            "Enter HTTP headers one per line using 'Header-Name: value'.",
+        ) from err
+
+
 def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     """Return the provider connection schema."""
     data = user_input or {}
@@ -231,6 +259,12 @@ def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
         ),
     }
     schema[vol.Optional(CONF_BASE_URL)] = str
+    schema[
+        vol.Optional(
+            CONF_PROVIDER_HEADERS,
+            default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
+        )
+    ] = TextSelector(TextSelectorConfig(multiline=True))
     schema[vol.Optional(CONF_LOGFIRE_TOKEN)] = TextSelector(
         TextSelectorConfig(type=TextSelectorType.PASSWORD)
     )
@@ -255,6 +289,16 @@ def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     return vol.Schema(schema)
 
 
+def _provider_form_suggested_values(data: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Return provider form suggested values with text-only header fields."""
+    values = dict(data or {})
+    if CONF_PROVIDER_HEADERS in values:
+        values[CONF_PROVIDER_HEADERS] = _format_http_headers(
+            values[CONF_PROVIDER_HEADERS]
+        )
+    return values
+
+
 def _normalise_base_url(data: Mapping[str, Any]) -> str | None:
     """Return a normalized base URL if one is configured."""
     return normalise_base_url(data.get(CONF_BASE_URL))
@@ -272,6 +316,8 @@ def _dedupe_data(data: Mapping[str, Any]) -> dict[str, Any]:
     }
     if base_url := data.get(CONF_BASE_URL):
         dedupe[CONF_BASE_URL] = base_url
+    if headers := data.get(CONF_PROVIDER_HEADERS):
+        dedupe[CONF_PROVIDER_HEADERS] = headers
     return dedupe
 
 
@@ -346,7 +392,9 @@ def _configured_model_probes(
     for subentry in entry.subentries.values():
         if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
             continue
-        output_mode = normalise_structured_output_mode(subentry.data.get(CONF_OUTPUT_MODE))
+        output_mode = normalise_structured_output_mode(
+            subentry.data.get(CONF_OUTPUT_MODE)
+        )
         profile_ids = _selected_model_profile_ids(subentry.data)
         if not profile_ids:
             _LOGGER.warning(
@@ -505,6 +553,14 @@ def _openai_compatible_chat_model(
     return openai_compatible_chat_model_from_config(hass, data, model_name)
 
 
+async def async_list_provider_model_names(
+    hass: HomeAssistant, data: Mapping[str, Any]
+) -> list[str]:
+    """Return model names advertised by the configured provider."""
+    client = openai_compatible_client_from_config(hass, data)
+    return await client.models.list(timeout=DEFAULT_TIMEOUT)
+
+
 def _structured_probe_request_parameters(
     output_mode: str,
 ) -> ModelRequestParameters:
@@ -566,7 +622,8 @@ async def async_probe_model(
                 saw_event = True
             if not saw_event:
                 raise ProviderValidationError(
-                    "provider_error", "The provider returned an empty streamed response."
+                    "provider_error",
+                    "The provider returned an empty streamed response.",
                 )
             return
     except ModelHTTPError as err:
@@ -663,6 +720,11 @@ def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
     """Return normalized provider data for storage and validation."""
     data = dict(user_input)
     data[CONF_BASE_URL] = _normalise_base_url(data)
+    headers = _parse_provider_headers(data.get(CONF_PROVIDER_HEADERS))
+    if headers:
+        data[CONF_PROVIDER_HEADERS] = headers
+    else:
+        data.pop(CONF_PROVIDER_HEADERS, None)
     data[CONF_SKILLS_FOLDER] = _normalise_skills_folder(data.get(CONF_SKILLS_FOLDER))
     data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION] = bool(
         data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
@@ -790,7 +852,9 @@ def _selected_model_profile_ids(data: Mapping[str, Any]) -> list[str]:
     return [primary_id, *[item for item in fallback_ids if isinstance(item, str)]]
 
 
-def _selected_model_profile_error(entry: ConfigEntry, data: Mapping[str, Any]) -> str | None:
+def _selected_model_profile_error(
+    entry: ConfigEntry, data: Mapping[str, Any]
+) -> str | None:
     """Return a form error for missing or invalid model profile selections."""
     primary_id = data.get(CONF_MODEL_SUBENTRY_ID)
     if not isinstance(primary_id, str) or not primary_id:
@@ -809,10 +873,13 @@ def _selected_model_profile_error(entry: ConfigEntry, data: Mapping[str, Any]) -
     return None
 
 
-def _skill_select_options(available_skills: list[AvailableSkill]) -> list[SelectOptionDict]:
+def _skill_select_options(
+    available_skills: list[AvailableSkill],
+) -> list[SelectOptionDict]:
     """Return discovered skills as select options."""
     return [
-        SelectOptionDict(label=skill.name, value=skill.name) for skill in available_skills
+        SelectOptionDict(label=skill.name, value=skill.name)
+        for skill in available_skills
     ]
 
 
@@ -970,27 +1037,47 @@ def _conversation_schema(
     return vol.Schema(schema)
 
 
-def _model_profile_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
+def _model_profile_schema(
+    options: Mapping[str, Any] | None = None,
+    model_names: Iterable[str] | None = None,
+) -> vol.Schema:
     """Return the model profile subentry schema."""
     options = dict(options or {})
     model_settings = options.get(CONF_MODEL_SETTINGS, {})
     if not isinstance(model_settings, Mapping):
         model_settings = {}
+    model_schema_key = vol.Required(
+        CONF_MODEL,
+        default=options.get(CONF_MODEL, ""),
+    )
+    if model_names:
+        model_options = sorted(set(model_names))
+        if existing_model := options.get(CONF_MODEL):
+            if isinstance(existing_model, str) and existing_model not in model_options:
+                model_options.insert(0, existing_model)
+        model_selector = SelectSelector(
+            SelectSelectorConfig(
+                options=model_options,
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key=CONF_MODEL,
+            )
+        )
+    else:
+        model_selector = TextSelector(TextSelectorConfig())
     return vol.Schema(
         {
             vol.Required(CONF_NAME, default=options.get(CONF_NAME, "")): TextSelector(
                 TextSelectorConfig()
             ),
-            vol.Required(
-                CONF_MODEL,
-                default=options.get(CONF_MODEL, ""),
-            ): TextSelector(TextSelectorConfig()),
+            model_schema_key: model_selector,
             vol.Optional(
                 _MODEL_SETTING_TEMPERATURE,
                 description={
                     "suggested_value": model_settings.get(_MODEL_SETTING_TEMPERATURE)
                 },
-            ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)),
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
+            ),
             vol.Optional(
                 _MODEL_SETTING_THINKING,
                 description={"suggested_value": _format_thinking_value(model_settings)},
@@ -1023,6 +1110,7 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
         )
     return vol.Schema(
         {
+            parallel_tool_calls_key: BooleanSelector(),
             vol.Optional(
                 _MODEL_SETTING_MAX_TOKENS,
                 description={
@@ -1047,7 +1135,6 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
             ): NumberSelector(
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
             ),
-            parallel_tool_calls_key: BooleanSelector(),
             vol.Optional(
                 _MODEL_SETTING_SEED,
                 description={
@@ -1077,17 +1164,9 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
             ),
             vol.Optional(
-                _MODEL_SETTING_EXTRA_HEADERS,
-                description={
-                    "suggested_value": _format_json_setting(
-                        model_settings.get(_MODEL_SETTING_EXTRA_HEADERS)
-                    )
-                },
-            ): TextSelector(TextSelectorConfig(multiline=True)),
-            vol.Optional(
                 _MODEL_SETTING_EXTRA_BODY,
                 description={
-                    "suggested_value": _format_json_setting(
+                    "suggested_value": _format_key_value_json_setting(
                         model_settings.get(_MODEL_SETTING_EXTRA_BODY)
                     )
                 },
@@ -1096,11 +1175,17 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
     )
 
 
-def _format_json_setting(value: object) -> str:
-    """Return a JSON string for a configured object setting."""
+def _format_key_value_json_setting(value: object) -> str:
+    """Return a key/value JSON setting as one ``key: value`` line each."""
     if value is None:
         return ""
-    return json.dumps(value, sort_keys=True)
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, Mapping):
+        return ""
+    return "\n".join(
+        f"{key}: {json.dumps(value[key], sort_keys=True)}" for key in sorted(value)
+    )
 
 
 def _format_thinking_value(model_settings: Mapping[str, Any]) -> str:
@@ -1165,26 +1250,25 @@ def _parse_non_negative_int_setting(value: object) -> int:
     return parsed
 
 
-def _parse_json_object_setting(value: object) -> dict[str, Any]:
-    """Return a JSON object model setting from user input."""
+def _parse_key_value_json_setting(value: object) -> dict[str, Any]:
+    """Return a key/value JSON model setting from user input."""
     if not isinstance(value, str):
-        raise ValueError("invalid_json")
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError as err:
-        raise ValueError("invalid_json") from err
-    if not isinstance(parsed, dict):
-        raise ValueError("invalid_object")
-    return parsed
-
-
-def _parse_extra_headers_setting(value: object) -> dict[str, str]:
-    """Return extra headers with string keys and string values."""
-    parsed = _parse_json_object_setting(value)
-    if not all(
-        isinstance(key, str) and isinstance(item, str) for key, item in parsed.items()
-    ):
-        raise ValueError("invalid_headers")
+        raise ValueError("invalid_key_value")
+    parsed: dict[str, Any] = {}
+    for line in value.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        key, separator, item = line.partition(":")
+        key = key.strip()
+        if not separator or not key:
+            raise ValueError("invalid_key_value")
+        if key in parsed:
+            raise ValueError("duplicate_key")
+        try:
+            parsed[key] = json.loads(item.strip())
+        except json.JSONDecodeError as err:
+            raise ValueError("invalid_json") from err
     return parsed
 
 
@@ -1236,10 +1320,8 @@ def _parse_model_settings(
                 if not isinstance(value, bool):
                     raise ValueError
                 settings[key] = value
-            elif key == _MODEL_SETTING_EXTRA_HEADERS:
-                settings[key] = _parse_extra_headers_setting(value)
             elif key == _MODEL_SETTING_EXTRA_BODY:
-                settings[key] = _parse_json_object_setting(value)
+                settings[key] = _parse_key_value_json_setting(value)
             elif key == _MODEL_SETTING_THINKING:
                 settings[key] = _parse_thinking_setting(value)
         except ValueError as err:
@@ -1249,7 +1331,7 @@ def _parse_model_settings(
 
 def _model_setting_error(key: str, detail: str) -> str:
     """Return a translation key for a model setting validation error."""
-    if detail in {"invalid_json", "invalid_object", "invalid_headers"}:
+    if detail in {"invalid_json", "invalid_key_value", "duplicate_key"}:
         return detail
     if key in {_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_SEED}:
         return "invalid_integer"
@@ -1262,7 +1344,11 @@ def _model_settings_from_options(options: Mapping[str, Any]) -> dict[str, Any]:
     """Return existing model settings from subentry options."""
     model_settings = options.get(CONF_MODEL_SETTINGS)
     if isinstance(model_settings, Mapping):
-        return dict(model_settings)
+        return {
+            key: value
+            for key, value in model_settings.items()
+            if key not in _REMOVED_MODEL_SETTING_KEYS
+        }
     return {}
 
 
@@ -1322,7 +1408,9 @@ def _store_model_settings(
         data.pop(CONF_MODEL_SETTINGS, None)
 
 
-def _model_profile_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
+def _model_profile_data_from_user_input(
+    user_input: Mapping[str, Any],
+) -> dict[str, Any]:
     """Return model profile data excluding form-only setting fields."""
     return {
         key: value
@@ -1343,6 +1431,10 @@ def _ai_task_data_schema(
     options = dict(options or {})
     model_options = _model_profile_select_options(entry)
     schema: VolDictType = {
+        vol.Required(
+            CONF_AI_TASK_NAME,
+            default=options.get(CONF_AI_TASK_NAME, DEFAULT_AI_TASK_NAME),
+        ): TextSelector(TextSelectorConfig()),
         vol.Optional(
             CONF_CONFIGURE_OUTPUT_MODE,
             default=False,
@@ -1622,8 +1714,8 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
         description_placeholders: dict[str, str] = {}
 
         if user_input is not None:
-            data = _normalise_provider_data(user_input)
             try:
+                data = _normalise_provider_data(user_input)
                 _validate_provider_data(data)
             except ProviderValidationError as err:
                 errors["base"] = err.reason
@@ -1637,7 +1729,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(
-                _base_schema(user_input), user_input
+                _base_schema(user_input), _provider_form_suggested_values(user_input)
             ),
             errors=errors,
             description_placeholders=description_placeholders,
@@ -1658,18 +1750,20 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="reauth_confirm",
                 data_schema=self.add_suggested_values_to_schema(
-                    _base_schema(entry_data), entry_data
+                    _base_schema(entry_data),
+                    _provider_form_suggested_values(entry_data),
                 ),
             )
         entry = self._get_reauth_entry()
-        data = _normalise_provider_data(user_input)
         try:
+            data = _normalise_provider_data(user_input)
             _validate_provider_data(data)
         except ProviderValidationError as err:
             return self.async_show_form(
                 step_id="reauth_confirm",
                 data_schema=self.add_suggested_values_to_schema(
-                    _base_schema(data), data
+                    _base_schema(user_input),
+                    _provider_form_suggested_values(user_input),
                 ),
                 errors={"base": err.reason},
                 description_placeholders=_provider_validation_placeholders(err),
@@ -1694,7 +1788,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="reauth_confirm",
                 data_schema=self.add_suggested_values_to_schema(
-                    _base_schema(data), data
+                    _base_schema(data), _provider_form_suggested_values(data)
                 ),
                 errors=errors,
                 description_placeholders=description_placeholders,
@@ -1715,18 +1809,20 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="reconfigure",
                 data_schema=self.add_suggested_values_to_schema(
-                    _base_schema(entry_data), entry_data
+                    _base_schema(entry_data),
+                    _provider_form_suggested_values(entry_data),
                 ),
             )
 
-        data = _normalise_provider_data(user_input)
         try:
+            data = _normalise_provider_data(user_input)
             _validate_provider_data(data)
         except ProviderValidationError as err:
             return self.async_show_form(
                 step_id="reconfigure",
                 data_schema=self.add_suggested_values_to_schema(
-                    _base_schema(data), data
+                    _base_schema(user_input),
+                    _provider_form_suggested_values(user_input),
                 ),
                 errors={"base": err.reason},
                 description_placeholders=_provider_validation_placeholders(err),
@@ -1752,7 +1848,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="reconfigure",
                 data_schema=self.add_suggested_values_to_schema(
-                    _base_schema(data), data
+                    _base_schema(data), _provider_form_suggested_values(data)
                 ),
                 errors=errors,
                 description_placeholders=description_placeholders,
@@ -1778,6 +1874,8 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
 class ModelSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing provider-owned model profiles."""
 
+    _model_discovery_failed: bool
+    _model_names: list[str] | None
     _options: dict[str, Any]
     _pending_data: dict[str, Any]
     _pending_model_settings: dict[str, Any]
@@ -1791,6 +1889,8 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Add a model profile subentry."""
+        self._model_discovery_failed = False
+        self._model_names = None
         self._options = {}
         return await self.async_step_init(user_input)
 
@@ -1798,8 +1898,52 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Reconfigure a model profile subentry."""
+        self._model_discovery_failed = False
+        self._model_names = None
         self._options = self._get_reconfigure_subentry().data.copy()
         return await self.async_step_init(user_input)
+
+    async def _async_model_names(self) -> list[str] | None:
+        """Return discovered provider model names for this flow."""
+        if self._model_names is not None or self._model_discovery_failed:
+            return self._model_names
+        try:
+            model_names = await async_list_provider_model_names(
+                self.hass, self._get_entry().data
+            )
+        except Exception:
+            _LOGGER.warning("Unable to list provider models for model profile form")
+            self._model_discovery_failed = True
+            return None
+        if not model_names:
+            self._model_discovery_failed = True
+            return None
+        self._model_names = model_names
+        return self._model_names
+
+    async def _async_show_model_profile_form(
+        self,
+        *,
+        options: Mapping[str, Any],
+        errors: dict[str, str] | None = None,
+        description_placeholders: dict[str, str] | None = None,
+        show_model_discovery_error: bool = False,
+    ) -> SubentryFlowResult:
+        """Show the model profile form with discovered model options when available."""
+        model_names = await self._async_model_names()
+        form_errors = dict(errors or {})
+        if (
+            show_model_discovery_error
+            and self._model_discovery_failed
+            and not form_errors
+        ):
+            form_errors["base"] = "model_list_unavailable"
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_model_profile_schema(options, model_names),
+            errors=form_errors,
+            description_placeholders=description_placeholders,
+        )
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -1819,11 +1963,10 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
                 existing_settings, main_settings, cleared
             )
             if errors:
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=_model_profile_schema(
-                        self._options | data | {CONF_MODEL_SETTINGS: model_settings}
-                    ),
+                return await self._async_show_model_profile_form(
+                    options=self._options
+                    | data
+                    | {CONF_MODEL_SETTINGS: model_settings},
                     errors=errors,
                 )
             if user_input.get(CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS):
@@ -1837,9 +1980,9 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
                 )
             return await self._async_finish_model_profile(data, model_settings)
 
-        return self.async_show_form(
-            step_id="init",
-            data_schema=_model_profile_schema(self._options),
+        return await self._async_show_model_profile_form(
+            options=self._options,
+            show_model_discovery_error=True,
         )
 
     async def async_step_model_settings(
@@ -1892,10 +2035,14 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
             _log_provider_validation_failure(
                 step="model profile subentry", model_name=data[CONF_MODEL], err=err
             )
-            schema = (
-                _model_settings_schema(self._options | {CONF_MODEL_SETTINGS: model_settings})
-                if error_step == "model_settings"
-                else _model_profile_schema(self._options | data)
+            if error_step != "model_settings":
+                return await self._async_show_model_profile_form(
+                    options=self._options | data,
+                    errors={"base": err.reason},
+                    description_placeholders=_provider_validation_placeholders(err),
+                )
+            schema = _model_settings_schema(
+                self._options | {CONF_MODEL_SETTINGS: model_settings}
             )
             return self.async_show_form(
                 step_id=error_step,
@@ -1905,10 +2052,13 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
             )
         except Exception:
             _LOGGER.exception("Unexpected exception validating model profile")
-            schema = (
-                _model_settings_schema(self._options | {CONF_MODEL_SETTINGS: model_settings})
-                if error_step == "model_settings"
-                else _model_profile_schema(self._options | data)
+            if error_step != "model_settings":
+                return await self._async_show_model_profile_form(
+                    options=self._options | data,
+                    errors={"base": "unknown"},
+                )
+            schema = _model_settings_schema(
+                self._options | {CONF_MODEL_SETTINGS: model_settings}
             )
             return self.async_show_form(
                 step_id=error_step,
@@ -2039,7 +2189,9 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Reconfigure an AI task data subentry."""
-        self._options = self._get_reconfigure_subentry().data.copy()
+        subentry = self._get_reconfigure_subentry()
+        self._options = subentry.data.copy()
+        self._options.setdefault(CONF_AI_TASK_NAME, subentry.title)
         return await self.async_step_init(user_input)
 
     async def async_step_init(
@@ -2173,13 +2325,11 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 errors={"base": "unknown"},
             )
         if self._is_new:
-            primary = entry.subentries[data[CONF_MODEL_SUBENTRY_ID]]
-            return self.async_create_entry(title=primary.title, data=data)
-        primary = entry.subentries[data[CONF_MODEL_SUBENTRY_ID]]
+            return self.async_create_entry(title=data[CONF_AI_TASK_NAME], data=data)
         return self.async_update_and_abort(
             entry,
             self._get_reconfigure_subentry(),
-            title=primary.title,
+            title=data[CONF_AI_TASK_NAME],
             data=data,
         )
 
@@ -2244,9 +2394,11 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 errors[CONF_MCP_HEADERS] = "invalid_mcp_headers"
             data = dict(user_input)
         else:
-            form_data = self._options | data | {
-                CONF_MCP_HEADERS: user_input.get(CONF_MCP_HEADERS, "")
-            }
+            form_data = (
+                self._options
+                | data
+                | {CONF_MCP_HEADERS: user_input.get(CONF_MCP_HEADERS, "")}
+            )
             try:
                 data[CONF_MCP_URL] = await async_validate_mcp_url(
                     self.hass, data[CONF_MCP_URL]
