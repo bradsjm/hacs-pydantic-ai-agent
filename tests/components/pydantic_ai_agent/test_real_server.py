@@ -4,10 +4,12 @@ from dataclasses import dataclass, field
 import asyncio
 import os
 from pathlib import Path
+import re
 import socket
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlparse
 
+import httpx
 import pytest
 import pytest_socket
 from pydantic_ai import (
@@ -60,7 +62,10 @@ pytestmark = [pytest.mark.real_server, pytest.mark.usefixtures("socket_enabled")
 
 _REPO_ROOT = Path(__file__).parents[3]
 _ENV_FILE = _REPO_ROOT / ".env"
-_REQUIRED_ENV = ("OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL")
+_REQUIRED_CONNECTION_ENV = ("OPENAI_API_KEY", "OPENAI_BASE_URL")
+_DEFAULT_MODEL_LIMIT = 5
+_TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
+_MODEL_LIST_TIMEOUT = 30.0
 _CONVERSATION_SENTINEL = "PAI_E2E_CONVERSATION_OK"
 _AI_TASK_SENTINEL = "PAI_E2E_AI_TASK_OK"
 _AI_TASK_STRUCTURED_SENTINEL = "PAI_E2E_AI_TASK_STRUCTURED_OK"
@@ -94,6 +99,14 @@ class RealServerConfig:
         }
 
 
+@dataclass(frozen=True, kw_only=True)
+class _ModelParam:
+    """One model parameter for real-server tests."""
+
+    model: str
+    skip_reason: str | None = None
+
+
 def _load_dotenv_values(path: Path) -> dict[str, str]:
     """Load simple KEY=VALUE pairs from .env without adding a dependency."""
     values: dict[str, str] = {}
@@ -112,6 +125,155 @@ def _load_dotenv_values(path: Path) -> dict[str, str]:
     return values
 
 
+def _env_values() -> dict[str, str]:
+    """Return test configuration from process env and .env."""
+    file_values = _load_dotenv_values(_ENV_FILE)
+    keys = {
+        "OPENAI_API_KEY",
+        "OPENAI_MODEL",
+        "OPENAI_BASE_URL",
+        "OPENAI_MODELS_URL",
+        "OPENAI_MODEL_IDS",
+        "OPENAI_TEST_ALL_MODELS",
+        "OPENAI_MODEL_INCLUDE",
+        "OPENAI_MODEL_EXCLUDE",
+        "OPENAI_MODEL_LIMIT",
+    }
+    return {key: os.environ.get(key, file_values.get(key, "")) for key in keys}
+
+
+def _is_true(value: str) -> bool:
+    """Return if an environment flag is enabled."""
+    return value.strip().lower() in _TRUE_ENV_VALUES
+
+
+def _split_model_ids(value: str) -> list[str]:
+    """Return comma-separated model IDs."""
+    return [model.strip() for model in value.split(",") if model.strip()]
+
+
+def _model_param_id(model: str) -> str:
+    """Return a compact pytest parameter ID for a model name."""
+    return model.replace("/", "_").replace(":", "_")[:120]
+
+
+def _models_url(values: Mapping[str, str]) -> str:
+    """Return the OpenAI-compatible models endpoint URL."""
+    if values["OPENAI_MODELS_URL"]:
+        return values["OPENAI_MODELS_URL"].rstrip("/")
+    return f"{values['OPENAI_BASE_URL'].rstrip('/')}/models"
+
+
+def _skip_model_param(reason: str) -> object:
+    """Return one skipped model parameter."""
+    return pytest.param(
+        _ModelParam(model="", skip_reason=reason),
+        id="missing-real-server-config",
+        marks=pytest.mark.skip(reason=reason),
+    )
+
+
+def _limit_model_ids(model_ids: list[str], limit_value: str) -> list[str]:
+    """Apply configured model limit. A value of 0 means unlimited."""
+    if limit_value:
+        try:
+            limit = int(limit_value)
+        except ValueError:
+            return model_ids[:_DEFAULT_MODEL_LIMIT]
+    else:
+        limit = _DEFAULT_MODEL_LIMIT
+    if limit == 0:
+        return model_ids
+    return model_ids[: max(limit, 0)]
+
+
+def _filter_model_ids(model_ids: list[str], values: Mapping[str, str]) -> list[str]:
+    """Apply include/exclude regex filters and stable sorting."""
+    filtered = sorted(dict.fromkeys(model_ids))
+    if include := values["OPENAI_MODEL_INCLUDE"]:
+        pattern = re.compile(include)
+        filtered = [model for model in filtered if pattern.search(model)]
+    if exclude := values["OPENAI_MODEL_EXCLUDE"]:
+        pattern = re.compile(exclude)
+        filtered = [model for model in filtered if not pattern.search(model)]
+    return _limit_model_ids(filtered, values["OPENAI_MODEL_LIMIT"])
+
+
+def _parse_models_response(data: object) -> list[str]:
+    """Return model IDs from an OpenAI-compatible /models response."""
+    if not isinstance(data, Mapping) or not isinstance(models := data.get("data"), list):
+        return []
+    model_ids: list[str] = []
+    for model in models:
+        if isinstance(model, str):
+            model_ids.append(model)
+        elif isinstance(model, Mapping) and isinstance(model_id := model.get("id"), str):
+            model_ids.append(model_id)
+    return model_ids
+
+
+def _fetch_model_ids(values: Mapping[str, str]) -> list[str]:
+    """Fetch model IDs from the configured models endpoint."""
+    models_url = _models_url(values)
+    host = urlparse(models_url).hostname
+    if host is not None:
+        pytest_socket.socket_allow_hosts([host], allow_unix_socket=True)
+    headers = {"Authorization": f"Bearer {values['OPENAI_API_KEY']}"}
+    with httpx.Client(timeout=_MODEL_LIST_TIMEOUT) as client:
+        response = client.get(models_url, headers=headers)
+        response.raise_for_status()
+        return _parse_models_response(response.json())
+
+
+def _real_model_params(config: pytest.Config) -> list[object]:
+    """Return pytest params for selected real-server models."""
+    values = _env_values()
+    missing = [key for key in _REQUIRED_CONNECTION_ENV if not values[key]]
+    if missing:
+        return [
+            _skip_model_param(
+                "Real-server tests require these environment values in .env or "
+                f"the process environment: {', '.join(missing)}"
+            )
+        ]
+
+    try:
+        if explicit_models := _split_model_ids(values["OPENAI_MODEL_IDS"]):
+            model_ids = _filter_model_ids(explicit_models, values)
+        elif _is_true(values["OPENAI_TEST_ALL_MODELS"]):
+            if "not real_server" in (config.option.markexpr or ""):
+                model_ids = _split_model_ids(values["OPENAI_MODEL"])
+            else:
+                try:
+                    model_ids = _filter_model_ids(_fetch_model_ids(values), values)
+                except (httpx.HTTPError, ValueError) as err:
+                    return [
+                        _skip_model_param(
+                            "Unable to fetch OpenAI-compatible model list: "
+                            f"{type(err).__name__}"
+                        )
+                    ]
+        else:
+            model_ids = _split_model_ids(values["OPENAI_MODEL"])
+    except re.PatternError as err:
+        return [_skip_model_param(f"Invalid real-server model filter regex: {err}")]
+
+    if not model_ids:
+        return [
+            _skip_model_param(
+                "Real-server tests require OPENAI_MODEL, OPENAI_MODEL_IDS, or "
+                "OPENAI_TEST_ALL_MODELS=true with at least one discovered model."
+            )
+        ]
+    return [pytest.param(_ModelParam(model=model), id=_model_param_id(model)) for model in model_ids]
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """Parametrize real-server tests over selected models."""
+    if "real_model" in metafunc.fixturenames:
+        metafunc.parametrize("real_model", _real_model_params(metafunc.config))
+
+
 class _Secret(str):
     """String value with a redacted repr for pytest failure output."""
 
@@ -121,22 +283,15 @@ class _Secret(str):
 
 
 @pytest.fixture(name="real_server")
-def fixture_real_server() -> RealServerConfig:
+def fixture_real_server(real_model: _ModelParam) -> RealServerConfig:
     """Return real-server config or skip with missing variable names."""
-    file_values = _load_dotenv_values(_ENV_FILE)
-    values = {
-        key: os.environ.get(key, file_values.get(key, "")) for key in _REQUIRED_ENV
-    }
-    missing = [key for key, value in values.items() if not value]
-    if missing:
-        pytest.skip(
-            "Real-server tests require these environment values in .env or the "
-            f"process environment: {', '.join(missing)}"
-        )
+    values = _env_values()
+    if real_model.skip_reason:
+        pytest.skip(real_model.skip_reason)
 
     return RealServerConfig(
         api_key=_Secret(values["OPENAI_API_KEY"]),
-        model=values["OPENAI_MODEL"],
+        model=real_model.model,
         base_url=values["OPENAI_BASE_URL"],
     )
 

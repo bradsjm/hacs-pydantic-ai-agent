@@ -276,11 +276,26 @@ OPENAI_API_KEY=
 OPENAI_MODEL=
 OPENAI_BASE_URL=
 MCP_ECHO_SERVER_URL=
+OPENAI_TEST_ALL_MODELS=
+OPENAI_MODELS_URL=
+OPENAI_MODEL_IDS=
+OPENAI_MODEL_INCLUDE=
+OPENAI_MODEL_EXCLUDE=
+OPENAI_MODEL_LIMIT=
 ```
 
 `MCP_ECHO_SERVER_URL` is optional and defaults to the hosted echo endpoint in the
 test file. Test code redacts the API key representation and must not print raw
 secrets, headers, or `.env` contents.
+
+By default the real-server suite runs against only `OPENAI_MODEL`. To expand the
+same tests across multiple models from the same endpoint, set
+`OPENAI_TEST_ALL_MODELS=true`. The test harness then fetches model IDs from
+`OPENAI_MODELS_URL` when set, otherwise from `OPENAI_BASE_URL.rstrip('/') +
+'/models'`. `OPENAI_MODEL_IDS` can provide a comma-separated explicit model list
+without fetching the models endpoint. `OPENAI_MODEL_INCLUDE` and
+`OPENAI_MODEL_EXCLUDE` are regex filters applied before limiting. `OPENAI_MODEL_LIMIT`
+defaults to `5`; set it to `0` for no limit.
 
 Current real-server coverage includes:
 
@@ -291,6 +306,12 @@ Current real-server coverage includes:
 - hosted MCP echo tool calls and tool-result follow-up requests;
 - plain AI task generation;
 - structured AI task generation where supported by the configured model.
+
+Model-matrix runs should expect provider/model capability differences. Basic
+probe, streamed text, plain conversation, tool-call, MCP-tool, and plain AI task
+tests should pass for selected chat-capable models. Structured-output tests skip
+with a controlled validation reason when the selected model rejects the requested
+structured-output mode.
 
 ## Maintenance Rules
 

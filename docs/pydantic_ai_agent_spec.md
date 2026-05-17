@@ -1156,12 +1156,33 @@ OPENAI_MODEL=
 OPENAI_BASE_URL=
 ```
 
+Optional model-matrix keys:
+
+```text
+OPENAI_TEST_ALL_MODELS=false
+OPENAI_MODELS_URL=
+OPENAI_MODEL_IDS=
+OPENAI_MODEL_INCLUDE=
+OPENAI_MODEL_EXCLUDE=
+OPENAI_MODEL_LIMIT=5
+```
+
 Key usage rules:
 
 - `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_BASE_URL` drive
   OpenAI-compatible endpoint exploration.
 - `OPENAI_BASE_URL` may point to the default hosted OpenAI endpoint or to an
   OpenAI-compatible server under test.
+- By default, real-server tests run against `OPENAI_MODEL` only.
+- When `OPENAI_TEST_ALL_MODELS=true`, tests fetch model IDs from
+  `OPENAI_MODELS_URL` or from `OPENAI_BASE_URL` plus `/models`, then parametrize
+  the real-server suite over the selected models.
+- `OPENAI_MODEL_IDS` provides an explicit comma-separated model list and avoids
+  fetching `/models`.
+- `OPENAI_MODEL_INCLUDE` and `OPENAI_MODEL_EXCLUDE` are regex filters for model
+  matrix runs.
+- `OPENAI_MODEL_LIMIT` defaults to `5`; use `0` only when an intentionally
+  unbounded real-server run is acceptable.
 - `.env` values must be consumed only by scripts and tests. The Home Assistant
   integration runtime must not read `.env` directly.
 - `.env` must remain uncommitted. `.env.example` should contain these keys with
