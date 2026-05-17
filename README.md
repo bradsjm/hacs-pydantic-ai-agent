@@ -25,6 +25,8 @@ Implemented capabilities include:
 - Optional local `pydantic-ai-skills` selection from `/config/skills` or a
   subfolder, with script execution disabled unless explicitly enabled on the
   provider connection.
+- Automatic zero-cost sliding-window context trimming before provider requests,
+  while keeping Home Assistant `ChatLog` as the canonical history.
 - Optional Logfire tracing with Home Assistant metadata.
 - Config entry reauthentication, provider reconfiguration, subentry
   reconfiguration, diagnostics redaction, and repair issues for model-validation
@@ -79,6 +81,11 @@ Conversation agents support:
 - Optional local skill selection from the configured skills folder.
 - Optional model settings including temperature, thinking, max tokens, top P,
   timeout, parallel tool calls, seed, penalties, extra headers, and extra body.
+- Automatic hidden context trimming for very long conversations. Stored Assist
+  history is not pruned; only the model request is windowed.
+  When prior model history exceeds 100 messages, the request preserves the first
+  message and the latest 50 prior-history messages. Messages from the active
+  agent run are always preserved.
 
 ### AI Tasks
 
@@ -90,6 +97,8 @@ AI task entities can return plain text or validate structured results against
 the schema requested by Home Assistant. Structured output defaults to tool output
 and can be changed to native or prompted output in the advanced AI task settings.
 Each AI task can also enable WebFetch independently of MCP server selection.
+AI task requests use the same automatic model-request context trimming as
+conversation agents, including active-run preservation.
 
 ### MCP Servers
 

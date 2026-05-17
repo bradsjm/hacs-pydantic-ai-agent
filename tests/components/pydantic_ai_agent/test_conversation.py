@@ -31,6 +31,9 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI,
     SUBENTRY_TYPE_CONVERSATION,
 )
+from custom_components.pydantic_ai_agent.context_management import (
+    SlidingWindowContextCapability,
+)
 from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
     async_setup_entry,
@@ -209,6 +212,14 @@ class _Span:
         """Exit the mocked span."""
 
 
+def _assert_context_management_capability(capabilities: list[object]) -> None:
+    """Assert the automatic context management capability is attached."""
+    assert any(
+        isinstance(capability, SlidingWindowContextCapability)
+        for capability in capabilities
+    )
+
+
 def test_conversation_entity_controls_home_assistant_with_llm_api() -> None:
     """Test LLM API selection enables Home Assistant control support."""
     entry = _entry([llm.LLM_API_ASSIST])
@@ -340,6 +351,7 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     assert chat_model.call_args is not None
     assert chat_model.call_args.kwargs["model_name"] == "gpt-kitchen"
     assert agent_class.call_args.kwargs["output_type"] is str
+    _assert_context_management_capability(agent_class.call_args.kwargs["capabilities"])
 
 
 async def test_conversation_runtime_passes_selected_skills_capabilities(
@@ -388,7 +400,9 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
     skills_capabilities.assert_awaited_once_with(
         hass, entry, ["kitchen-skill"]
     )
-    assert agent_class.call_args.kwargs["capabilities"] == [capability]
+    capabilities = agent_class.call_args.kwargs["capabilities"]
+    assert capability in capabilities
+    _assert_context_management_capability(capabilities)
 
 
 async def test_conversation_runtime_adds_web_fetch_capability(
@@ -434,7 +448,9 @@ async def test_conversation_runtime_adds_web_fetch_capability(
         )
 
     web_fetch.assert_called_once_with(local=True)
-    assert agent_class.call_args.kwargs["capabilities"] == [web_fetch_capability]
+    capabilities = agent_class.call_args.kwargs["capabilities"]
+    assert web_fetch_capability in capabilities
+    _assert_context_management_capability(capabilities)
 
 
 async def test_conversation_logfire_instruments_agent_with_ha_metadata(

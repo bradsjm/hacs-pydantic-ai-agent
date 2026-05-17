@@ -37,6 +37,9 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI,
     SUBENTRY_TYPE_AI_TASK,
 )
+from custom_components.pydantic_ai_agent.context_management import (
+    SlidingWindowContextCapability,
+)
 
 
 class _TextStream:
@@ -221,6 +224,14 @@ def _agent_factory(
     return factory
 
 
+def _assert_context_management_capability(capabilities: list[object]) -> None:
+    """Assert the automatic context management capability is attached."""
+    assert any(
+        isinstance(capability, SlidingWindowContextCapability)
+        for capability in capabilities
+    )
+
+
 async def test_ai_task_subentries_add_separate_entities(
     hass: HomeAssistant,
 ) -> None:
@@ -269,7 +280,7 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
         patch(
             "custom_components.pydantic_ai_agent.entity.Agent",
             side_effect=_agent_factory(stream_text="plain result"),
-        ),
+        ) as agent_class,
     ):
         result = await ai_task.async_generate_data(
             hass,
@@ -279,6 +290,7 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
         )
 
     assert result.data == "plain result"
+    _assert_context_management_capability(agent_class.call_args.kwargs["capabilities"])
 
 
 async def test_ai_task_runtime_passes_selected_skills_capabilities(
@@ -312,7 +324,9 @@ async def test_ai_task_runtime_passes_selected_skills_capabilities(
 
     assert result.data == "plain result"
     assert skills_capabilities.call_args.args[2] == ["report-skill"]
-    assert agent_class.call_args.kwargs["capabilities"] == [capability]
+    capabilities = agent_class.call_args.kwargs["capabilities"]
+    assert capability in capabilities
+    _assert_context_management_capability(capabilities)
 
 
 async def test_ai_task_runtime_adds_web_fetch_capability(
@@ -345,7 +359,9 @@ async def test_ai_task_runtime_adds_web_fetch_capability(
 
     assert result.data == "plain result"
     web_fetch.assert_called_once_with(local=True)
-    assert agent_class.call_args.kwargs["capabilities"] == [web_fetch_capability]
+    capabilities = agent_class.call_args.kwargs["capabilities"]
+    assert web_fetch_capability in capabilities
+    _assert_context_management_capability(capabilities)
 
 
 @pytest.mark.parametrize(

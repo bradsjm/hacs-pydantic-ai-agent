@@ -45,6 +45,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_CONVERSATION,
 )
+from .context_management import SlidingWindowContextCapability
 from .ha_toolset import tool_definitions_from_llm_api, tools_from_llm_api
 from .history import chat_log_content_to_model_messages, split_last_user_prompt
 from .logfire_support import agent_run_span, instrument_agent
@@ -140,6 +141,7 @@ class PydanticAIBaseLLMEntity:
         )
         if self.subentry.data.get(CONF_WEB_FETCH_ENABLED):
             capabilities.append(WebFetch(local=True))
+        capabilities.append(SlidingWindowContextCapability())
         agent = Agent(
             model,
             output_type=cast(Any, agent_output_type),

@@ -713,8 +713,11 @@ Requirements:
   continuity.
 - Preserve provider-native objects only when they are safe and compatible.
 - Avoid storing a duplicate long-lived history on the entity.
-- Apply history trimming or summarization only through an explicit option or
-  future memory/history component.
+- Apply zero-cost history trimming only at the Pydantic AI request boundary.
+  Home Assistant `ChatLog` remains canonical and unpruned.
+- Windowing must preserve the active Pydantic AI run, the configured head
+  window, and complete tool call/tool result pairs.
+- Reserve LLM summarization for a future explicit memory/history component.
 
 ### Message Adapter
 
@@ -742,14 +745,22 @@ cancellation, and incomplete model responses.
 The MVP uses the higher-level Pydantic AI `Agent` runtime. Conversation and AI
 task requests build an `Agent` with the configured model, output type, model
 settings, Home Assistant LLM API tools, selected remote MCP toolsets, selected
-WebFetch capability, selected skills capabilities, `max_concurrency=1`,
-`tool_retries=0`, and `output_retries=2`. Runtime bounds are enforced with Pydantic AI
+WebFetch capability, selected skills capabilities, automatic sliding-window
+context management, `max_concurrency=1`, `tool_retries=0`, and
+`output_retries=2`. Runtime bounds are enforced with Pydantic AI
 `UsageLimits(request_limit=max_iterations)`.
 
 Home Assistant `ChatLog` remains the canonical conversation history for each
 conversation turn. The integration converts ChatLog content into Pydantic AI
 message history, runs the agent, then appends the agent's new messages back into
 ChatLog deltas before returning Home Assistant's conversation result.
+Long histories are windowed only inside the Pydantic AI model request hook so
+stored Assist history, diagnostics, and result appending continue to use the
+full ChatLog-derived sequence.
+The hidden default trigger is 100 prior-history messages. When triggered, the
+request keeps the first prior-history message and the latest 50 prior-history
+messages, expanding the kept range rather than splitting a tool call from its
+tool result. Messages created during the active agent run are never trimmed.
 
 AI task requests use the same shared agent runtime. Each AI task subentry selects
 one of Pydantic AI's structured output modes: `tool` (default), `native`, or
