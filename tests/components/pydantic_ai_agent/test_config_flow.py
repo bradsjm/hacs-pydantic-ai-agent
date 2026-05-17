@@ -8,7 +8,7 @@ import socket
 import ssl
 import sys
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, call, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from _pytest.logging import LogCaptureFixture
 from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
@@ -43,7 +43,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AI_TASK_NAME,
     CONF_BASE_URL,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
-    CONF_CONFIGURE_OUTPUT_MODE,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
@@ -1629,18 +1628,15 @@ async def test_create_ai_task_data_subentry_with_web_fetch(
     )
 
 
-async def test_create_ai_task_default_output_failure_opens_output_mode_step(
+async def test_create_ai_task_output_failure_rerenders_init_step(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
-    """Test default structured-output rejection offers output mode selection."""
-    mock_probe_model.side_effect = [
-        ProviderValidationError(
-            "unsupported_output_mode",
-            'Model "gpt-test" rejected structured output mode "tool".',
-            400,
-        ),
-        None,
-    ]
+    """Test structured-output rejection stays on the AI task form."""
+    mock_probe_model.side_effect = ProviderValidationError(
+        "unsupported_output_mode",
+        'Model "gpt-test" rejected structured output mode "tool".',
+        400,
+    )
     entry = await _loaded_entry(hass, with_model_profile=True)
 
     result = await hass.config_entries.subentries.async_init(
@@ -1652,40 +1648,20 @@ async def test_create_ai_task_default_output_failure_opens_output_mode_step(
         {
             CONF_AI_TASK_NAME: "Report task",
             CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+            CONF_OUTPUT_MODE: OUTPUT_MODE_TOOL,
         },
     )
 
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "output_mode"
+    assert result["step_id"] == "init"
     assert result["errors"] == {"base": "unsupported_output_mode"}
-
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {CONF_OUTPUT_MODE: OUTPUT_MODE_PROMPTED},
+    mock_probe_model.assert_awaited_once_with(
+        hass,
+        entry.data,
+        "gpt-test",
+        {},
+        structured_output_mode=OUTPUT_MODE_TOOL,
     )
-
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_AI_TASK_NAME: "Report task",
-        CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
-        CONF_OUTPUT_MODE: OUTPUT_MODE_PROMPTED,
-    }
-    assert mock_probe_model.await_args_list == [
-        call(
-            hass,
-            entry.data,
-            "gpt-test",
-            {},
-            structured_output_mode=OUTPUT_MODE_TOOL,
-        ),
-        call(
-            hass,
-            entry.data,
-            "gpt-test",
-            {},
-            structured_output_mode=OUTPUT_MODE_PROMPTED,
-        ),
-    ]
 
 
 async def test_create_mcp_server_subentry(
@@ -2276,15 +2252,8 @@ async def test_create_ai_task_data_subentry_with_output_mode(
         {
             CONF_AI_TASK_NAME: "Report task",
             CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
-            CONF_CONFIGURE_OUTPUT_MODE: True,
+            CONF_OUTPUT_MODE: output_mode,
         },
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "output_mode"
-
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {CONF_OUTPUT_MODE: output_mode},
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY

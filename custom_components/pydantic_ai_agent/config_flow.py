@@ -69,7 +69,6 @@ from .const import (
     CONF_AI_TASK_NAME,
     CONF_BASE_URL,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
-    CONF_CONFIGURE_OUTPUT_MODE,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_FALLBACK_MODEL_SUBENTRY_IDS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
@@ -1455,10 +1454,6 @@ def _ai_task_data_schema(
             CONF_AI_TASK_NAME,
             default=options.get(CONF_AI_TASK_NAME, DEFAULT_AI_TASK_NAME),
         ): TextSelector(TextSelectorConfig()),
-        vol.Optional(
-            CONF_CONFIGURE_OUTPUT_MODE,
-            default=False,
-        ): BooleanSelector(),
     }
     if model_options:
         configured_profiles = {option["value"] for option in model_options}
@@ -1528,30 +1523,21 @@ def _ai_task_data_schema(
         schema[skills_schema_key] = SelectSelector(
             SelectSelectorConfig(options=skill_options, multiple=True)
         )
-    return vol.Schema(schema)
-
-
-def _ai_task_output_mode_schema(
-    options: Mapping[str, Any] | None = None,
-) -> vol.Schema:
-    """Return the AI task advanced structured output schema."""
-    options = dict(options or {})
-    return vol.Schema(
-        {
-            vol.Required(
-                CONF_OUTPUT_MODE,
-                default=normalise_structured_output_mode(
-                    options.get(CONF_OUTPUT_MODE, DEFAULT_OUTPUT_MODE)
-                ),
-            ): SelectSelector(
-                SelectSelectorConfig(
-                    options=list(_OUTPUT_MODE_OPTIONS),
-                    mode=SelectSelectorMode.DROPDOWN,
-                    translation_key=CONF_OUTPUT_MODE,
-                )
+    schema[
+        vol.Required(
+            CONF_OUTPUT_MODE,
+            default=normalise_structured_output_mode(
+                options.get(CONF_OUTPUT_MODE, DEFAULT_OUTPUT_MODE)
             ),
-        }
+        )
+    ] = SelectSelector(
+        SelectSelectorConfig(
+            options=list(_OUTPUT_MODE_OPTIONS),
+            mode=SelectSelectorMode.DROPDOWN,
+            translation_key=CONF_OUTPUT_MODE,
+        )
     )
+    return vol.Schema(schema)
 
 
 def _ai_task_data_from_user_input(
@@ -1561,11 +1547,7 @@ def _ai_task_data_from_user_input(
     available_skills: list[AvailableSkill] | None = None,
 ) -> dict[str, Any]:
     """Return AI task subentry data with a selected structured output mode."""
-    data = {
-        key: value
-        for key, value in user_input.items()
-        if key != CONF_CONFIGURE_OUTPUT_MODE
-    }
+    data = dict(user_input)
     data.setdefault(
         CONF_OUTPUT_MODE,
         normalise_structured_output_mode(options.get(CONF_OUTPUT_MODE)),
@@ -2198,7 +2180,6 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing AI task data subentries."""
 
     _options: dict[str, Any]
-    _pending_ai_task_data: dict[str, Any]
 
     @property
     def _is_new(self) -> bool:
@@ -2254,12 +2235,6 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                     ),
                     errors={CONF_MCP_SERVER_IDS: mcp_error},
                 )
-            if user_input.get(CONF_CONFIGURE_OUTPUT_MODE):
-                self._pending_ai_task_data = data
-                return self.async_show_form(
-                    step_id="output_mode",
-                    data_schema=_ai_task_output_mode_schema(self._options | data),
-                )
             return await self._async_finish_ai_task_options(data)
 
         return self.async_show_form(
@@ -2267,31 +2242,9 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             data_schema=_ai_task_data_schema(self._options, entry, available_skills),
         )
 
-    async def async_step_output_mode(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Manage advanced structured output settings."""
-        if user_input is None:
-            return self.async_show_form(
-                step_id="output_mode",
-                data_schema=_ai_task_output_mode_schema(
-                    self._options | self._pending_ai_task_data
-                ),
-            )
-        data = self._pending_ai_task_data | {
-            CONF_OUTPUT_MODE: normalise_structured_output_mode(
-                user_input[CONF_OUTPUT_MODE]
-            )
-        }
-        return await self._async_finish_ai_task_options(
-            data,
-            error_step="output_mode",
-        )
-
     async def _async_finish_ai_task_options(
         self,
         data: dict[str, Any],
-        error_step: str = "init",
     ) -> SubentryFlowResult:
         """Probe the selected AI task model, then create or update the subentry."""
         entry = self._get_entry()
@@ -2321,21 +2274,6 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             _log_provider_validation_failure(
                 step="AI task subentry", model_name=current_model, err=err
             )
-            if err.reason == "unsupported_output_mode" and error_step == "init":
-                self._pending_ai_task_data = data
-                return self.async_show_form(
-                    step_id="output_mode",
-                    data_schema=_ai_task_output_mode_schema(self._options | data),
-                    errors={"base": err.reason},
-                    description_placeholders=_provider_validation_placeholders(err),
-                )
-            if error_step == "output_mode":
-                return self.async_show_form(
-                    step_id="output_mode",
-                    data_schema=_ai_task_output_mode_schema(self._options | data),
-                    errors={"base": err.reason},
-                    description_placeholders=_provider_validation_placeholders(err),
-                )
             return self.async_show_form(
                 step_id="init",
                 data_schema=_ai_task_data_schema(
@@ -2346,12 +2284,6 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             )
         except Exception:
             _LOGGER.exception("Unexpected exception validating AI task model")
-            if error_step == "output_mode":
-                return self.async_show_form(
-                    step_id="output_mode",
-                    data_schema=_ai_task_output_mode_schema(self._options | data),
-                    errors={"base": "unknown"},
-                )
             return self.async_show_form(
                 step_id="init",
                 data_schema=_ai_task_data_schema(
