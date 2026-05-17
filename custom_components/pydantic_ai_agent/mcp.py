@@ -408,6 +408,8 @@ async def async_discover_mcp_tools_from_config(
         ) from err
     except Exception as err:
         status_code = getattr(err, "status_code", None)
+        if status_code is None and isinstance(err, httpx.HTTPStatusError):
+            status_code = err.response.status_code
         if isinstance(status_code, int) and status_code in {401, 403}:
             raise MCPValidationError(
                 "invalid_auth",

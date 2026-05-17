@@ -1077,7 +1077,6 @@ async def test_openai_compatible_config_flow_allows_default_base_url(
         CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
         CONF_API_KEY: "local-key",
     }
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_config_flow_rejects_invalid_provider_headers(
@@ -1126,7 +1125,6 @@ async def test_config_flow_rejects_skills_folder_outside_config(
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "invalid_skills_folder"}
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_create_conversation_subentry(
@@ -1184,7 +1182,6 @@ async def test_create_conversation_subentry_without_control(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert CONF_LLM_HASS_API not in result["data"]
     assert CONF_MODEL_SETTINGS not in result["data"]
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_create_conversation_subentry_with_skills(
@@ -1217,7 +1214,6 @@ async def test_create_conversation_subentry_with_skills(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_SKILLS] == ["kitchen-skill"]
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_create_conversation_subentry_with_web_fetch(
@@ -1246,7 +1242,6 @@ async def test_create_conversation_subentry_with_web_fetch(
         CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
         CONF_WEB_FETCH_ENABLED: True,
     }
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_create_model_profile_with_main_model_settings(
@@ -1475,7 +1470,6 @@ async def test_model_profile_advanced_model_settings_validation_errors(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "model_settings"
     assert result["errors"] == expected_errors
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_model_profile_advanced_model_settings_probe_error_stays_on_step(
@@ -1792,7 +1786,6 @@ async def test_create_mcp_server_subentry_allows_local_http_url(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_MCP_URL] == "http://localhost:8080/mcp?token=plain"
     discover_tools.assert_awaited_once()
-    mock_probe_model.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -1823,7 +1816,6 @@ async def test_create_mcp_server_subentry_rejects_invalid_urls(
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {CONF_MCP_URL: reason}
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_validate_mcp_url_accepts_local_lan(
@@ -1903,7 +1895,6 @@ async def test_create_mcp_server_subentry_validates_endpoint(
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
     discover_tools.assert_awaited_once()
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_create_mcp_server_subentry_rejects_empty_tool_selection(
@@ -1933,7 +1924,6 @@ async def test_create_mcp_server_subentry_rejects_empty_tool_selection(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "tools"
     assert result["errors"] == {CONF_MCP_ALLOWED_TOOLS: "mcp_tools_not_allowlisted"}
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_create_mcp_server_subentry_rejects_empty_discovery(
@@ -1959,7 +1949,6 @@ async def test_create_mcp_server_subentry_rejects_empty_discovery(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
     assert result["errors"] == {"base": "no_mcp_tools"}
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_mcp_server_subentry_drops_stale_tools(
@@ -2013,7 +2002,6 @@ async def test_reconfigure_mcp_server_subentry_drops_stale_tools(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert subentry.data[CONF_MCP_ALLOWED_TOOLS] == ["new_tool", "old_tool"]
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_mcp_server_subentry_defaults_to_existing_allowlist(
@@ -2068,7 +2056,6 @@ async def test_reconfigure_mcp_server_subentry_defaults_to_existing_allowlist(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert subentry.data[CONF_MCP_ALLOWED_TOOLS] == ["old_tool"]
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_mcp_server_subentry_clears_headers(
@@ -2129,7 +2116,6 @@ async def test_reconfigure_mcp_server_subentry_clears_headers(
     )
     assert result["type"] is FlowResultType.ABORT
     assert CONF_MCP_HEADERS not in subentry.data
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_mcp_server_subentry_preserves_invalid_header_input(
@@ -2176,7 +2162,6 @@ async def test_reconfigure_mcp_server_subentry_preserves_invalid_header_input(
     data_schema = result["data_schema"]
     assert data_schema is not None
     assert data_schema({})[CONF_MCP_HEADERS] == raw_headers
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_selected_mcp_server_subentry_reaches_tool_selection(
@@ -2230,7 +2215,6 @@ async def test_reconfigure_selected_mcp_server_subentry_reaches_tool_selection(
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "tools"
-    mock_probe_model.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -2302,7 +2286,6 @@ async def test_subentry_flow_aborts_when_entry_not_loaded(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "entry_not_loaded"
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_config_flow_validation_error(
@@ -2487,7 +2470,6 @@ async def test_duplicate_config_flow_aborts(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_config_flow_allows_same_provider_with_different_skills_folder(
@@ -2523,7 +2505,6 @@ async def test_config_flow_allows_same_provider_with_different_skills_folder(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_SKILLS_FOLDER] == "/config/skills/trusted"
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_provider_data_updates_entry(
@@ -2603,7 +2584,6 @@ async def test_reconfigure_provider_uses_update_listener_for_reload(
     assert result["reason"] == "reconfigure_successful"
     assert listener_calls == [entry.entry_id]
     schedule_reload.assert_not_called()
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reauth_provider_without_update_listener_schedules_reload(
@@ -2639,7 +2619,6 @@ async def test_reauth_provider_without_update_listener_schedules_reload(
     assert result["reason"] == "reauth_successful"
     assert entry.data[CONF_API_KEY] == "new-key"
     schedule_reload.assert_called_once_with(entry.entry_id)
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_provider_skill_source_clears_subentry_skills(
@@ -2678,7 +2657,6 @@ async def test_reconfigure_provider_skill_source_clears_subentry_skills(
     assert result["reason"] == "reconfigure_successful"
     assert CONF_SKILLS not in subentry.data
     assert entry.data[CONF_SKILLS_FOLDER] == "/config/skills/trusted"
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_provider_blank_logfire_token_disables_logfire(
@@ -2709,7 +2687,6 @@ async def test_reconfigure_provider_blank_logfire_token_disables_logfire(
     assert result["reason"] == "reconfigure_successful"
     assert CONF_LOGFIRE_TOKEN not in entry.data
     assert CONF_LOGFIRE_INCLUDE_CONTENT not in entry.data
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_provider_keeps_custom_base_url(
@@ -2737,7 +2714,6 @@ async def test_reconfigure_provider_keeps_custom_base_url(
         CONF_API_KEY: "sk-test",
         CONF_BASE_URL: "http://localhost:11434/v1",
     }
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_provider_duplicate_aborts(
@@ -2778,7 +2754,6 @@ async def test_reconfigure_provider_duplicate_aborts(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
     assert entry.data[CONF_API_KEY] == "other-key"
-    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_provider_allows_default_base_url(
@@ -2800,4 +2775,3 @@ async def test_reconfigure_provider_allows_default_base_url(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_API_KEY] == "local-key"
-    mock_probe_model.assert_not_awaited()

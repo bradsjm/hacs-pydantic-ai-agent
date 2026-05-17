@@ -1,22 +1,40 @@
 """Test MCP helpers for Pydantic AI Agent."""
 
 import ssl
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
 import pytest
 import voluptuous as vol
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from homeassistant import config_entries
+from homeassistant.const import CONF_NAME
+from homeassistant.core import HomeAssistant
 from homeassistant.util.ssl import SSL_ALPN_HTTP11, client_context
 
+from custom_components.pydantic_ai_agent.const import (
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_HEADERS,
+    CONF_MCP_URL,
+    DOMAIN,
+    SUBENTRY_TYPE_MCP_SERVER,
+)
 from custom_components.pydantic_ai_agent.mcp import (
     MCPValidationError,
     ValidatedMCPURL,
+    _cache_key,
     _mcp_http_client_factory,
     _origin_guard_hook,
+    async_discover_mcp_tools_from_config,
+    async_runtime_mcp_toolsets,
+    cached_mcp_tools,
     normalise_mcp_url,
+    parse_allowed_tools,
     parse_mcp_headers,
     redact_for_log,
+    schema_hash,
 )
 
 
@@ -181,3 +199,222 @@ def test_normalise_mcp_url_uses_ha_url_validation_for_baseline(
         normalise_mcp_url(url)
 
     assert getattr(err.value, "reason") == reason
+
+
+def _mcp_entry(
+    *,
+    subentry_id: str = "mcp_server_1",
+    allowed_tools: list[str] | None = None,
+) -> MockConfigEntry:
+    """Return a config entry with one MCP server subentry."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title="Hosted OpenAI",
+        data={},
+        source=config_entries.SOURCE_USER,
+        subentries_data=(
+            {
+                "subentry_id": subentry_id,
+                "data": {
+                    CONF_NAME: "Echo MCP",
+                    CONF_MCP_URL: "https://mcp.example.com/mcp",
+                    CONF_MCP_HEADERS: {"Authorization": "Bearer secret"},
+                    CONF_MCP_ALLOWED_TOOLS: allowed_tools or [],
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Echo MCP",
+                "unique_id": None,
+            },
+        ),
+        options={},
+        unique_id=None,
+    )
+
+
+def test_parse_allowed_tools_normalizes_strings_and_sequences() -> None:
+    """Test MCP allowlists are normalized, sorted, and deduplicated."""
+    assert parse_allowed_tools(" read_file, list_files\nread_file ") == [
+        "list_files",
+        "read_file",
+    ]
+    assert parse_allowed_tools(["echo", "  list_files ", "echo", ""]) == [
+        "echo",
+        "list_files",
+    ]
+    assert parse_allowed_tools(None) == []
+
+    with pytest.raises(vol.Invalid):
+        parse_allowed_tools(123)
+
+
+def test_schema_hash_is_stable_for_json_equivalent_schemas() -> None:
+    """Test MCP schema hashes are stable across key ordering."""
+    schema_a = {"type": "object", "properties": {"name": {"type": "string"}}}
+    schema_b = {"properties": {"name": {"type": "string"}}, "type": "object"}
+    schema_c = {"type": "object", "properties": {"id": {"type": "integer"}}}
+
+    assert schema_hash(schema_a) == schema_hash(schema_b)
+    assert schema_hash(schema_a) != schema_hash(schema_c)
+
+
+def test_cached_mcp_tools_returns_copy_and_validates_entry_state() -> None:
+    """Test MCP catalog cache access is entry-scoped and safe to mutate."""
+    entry = _mcp_entry()
+
+    with pytest.raises(MCPValidationError, match="config entry is not loaded"):
+        cached_mcp_tools(entry, "mcp_server_1")
+
+    entry.runtime_data = SimpleNamespace(mcp_tool_cache={})
+    assert cached_mcp_tools(entry, "mcp_server_1") is None
+
+    cache_key = _cache_key(entry, "mcp_server_1")
+    entry.runtime_data.mcp_tool_cache[cache_key] = [{"name": "echo"}]
+    cached = cached_mcp_tools(entry, "mcp_server_1")
+    assert cached == [{"name": "echo"}]
+    assert cached is not entry.runtime_data.mcp_tool_cache[cache_key]
+
+    with pytest.raises(MCPValidationError) as err:
+        cached_mcp_tools(entry, "missing")
+    assert err.value.reason == "mcp_server_not_found"
+
+
+async def test_discover_mcp_tools_from_config_shapes_and_filters_tools(
+    hass: HomeAssistant,
+) -> None:
+    """Test MCP discovery returns stable metadata and applies allowlists."""
+
+    class FakeMCPToolset:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def list_tools(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "name": "echo",
+                    "description": "Echo text",
+                    "inputSchema": {"type": "object"},
+                },
+                {"name": "ignored", "inputSchema": {"type": "object"}},
+                {"description": "missing name"},
+            ]
+
+    with (
+        patch("custom_components.pydantic_ai_agent.mcp.MCPToolset", FakeMCPToolset),
+        patch("custom_components.pydantic_ai_agent.mcp._mcp_client", return_value=object()),
+    ):
+        tools = await async_discover_mcp_tools_from_config(
+            hass,
+            {
+                CONF_NAME: "Echo MCP",
+                CONF_MCP_URL: "https://mcp.example.com/mcp",
+                CONF_MCP_ALLOWED_TOOLS: ["echo"],
+            },
+            server_id="server-1",
+        )
+
+    assert tools == [
+        {
+            "server_id": "server-1",
+            "server_name": "Echo MCP",
+            "name": "echo",
+            "description": "Echo text",
+            "input_schema": {"type": "object"},
+            "schema_hash": schema_hash({"type": "object"}),
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        (TimeoutError(), "timeout"),
+        (
+            httpx.HTTPStatusError(
+                "Unauthorized",
+                request=httpx.Request("GET", "https://mcp.example.com/mcp"),
+                response=httpx.Response(401),
+            ),
+            "invalid_auth",
+        ),
+        (RuntimeError("down"), "cannot_connect"),
+    ],
+)
+async def test_discover_mcp_tools_from_config_maps_connection_errors(
+    hass: HomeAssistant, error: BaseException, reason: str
+) -> None:
+    """Test MCP discovery failures use stable validation reasons."""
+
+    class FakeMCPToolset:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def list_tools(self) -> list[dict[str, object]]:
+            raise error
+
+    with (
+        patch("custom_components.pydantic_ai_agent.mcp.MCPToolset", FakeMCPToolset),
+        patch("custom_components.pydantic_ai_agent.mcp._mcp_client", return_value=object()),
+        pytest.raises(MCPValidationError) as err,
+    ):
+        await async_discover_mcp_tools_from_config(
+            hass,
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+
+    assert err.value.reason == reason
+
+
+async def test_runtime_mcp_toolsets_requires_selected_allowlisted_servers(
+    hass: HomeAssistant,
+) -> None:
+    """Test runtime MCP toolsets fail closed for missing or unallowlisted servers."""
+    assert await async_runtime_mcp_toolsets(hass, _mcp_entry(), []) == []
+
+    with pytest.raises(MCPValidationError) as err:
+        await async_runtime_mcp_toolsets(hass, _mcp_entry(), ["missing"])
+    assert err.value.reason == "mcp_server_not_found"
+
+    with pytest.raises(MCPValidationError) as err:
+        await async_runtime_mcp_toolsets(hass, _mcp_entry(), ["mcp_server_1"])
+    assert err.value.reason == "mcp_tools_not_allowlisted"
+
+
+async def test_runtime_mcp_toolsets_enforces_tool_allowlist(
+    hass: HomeAssistant,
+) -> None:
+    """Test runtime MCP process hook rejects tools outside the allowlist."""
+
+    class FakeMCPToolset:
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            self.process_tool_call = kwargs["process_tool_call"]
+
+    def fake_prefixed_toolset(toolset: FakeMCPToolset, prefix: str) -> SimpleNamespace:
+        return SimpleNamespace(toolset=toolset, prefix=prefix)
+
+    entry = _mcp_entry(allowed_tools=["echo"])
+    with (
+        patch("custom_components.pydantic_ai_agent.mcp.MCPToolset", FakeMCPToolset),
+        patch(
+            "custom_components.pydantic_ai_agent.mcp.PrefixedToolset",
+            side_effect=fake_prefixed_toolset,
+        ),
+        patch("custom_components.pydantic_ai_agent.mcp._mcp_client", return_value=object()),
+    ):
+        toolsets = await async_runtime_mcp_toolsets(hass, entry, ["mcp_server_1"])
+
+    assert len(toolsets) == 1
+    assert toolsets[0].prefix == "mcp_mcp_server_1"
+
+    async def call_tool(tool_name: str, tool_args: dict[str, object]) -> dict[str, object]:
+        return {"tool": tool_name, "args": tool_args}
+
+    assert await toolsets[0].toolset.process_tool_call(
+        None, call_tool, "echo", {"message": "hi"}
+    ) == {"tool": "echo", "args": {"message": "hi"}}
+
+    with pytest.raises(MCPValidationError) as err:
+        await toolsets[0].toolset.process_tool_call(
+            None, call_tool, "read_file", {"path": "/tmp/x"}
+        )
+    assert err.value.reason == "mcp_tool_not_allowed"
+    assert err.value.tool_name == "read_file"

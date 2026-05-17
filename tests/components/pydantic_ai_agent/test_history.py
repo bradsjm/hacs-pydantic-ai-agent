@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic_ai import (
     BinaryContent,
+    ModelMessage,
     ModelRequest,
     ModelResponse,
     SystemPromptPart,
@@ -22,6 +23,7 @@ from homeassistant.helpers import llm
 
 from custom_components.pydantic_ai_agent.history import (
     chat_log_content_to_model_messages,
+    split_last_user_prompt,
 )
 
 
@@ -145,3 +147,49 @@ async def test_unsupported_attachment_type_raises(
                 )
             ],
         )
+
+
+def test_split_last_user_prompt_returns_none_without_user_prompt() -> None:
+    """Test history is unchanged when no user prompt exists."""
+    messages: list[ModelMessage] = [ModelResponse(parts=[TextPart(content="assistant")])]
+
+    prompt, history = split_last_user_prompt(messages)
+
+    assert prompt is None
+    assert history is messages
+
+
+def test_split_last_user_prompt_removes_latest_user_part_only() -> None:
+    """Test latest user prompt is split while surrounding request parts remain."""
+    first_user = ModelRequest(parts=[UserPromptPart(content="old user")])
+    assistant = ModelResponse(parts=[TextPart(content="assistant")])
+    latest_request = ModelRequest(
+        parts=[
+            SystemPromptPart(content="system tail"),
+            UserPromptPart(content="current user"),
+            ToolReturnPart(
+                tool_name="HassTurnOn",
+                content={"success": True},
+                tool_call_id="tool-1",
+            ),
+        ]
+    )
+    trailing_assistant = ModelResponse(parts=[TextPart(content="after")])
+    messages = [first_user, assistant, latest_request, trailing_assistant]
+
+    prompt, history = split_last_user_prompt(messages)
+
+    assert prompt == "current user"
+    assert history[0] is first_user
+    assert history[1] is assistant
+    assert history[3] is trailing_assistant
+    preserved_request = history[2]
+    assert isinstance(preserved_request, ModelRequest)
+    system_part = preserved_request.parts[0]
+    assert isinstance(system_part, SystemPromptPart)
+    assert system_part.content == "system tail"
+    tool_part = preserved_request.parts[1]
+    assert isinstance(tool_part, ToolReturnPart)
+    assert tool_part.tool_name == "HassTurnOn"
+    assert tool_part.content == {"success": True}
+    assert tool_part.tool_call_id == "tool-1"
