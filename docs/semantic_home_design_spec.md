@@ -60,6 +60,15 @@ Verified current behavior:
   `CONF_LLM_HASS_API` is configured.
 - Runtime execution uses `pydantic_ai.Agent` and converts HA `llm.APIInstance`
   tools into Pydantic AI executable tools through `ha_toolset.py`.
+- HA LLM tools are converted through public Pydantic AI APIs, currently
+  `Tool.from_schema`; private `pydantic_ai._*` imports are not part of the
+  architecture.
+- Runtime objects and MCP discovery caches are scoped to typed
+  `entry.runtime_data`. `hass.data[DOMAIN]` is reserved for explicit
+  process-global integration state such as Logfire configuration.
+- MCP server authentication is represented by configured HTTP headers. MCP URLs
+  with username/password userinfo are invalid, and diagnostics redact the full
+  `mcp_url` value to protect stale persisted data.
 - Current package dependencies include `fastmcp==3.3.1` and
   `pydantic-ai-slim[openai,mcp]==1.97.0`.
 
@@ -217,13 +226,66 @@ should be converted at the adapter edge.
 | TR-006 | Use JSON-serializable diagnostics attributes only.                                                           |
 | TR-007 | Unit tests must not call real LLM providers.                                                                 |
 | TR-008 | Embedding providers, if added later, must be optional and must not be required for setup or basic control.   |
+| TR-009 | Use HA lifecycle, task, network, diagnostics, repair, and storage helpers before custom code.                |
+| TR-010 | Use typed exception handling for provider/network failures; do not classify errors by string matching.       |
+| TR-011 | Use public Pydantic AI APIs only; private modules are not valid integration boundaries.                      |
+
+## Home Assistant Ecosystem Boundaries
+
+Semantic Home must stay inside Home Assistant's native extension model. It should
+not become a parallel home-control runtime, custom service bus, standalone async
+worker, or hidden state store.
+
+Non-negotiable boundaries:
+
+- Register model-facing functionality as a native Home Assistant `llm.API` and
+  expose it through the existing `CONF_LLM_HASS_API` selection path.
+- Read Home Assistant state through HA registries, state helpers, recorder,
+  logbook, and statistics APIs. Do not scrape storage files or query recorder
+  internals directly.
+- Execute control through Home Assistant service/action calls after deterministic
+  resolver validation. Do not expose unrestricted raw service execution as the
+  default control path.
+- Use HA-managed async patterns: `hass.async_create_task`,
+  `entry.async_create_background_task`, `entry.async_on_unload`, and executor
+  jobs for blocking filesystem work.
+- Use HA network/client helpers and HA SSL/proxy configuration for outbound I/O.
+  If a third-party library must own a per-session client, wrap HA helper-derived
+  configuration in a small closeable adapter and test its cleanup behavior.
+- Keep per-entry runtime state on typed `entry.runtime_data`. Use
+  `hass.data[DOMAIN]` only for intentional integration process-global state that
+  cannot belong to one config entry.
+- Use Home Assistant diagnostics redaction helpers and redact whole sensitive
+  values when partial sanitization would be fragile. JSON diagnostics must remain
+  compact and serializable.
+- Use Home Assistant repair issues, config-flow errors, and reconfigure/reauth
+  flows for user-actionable failures instead of log-only warnings.
+- Use public Pydantic AI APIs for tool registration and schema conversion.
+  Private modules such as `pydantic_ai._*` are not allowed.
+- Do not add or document streaming behavior until runtime streaming is actually
+  implemented and tested.
+
+MCP-related guardrails, if Semantic Home ever consumes MCP-derived tools or
+metadata:
+
+- Support remote Streamable HTTP MCP only unless a new design explicitly covers
+  the HA lifecycle and security model for another transport.
+- Reject MCP URLs containing username, password, or any URL userinfo.
+- Put MCP authentication in configured HTTP headers, not in URLs.
+- Redact the full persisted `mcp_url` value in diagnostics/logs, including stale
+  data from older versions.
+- Skip invalid stale MCP URLs during duplicate scans and surface controlled
+  validation errors only when that server is edited or used.
+- Require explicit per-server tool allowlists before exposing MCP tools to an
+  agent.
 
 ## Runtime Ownership
 
-The existing `PydanticAIAgentRuntimeData` currently stores provider data and MCP
-server data in a frozen dataclass. `semantic_home` should add a contained runtime
-object at construction time rather than scattering state across modules or
-mutating frozen runtime data after setup.
+The existing `PydanticAIAgentRuntimeData` stores provider data, Logfire flags,
+skills settings, MCP server data, and the entry-scoped MCP tool cache in a frozen
+dataclass. `semantic_home` should add a contained runtime object at construction
+time rather than scattering state across modules or mutating frozen runtime data
+after setup.
 
 Proposed runtime shape:
 
@@ -234,7 +296,12 @@ class PydanticAIAgentRuntimeData:
     name: str
     api_key: str
     base_url: str | None
+    logfire_enabled: bool
+    logfire_include_content: bool
+    skills_folder: str
+    enable_skill_script_execution: bool
     mcp_servers: list[dict[str, Any]]
+    mcp_tool_cache: dict[str, list[dict[str, Any]]]
     semantic_home: SemanticHomeRuntime | None = None
 ```
 
@@ -251,11 +318,12 @@ class SemanticHomeRuntime:
     unregister_api: Callable[[], None]
 ```
 
-The runtime object should own in-memory state and unload callbacks. It should not
-own provider credentials. Because the parent runtime dataclass is frozen today,
-`async_setup_entry()` must build the semantic runtime before assigning
-`entry.runtime_data`, or the design must introduce another explicit immutable
-container that is assigned as part of setup.
+The runtime object should own in-memory state, result caches, listeners,
+background refresh handles, and unload callbacks. It should not own provider
+credentials or process-global observability state. Because the parent runtime
+dataclass is frozen today, `async_setup_entry()` must build the semantic runtime
+before assigning `entry.runtime_data`, or the design must introduce another
+explicit immutable container that is assigned as part of setup.
 
 ## Future Extraction Boundary
 
