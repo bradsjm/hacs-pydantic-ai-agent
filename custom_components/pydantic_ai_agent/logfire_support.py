@@ -1,8 +1,9 @@
 """Logfire support for Pydantic AI Agent."""
 
+import asyncio
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import Any
 
@@ -36,6 +37,7 @@ class LogfireState:
 
     configured_token: str | None = None
     configured_include_content: bool = False
+    configure_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 def _logfire_state(hass: HomeAssistant) -> LogfireState:
@@ -47,7 +49,7 @@ def _logfire_state(hass: HomeAssistant) -> LogfireState:
     return state
 
 
-def configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Configure process-global Logfire once for a config entry."""
     token = _entry_logfire_token(entry)
     if token is None:
@@ -56,39 +58,45 @@ def configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     include_content = bool(entry.data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False))
     state = _logfire_state(hass)
-    if state.configured_token is None:
-        try:
-            import logfire
+    async with state.configure_lock:
+        if state.configured_token is None:
+            try:
+                await hass.async_add_executor_job(_configure_logfire_sync, token)
+            except Exception:
+                _LOGGER.exception(
+                    "Failed to configure Logfire for Pydantic AI Agent entry %s",
+                    entry.entry_id,
+                )
+                return False
+            state.configured_token = token
+            state.configured_include_content = include_content
+            async_delete_logfire_token_conflict_issue(hass, entry)
+            return True
 
-            logfire.configure(
-                send_to_logfire=True,
-                token=token,
-                service_name=DOMAIN,
-                console=False,
-                inspect_arguments=False,
-            )
-        except Exception:
-            _LOGGER.exception(
-                "Failed to configure Logfire for Pydantic AI Agent entry %s",
-                entry.entry_id,
-            )
-            return False
-        state.configured_token = token
-        state.configured_include_content = include_content
-        async_delete_logfire_token_conflict_issue(hass, entry)
-        return True
+        if token == state.configured_token:
+            async_delete_logfire_token_conflict_issue(hass, entry)
+            return True
 
-    if token == state.configured_token:
-        async_delete_logfire_token_conflict_issue(hass, entry)
-        return True
+        _LOGGER.warning(
+            "Logfire is already configured by another Pydantic AI Agent entry; "
+            "Logfire is disabled for entry %s",
+            entry.entry_id,
+        )
+        async_create_logfire_token_conflict_issue(hass, entry)
+        return False
 
-    _LOGGER.warning(
-        "Logfire is already configured by another Pydantic AI Agent entry; "
-        "Logfire is disabled for entry %s",
-        entry.entry_id,
+
+def _configure_logfire_sync(token: str) -> None:
+    """Configure Logfire in an executor because it performs blocking file I/O."""
+    import logfire
+
+    logfire.configure(
+        send_to_logfire=True,
+        token=token,
+        service_name=DOMAIN,
+        console=False,
+        inspect_arguments=False,
     )
-    async_create_logfire_token_conflict_issue(hass, entry)
-    return False
 
 
 def logfire_enabled(hass: HomeAssistant, entry: ConfigEntry) -> bool:

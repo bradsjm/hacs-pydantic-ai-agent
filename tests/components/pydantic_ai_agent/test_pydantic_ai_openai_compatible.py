@@ -154,6 +154,49 @@ async def test_request_maps_tools_and_binary_content() -> None:
     await http_client.aclose()
 
 
+async def test_output_tool_uses_auto_tool_choice() -> None:
+    """Test output tools do not require provider-specific tool_choice support."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-1",
+                "model": "test-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "{}"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+
+    model, http_client = _model_with_transport(httpx.MockTransport(handler))
+    await model.request(
+        [ModelRequest(parts=[UserPromptPart("Use the output tool")])],
+        {},
+        ModelRequestParameters(
+            function_tools=[
+                ToolDefinition(
+                    name="structured_output",
+                    parameters_json_schema={"type": "object", "properties": {}},
+                    kind="output",
+                )
+            ],
+            allow_text_output=False,
+        ),
+    )
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["tool_choice"] == "auto"
+    await http_client.aclose()
+
+
 async def test_tool_result_follow_up_uses_empty_assistant_content() -> None:
     """Test tool-call history uses content accepted by stricter providers."""
     captured_bodies: list[dict[str, object]] = []

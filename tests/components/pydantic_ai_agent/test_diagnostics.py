@@ -31,7 +31,7 @@ from custom_components.pydantic_ai_agent.const import (
 from custom_components.pydantic_ai_agent.diagnostics import (
     async_get_config_entry_diagnostics,
 )
-from custom_components.pydantic_ai_agent.logfire_support import configure_logfire
+from custom_components.pydantic_ai_agent.logfire_support import async_configure_logfire
 
 
 async def test_diagnostics_redacts_sensitive_config_entry_data(
@@ -92,7 +92,7 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
         unique_id=None,
     )
     entry.add_to_hass(hass)
-    configure_logfire(hass, entry)
+    assert await async_configure_logfire(hass, entry)
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 

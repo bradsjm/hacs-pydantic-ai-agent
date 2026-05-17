@@ -1,7 +1,7 @@
 """Test setup for Pydantic AI Agent."""
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 import sys
 import tomllib
@@ -48,7 +48,7 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_MODEL,
 )
 from custom_components.pydantic_ai_agent.logfire_support import (
-    configure_logfire,
+    async_configure_logfire,
     logfire_include_content,
 )
 from custom_components.pydantic_ai_agent.repairs import model_validation_issue_id
@@ -242,6 +242,10 @@ async def test_setup_entry_configures_logfire_before_platform_setup(
     async def probe(*_args: object, **_kwargs: object) -> None:
         events.append("probe")
 
+    async def run_executor(target: Callable[..., object], *args: object) -> object:
+        events.append("executor")
+        return target(*args)
+
     with (
         patch(
             "custom_components.pydantic_ai_agent.async_probe_model",
@@ -254,10 +258,17 @@ async def test_setup_entry_configures_logfire_before_platform_setup(
             new_callable=AsyncMock,
             side_effect=lambda *_args, **_kwargs: events.append("platforms"),
         ),
+        patch.object(
+            hass,
+            "async_add_executor_job",
+            new_callable=AsyncMock,
+            side_effect=run_executor,
+        ) as executor_job,
     ):
         assert await async_setup_entry(hass, entry)
 
-    assert events == ["probe", "configure", "platforms"]
+    assert events == ["probe", "executor", "configure", "platforms"]
+    executor_job.assert_awaited_once()
     configure.assert_called_once_with(
         send_to_logfire=True,
         token="lf-token",
@@ -308,7 +319,7 @@ async def test_setup_entry_logfire_conflict_creates_repair_issue(
         SimpleNamespace(configure=configure),
     )
     first_entry = _entry(data_extra={CONF_LOGFIRE_TOKEN: "first-token"})
-    assert configure_logfire(hass, first_entry)
+    assert await async_configure_logfire(hass, first_entry)
     entry = _entry(data_extra={CONF_LOGFIRE_TOKEN: "second-token"})
     entry.add_to_hass(hass)
 
@@ -348,7 +359,7 @@ async def test_setup_entry_logfire_configure_failure_is_non_fatal(
     assert entry.runtime_data.logfire_include_content is False
 
 
-def test_logfire_include_content_uses_first_token_setting(
+async def test_logfire_include_content_uses_first_token_setting(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -359,7 +370,7 @@ def test_logfire_include_content_uses_first_token_setting(
         SimpleNamespace(configure=Mock()),
     )
     first_entry = _entry(data_extra={CONF_LOGFIRE_TOKEN: "lf-token"})
-    assert configure_logfire(hass, first_entry)
+    assert await async_configure_logfire(hass, first_entry)
     entry = _entry(
         data_extra={
             CONF_LOGFIRE_TOKEN: "lf-token",

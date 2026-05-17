@@ -8,7 +8,7 @@ import socket
 import ssl
 import sys
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 from _pytest.logging import LogCaptureFixture
 from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
@@ -131,9 +131,15 @@ class _FailingStreamContext:
 class _HTTPErrorStreamContext:
     """Async context manager that fails with a provider HTTP error."""
 
+    def __init__(self, status_code: int = 429) -> None:
+        """Initialize the HTTP error status code."""
+        self._status_code = status_code
+
     async def __aenter__(self) -> object:
         """Raise a provider HTTP error."""
-        raise ModelHTTPError(status_code=429, model_name="gpt-test", body=None)
+        raise ModelHTTPError(
+            status_code=self._status_code, model_name="gpt-test", body=None
+        )
 
     async def __aexit__(
         self,
@@ -630,6 +636,38 @@ async def test_probe_model_rejects_invalid_native_structured_output(
         )
 
     assert exc_info.value.reason == "invalid_provider_config"
+
+
+async def test_probe_model_maps_structured_http_400_to_output_mode_error(
+    hass: HomeAssistant,
+) -> None:
+    """Test structured-output HTTP 400 is not reported as an invalid model."""
+    data = {
+        CONF_NAME: "Hosted OpenAI",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_API_KEY: "sk-test",
+    }
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            return_value=_HTTPErrorStreamContext(status_code=400),
+        ),
+        pytest.raises(ProviderValidationError) as exc_info,
+    ):
+        await async_probe_model(
+            hass,
+            data,
+            "gpt-test",
+            structured_output_mode=OUTPUT_MODE_TOOL,
+        )
+
+    assert exc_info.value.reason == "unsupported_output_mode"
+    assert exc_info.value.status_code == 400
+    assert 'structured output mode "tool"' in exc_info.value.message
 
 
 async def test_probe_model_merges_configured_model_settings(
@@ -1591,6 +1629,65 @@ async def test_create_ai_task_data_subentry_with_web_fetch(
     )
 
 
+async def test_create_ai_task_default_output_failure_opens_output_mode_step(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test default structured-output rejection offers output mode selection."""
+    mock_probe_model.side_effect = [
+        ProviderValidationError(
+            "unsupported_output_mode",
+            'Model "gpt-test" rejected structured output mode "tool".',
+            400,
+        ),
+        None,
+    ]
+    entry = await _loaded_entry(hass, with_model_profile=True)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_AI_TASK_NAME: "Report task",
+            CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+        },
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "output_mode"
+    assert result["errors"] == {"base": "unsupported_output_mode"}
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {CONF_OUTPUT_MODE: OUTPUT_MODE_PROMPTED},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_AI_TASK_NAME: "Report task",
+        CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+        CONF_OUTPUT_MODE: OUTPUT_MODE_PROMPTED,
+    }
+    assert mock_probe_model.await_args_list == [
+        call(
+            hass,
+            entry.data,
+            "gpt-test",
+            {},
+            structured_output_mode=OUTPUT_MODE_TOOL,
+        ),
+        call(
+            hass,
+            entry.data,
+            "gpt-test",
+            {},
+            structured_output_mode=OUTPUT_MODE_PROMPTED,
+        ),
+    ]
+
+
 async def test_create_mcp_server_subentry(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
@@ -2504,6 +2601,75 @@ async def test_reconfigure_provider_data_updates_entry(
         CONF_BASE_URL: "http://localhost:11434/v1",
         CONF_PROVIDER_HEADERS: {"X-New": "value"},
     }
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_reconfigure_provider_uses_update_listener_for_reload(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test parent reconfigure leaves reload scheduling to update listeners."""
+    entry = await _loaded_entry(hass)
+    listener_calls: list[str] = []
+
+    async def update_listener(
+        _hass: HomeAssistant, updated_entry: config_entries.ConfigEntry
+    ) -> None:
+        listener_calls.append(updated_entry.entry_id)
+
+    entry.async_on_unload(entry.add_update_listener(update_listener))
+
+    with patch.object(hass.config_entries, "async_schedule_reload") as schedule_reload:
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Local LLM",
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_API_KEY: "local-key",
+            },
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert listener_calls == [entry.entry_id]
+    schedule_reload.assert_not_called()
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_reauth_provider_without_update_listener_schedules_reload(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test auth-failed entries still reload after reauth updates credentials."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Hosted OpenAI",
+        data={
+            CONF_NAME: "Hosted OpenAI",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_API_KEY: "old-key",
+        },
+        source=config_entries.SOURCE_USER,
+        options={},
+        unique_id=None,
+    )
+    entry.add_to_hass(hass)
+
+    with patch.object(hass.config_entries, "async_schedule_reload") as schedule_reload:
+        result = await entry.start_reauth_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Hosted OpenAI",
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_API_KEY: "new-key",
+            },
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data[CONF_API_KEY] == "new-key"
+    schedule_reload.assert_called_once_with(entry.entry_id)
     mock_probe_model.assert_not_awaited()
 
 

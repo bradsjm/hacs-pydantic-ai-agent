@@ -546,6 +546,23 @@ def _map_http_error(err: ModelHTTPError) -> ProviderValidationError:
     return ProviderValidationError(reason, _format_http_error(err), status_code)
 
 
+def _map_structured_http_error(
+    err: ModelHTTPError, output_mode: str
+) -> ProviderValidationError:
+    """Map structured-output probe HTTP errors to capability errors."""
+    if err.status_code == 400:
+        return ProviderValidationError(
+            "unsupported_output_mode",
+            (
+                f'Model "{err.model_name}" rejected structured output mode '
+                f'"{output_mode}". Try a different structured output mode or a '
+                "model/provider that supports this mode."
+            ),
+            err.status_code,
+        )
+    return _map_http_error(err)
+
+
 def _openai_compatible_chat_model(
     hass: HomeAssistant, data: Mapping[str, Any], model_name: str
 ) -> Any:
@@ -570,7 +587,6 @@ def _structured_probe_request_parameters(
         output_mode=output_mode,
         output_name=_STRUCTURED_PROBE_OUTPUT_NAME,
         json_schema=_STRUCTURED_PROBE_SCHEMA,
-        strict=True,
     )
 
 
@@ -627,6 +643,10 @@ async def async_probe_model(
                 )
             return
     except ModelHTTPError as err:
+        if structured_output_mode is not None:
+            raise _map_structured_http_error(
+                err, normalise_structured_output_mode(structured_output_mode)
+            ) from err
         raise _map_http_error(err) from err
     except ModelAPIError as err:
         raise _format_api_error(err) from err
@@ -1706,6 +1726,16 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def _async_update_provider_and_abort(
+        self, entry: ConfigEntry, data: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Update a provider entry using the active reload mechanism."""
+        if entry.update_listeners:
+            return self.async_update_and_abort(entry, data=data)
+        # Auth-failed entries may not have completed setup far enough to register
+        # the reload listener, so explicitly schedule setup after updating them.
+        return self.async_update_reload_and_abort(entry, data=data)
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -1794,10 +1824,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                 description_placeholders=description_placeholders,
             )
         _clear_subentry_skills_after_skill_source_change(self.hass, entry, data)
-        return self.async_update_reload_and_abort(
-            entry,
-            data=data,
-        )
+        return self._async_update_provider_and_abort(entry, data)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -1855,7 +1882,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         _clear_subentry_skills_after_skill_source_change(self.hass, entry, data)
-        return self.async_update_reload_and_abort(entry, data=data)
+        return self._async_update_provider_and_abort(entry, data)
 
     @classmethod
     @callback
@@ -2294,6 +2321,14 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             _log_provider_validation_failure(
                 step="AI task subentry", model_name=current_model, err=err
             )
+            if err.reason == "unsupported_output_mode" and error_step == "init":
+                self._pending_ai_task_data = data
+                return self.async_show_form(
+                    step_id="output_mode",
+                    data_schema=_ai_task_output_mode_schema(self._options | data),
+                    errors={"base": err.reason},
+                    description_placeholders=_provider_validation_placeholders(err),
+                )
             if error_step == "output_mode":
                 return self.async_show_form(
                     step_id="output_mode",

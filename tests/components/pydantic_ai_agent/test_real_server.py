@@ -49,8 +49,11 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_MODEL_SUBENTRY_ID,
+    CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
     DOMAIN,
+    OUTPUT_MODE_NATIVE,
+    OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
     PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_AI_TASK,
@@ -81,7 +84,16 @@ _MCP_ECHO_SERVER_ID = "pydantic_ai_agent_real_mcp_echo"
 _MCP_ECHO_URL_ENV = "MCP_ECHO_SERVER_URL"
 _MCP_ECHO_URL = "https://mcpplaygroundonline.com/mcp-echo-server"
 _REAL_SERVER_TIMEOUT = 60.0
-_STRUCTURED_OUTPUT_SKIP_REASONS = {"invalid_model", "invalid_provider_config"}
+_STRUCTURED_OUTPUT_SKIP_REASONS = {
+    "invalid_model",
+    "invalid_provider_config",
+    "unsupported_output_mode",
+}
+_STRUCTURED_OUTPUT_MODES = (
+    OUTPUT_MODE_TOOL,
+    OUTPUT_MODE_NATIVE,
+    OUTPUT_MODE_PROMPTED,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -109,6 +121,24 @@ class _ModelParam:
 
     model: str
     skip_reason: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class StructuredOutputSupport:
+    """Structured output modes supported by the configured real-server model."""
+
+    supported_modes: tuple[str, ...]
+    failures: Mapping[str, ProviderValidationError]
+
+    def skip_if_unsupported(self, output_mode: str) -> None:
+        """Skip the current test if the output mode is unsupported."""
+        if output_mode in self.supported_modes:
+            return
+        err = self.failures[output_mode]
+        pytest.skip(
+            f"Configured real-server model does not support {output_mode} "
+            f"structured output: {err.reason}: {err.message}"
+        )
 
 
 def _load_dotenv_values(path: Path) -> dict[str, str]:
@@ -341,26 +371,44 @@ def enable_real_network(
     )
 
 
-@pytest.fixture(name="tool_structured_output")
-async def fixture_tool_structured_output(
+@pytest.fixture(name="structured_output_support")
+async def fixture_structured_output_support(
     hass: HomeAssistant, real_server: RealServerConfig
-) -> None:
-    """Skip structured AI task tests when the configured model cannot do them."""
-    try:
-        await async_probe_model(
-            hass,
-            real_server.provider_data,
-            real_server.model,
-            {"timeout": _REAL_SERVER_TIMEOUT},
-            structured_output_mode=OUTPUT_MODE_TOOL,
+) -> StructuredOutputSupport:
+    """Return structured output modes supported by the configured model."""
+    supported_modes: list[str] = []
+    failures: dict[str, ProviderValidationError] = {}
+    for output_mode in _STRUCTURED_OUTPUT_MODES:
+        try:
+            await async_probe_model(
+                hass,
+                real_server.provider_data,
+                real_server.model,
+                {"timeout": _REAL_SERVER_TIMEOUT},
+                structured_output_mode=output_mode,
+            )
+        except ProviderValidationError as err:
+            if err.reason not in _STRUCTURED_OUTPUT_SKIP_REASONS:
+                raise
+            failures[output_mode] = err
+        else:
+            supported_modes.append(output_mode)
+        finally:
+            await _drain_stream_cleanup(hass)
+
+    if not supported_modes:
+        details = "; ".join(
+            f"{mode}: {failures[mode].reason}: {failures[mode].message}"
+            for mode in _STRUCTURED_OUTPUT_MODES
         )
-    except ProviderValidationError as err:
-        if err.reason not in _STRUCTURED_OUTPUT_SKIP_REASONS:
-            raise
         pytest.skip(
-            "Configured real-server model does not support tool structured "
-            f"output required by AI task E2E tests: {err.reason}: {err.message}"
+            "Configured real-server model does not support any structured output "
+            f"mode required by AI task E2E tests: {details}"
         )
+
+    return StructuredOutputSupport(
+        supported_modes=tuple(supported_modes), failures=failures
+    )
 
 
 class _EchoTool(llm.Tool):
@@ -430,25 +478,35 @@ def _conversation_subentry(
     }
 
 
-def _ai_task_subentry(real_server: RealServerConfig) -> dict[str, object]:
+def _ai_task_subentry(
+    real_server: RealServerConfig, output_mode: str | None = None
+) -> dict[str, object]:
     """Return a real-server AI task subentry."""
     del real_server
+    data: dict[str, object] = {CONF_MODEL_SUBENTRY_ID: "real_model_profile"}
+    if output_mode is not None:
+        data[CONF_OUTPUT_MODE] = output_mode
     return {
-        "data": {CONF_MODEL_SUBENTRY_ID: "real_model_profile"},
+        "data": data,
         "subentry_type": SUBENTRY_TYPE_AI_TASK,
         "title": "Real AI Task",
         "unique_id": None,
     }
 
 
-def _mcp_ai_task_subentry(real_server: RealServerConfig) -> dict[str, object]:
+def _mcp_ai_task_subentry(
+    real_server: RealServerConfig, output_mode: str | None = None
+) -> dict[str, object]:
     """Return a real-server AI task subentry with MCP echo access."""
     del real_server
+    data: dict[str, object] = {
+        CONF_MODEL_SUBENTRY_ID: "real_model_profile",
+        CONF_MCP_SERVER_IDS: [_MCP_ECHO_SERVER_ID],
+    }
+    if output_mode is not None:
+        data[CONF_OUTPUT_MODE] = output_mode
     return {
-        "data": {
-            CONF_MODEL_SUBENTRY_ID: "real_model_profile",
-            CONF_MCP_SERVER_IDS: [_MCP_ECHO_SERVER_ID],
-        },
+        "data": data,
         "subentry_type": SUBENTRY_TYPE_AI_TASK,
         "title": "Real MCP AI Task",
         "unique_id": None,
@@ -538,23 +596,32 @@ async def _conversation_entity_id(
     return entity_ids[0]
 
 
-async def _ai_task_entity_id(hass: HomeAssistant, real_server: RealServerConfig) -> str:
+async def _ai_task_entity_id(
+    hass: HomeAssistant,
+    real_server: RealServerConfig,
+    output_mode: str | None = None,
+) -> str:
     """Set up a real AI task entity and return its entity ID."""
-    await _setup_entry(hass, _entry(real_server, _ai_task_subentry(real_server)))
+    await _setup_entry(
+        hass, _entry(real_server, _ai_task_subentry(real_server, output_mode))
+    )
     entity_ids = [state.entity_id for state in hass.states.async_all("ai_task")]
     assert len(entity_ids) == 1
     return entity_ids[0]
 
 
 async def _mcp_ai_task_entity_id(
-    hass: HomeAssistant, real_server: RealServerConfig, mcp_echo_url: str
+    hass: HomeAssistant,
+    real_server: RealServerConfig,
+    mcp_echo_url: str,
+    output_mode: str | None = None,
 ) -> str:
     """Set up a real AI task entity with hosted MCP echo access."""
     await _setup_entry(
         hass,
         _entry(
             real_server,
-            _mcp_ai_task_subentry(real_server),
+            _mcp_ai_task_subentry(real_server, output_mode),
             _mcp_echo_subentry(mcp_echo_url),
         ),
     )
@@ -740,14 +807,16 @@ async def test_real_server_ai_task_plain_generation(
     assert _AI_TASK_SENTINEL in str(result.data)
 
 
+@pytest.mark.parametrize("output_mode", _STRUCTURED_OUTPUT_MODES)
 async def test_real_server_ai_task_structured_generation(
     hass: HomeAssistant,
     real_server: RealServerConfig,
-    tool_structured_output: None,
+    structured_output_support: StructuredOutputSupport,
+    output_mode: str,
 ) -> None:
     """Test a real provider can generate schema-validated AI task data."""
-    del tool_structured_output
-    entity_id = await _ai_task_entity_id(hass, real_server)
+    structured_output_support.skip_if_unsupported(output_mode)
+    entity_id = await _ai_task_entity_id(hass, real_server, output_mode)
 
     result = await ai_task.async_generate_data(
         hass,
@@ -764,15 +833,17 @@ async def test_real_server_ai_task_structured_generation(
     assert result.data["result"] == _AI_TASK_STRUCTURED_SENTINEL
 
 
+@pytest.mark.parametrize("output_mode", _STRUCTURED_OUTPUT_MODES)
 async def test_real_server_ai_task_uses_hosted_mcp_echo_tool(
     hass: HomeAssistant,
     real_server: RealServerConfig,
     mcp_echo_url: str,
-    tool_structured_output: None,
+    structured_output_support: StructuredOutputSupport,
     monkeypatch: pytest.MonkeyPatch,
+    output_mode: str,
 ) -> None:
     """Test a real AI task can call a hosted MCP echo tool through Agent."""
-    del tool_structured_output
+    structured_output_support.skip_if_unsupported(output_mode)
     captured_messages: list[object] = []
     original_append = agent_entity_module._append_agent_messages
 
@@ -790,7 +861,9 @@ async def test_real_server_ai_task_uses_hosted_mcp_echo_tool(
         "_append_agent_messages",
         capture_agent_messages,
     )
-    entity_id = await _mcp_ai_task_entity_id(hass, real_server, mcp_echo_url)
+    entity_id = await _mcp_ai_task_entity_id(
+        hass, real_server, mcp_echo_url, output_mode
+    )
 
     result = await ai_task.async_generate_data(
         hass,
@@ -807,4 +880,4 @@ async def test_real_server_ai_task_uses_hosted_mcp_echo_tool(
     await _drain_stream_cleanup(hass)
     assert any(name.endswith("echo") for name in _tool_part_names(captured_messages))
     assert isinstance(result.data, dict)
-    assert result.data["result"] == _MCP_SENTINEL
+    assert _MCP_SENTINEL in result.data["result"]

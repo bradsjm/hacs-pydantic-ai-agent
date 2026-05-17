@@ -219,6 +219,7 @@
         "invalid_auth": "{error_message}",
         "invalid_base_url": "{error_message}",
         "invalid_model": "{error_message}",
+        "unsupported_output_mode": "{error_message}",
         "mcp_server_not_found": "Selected MCP server was not found.",
         "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
         "model_profile_required": "Select a primary language model profile.",

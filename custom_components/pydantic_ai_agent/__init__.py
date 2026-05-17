@@ -34,7 +34,7 @@ from .const import (
     SUBENTRY_TYPE_MODEL,
 )
 from .logfire_support import (
-    configure_logfire,
+    async_configure_logfire,
     logfire_enabled,
     logfire_include_content,
 )
@@ -131,7 +131,7 @@ async def async_setup_entry(
 ) -> bool:
     """Validate configured subentries, then set up entity platforms."""
     await _async_validate_configured_models(hass, entry)
-    configure_logfire(hass, entry)
+    await async_configure_logfire(hass, entry)
 
     entry.runtime_data = PydanticAIAgentRuntimeData(
         provider_mode=entry.data[CONF_PROVIDER_MODE],

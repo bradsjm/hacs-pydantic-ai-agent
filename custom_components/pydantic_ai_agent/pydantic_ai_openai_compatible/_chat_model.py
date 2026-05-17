@@ -235,8 +235,6 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
             return tools, choice
         if isinstance(choice, list) and len(choice) == 1:
             return tools, {"type": "function", "function": {"name": choice[0]}}
-        if not model_request_parameters.allow_text_output:
-            return tools, "required"
         return tools, "auto"
 
     def _process_response(self, response: ChatCompletion) -> ModelResponse:
