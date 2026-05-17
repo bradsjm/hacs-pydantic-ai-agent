@@ -27,6 +27,7 @@ from custom_components.pydantic_ai_agent import (
     async_setup_entry,
     async_unload_entry,
 )
+from custom_components.pydantic_ai_agent.metrics import EVENT_MCP_TOOL_REFRESH_COMPLETED
 from custom_components.pydantic_ai_agent.config_flow import ProviderValidationError
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
@@ -410,6 +411,11 @@ async def test_refresh_mcp_tools_service_returns_discovered_tools(
             "schema_hash": "abc123",
         }
     ]
+    events: list[dict[str, object]] = []
+    hass.bus.async_listen(
+        f"{DOMAIN}_{EVENT_MCP_TOOL_REFRESH_COMPLETED}",
+        lambda event: events.append(dict(event.data)),
+    )
 
     with patch(
         "custom_components.pydantic_ai_agent.async_refresh_mcp_tools",
@@ -426,6 +432,7 @@ async def test_refresh_mcp_tools_service_returns_discovered_tools(
             blocking=True,
             return_response=True,
         )
+        await hass.async_block_till_done()
 
     assert response == {
         "success": True,
@@ -434,6 +441,13 @@ async def test_refresh_mcp_tools_service_returns_discovered_tools(
         "errors": [],
     }
     refresh_tools.assert_awaited_once_with(hass, entry, subentry.subentry_id)
+    assert events == [
+        {
+            "config_entry_id": entry.entry_id,
+            "mcp_server_id": subentry.subentry_id,
+            "tool_count": 1,
+        }
+    ]
 
 
 async def test_setup_entry_validates_ai_task_selected_output_mode(
@@ -480,7 +494,12 @@ async def test_setup_entry_validates_ai_task_selected_output_mode(
 
 def test_platforms_include_conversation_and_ai_task() -> None:
     """Test setup forwards both runtime platforms."""
-    assert PLATFORMS == (Platform.CONVERSATION, Platform.AI_TASK)
+    assert PLATFORMS == (
+        Platform.CONVERSATION,
+        Platform.AI_TASK,
+        Platform.SENSOR,
+        Platform.BINARY_SENSOR,
+    )
 
 
 async def test_setup_entry_validates_each_subentry_model_settings(

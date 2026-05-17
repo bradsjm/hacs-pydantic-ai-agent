@@ -43,6 +43,7 @@ from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
     async_setup_entry,
 )
+from custom_components.pydantic_ai_agent.metrics import EVENT_AGENT_RUN_COMPLETED
 
 
 class _TextStream:
@@ -66,6 +67,12 @@ class _TextStream:
 
 class _Usage:
     """Minimal Pydantic AI usage test double."""
+
+    input_tokens = 10
+    output_tokens = 2
+    total_tokens = 12
+    requests = 1
+    tool_calls = 3
 
     def opentelemetry_attributes(self) -> dict[str, int]:
         """Return deterministic token usage attributes."""
@@ -288,6 +295,13 @@ def _assert_context_management_capability(capabilities: list[object]) -> None:
     )
 
 
+def _state(hass: HomeAssistant, entity_id: str) -> str:
+    """Return a state value for an expected entity."""
+    state = hass.states.get(entity_id)
+    assert state is not None
+    return state.state
+
+
 def test_conversation_entity_controls_home_assistant_with_llm_api() -> None:
     """Test LLM API selection enables Home Assistant control support."""
     entry = _entry([llm.LLM_API_ASSIST])
@@ -397,6 +411,11 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     kitchen_entity_id = next(
         entity_id for entity_id in entity_ids if entity_id.endswith("kitchen_agent")
     )
+    events: list[dict[str, object]] = []
+    hass.bus.async_listen(
+        f"{DOMAIN}_{EVENT_AGENT_RUN_COMPLETED}",
+        lambda event: events.append(dict(event.data)),
+    )
     with (
         patch(
             "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
@@ -414,12 +433,36 @@ async def test_conversation_entity_id_dispatches_assist_agent(
             Context(),
             agent_id=kitchen_entity_id,
         )
+        await hass.async_block_till_done()
 
     assert result.response.speech["plain"]["speech"] == "runtime response"
     assert chat_model.call_args is not None
     assert chat_model.call_args.args[2].model_name == "gpt-kitchen"
     assert agent_class.call_args.kwargs["output_type"] is str
     _assert_context_management_capability(agent_class.call_args.kwargs["capabilities"])
+    assert (
+        _state(hass, "sensor.kitchen_agent_last_run_model_profile") == "Kitchen Model"
+    )
+    assert _state(hass, "sensor.kitchen_agent_last_run_input_tokens") == "10"
+    assert _state(hass, "sensor.kitchen_agent_last_run_output_tokens") == "2"
+    assert _state(hass, "sensor.kitchen_agent_last_run_total_tokens") == "12"
+    assert _state(hass, "sensor.kitchen_agent_last_run_model_request_count") == "1"
+    assert _state(hass, "sensor.kitchen_agent_last_run_tool_use_count") == "3"
+    assert _state(hass, "sensor.kitchen_agent_cumulative_input_tokens") == "10"
+    assert _state(hass, "sensor.kitchen_agent_cumulative_output_tokens") == "2"
+    assert _state(hass, "sensor.kitchen_agent_cumulative_total_tokens") == "12"
+    assert _state(hass, "sensor.kitchen_agent_consecutive_failures") == "0"
+    assert _state(hass, "sensor.kitchen_agent_last_error_type") == "unknown"
+    assert _state(hass, "binary_sensor.kitchen_agent_provider_healthy") == "on"
+    assert _state(hass, "binary_sensor.kitchen_agent_last_run_succeeded") == "on"
+    assert events == [
+        {
+            "config_entry_id": entry.entry_id,
+            "subentry_id": next(iter(entry.subentries.values())).subentry_id,
+            "entity_id": kitchen_entity_id,
+            "model_profile": "Kitchen Model",
+        }
+    ]
 
 
 async def test_conversation_runtime_uses_configured_max_iterations(

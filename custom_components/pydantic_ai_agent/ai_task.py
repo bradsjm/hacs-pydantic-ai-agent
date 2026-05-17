@@ -17,7 +17,8 @@ from .const import (
     CONF_WEB_FETCH_ENABLED,
     SUBENTRY_TYPE_AI_TASK,
 )
-from .entity import PydanticAIBaseLLMEntity
+from .entity import AgentRunOutcome, PydanticAIBaseLLMEntity
+from .metrics import EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED, fire_integration_event
 from .model_profiles import model_display_names, model_profile_chain
 from .structured_output import structured_output_mode
 
@@ -82,11 +83,12 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
         chat_log: conversation.ChatLog,
     ) -> ai_task.GenDataTaskResult:
         """Generate task data and validate structured responses when requested."""
-        await self._async_handle_chat_log(
+        outcome = await self._async_handle_chat_log(
             chat_log,
             structure_name=task.name,
             structure=task.structure,
             max_iterations=30,
+            record_success=task.structure is None,
         )
 
         # After all tool calls resolve, ChatLog's final assistant message carries
@@ -103,13 +105,28 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                 data = json.loads(last_content.content or "")
                 data = task.structure(data)
             except json.JSONDecodeError as err:
+                self._record_agent_run_failure(err)
                 raise HomeAssistantError(
                     "Provider returned malformed structured data"
                 ) from err
             except vol.Invalid as err:
+                self._record_agent_run_failure(err)
                 raise HomeAssistantError(
                     "Provider returned structured data that does not match the schema"
                 ) from err
+            if not isinstance(outcome, AgentRunOutcome):
+                raise HomeAssistantError("Provider did not return run metrics")
+            self._record_agent_run_success(outcome)
+            fire_integration_event(
+                self.hass,
+                EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED,
+                {
+                    "config_entry_id": self.entry.entry_id,
+                    "subentry_id": self.subentry.subentry_id,
+                    "entity_id": self.entity_id,
+                    "task_name": task.name,
+                },
+            )
 
         return ai_task.GenDataTaskResult(
             conversation_id=chat_log.conversation_id,

@@ -39,6 +39,12 @@ from .logfire_support import (
     logfire_enabled,
     logfire_include_content,
 )
+from .metrics import (
+    EVENT_MCP_TOOL_REFRESH_COMPLETED,
+    EVENT_MCP_TOOL_REFRESH_FAILED,
+    MetricsStore,
+    fire_integration_event,
+)
 from .mcp import (
     MCPValidationError,
     async_refresh_mcp_tools,
@@ -65,7 +71,12 @@ _RECONFIGURABLE_MODEL_FAILURE_REASONS = {
 }
 _MODEL_VALIDATION_OUTPUT_MODE_KEY = "_pydantic_ai_agent_output_mode"
 
-PLATFORMS: tuple[Platform, ...] = (Platform.CONVERSATION, Platform.AI_TASK)
+PLATFORMS: tuple[Platform, ...] = (
+    Platform.CONVERSATION,
+    Platform.AI_TASK,
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+)
 SERVICE_LIST_MCP_TOOLS = "list_mcp_tools"
 SERVICE_REFRESH_MCP_TOOLS = "refresh_mcp_tools"
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
@@ -94,6 +105,7 @@ class PydanticAIAgentRuntimeData:
     provider_headers: dict[str, str] = field(default_factory=dict)
     mcp_servers: list[dict[str, Any]] = field(default_factory=list)
     mcp_tool_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    metrics: MetricsStore = field(default_factory=MetricsStore)
 
 
 type PydanticAIAgentConfigEntry = ConfigEntry[PydanticAIAgentRuntimeData]
@@ -230,6 +242,16 @@ async def _async_mcp_tools_service(
                 if tools is None:
                     tools = await async_refresh_mcp_tools(hass, entry, subentry_id)
                 tools_by_server[subentry_id] = tools
+                if refresh:
+                    fire_integration_event(
+                        hass,
+                        EVENT_MCP_TOOL_REFRESH_COMPLETED,
+                        {
+                            "config_entry_id": entry.entry_id,
+                            "mcp_server_id": subentry_id,
+                            "tool_count": len(tools),
+                        },
+                    )
             except MCPValidationError as err:
                 _LOGGER.warning(
                     "MCP tool discovery failed: reason=%s server_id=%s",
@@ -237,6 +259,16 @@ async def _async_mcp_tools_service(
                     err.server_id,
                 )
                 errors.append(_mcp_error_response(err))
+                if refresh:
+                    fire_integration_event(
+                        hass,
+                        EVENT_MCP_TOOL_REFRESH_FAILED,
+                        {
+                            "config_entry_id": entry.entry_id,
+                            "mcp_server_id": subentry_id,
+                            "reason": err.reason,
+                        },
+                    )
     except MCPValidationError as err:
         errors.append(_mcp_error_response(err))
     flat_tools = [tool for tools in tools_by_server.values() for tool in tools]

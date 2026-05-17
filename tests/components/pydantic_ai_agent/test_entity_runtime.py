@@ -24,6 +24,7 @@ from pydantic_ai.exceptions import (
 )
 
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.core import HomeAssistant
 
 from custom_components.pydantic_ai_agent.entity import (
     _agent_messages_to_chat_deltas,
@@ -31,10 +32,13 @@ from custom_components.pydantic_ai_agent.entity import (
     _home_assistant_error,
     _should_fallback,
 )
+from custom_components.pydantic_ai_agent.metrics import MetricsStore, record_run_failure
 from custom_components.pydantic_ai_agent.mcp import MCPValidationError
 
 
-async def _collect_deltas(messages: list[Any], output_tool_names: set[str]) -> list[dict[str, Any]]:
+async def _collect_deltas(
+    messages: list[Any], output_tool_names: set[str]
+) -> list[dict[str, Any]]:
     """Collect chat deltas from the async generator."""
     return [
         delta
@@ -138,6 +142,25 @@ def test_home_assistant_error_preserves_existing_ha_errors() -> None:
     err = HomeAssistantError("already HA")
 
     assert _home_assistant_error(err) is err
+
+
+def test_record_run_failure_updates_health_metrics(hass: HomeAssistant) -> None:
+    """Test failed runs update native health metric state."""
+    store = MetricsStore()
+
+    record_run_failure(
+        hass,
+        "entry-1",
+        store,
+        "subentry-1",
+        error=TimeoutError(),
+    )
+
+    record = store.record_for("subentry-1")
+    assert record.last_error_type == "TimeoutError"
+    assert record.consecutive_failures == 1
+    assert record.provider_healthy is False
+    assert record.last_run_succeeded is False
 
 
 async def test_agent_messages_to_chat_deltas_preserves_assistant_parts() -> None:

@@ -45,6 +45,27 @@ from custom_components.pydantic_ai_agent.const import (
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
 )
+from custom_components.pydantic_ai_agent.metrics import (
+    EVENT_AGENT_RUN_FAILED,
+    EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED,
+)
+
+
+class _Usage:
+    """Minimal Pydantic AI usage test double."""
+
+    input_tokens = 20
+    output_tokens = 5
+    total_tokens = 25
+    requests = 2
+    tool_calls = 1
+
+    def opentelemetry_attributes(self) -> dict[str, int]:
+        """Return deterministic token usage attributes."""
+        return {
+            "gen_ai.usage.input_tokens": 20,
+            "gen_ai.usage.output_tokens": 5,
+        }
 
 
 class _TextStream:
@@ -190,6 +211,7 @@ class _RunResult:
         """Initialize the run result."""
         self.output = output
         self._messages = messages
+        self.usage = _Usage()
 
     def new_messages(self) -> list[ModelResponse]:
         """Return final Agent messages."""
@@ -261,6 +283,13 @@ def _assert_context_management_capability(capabilities: list[object]) -> None:
         isinstance(capability, SlidingWindowContextCapability)
         for capability in capabilities
     )
+
+
+def _state(hass: HomeAssistant, entity_id: str) -> str:
+    """Return a state value for an expected entity."""
+    state = hass.states.get(entity_id)
+    assert state is not None
+    return state.state
 
 
 async def test_ai_task_subentries_add_separate_entities(
@@ -344,6 +373,77 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
 
     assert result.data == "plain result"
     _assert_context_management_capability(agent_class.call_args.kwargs["capabilities"])
+
+
+async def test_structured_data_task_fires_output_event(hass: HomeAssistant) -> None:
+    """Test structured AI task output emits an integration event."""
+    entity_id = await _setup_ai_task_entity(hass)
+    events: list[dict[str, object]] = []
+    hass.bus.async_listen(
+        f"{DOMAIN}_{EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED}",
+        lambda event: events.append(dict(event.data)),
+    )
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(output={"summary": "ok"}),
+        ),
+    ):
+        result = await ai_task.async_generate_data(
+            hass,
+            task_name="Structured task",
+            entity_id=entity_id,
+            instructions="Generate structured data",
+            structure=vol.Schema({"summary": str}),
+        )
+        await hass.async_block_till_done()
+
+    assert result.data == {"summary": "ok"}
+    assert events[0]["entity_id"] == entity_id
+    assert events[0]["task_name"] == "Structured task"
+
+
+async def test_structured_data_task_validation_failure_records_failed_run(
+    hass: HomeAssistant,
+) -> None:
+    """Test structured validation failures update health metrics and events."""
+    entity_id = await _setup_ai_task_entity(hass)
+    events: list[dict[str, object]] = []
+    hass.bus.async_listen(
+        f"{DOMAIN}_{EVENT_AGENT_RUN_FAILED}",
+        lambda event: events.append(dict(event.data)),
+    )
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(output="{bad json"),
+        ),
+    ):
+        with pytest.raises(HomeAssistantError, match="malformed structured data"):
+            await ai_task.async_generate_data(
+                hass,
+                task_name="Structured task",
+                entity_id=entity_id,
+                instructions="Generate structured data",
+                structure=vol.Schema({"summary": str}),
+            )
+        await hass.async_block_till_done()
+
+    assert _state(hass, "binary_sensor.report_task_last_run_succeeded") == "off"
+    assert _state(hass, "binary_sensor.report_task_provider_healthy") == "off"
+    assert _state(hass, "sensor.report_task_last_error_type") == "JSONDecodeError"
+    assert events[0]["entity_id"] == entity_id
+    assert events[0]["error_type"] == "JSONDecodeError"
 
 
 async def test_ai_task_runtime_uses_configured_max_iterations(
