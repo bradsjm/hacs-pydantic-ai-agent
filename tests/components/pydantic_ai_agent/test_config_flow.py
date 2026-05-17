@@ -51,6 +51,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_SKILLS_FOLDER,
+    CONF_WEB_FETCH_ENABLED,
     DEFAULT_OUTPUT_MODE,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
@@ -1074,6 +1075,35 @@ async def test_create_conversation_subentry_with_skills(
     mock_probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
 
 
+async def test_create_conversation_subentry_with_web_fetch(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test adding a conversation subentry with WebFetch enabled."""
+    entry = await _loaded_entry(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_MODEL: "gpt-test",
+            CONF_WEB_FETCH_ENABLED: True,
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_AGENT_NAME: "Kitchen Agent",
+        CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
+        CONF_MODEL: "gpt-test",
+        CONF_WEB_FETCH_ENABLED: True,
+    }
+    mock_probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
+
+
 async def test_create_conversation_subentry_with_main_model_settings(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
@@ -1298,6 +1328,35 @@ async def test_create_ai_task_data_subentry_with_skills(
         CONF_MODEL: "gpt-test",
         CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
         CONF_SKILLS: ["report-skill"],
+    }
+    mock_probe_model.assert_awaited_once_with(
+        hass,
+        entry.data,
+        "gpt-test",
+        structured_output_mode=OUTPUT_MODE_TOOL,
+    )
+
+
+async def test_create_ai_task_data_subentry_with_web_fetch(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test adding an AI task subentry with WebFetch enabled."""
+    entry = await _loaded_entry(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {CONF_MODEL: "gpt-test", CONF_WEB_FETCH_ENABLED: True},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_MODEL: "gpt-test",
+        CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+        CONF_WEB_FETCH_ENABLED: True,
     }
     mock_probe_model.assert_awaited_once_with(
         hass,

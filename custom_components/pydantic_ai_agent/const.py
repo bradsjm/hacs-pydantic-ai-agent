@@ -22,6 +22,7 @@ CONF_PROMPT = "prompt"
 CONF_PROVIDER_MODE = "provider_mode"
 CONF_SKILLS = "skills"
 CONF_SKILLS_FOLDER = "skills_folder"
+CONF_WEB_FETCH_ENABLED = "web_fetch_enabled"
 
 PROVIDER_OPENAI = "openai"
 PROVIDER_OPENAI_COMPATIBLE = "openai_compatible"

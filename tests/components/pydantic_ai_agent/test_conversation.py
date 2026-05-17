@@ -25,6 +25,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
+    CONF_WEB_FETCH_ENABLED,
     DEFAULT_SKILLS_FOLDER,
     DOMAIN,
     PROVIDER_OPENAI,
@@ -97,7 +98,10 @@ class _Agent:
 
 
 def _entry(
-    llm_hass_api: list[str] | None, skills: list[str] | None = None
+    llm_hass_api: list[str] | None,
+    skills: list[str] | None = None,
+    *,
+    web_fetch_enabled: bool = False,
 ) -> MockConfigEntry:
     """Return a config entry with one conversation subentry."""
     subentry_data: dict[str, object] = {
@@ -108,6 +112,8 @@ def _entry(
         subentry_data[CONF_LLM_HASS_API] = llm_hass_api
     if skills is not None:
         subentry_data[CONF_SKILLS] = skills
+    if web_fetch_enabled:
+        subentry_data[CONF_WEB_FETCH_ENABLED] = True
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -213,6 +219,7 @@ def test_conversation_entity_controls_home_assistant_with_llm_api() -> None:
     assert entity.supported_features == conversation.ConversationEntityFeature.CONTROL
     assert entity.extra_state_attributes["ha_tools_enabled"] is True
     assert entity.extra_state_attributes["ha_llm_api"] == [llm.LLM_API_ASSIST]
+    assert entity.extra_state_attributes["web_fetch_enabled"] is False
 
 
 def test_conversation_entity_does_not_advertise_streaming() -> None:
@@ -235,6 +242,7 @@ def test_conversation_entity_without_llm_api_has_no_control() -> None:
     assert entity.supported_features == 0
     assert entity.extra_state_attributes["ha_tools_enabled"] is False
     assert entity.extra_state_attributes["ha_llm_api"] is None
+    assert entity.extra_state_attributes["web_fetch_enabled"] is False
 
 
 async def test_conversation_subentries_add_separate_entity_agents(
@@ -381,6 +389,52 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
         hass, entry, ["kitchen-skill"]
     )
     assert agent_class.call_args.kwargs["capabilities"] == [capability]
+
+
+async def test_conversation_runtime_adds_web_fetch_capability(
+    hass: HomeAssistant,
+) -> None:
+    """Test WebFetch-enabled conversation agents get the WebFetch capability."""
+    entry = _entry(None, web_fetch_enabled=True)
+    entry.add_to_hass(hass)
+    web_fetch_capability = object()
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.WebFetch",
+            return_value=web_fetch_capability,
+        ) as web_fetch,
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=_Agent(),
+        ) as agent_class,
+    ):
+        await conversation.async_converse(
+            hass,
+            "fetch https://example.com",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    web_fetch.assert_called_once_with(local=True)
+    assert agent_class.call_args.kwargs["capabilities"] == [web_fetch_capability]
 
 
 async def test_conversation_logfire_instruments_agent_with_ha_metadata(

@@ -20,6 +20,8 @@ Implemented capabilities include:
 - Optional remote Streamable HTTP MCP server subentries, with tool discovery,
   explicit runtime allowlists, and response services for listing or refreshing
   discovered tools.
+- Optional WebFetch capability for individual conversation agents and AI tasks,
+  disabled by default.
 - Optional local `pydantic-ai-skills` selection from `/config/skills` or a
   subfolder, with script execution disabled unless explicitly enabled on the
   provider connection.
@@ -72,6 +74,8 @@ Conversation agents support:
   support.
 - Optional MCP server selection. Selected MCP servers must have at least one
   allowed tool configured before runtime use.
+- Optional WebFetch URL content fetching. WebFetch is disabled by default and
+  can be enabled without selecting any MCP servers.
 - Optional local skill selection from the configured skills folder.
 - Optional model settings including temperature, thinking, max tokens, top P,
   timeout, parallel tool calls, seed, penalties, extra headers, and extra body.
@@ -85,6 +89,7 @@ data generation and attachments.
 AI task entities can return plain text or validate structured results against
 the schema requested by Home Assistant. Structured output defaults to tool output
 and can be changed to native or prompted output in the advanced AI task settings.
+Each AI task can also enable WebFetch independently of MCP server selection.
 
 ### MCP Servers
 

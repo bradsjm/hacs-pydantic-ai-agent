@@ -109,11 +109,13 @@
           "data": {
             "model": "Model",
             "mcp_server_ids": "MCP servers",
+            "web_fetch_enabled": "WebFetch",
             "skills": "Skills",
             "configure_advanced_model_settings": "Configure advanced structured output"
           },
           "data_description": {
             "mcp_server_ids": "Optional MCP servers this AI task model may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
+            "web_fetch_enabled": "Allow this AI task model to fetch web page content from URLs. WebFetch is disabled by default and does not require MCP.",
             "skills": "Optional local skills this AI task may load from the provider skills folder.",
             "configure_advanced_model_settings": "Open a second step to choose how Pydantic AI asks the model for structured data."
           }
@@ -165,6 +167,7 @@
             "prompt": "Instructions",
             "llm_hass_api": "Control Home Assistant",
             "mcp_server_ids": "MCP servers",
+            "web_fetch_enabled": "WebFetch",
             "skills": "Skills",
             "temperature": "Temperature",
             "thinking": "Thinking",
@@ -174,6 +177,7 @@
             "prompt": "Instruct how the LLM should respond. This can be a template.",
             "llm_hass_api": "Select which tools the model can use to interact with your devices and entities.",
             "mcp_server_ids": "Optional MCP servers this Assist agent may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
+            "web_fetch_enabled": "Allow this Assist agent to fetch web page content from URLs. WebFetch is disabled by default and does not require MCP.",
             "skills": "Optional local skills this Assist agent may load from the provider skills folder.",
             "temperature": "Controls response randomness. Leave empty to use the provider or model default.",
             "thinking": "Optional reasoning effort or boolean thinking control. Provider and model support varies.",

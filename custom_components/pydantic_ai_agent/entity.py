@@ -6,6 +6,7 @@ import logging
 from typing import Any, cast
 
 from pydantic_ai import Agent
+from pydantic_ai.capabilities import WebFetch
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
@@ -39,6 +40,7 @@ from .const import (
     CONF_MCP_SERVER_IDS,
     CONF_OUTPUT_MODE,
     CONF_SKILLS,
+    CONF_WEB_FETCH_ENABLED,
     DEFAULT_TIMEOUT,
     DOMAIN,
     SUBENTRY_TYPE_CONVERSATION,
@@ -136,6 +138,8 @@ class PydanticAIBaseLLMEntity:
             self.entry,
             self.subentry.data.get(CONF_SKILLS),
         )
+        if self.subentry.data.get(CONF_WEB_FETCH_ENABLED):
+            capabilities.append(WebFetch(local=True))
         agent = Agent(
             model,
             output_type=cast(Any, agent_output_type),

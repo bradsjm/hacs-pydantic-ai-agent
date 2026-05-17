@@ -82,6 +82,7 @@ from .const import (
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_SKILLS_FOLDER,
+    CONF_WEB_FETCH_ENABLED,
     DEFAULT_AGENT_NAME,
     DEFAULT_OUTPUT_MODE,
     DEFAULT_SERVICE_NAME,
@@ -894,6 +895,12 @@ def _conversation_schema(
         schema[mcp_schema_key] = SelectSelector(
             SelectSelectorConfig(options=mcp_servers, multiple=True)
         )
+    schema[
+        vol.Optional(
+            CONF_WEB_FETCH_ENABLED,
+            default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
+        )
+    ] = BooleanSelector()
     skill_options = _skill_select_options(available_skills or [])
     if skill_options:
         skills_schema_key = vol.Optional(CONF_SKILLS)
@@ -1187,6 +1194,8 @@ def _conversation_data_from_user_input(
         data.pop(CONF_LLM_HASS_API, None)
     if not data.get(CONF_MCP_SERVER_IDS):
         data.pop(CONF_MCP_SERVER_IDS, None)
+    if not data.get(CONF_WEB_FETCH_ENABLED):
+        data.pop(CONF_WEB_FETCH_ENABLED, None)
     if CONF_SKILLS in user_input and available_skills:
         data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
             user_input, options, available_skills
@@ -1258,6 +1267,12 @@ def _ai_task_data_schema(
         schema[mcp_schema_key] = SelectSelector(
             SelectSelectorConfig(options=mcp_servers, multiple=True)
         )
+    schema[
+        vol.Optional(
+            CONF_WEB_FETCH_ENABLED,
+            default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
+        )
+    ] = BooleanSelector()
     skill_options = _skill_select_options(available_skills or [])
     if skill_options:
         skills_schema_key = vol.Optional(CONF_SKILLS)
@@ -1316,6 +1331,8 @@ def _ai_task_data_from_user_input(
     )
     if not data.get(CONF_MCP_SERVER_IDS):
         data.pop(CONF_MCP_SERVER_IDS, None)
+    if not data.get(CONF_WEB_FETCH_ENABLED):
+        data.pop(CONF_WEB_FETCH_ENABLED, None)
     if CONF_SKILLS in user_input and available_skills:
         data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
             user_input, options, available_skills

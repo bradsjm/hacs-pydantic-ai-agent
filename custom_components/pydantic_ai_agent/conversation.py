@@ -13,6 +13,7 @@ from .const import (
     CONF_AGENT_NAME,
     CONF_MODEL,
     CONF_PROMPT,
+    CONF_WEB_FETCH_ENABLED,
     DOMAIN,
     SUBENTRY_TYPE_CONVERSATION,
 )
@@ -68,6 +69,9 @@ class PydanticAIConversationEntity(
             "model": self.subentry.data[CONF_MODEL],
             "ha_tools_enabled": bool(self.subentry.data.get(CONF_LLM_HASS_API)),
             "ha_llm_api": self.subentry.data.get(CONF_LLM_HASS_API),
+            "web_fetch_enabled": bool(
+                self.subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
+            ),
         }
 
     async def _async_handle_message(

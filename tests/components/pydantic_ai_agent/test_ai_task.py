@@ -28,6 +28,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
+    CONF_WEB_FETCH_ENABLED,
     DEFAULT_SKILLS_FOLDER,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
@@ -58,7 +59,10 @@ class _TextStream:
 
 
 def _entry(
-    output_mode: str | None = None, skills: list[str] | None = None
+    output_mode: str | None = None,
+    skills: list[str] | None = None,
+    *,
+    web_fetch_enabled: bool = False,
 ) -> MockConfigEntry:
     """Return a config entry with one AI task subentry."""
     subentry_data: dict[str, object] = {CONF_MODEL: "task-model"}
@@ -66,6 +70,8 @@ def _entry(
         subentry_data[CONF_OUTPUT_MODE] = output_mode
     if skills is not None:
         subentry_data[CONF_SKILLS] = skills
+    if web_fetch_enabled:
+        subentry_data[CONF_WEB_FETCH_ENABLED] = True
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Hosted OpenAI",
@@ -100,10 +106,14 @@ def _entry(
 
 
 async def _setup_ai_task_entity(
-    hass: HomeAssistant, output_mode: str | None = None, skills: list[str] | None = None
+    hass: HomeAssistant,
+    output_mode: str | None = None,
+    skills: list[str] | None = None,
+    *,
+    web_fetch_enabled: bool = False,
 ) -> str:
     """Set up an AI task config entry and return its entity ID."""
-    entry = _entry(output_mode, skills)
+    entry = _entry(output_mode, skills, web_fetch_enabled=web_fetch_enabled)
     entry.add_to_hass(hass)
 
     with patch(
@@ -303,6 +313,39 @@ async def test_ai_task_runtime_passes_selected_skills_capabilities(
     assert result.data == "plain result"
     assert skills_capabilities.call_args.args[2] == ["report-skill"]
     assert agent_class.call_args.kwargs["capabilities"] == [capability]
+
+
+async def test_ai_task_runtime_adds_web_fetch_capability(
+    hass: HomeAssistant,
+) -> None:
+    """Test WebFetch-enabled AI tasks get the WebFetch capability."""
+    entity_id = await _setup_ai_task_entity(hass, web_fetch_enabled=True)
+    web_fetch_capability = object()
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.openai_chat_model",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.WebFetch",
+            return_value=web_fetch_capability,
+        ) as web_fetch,
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(stream_text="plain result"),
+        ) as agent_class,
+    ):
+        result = await ai_task.async_generate_data(
+            hass,
+            task_name="Fetch task",
+            entity_id=entity_id,
+            instructions="Fetch https://example.com",
+        )
+
+    assert result.data == "plain result"
+    web_fetch.assert_called_once_with(local=True)
+    assert agent_class.call_args.kwargs["capabilities"] == [web_fetch_capability]
 
 
 @pytest.mark.parametrize(

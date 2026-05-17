@@ -12,7 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
-from .const import CONF_OUTPUT_MODE, SUBENTRY_TYPE_AI_TASK
+from .const import CONF_OUTPUT_MODE, CONF_WEB_FETCH_ENABLED, SUBENTRY_TYPE_AI_TASK
 from .entity import PydanticAIBaseLLMEntity
 from .structured_output import structured_output_mode
 
@@ -49,13 +49,16 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
         super().__init__(entry, subentry, name=subentry.title)
 
     @property
-    def extra_state_attributes(self) -> dict[str, str]:
+    def extra_state_attributes(self) -> dict[str, str | bool]:
         """Return observability attributes."""
         return {
             "provider_mode": self.entry.runtime_data.provider_mode,
             "model": self.subentry.data[CONF_MODEL],
             "output_mode": structured_output_mode(
                 self.subentry.data.get(CONF_OUTPUT_MODE)
+            ),
+            "web_fetch_enabled": bool(
+                self.subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
             ),
         }
 

@@ -69,8 +69,12 @@ Verified current behavior:
 - MCP server authentication is represented by configured HTTP headers. MCP URLs
   with username/password userinfo are invalid, and diagnostics redact the full
   `mcp_url` value to protect stale persisted data.
-- Current package dependencies include `pydantic-ai-slim[openai,mcp]==1.97.0`.
-  FastMCP client support is supplied transitively by Pydantic AI's `mcp` extra.
+- WebFetch enablement is stored on conversation and AI task subentries, defaults
+  disabled, and is independent of MCP server selection.
+- Current package dependencies include
+  `pydantic-ai-slim[openai,mcp,web-fetch]==1.97.0`. FastMCP client support is
+  supplied transitively by Pydantic AI's `mcp` extra, and WebFetch support is
+  supplied by Pydantic AI's `web-fetch` extra.
 
 ## Real Home Data Used For Design
 

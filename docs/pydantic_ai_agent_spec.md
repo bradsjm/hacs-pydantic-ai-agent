@@ -12,8 +12,9 @@ foundation, parent config flow, conversation, AI task, and MCP server subentry
 flows, conversation and AI task entity registration, diagnostics, setup-time
 provider validation, repair issues for reconfigurable model validation failures,
 Pydantic AI `Agent` runtime execution, Home Assistant LLM tool conversion,
-remote Streamable HTTP MCP toolsets, local `pydantic-ai-skills` capabilities,
-ChatLog history conversion, and Pydantic AI message adaptation.
+remote Streamable HTTP MCP toolsets, per-agent/per-task WebFetch capability,
+local `pydantic-ai-skills` capabilities, ChatLog history conversion, and
+Pydantic AI message adaptation.
 
 Known remaining gaps include runtime capability detection beyond validation
 probes, translation coverage tests, cleanup/cancellation lifecycle tests, and
@@ -39,8 +40,8 @@ new source paths, entity names, constants, documentation, or tests.
 task data-generation entities backed by Pydantic AI. It allows Home Assistant
 users to create one or more provider connections, each with provider credentials
 and mode on the parent config entry, and one or more independent Assist agents
-with model, prompt, Home Assistant tool access, MCP toolsets, selected skills,
-and model behavior settings on `conversation` config subentries.
+with model, prompt, Home Assistant tool access, MCP toolsets, optional WebFetch,
+selected skills, and model behavior settings on `conversation` config subentries.
 
 The integration bridges three systems:
 
@@ -382,6 +383,7 @@ without recreating the parent provider/service entry.
 | System prompt/instructions | Customize assistant behavior.                               |
 | HA LLM API selection       | Choose which Home Assistant LLM API tools to expose.        |
 | MCP server selection       | Choose which configured MCP server toolsets to expose.      |
+| WebFetch                   | Allow URL content fetching through Pydantic AI WebFetch.    |
 | Skill selection            | Choose discovered local skills to expose as capabilities.   |
 | Max iterations             | Bound Pydantic AI request/tool-loop iterations.             |
 | Temperature                | Portable generation control where supported.                |
@@ -540,13 +542,13 @@ custom_components/pydantic_ai_agent/
 - `const.py`: Domain, config keys, option keys, defaults, provider IDs, and
   structured-output constants.
 - `config_flow.py`: Initial config flow, provider reauth/reconfigure, subentry
-  flows, provider validation, MCP discovery, skill selection, and
+  flows, provider validation, MCP discovery, WebFetch selection, skill selection, and
   structured-output configuration.
 - `conversation.py`: `ConversationEntity` implementation and Home Assistant
   conversation lifecycle.
 - `entity.py`: Shared Pydantic AI `Agent` runtime, model settings handling, Home
-  Assistant LLM API tools, MCP toolsets, skills capabilities, usage limits, and
-  tool loop.
+  Assistant LLM API tools, MCP toolsets, WebFetch capability, skills
+  capabilities, usage limits, and tool loop.
 - `provider.py`: Build Pydantic AI `OpenAIChatModel` and `OpenAIProvider`
   instances from provider config.
 - `history.py`: Convert Home Assistant `ChatLog` content and attachments into
@@ -682,6 +684,7 @@ Pydantic AI Agent runtime
         ├── ChatLog-derived message history
         ├── HA LLM API tools
         ├── selected MCP toolsets
+        ├── WebFetch capability when enabled
         └── selected skills capabilities
         │
         ▼
@@ -739,8 +742,8 @@ cancellation, and incomplete model responses.
 The MVP uses the higher-level Pydantic AI `Agent` runtime. Conversation and AI
 task requests build an `Agent` with the configured model, output type, model
 settings, Home Assistant LLM API tools, selected remote MCP toolsets, selected
-skills capabilities, `max_concurrency=1`, `tool_retries=0`, and
-`output_retries=2`. Runtime bounds are enforced with Pydantic AI
+WebFetch capability, selected skills capabilities, `max_concurrency=1`,
+`tool_retries=0`, and `output_retries=2`. Runtime bounds are enforced with Pydantic AI
 `UsageLimits(request_limit=max_iterations)`.
 
 Home Assistant `ChatLog` remains the canonical conversation history for each
@@ -844,6 +847,23 @@ Security-sensitive behavior:
 - The default should be conservative if there is uncertainty about provider
   behavior.
 - Users must be able to disable Home Assistant tool access for any instance.
+
+## WebFetch
+
+The current implementation can expose Pydantic AI `WebFetch(local=True)` to
+conversation agents and AI tasks.
+
+Requirements:
+
+- Store WebFetch enablement on conversation and AI task subentries.
+- Default WebFetch to disabled for new and existing subentries.
+- Keep WebFetch independent of MCP selection; WebFetch can be enabled without
+  selecting any MCP servers.
+- Use Pydantic AI's local WebFetch fallback from the `web-fetch` optional extra,
+  which uses Pydantic AI's SSRF-protected download path.
+- Do not pass Home Assistant credentials, MCP headers, or provider headers to
+  WebFetch.
+- Do not log fetched URL contents or fetched page content.
 
 ## Remote MCP Toolsets
 
@@ -992,11 +1012,13 @@ custom_components/pydantic_ai_agent/
 - `config_flow`: `true`.
 - `requirements`: pinned or constrained Pydantic AI dependencies compatible with
   the target Home Assistant dependency constraints. For Home Assistant 2026.5.1,
-  executable dependencies include `pydantic-ai-slim[openai,mcp]==1.97.0`,
-  `logfire==4.33.0`, and `pydantic-ai-skills==0.10.0` in both
+  executable dependencies include
+  `pydantic-ai-slim[openai,mcp,web-fetch]==1.97.0`, `logfire==4.33.0`, and
+  `pydantic-ai-skills==0.10.0` in both
   `pyproject.toml` and `manifest.json`. These supply the OpenAI-compatible
   provider path, remote MCP support, FastMCP client support through Pydantic AI's
-  `mcp` extra, optional Logfire tracing, and local skill capabilities.
+  `mcp` extra, WebFetch support through Pydantic AI's `web-fetch` extra,
+  optional Logfire tracing, and local skill capabilities.
 - `documentation`: repository documentation URL once known.
 - `issue_tracker`: repository issue URL once known.
 - `codeowners`: repository owner(s) once known.
@@ -1146,13 +1168,15 @@ The MVP is complete when all of the following are true:
 - A user can create two config entries with different provider settings.
 - Each config entry can create one or more separate Assist conversation agents.
 - Each agent uses its parent provider credentials plus its own model, prompt,
-  Home Assistant tool access, MCP selections, skill selections, and model
-  settings.
+  Home Assistant tool access, MCP selections, WebFetch setting, skill
+  selections, and model settings.
 - Each agent can answer a plain chat request.
 - AI task subentries create AI task entities for data generation and attachment
   input, with structured output validation when Home Assistant provides a schema.
 - Remote Streamable HTTP MCP server subentries can discover, list, refresh, and
   expose explicitly allowlisted tools to selected agents/tasks.
+- WebFetch can be enabled per conversation agent or AI task without requiring MCP
+  selection.
 - Conversation responses are surfaced in Assist; streaming text remains future
   work until the entity advertises streaming support.
 - Home Assistant LLM API tools can be enabled per instance.
