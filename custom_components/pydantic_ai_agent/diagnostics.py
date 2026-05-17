@@ -16,6 +16,7 @@ from .const import (
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_PROMPT,
+    SUBENTRY_TYPE_MODEL,
 )
 from .logfire_support import (
     logfire_active_for_entry,
@@ -40,10 +41,22 @@ _SENSITIVE_KEYS = {
     "x-api-key",
 }
 
+_MODEL_PROFILE_SENSITIVE_KEYS = _SENSITIVE_KEYS | {"extra_body"}
+
 
 def _redact(data: dict[str, Any]) -> dict[str, Any]:
     """Return diagnostics data with sensitive fields redacted."""
     return redact_data(data, _SENSITIVE_KEYS)
+
+
+def _redact_subentry_data(subentry_type: str, data: dict[str, Any]) -> dict[str, Any]:
+    """Return redacted subentry data."""
+    sensitive_keys = (
+        _MODEL_PROFILE_SENSITIVE_KEYS
+        if subentry_type == SUBENTRY_TYPE_MODEL
+        else _SENSITIVE_KEYS
+    )
+    return redact_data(data, sensitive_keys)
 
 
 async def async_get_config_entry_diagnostics(
@@ -58,7 +71,9 @@ async def async_get_config_entry_diagnostics(
                 "subentry_id": subentry.subentry_id,
                 "subentry_type": subentry.subentry_type,
                 "title": subentry.title,
-                "data": dict(subentry.data),
+                "data": _redact_subentry_data(
+                    subentry.subentry_type, dict(subentry.data)
+                ),
                 "model": subentry.data.get(CONF_MODEL),
                 "ha_tools_enabled": bool(subentry.data.get(CONF_LLM_HASS_API)),
                 "model_settings_keys": sorted(model_settings)

@@ -8,7 +8,7 @@ import socket
 import ssl
 import sys
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, call, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from _pytest.logging import LogCaptureFixture
 from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
@@ -40,6 +40,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+    CONF_CONFIGURE_OUTPUT_MODE,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
@@ -49,6 +50,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
+    CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
     CONF_PROMPT,
     CONF_PROVIDER_MODE,
@@ -64,9 +66,7 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
-)
-from custom_components.pydantic_ai_agent.conversation import (
-    PydanticAIConversationEntity,
+    SUBENTRY_TYPE_MODEL,
 )
 from custom_components.pydantic_ai_agent.mcp import (
     MCPValidationError,
@@ -145,6 +145,8 @@ async def _loaded_entry(
     hass: HomeAssistant,
     subentries_data: tuple[dict[str, object], ...] = (),
     data_extra: dict[str, object] | None = None,
+    *,
+    with_model_profile: bool = False,
 ) -> MockConfigEntry:
     """Return a loaded provider config entry."""
     data: dict[str, object] = {
@@ -154,6 +156,8 @@ async def _loaded_entry(
     }
     if data_extra is not None:
         data.update(data_extra)
+    if with_model_profile:
+        subentries_data = (_model_subentry(),)
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Hosted OpenAI",
@@ -171,6 +175,35 @@ async def _loaded_entry(
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     return entry
+
+
+def _model_subentry(
+    subentry_id: str = "model_profile_1",
+    *,
+    name: str = "Fast GPT",
+    model: str = "gpt-test",
+    model_settings: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Return a model profile config subentry."""
+    data: dict[str, object] = {CONF_NAME: name, CONF_MODEL: model}
+    if model_settings is not None:
+        data[CONF_MODEL_SETTINGS] = model_settings
+    return {
+        "subentry_id": subentry_id,
+        "data": data,
+        "subentry_type": SUBENTRY_TYPE_MODEL,
+        "title": name,
+        "unique_id": None,
+    }
+
+
+def _model_profile_id(entry: MockConfigEntry) -> str:
+    """Return the first model profile subentry ID."""
+    return next(
+        subentry.subentry_id
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_MODEL
+    )
 
 
 def test_http_error_formats_redacted_compact_metadata() -> None:
@@ -995,7 +1028,7 @@ async def test_create_conversation_subentry(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
     """Test adding a conversation subentry."""
-    entry = await _loaded_entry(hass)
+    entry = await _loaded_entry(hass, with_model_profile=True)
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
@@ -1008,7 +1041,7 @@ async def test_create_conversation_subentry(
         result["flow_id"],
         {
             CONF_AGENT_NAME: "Kitchen Agent",
-            CONF_MODEL: "gpt-test",
+            CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
             CONF_PROMPT: "Be concise.",
         },
     )
@@ -1018,17 +1051,17 @@ async def test_create_conversation_subentry(
     assert result["data"] == {
         CONF_AGENT_NAME: "Kitchen Agent",
         CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
-        CONF_MODEL: "gpt-test",
+        CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
         CONF_PROMPT: "Be concise.",
     }
-    mock_probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
+    mock_probe_model.assert_not_awaited()
 
 
 async def test_create_conversation_subentry_without_control(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
     """Test adding a conversation subentry without Home Assistant control."""
-    entry = await _loaded_entry(hass)
+    entry = await _loaded_entry(hass, with_model_profile=True)
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
@@ -1036,24 +1069,24 @@ async def test_create_conversation_subentry_without_control(
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
-        {
-            CONF_AGENT_NAME: "Local Agent",
-            CONF_MODEL: "gpt-test",
-            CONF_LLM_HASS_API: [],
-        },
+            {
+                CONF_AGENT_NAME: "Local Agent",
+                CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+                CONF_LLM_HASS_API: [],
+            },
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert CONF_LLM_HASS_API not in result["data"]
     assert CONF_MODEL_SETTINGS not in result["data"]
-    mock_probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
+    mock_probe_model.assert_not_awaited()
 
 
 async def test_create_conversation_subentry_with_skills(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
     """Test adding a conversation subentry with selected skills."""
-    entry = await _loaded_entry(hass)
+    entry = await _loaded_entry(hass, with_model_profile=True)
 
     with patch(
         "custom_components.pydantic_ai_agent.config_flow.async_available_skills",
@@ -1070,21 +1103,21 @@ async def test_create_conversation_subentry_with_skills(
             result["flow_id"],
             {
                 CONF_AGENT_NAME: "Kitchen Agent",
-                CONF_MODEL: "gpt-test",
+                CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
                 CONF_SKILLS: ["kitchen-skill"],
             },
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_SKILLS] == ["kitchen-skill"]
-    mock_probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
+    mock_probe_model.assert_not_awaited()
 
 
 async def test_create_conversation_subentry_with_web_fetch(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
     """Test adding a conversation subentry with WebFetch enabled."""
-    entry = await _loaded_entry(hass)
+    entry = await _loaded_entry(hass, with_model_profile=True)
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
@@ -1094,7 +1127,7 @@ async def test_create_conversation_subentry_with_web_fetch(
         result["flow_id"],
         {
             CONF_AGENT_NAME: "Kitchen Agent",
-            CONF_MODEL: "gpt-test",
+            CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
             CONF_WEB_FETCH_ENABLED: True,
         },
     )
@@ -1103,26 +1136,26 @@ async def test_create_conversation_subentry_with_web_fetch(
     assert result["data"] == {
         CONF_AGENT_NAME: "Kitchen Agent",
         CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
-        CONF_MODEL: "gpt-test",
+        CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
         CONF_WEB_FETCH_ENABLED: True,
     }
-    mock_probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
+    mock_probe_model.assert_not_awaited()
 
 
-async def test_create_conversation_subentry_with_main_model_settings(
+async def test_create_model_profile_with_main_model_settings(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
-    """Test main model settings are stored under model_settings."""
-    entry = await _loaded_entry(hass)
+    """Test main model settings are stored on model profiles."""
+    entry = await _loaded_entry(hass, with_model_profile=True)
     result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        (entry.entry_id, SUBENTRY_TYPE_MODEL),
         context={"source": config_entries.SOURCE_USER},
     )
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
-            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_NAME: "Fast GPT",
             CONF_MODEL: "gpt-test",
             "temperature": 0.7,
             "thinking": "high",
@@ -1142,19 +1175,19 @@ async def test_create_conversation_subentry_with_main_model_settings(
     )
 
 
-async def test_create_conversation_subentry_with_advanced_model_settings(
+async def test_create_model_profile_with_advanced_model_settings(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
-    """Test advanced model settings are parsed and stored."""
-    entry = await _loaded_entry(hass)
+    """Test advanced model settings are parsed and stored on model profiles."""
+    entry = await _loaded_entry(hass, with_model_profile=True)
     result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        (entry.entry_id, SUBENTRY_TYPE_MODEL),
         context={"source": config_entries.SOURCE_USER},
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
-            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_NAME: "Fast GPT",
             CONF_MODEL: "gpt-test",
             "temperature": 0.4,
             "thinking": "true",
@@ -1209,22 +1242,22 @@ async def test_create_conversation_subentry_with_advanced_model_settings(
         ({"extra_body": "[]"}, {"extra_body": "invalid_object"}),
     ],
 )
-async def test_conversation_advanced_model_settings_validation_errors(
+async def test_model_profile_advanced_model_settings_validation_errors(
     hass: HomeAssistant,
     mock_probe_model: AsyncMock,
     advanced_input: dict[str, object],
     expected_errors: dict[str, str],
 ) -> None:
     """Test invalid advanced model settings stay on the advanced step."""
-    entry = await _loaded_entry(hass)
+    entry = await _loaded_entry(hass, with_model_profile=True)
     result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        (entry.entry_id, SUBENTRY_TYPE_MODEL),
         context={"source": config_entries.SOURCE_USER},
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
-            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_NAME: "Fast GPT",
             CONF_MODEL: "gpt-test",
             CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS: True,
         },
@@ -1240,22 +1273,22 @@ async def test_conversation_advanced_model_settings_validation_errors(
     mock_probe_model.assert_not_awaited()
 
 
-async def test_conversation_advanced_model_settings_probe_error_stays_on_step(
+async def test_model_profile_advanced_model_settings_probe_error_stays_on_step(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
     """Test probe errors preserve submitted advanced settings."""
     mock_probe_model.side_effect = ProviderValidationError(
         "rate_limited", 'The provider returned error 429 for model "gpt-test".', 429
     )
-    entry = await _loaded_entry(hass)
+    entry = await _loaded_entry(hass, with_model_profile=True)
     result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        (entry.entry_id, SUBENTRY_TYPE_MODEL),
         context={"source": config_entries.SOURCE_USER},
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
-            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_NAME: "Fast GPT",
             CONF_MODEL: "gpt-test",
             CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS: True,
         },
@@ -1278,7 +1311,7 @@ async def test_create_ai_task_data_subentry(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
     """Test adding an AI task data subentry."""
-    entry = await _loaded_entry(hass)
+    entry = await _loaded_entry(hass, with_model_profile=True)
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
@@ -1289,19 +1322,20 @@ async def test_create_ai_task_data_subentry(
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
-        {CONF_MODEL: "gpt-test"},
+        {CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry)},
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "gpt-test"
+    assert result["title"] == "Fast GPT"
     assert result["data"] == {
-        CONF_MODEL: "gpt-test",
+        CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
         CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
     }
     mock_probe_model.assert_awaited_once_with(
         hass,
         entry.data,
         "gpt-test",
+        {},
         structured_output_mode=OUTPUT_MODE_TOOL,
     )
 
@@ -1310,7 +1344,7 @@ async def test_create_ai_task_data_subentry_with_skills(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
     """Test adding an AI task data subentry with selected skills."""
-    entry = await _loaded_entry(hass)
+    entry = await _loaded_entry(hass, with_model_profile=True)
 
     with patch(
         "custom_components.pydantic_ai_agent.config_flow.async_available_skills",
@@ -1325,12 +1359,15 @@ async def test_create_ai_task_data_subentry_with_skills(
         )
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
-            {CONF_MODEL: "gpt-test", CONF_SKILLS: ["report-skill"]},
+            {
+                CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+                CONF_SKILLS: ["report-skill"],
+            },
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
-        CONF_MODEL: "gpt-test",
+        CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
         CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
         CONF_SKILLS: ["report-skill"],
     }
@@ -1338,6 +1375,7 @@ async def test_create_ai_task_data_subentry_with_skills(
         hass,
         entry.data,
         "gpt-test",
+        {},
         structured_output_mode=OUTPUT_MODE_TOOL,
     )
 
@@ -1346,7 +1384,7 @@ async def test_create_ai_task_data_subentry_with_web_fetch(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
     """Test adding an AI task subentry with WebFetch enabled."""
-    entry = await _loaded_entry(hass)
+    entry = await _loaded_entry(hass, with_model_profile=True)
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
@@ -1354,12 +1392,12 @@ async def test_create_ai_task_data_subentry_with_web_fetch(
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
-        {CONF_MODEL: "gpt-test", CONF_WEB_FETCH_ENABLED: True},
+        {CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry), CONF_WEB_FETCH_ENABLED: True},
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
-        CONF_MODEL: "gpt-test",
+        CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
         CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
         CONF_WEB_FETCH_ENABLED: True,
     }
@@ -1367,6 +1405,7 @@ async def test_create_ai_task_data_subentry_with_web_fetch(
         hass,
         entry.data,
         "gpt-test",
+        {},
         structured_output_mode=OUTPUT_MODE_TOOL,
     )
 
@@ -1950,7 +1989,7 @@ async def test_create_ai_task_data_subentry_with_output_mode(
     hass: HomeAssistant, mock_probe_model: AsyncMock, output_mode: str
 ) -> None:
     """Test adding an AI task data subentry with an output mode."""
-    entry = await _loaded_entry(hass)
+    entry = await _loaded_entry(hass, with_model_profile=True)
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
@@ -1959,8 +1998,8 @@ async def test_create_ai_task_data_subentry_with_output_mode(
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
-            CONF_MODEL: "gpt-test",
-            CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS: True,
+            CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+            CONF_CONFIGURE_OUTPUT_MODE: True,
         },
     )
     assert result["type"] is FlowResultType.FORM
@@ -1972,227 +2011,16 @@ async def test_create_ai_task_data_subentry_with_output_mode(
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_MODEL: "gpt-test", CONF_OUTPUT_MODE: output_mode}
+    assert result["data"] == {
+        CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+        CONF_OUTPUT_MODE: output_mode,
+    }
     mock_probe_model.assert_awaited_once_with(
         hass,
         entry.data,
         "gpt-test",
+        {},
         structured_output_mode=output_mode,
-    )
-
-
-async def test_reconfigure_conversation_subentry(
-    hass: HomeAssistant, mock_probe_model: AsyncMock
-) -> None:
-    """Test reconfiguring a conversation subentry."""
-    entry = await _loaded_entry(
-        hass,
-        (
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL: "old-model",
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-        ),
-    )
-    subentry = next(iter(entry.subentries.values()))
-    unique_id = PydanticAIConversationEntity(entry, subentry).unique_id
-
-    result = await entry.start_subentry_reconfigure_flow(hass, subentry.subentry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {
-            CONF_AGENT_NAME: "Kitchen Agent",
-            CONF_MODEL: "new-model",
-            CONF_LLM_HASS_API: [],
-        },
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert subentry.data[CONF_MODEL] == "new-model"
-    assert CONF_LLM_HASS_API not in subentry.data
-    assert PydanticAIConversationEntity(entry, subentry).unique_id == unique_id
-    mock_probe_model.assert_awaited_once_with(hass, entry.data, "new-model", {})
-
-
-async def test_reconfigure_conversation_subentry_preserves_advanced_settings(
-    hass: HomeAssistant, mock_probe_model: AsyncMock
-) -> None:
-    """Test skipping advanced settings preserves existing advanced values."""
-    entry = await _loaded_entry(
-        hass,
-        (
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL: "old-model",
-                    CONF_MODEL_SETTINGS: {
-                        "temperature": 0.5,
-                        "timeout": 30.0,
-                        "extra_body": {"service_tier": "flex"},
-                    },
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-        ),
-    )
-    subentry = next(iter(entry.subentries.values()))
-
-    result = await entry.start_subentry_reconfigure_flow(hass, subentry.subentry_id)
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {
-            CONF_AGENT_NAME: "Kitchen Agent",
-            CONF_MODEL: "new-model",
-            "temperature": 0.8,
-            "thinking": "false",
-        },
-    )
-
-    expected_settings = {
-        "temperature": 0.8,
-        "thinking": False,
-        "timeout": 30.0,
-        "extra_body": {"service_tier": "flex"},
-    }
-    assert result["type"] is FlowResultType.ABORT
-    assert subentry.data[CONF_MODEL_SETTINGS] == expected_settings
-    mock_probe_model.assert_awaited_once_with(
-        hass, entry.data, "new-model", expected_settings
-    )
-
-
-async def test_reconfigure_conversation_subentry_clears_advanced_settings(
-    hass: HomeAssistant, mock_probe_model: AsyncMock
-) -> None:
-    """Test opening advanced settings allows clearing advanced values."""
-    entry = await _loaded_entry(
-        hass,
-        (
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL: "old-model",
-                    CONF_MODEL_SETTINGS: {"timeout": 30.0, "extra_headers": {"X": "Y"}},
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-        ),
-    )
-    subentry = next(iter(entry.subentries.values()))
-
-    result = await entry.start_subentry_reconfigure_flow(hass, subentry.subentry_id)
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {
-            CONF_AGENT_NAME: "Kitchen Agent",
-            CONF_MODEL: "new-model",
-            CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS: True,
-        },
-    )
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {"extra_headers": ""},
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert CONF_MODEL_SETTINGS not in subentry.data
-    mock_probe_model.assert_awaited_once_with(hass, entry.data, "new-model", {})
-
-
-async def test_reconfigure_conversation_subentry_preserves_parallel_tool_calls(
-    hass: HomeAssistant, mock_probe_model: AsyncMock
-) -> None:
-    """Test advanced reconfigure preserves a stored boolean setting."""
-    entry = await _loaded_entry(
-        hass,
-        (
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL: "old-model",
-                    CONF_MODEL_SETTINGS: {
-                        "parallel_tool_calls": True,
-                        "timeout": 30.0,
-                    },
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-        ),
-    )
-    subentry = next(iter(entry.subentries.values()))
-
-    result = await entry.start_subentry_reconfigure_flow(hass, subentry.subentry_id)
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {
-            CONF_AGENT_NAME: "Kitchen Agent",
-            CONF_MODEL: "new-model",
-            CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS: True,
-        },
-    )
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {"parallel_tool_calls": True},
-    )
-
-    expected_settings = {"parallel_tool_calls": True}
-    assert result["type"] is FlowResultType.ABORT
-    assert subentry.data[CONF_MODEL_SETTINGS] == expected_settings
-    mock_probe_model.assert_awaited_once_with(
-        hass, entry.data, "new-model", expected_settings
-    )
-
-
-async def test_reconfigure_ai_task_data_subentry(
-    hass: HomeAssistant, mock_probe_model: AsyncMock
-) -> None:
-    """Test reconfiguring an AI task data subentry."""
-    entry = await _loaded_entry(
-        hass,
-        (
-            {
-                "data": {CONF_MODEL: "old-model"},
-                "subentry_type": SUBENTRY_TYPE_AI_TASK,
-                "title": "old-model",
-                "unique_id": None,
-            },
-        ),
-    )
-    subentry = next(iter(entry.subentries.values()))
-
-    result = await entry.start_subentry_reconfigure_flow(hass, subentry.subentry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {CONF_MODEL: "new-model"},
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert subentry.data[CONF_MODEL] == "new-model"
-    assert subentry.data[CONF_OUTPUT_MODE] == DEFAULT_OUTPUT_MODE
-    mock_probe_model.assert_awaited_once_with(
-        hass,
-        entry.data,
-        "new-model",
-        structured_output_mode=OUTPUT_MODE_TOOL,
     )
 
 
@@ -2233,22 +2061,21 @@ async def test_subentry_flow_aborts_when_entry_not_loaded(
 async def test_config_flow_validation_error(
     hass: HomeAssistant, mock_probe_model: AsyncMock
 ) -> None:
-    """Test provider validation errors keep the user on the subentry step."""
+    """Test provider validation errors keep the user on the model profile step."""
     mock_probe_model.side_effect = ProviderValidationError(
         "invalid_model", "The provider rejected the model."
     )
     entry = await _loaded_entry(hass)
     result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        (entry.entry_id, SUBENTRY_TYPE_MODEL),
         context={"source": config_entries.SOURCE_USER},
     )
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
-            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_NAME: "Fast GPT",
             CONF_MODEL: "gpt-test",
-            CONF_LLM_HASS_API: [],
         },
     )
 
@@ -2263,7 +2090,7 @@ async def test_conversation_subentry_maps_real_probe_http_error(
     """Test flow error handling for an HTTP error from the provider probe."""
     entry = await _loaded_entry(hass)
     result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        (entry.entry_id, SUBENTRY_TYPE_MODEL),
         context={"source": config_entries.SOURCE_USER},
     )
 
@@ -2277,9 +2104,8 @@ async def test_conversation_subentry_maps_real_probe_http_error(
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
             {
-                CONF_AGENT_NAME: "Kitchen Agent",
+                CONF_NAME: "Fast GPT",
                 CONF_MODEL: "gpt-test",
-                CONF_LLM_HASS_API: [],
             },
         )
 
@@ -2308,16 +2134,15 @@ async def test_config_flow_logs_rate_limit_validation_error(
     )
     entry = await _loaded_entry(hass)
     result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        (entry.entry_id, SUBENTRY_TYPE_MODEL),
         context={"source": config_entries.SOURCE_USER},
     )
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
-            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_NAME: "Fast GPT",
             CONF_MODEL: "gpt-test",
-            CONF_LLM_HASS_API: [],
         },
     )
 
@@ -2332,7 +2157,7 @@ async def test_config_flow_logs_rate_limit_validation_error(
     assert warning.levelno == logging.WARNING
     assert (
         warning.message
-        == "Provider validation rate limited during conversation subentry for model "
+        == "Provider validation rate limited during model profile subentry for model "
         '"gpt-test": reason=rate_limited status_code=429'
     )
     assert "sk-test" not in warning.message
@@ -2353,16 +2178,15 @@ async def test_config_flow_model_behavior_error_avoids_traceback(
     )
     entry = await _loaded_entry(hass)
     result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        (entry.entry_id, SUBENTRY_TYPE_MODEL),
         context={"source": config_entries.SOURCE_USER},
     )
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
-            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_NAME: "Fast GPT",
             CONF_MODEL: "gpt-test",
-            CONF_LLM_HASS_API: [],
         },
     )
 
@@ -2378,7 +2202,7 @@ async def test_config_flow_model_behavior_error_avoids_traceback(
     assert warning.levelno == logging.WARNING
     assert (
         warning.message
-        == "Provider validation failed during conversation subentry for model "
+        == "Provider validation failed during model profile subentry for model "
         '"gpt-test": reason=provider_error status_code=None'
     )
     assert warning.exc_info is None
@@ -2520,7 +2344,7 @@ async def test_reconfigure_provider_skill_source_clears_subentry_skills(
     assert result["reason"] == "reconfigure_successful"
     assert CONF_SKILLS not in subentry.data
     assert entry.data[CONF_SKILLS_FOLDER] == "/config/skills/trusted"
-    mock_probe_model.assert_awaited_once_with(hass, entry.data, "gpt-test", {})
+    mock_probe_model.assert_not_awaited()
 
 
 async def test_reconfigure_provider_blank_logfire_token_disables_logfire(
@@ -2643,417 +2467,3 @@ async def test_reconfigure_provider_allows_default_base_url(
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_API_KEY] == "local-key"
     mock_probe_model.assert_not_awaited()
-
-
-async def test_reconfigure_provider_validation_error_stays_on_form(
-    hass: HomeAssistant, mock_probe_model: AsyncMock
-) -> None:
-    """Test provider reconfigure validates credentials when models exist."""
-    entry = await _loaded_entry(
-        hass,
-        (
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL: "old-model",
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-        ),
-    )
-    mock_probe_model.side_effect = ProviderValidationError(
-        "invalid_auth", "The provider rejected the API key."
-    )
-
-    result = await entry.start_reconfigure_flow(hass)
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "bad-key",
-        },
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-    assert result["errors"] == {"base": "invalid_auth"}
-    assert entry.data[CONF_API_KEY] == "sk-test"
-    mock_probe_model.assert_awaited_once()
-
-
-async def test_reconfigure_provider_model_validation_error_stays_on_form(
-    hass: HomeAssistant, mock_probe_model: AsyncMock
-) -> None:
-    """Test provider reconfigure blocks inaccessible existing models."""
-    entry = await _loaded_entry(
-        hass,
-        (
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL: "old-model",
-                    CONF_MODEL_SETTINGS: {"timeout": 20.0},
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-        ),
-    )
-    mock_probe_model.side_effect = ProviderValidationError(
-        "invalid_model", "The provider rejected the model."
-    )
-
-    result = await entry.start_reconfigure_flow(hass)
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "new-key",
-        },
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-    assert result["errors"] == {"base": "invalid_model"}
-    assert entry.data[CONF_API_KEY] == "sk-test"
-    mock_probe_model.assert_awaited_once_with(
-        hass,
-        {
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "new-key",
-        },
-        "old-model",
-        {"timeout": 20.0},
-    )
-
-
-async def test_reauth_replaces_provider_data_and_preserves_model(
-    hass: HomeAssistant, mock_probe_model: AsyncMock
-) -> None:
-    """Test reauth replaces stale provider data without changing agent models."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Local LLM",
-        data={
-            CONF_NAME: "Local LLM",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "old-key",
-            CONF_BASE_URL: "http://localhost:11434/v1",
-        },
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Local Agent",
-                    CONF_MODEL: "old-model",
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Local Agent",
-                "unique_id": None,
-            },
-            {
-                "data": {CONF_MODEL: "task-model"},
-                "subentry_type": SUBENTRY_TYPE_AI_TASK,
-                "title": "task-model",
-                "unique_id": None,
-            },
-        ),
-        options={},
-        unique_id=None,
-    )
-    entry.add_to_hass(hass)
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={
-            "source": config_entries.SOURCE_REAUTH,
-            "entry_id": entry.entry_id,
-        },
-        data=entry.data,
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "new-key",
-        },
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.data == {
-        CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-        CONF_API_KEY: "new-key",
-    }
-    subentry = next(iter(entry.subentries.values()))
-    assert subentry.data[CONF_MODEL] == "old-model"
-    mock_probe_model.assert_has_awaits(
-        [
-            call(
-                hass,
-                {
-                    CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-                    CONF_API_KEY: "new-key",
-                },
-                "old-model",
-                {},
-            ),
-            call(
-                hass,
-                {
-                    CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-                    CONF_API_KEY: "new-key",
-                },
-                "task-model",
-                {},
-                structured_output_mode=OUTPUT_MODE_TOOL,
-            ),
-        ]
-    )
-    assert mock_probe_model.await_count == 2
-
-
-async def test_reauth_validates_each_subentry_model_settings(
-    hass: HomeAssistant, mock_probe_model: AsyncMock
-) -> None:
-    """Test provider updates validate each subentry's own model settings."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Hosted OpenAI",
-        data={
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "old-key",
-        },
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL: "shared-model",
-                    CONF_MODEL_SETTINGS: {"timeout": 20.0},
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Garage Agent",
-                    CONF_MODEL: "shared-model",
-                    CONF_MODEL_SETTINGS: {"extra_body": {"service_tier": "flex"}},
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Garage Agent",
-                "unique_id": None,
-            },
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Garage Agent Copy",
-                    CONF_MODEL: "shared-model",
-                    CONF_MODEL_SETTINGS: {"extra_body": {"service_tier": "flex"}},
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Garage Agent Copy",
-                "unique_id": None,
-            },
-        ),
-        options={},
-        unique_id=None,
-    )
-    entry.add_to_hass(hass)
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={
-            "source": config_entries.SOURCE_REAUTH,
-            "entry_id": entry.entry_id,
-        },
-        data=entry.data,
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "new-key",
-        },
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    mock_probe_model.assert_has_awaits(
-        [
-            call(
-                hass,
-                {
-                    CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-                    CONF_API_KEY: "new-key",
-                },
-                "shared-model",
-                {"timeout": 20.0},
-            ),
-            call(
-                hass,
-                {
-                    CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-                    CONF_API_KEY: "new-key",
-                },
-                "shared-model",
-                {"extra_body": {"service_tier": "flex"}},
-            ),
-        ]
-    )
-    assert mock_probe_model.await_count == 2
-
-
-async def test_reauth_validation_error_stays_on_form(
-    hass: HomeAssistant, mock_probe_model: AsyncMock
-) -> None:
-    """Test reauth validates updated provider data before saving it."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Local LLM",
-        data={
-            CONF_NAME: "Local LLM",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "old-key",
-            CONF_BASE_URL: "http://localhost:11434/v1",
-        },
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Local Agent",
-                    CONF_MODEL: "old-model",
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Local Agent",
-                "unique_id": None,
-            },
-            {
-                "data": {CONF_MODEL: "task-model"},
-                "subentry_type": SUBENTRY_TYPE_AI_TASK,
-                "title": "task-model",
-                "unique_id": None,
-            },
-        ),
-        options={},
-        unique_id=None,
-    )
-    entry.add_to_hass(hass)
-    mock_probe_model.side_effect = ProviderValidationError(
-        "invalid_auth", "The provider rejected the API key."
-    )
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={
-            "source": config_entries.SOURCE_REAUTH,
-            "entry_id": entry.entry_id,
-        },
-        data=entry.data,
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "bad-key",
-        },
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {"base": "invalid_auth"}
-    assert entry.data[CONF_API_KEY] == "old-key"
-    mock_probe_model.assert_has_awaits(
-        [
-            call(
-                hass,
-                {
-                    CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-                    CONF_API_KEY: "bad-key",
-                },
-                "old-model",
-                {},
-            ),
-        ]
-    )
-    assert mock_probe_model.await_count == 1
-
-
-async def test_reauth_model_validation_error_still_updates_provider_data(
-    hass: HomeAssistant, mock_probe_model: AsyncMock
-) -> None:
-    """Test stale subentry models do not block credential repair."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Hosted OpenAI",
-        data={
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "old-key",
-        },
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL: "removed-model",
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-        ),
-        options={},
-        unique_id=None,
-    )
-    entry.add_to_hass(hass)
-    mock_probe_model.side_effect = ProviderValidationError(
-        "invalid_model", "The provider rejected the model."
-    )
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={
-            "source": config_entries.SOURCE_REAUTH,
-            "entry_id": entry.entry_id,
-        },
-        data=entry.data,
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "new-key",
-        },
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.data[CONF_API_KEY] == "new-key"
-    mock_probe_model.assert_awaited_once_with(
-        hass,
-        {
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
-            CONF_API_KEY: "new-key",
-        },
-        "removed-model",
-        {},
-    )

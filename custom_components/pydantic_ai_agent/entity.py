@@ -1,10 +1,14 @@
 """Shared Pydantic AI entity runtime."""
 
-from collections.abc import AsyncIterable, AsyncIterator, Mapping
+from collections.abc import AsyncIterable, AsyncIterator, Sequence
+import errno
 import json
 import logging
+import socket
+import ssl
 from typing import Any, cast
 
+import httpx
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import WebFetch
 from pydantic_ai.exceptions import (
@@ -35,22 +39,24 @@ from homeassistant.helpers import device_registry as dr, llm
 
 from . import PydanticAIAgentConfigEntry
 from .const import (
-    CONF_MODEL,
-    CONF_MODEL_SETTINGS,
     CONF_MCP_SERVER_IDS,
     CONF_OUTPUT_MODE,
     CONF_SKILLS,
     CONF_WEB_FETCH_ENABLED,
-    DEFAULT_TIMEOUT,
     DOMAIN,
-    SUBENTRY_TYPE_CONVERSATION,
 )
 from .context_management import SlidingWindowContextCapability
 from .ha_toolset import tool_definitions_from_llm_api, tools_from_llm_api
 from .history import chat_log_content_to_model_messages, split_last_user_prompt
 from .logfire_support import agent_run_span, instrument_agent
 from .mcp import MCPValidationError, async_runtime_mcp_toolsets
-from .provider import openai_compatible_chat_model
+from .model_profiles import (
+    ModelProfile,
+    chat_model_for_profile,
+    model_display_names,
+    model_profile_chain,
+    model_settings,
+)
 from .skills import async_skills_capabilities
 from .structured_output import (
     default_structure_serializer,
@@ -81,12 +87,13 @@ class PydanticAIBaseLLMEntity:
         """Initialize shared entity metadata."""
         self.entry = entry
         self.subentry = subentry
+        profiles = model_profile_chain(entry, subentry)
         self._attr_unique_id = subentry.subentry_id
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, subentry.subentry_id)},
             name=name,
             manufacturer="Pydantic AI",
-            model=subentry.data[CONF_MODEL],
+            model=profiles[0].model_name,
             entry_type=dr.DeviceEntryType.SERVICE,
         )
 
@@ -98,14 +105,7 @@ class PydanticAIBaseLLMEntity:
         max_iterations: int = 10,
     ) -> object | None:
         """Run a Pydantic AI Agent and stream its response into ChatLog."""
-        runtime_data = self.entry.runtime_data
-        model = openai_compatible_chat_model(
-            self.hass,
-            api_key=runtime_data.api_key,
-            base_url=runtime_data.base_url,
-            model_name=self.subentry.data[CONF_MODEL],
-        )
-        model_settings = ModelSettings(**self._model_settings())
+        profiles = model_profile_chain(self.entry, self.subentry)
         # ChatLog needs a stable agent id for deltas, but entity_id can be absent
         # before Home Assistant has fully registered the entity.
         agent_id = getattr(self, "entity_id", None) or getattr(self, "unique_id", None)
@@ -129,11 +129,6 @@ class PydanticAIBaseLLMEntity:
 
         messages = await chat_log_content_to_model_messages(self.hass, chat_log.content)
         user_prompt, message_history = split_last_user_prompt(messages)
-        mcp_toolsets = await async_runtime_mcp_toolsets(
-            self.hass,
-            self.entry,
-            self.subentry.data.get(CONF_MCP_SERVER_IDS),
-        )
         capabilities = await async_skills_capabilities(
             self.hass,
             self.entry,
@@ -142,35 +137,85 @@ class PydanticAIBaseLLMEntity:
         if self.subentry.data.get(CONF_WEB_FETCH_ENABLED):
             capabilities.append(WebFetch(local=True))
         capabilities.append(SlidingWindowContextCapability())
-        agent = Agent(
-            model,
-            output_type=cast(Any, agent_output_type),
-            model_settings=model_settings,
-            tool_retries=0,
-            output_retries=2,
-            tools=tools_from_llm_api(chat_log.llm_api),
-            toolsets=mcp_toolsets,
-            max_concurrency=1,
-            capabilities=capabilities,
-        )
-        instrument_agent(self.hass, self.entry, agent)
         usage_limits = UsageLimits(
             request_limit=max_iterations,
         )
+        errors: list[BaseException] = []
+        for index, profile in enumerate(profiles):
+            settings = model_settings(profile)
+            mcp_toolsets = await async_runtime_mcp_toolsets(
+                self.hass,
+                self.entry,
+                self.subentry.data.get(CONF_MCP_SERVER_IDS),
+            )
+            agent = Agent(
+                chat_model_for_profile(self.hass, self.entry, profile),
+                output_type=cast(Any, agent_output_type),
+                model_settings=settings,
+                tool_retries=0,
+                output_retries=2,
+                tools=tools_from_llm_api(chat_log.llm_api),
+                toolsets=mcp_toolsets,
+                max_concurrency=1,
+                capabilities=capabilities,
+            )
+            instrument_agent(self.hass, self.entry, agent)
+            try:
+                return await self._async_run_agent(
+                    agent,
+                    profile,
+                    settings,
+                    chat_log,
+                    agent_id,
+                    user_prompt,
+                    message_history,
+                    usage_limits,
+                    structured_output_tool_names,
+                    structure is not None,
+                )
+            except Exception as err:
+                if index == len(profiles) - 1 or not _should_fallback(err):
+                    raise _home_assistant_error(err) from err
+                errors.append(err)
+                _LOGGER.warning(
+                    'Model profile "%s" failed with a retryable error; trying fallback',
+                    profile.title,
+                    exc_info=err,
+                )
+        raise HomeAssistantError(
+            "All configured model profiles failed: "
+            + ", ".join(model_display_names(profiles))
+        ) from (errors[-1] if errors else None)
+
+    async def _async_run_agent(
+        self,
+        agent: Agent[Any, Any],
+        profile: ModelProfile,
+        settings: ModelSettings,
+        chat_log: conversation.ChatLog,
+        agent_id: str,
+        user_prompt: str | Sequence[Any] | None,
+        message_history: list[ModelMessage],
+        usage_limits: UsageLimits,
+        structured_output_tool_names: set[str],
+        has_structure: bool,
+    ) -> object | None:
+        """Run one model profile attempt and append only successful messages."""
         try:
             async with agent:
                 with agent_run_span(
                     self.hass,
                     self.entry,
-                    self.subentry,
-                    entity_id=agent_id,
-                    conversation_id=chat_log.conversation_id,
-                ):
-                    if structure is None:
+                        self.subentry,
+                        entity_id=agent_id,
+                        conversation_id=chat_log.conversation_id,
+                        model_name=profile.model_name,
+                    ):
+                    if not has_structure:
                         result = await agent.run(
                             user_prompt,
                             message_history=message_history,
-                            model_settings=model_settings,
+                            model_settings=settings,
                             usage_limits=usage_limits,
                         )
                         await _append_agent_messages(
@@ -181,7 +226,7 @@ class PydanticAIBaseLLMEntity:
                     result = await agent.run(
                         user_prompt,
                         message_history=message_history,
-                        model_settings=model_settings,
+                        model_settings=settings,
                         usage_limits=usage_limits,
                     )
                     output = result.output
@@ -196,38 +241,9 @@ class PydanticAIBaseLLMEntity:
                     ):
                         await _append_text(chat_log, agent_id, _json_output(output))
                     return output
-        except ModelHTTPError as err:
-            # Convert provider/runtime failures into HA-facing errors so
-            # conversation and AI task platforms report consistent failures.
-            raise HomeAssistantError(_format_http_error(err)) from err
-        except ModelAPIError as err:
-            raise HomeAssistantError(_format_api_error(err)) from err
-        except UnexpectedModelBehavior as err:
-            raise HomeAssistantError(
-                "Provider returned an unexpected response"
-            ) from err
-        except TimeoutError as err:
-            raise HomeAssistantError("Provider request timed out") from err
-        except UsageLimitExceeded as err:
-            raise HomeAssistantError(
-                "Model requested too many tool iterations"
-            ) from err
-        except MCPValidationError as err:
-            raise HomeAssistantError(err.message) from err
-        except (NotImplementedError, UserError) as err:
-            raise HomeAssistantError(f"Invalid provider configuration: {err}") from err
-
-    def _model_settings(self) -> dict[str, Any]:
-        """Return subentry model settings with the integration timeout default."""
-        settings: Mapping[str, Any] | None = None
-        if self.subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
-            raw_settings = self.subentry.data.get(CONF_MODEL_SETTINGS)
-            if isinstance(raw_settings, Mapping):
-                settings = raw_settings
-
-        model_settings = dict(settings or {})
-        model_settings.setdefault("timeout", DEFAULT_TIMEOUT)
-        return model_settings
+        except Exception:
+            _LOGGER.debug("Model profile attempt failed: %s", profile.title)
+            raise
 
     def _structured_output_name(
         self, api_instance: llm.APIInstance | None, structure_name: str | None
@@ -250,6 +266,63 @@ def _format_http_error(err: ModelHTTPError) -> str:
 def _format_api_error(err: ModelAPIError) -> str:
     """Return a user-facing provider API error message."""
     return f'The provider returned an API error for model "{err.model_name}".'
+
+
+def _home_assistant_error(err: Exception) -> HomeAssistantError:
+    """Convert provider/runtime failures into HA-facing errors."""
+    if isinstance(err, HomeAssistantError):
+        return err
+    if isinstance(err, ModelHTTPError):
+        return HomeAssistantError(_format_http_error(err))
+    if isinstance(err, ModelAPIError):
+        return HomeAssistantError(_format_api_error(err))
+    if isinstance(err, UnexpectedModelBehavior):
+        return HomeAssistantError("Provider returned an unexpected response")
+    if isinstance(err, TimeoutError):
+        return HomeAssistantError("Provider request timed out")
+    if isinstance(err, UsageLimitExceeded):
+        return HomeAssistantError("Model requested too many tool iterations")
+    if isinstance(err, MCPValidationError):
+        return HomeAssistantError(err.message)
+    if isinstance(err, NotImplementedError | UserError):
+        return HomeAssistantError(f"Invalid provider configuration: {err}")
+    return HomeAssistantError(str(err))
+
+
+def _should_fallback(err: Exception) -> bool:
+    """Return if a failed model attempt should try the next profile."""
+    if isinstance(err, ModelHTTPError):
+        return err.status_code in {408, 409, 429} or 500 <= err.status_code <= 599
+    if isinstance(err, TimeoutError | UsageLimitExceeded):
+        return True
+    if isinstance(err, ModelAPIError):
+        return _has_connection_failure(err)
+    return False
+
+
+def _has_connection_failure(err: BaseException) -> bool:
+    """Return if an exception cause chain indicates transport failure."""
+    seen: set[int] = set()
+    current: BaseException | None = err
+    while current is not None and id(current) not in seen and len(seen) < 8:
+        seen.add(id(current))
+        if isinstance(
+            current,
+            TimeoutError
+            | httpx.TimeoutException
+            | httpx.ConnectError
+            | socket.gaierror
+            | ssl.SSLError,
+        ):
+            return True
+        if isinstance(current, OSError) and current.errno in {
+            errno.ECONNREFUSED,
+            errno.ENETUNREACH,
+            errno.EHOSTUNREACH,
+        }:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 async def _append_agent_messages(

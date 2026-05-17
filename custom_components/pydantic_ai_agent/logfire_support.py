@@ -16,7 +16,6 @@ from .const import (
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MCP_SERVER_IDS,
-    CONF_MODEL,
     CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
     DOMAIN,
@@ -150,6 +149,7 @@ def agent_run_span(
     *,
     entity_id: str,
     conversation_id: str | None,
+    model_name: str,
 ) -> Iterator[None]:
     """Wrap one Pydantic AI run with safe Home Assistant trace metadata."""
     if not logfire_active_for_entry(hass, entry):
@@ -162,7 +162,9 @@ def agent_run_span(
 
         span = logfire.span(
             "Run Pydantic AI agent",
-            **_span_attributes(hass, entry, subentry, entity_id, conversation_id),
+            **_span_attributes(
+                hass, entry, subentry, entity_id, conversation_id, model_name
+            ),
         )
         span.__enter__()
     except Exception:
@@ -208,6 +210,7 @@ def _span_attributes(
     subentry: ConfigSubentry,
     entity_id: str,
     conversation_id: str | None,
+    model_name: str,
 ) -> Mapping[str, Any]:
     """Return low-risk trace attributes for Home Assistant context."""
     llm_api_ids = subentry.data.get(CONF_LLM_HASS_API)
@@ -227,7 +230,7 @@ def _span_attributes(
         "ha.entity_id": entity_id,
         "ha.conversation_id": conversation_id,
         "ha.provider_mode": entry.data.get(CONF_PROVIDER_MODE),
-        "ha.model": subentry.data.get(CONF_MODEL),
+        "ha.model": model_name,
         "ha.output_mode": structured_output_mode(subentry.data.get(CONF_OUTPUT_MODE)),
         "ha.ha_tools_enabled": bool(llm_api_ids),
         "ha.llm_api_ids": llm_api_ids,

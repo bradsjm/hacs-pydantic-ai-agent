@@ -25,6 +25,7 @@ from custom_components.pydantic_ai_agent.ai_task import (
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
+    CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
@@ -36,6 +37,7 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_TOOL,
     PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_AI_TASK,
+    SUBENTRY_TYPE_MODEL,
 )
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
@@ -68,7 +70,7 @@ def _entry(
     web_fetch_enabled: bool = False,
 ) -> MockConfigEntry:
     """Return a config entry with one AI task subentry."""
-    subentry_data: dict[str, object] = {CONF_MODEL: "task-model"}
+    subentry_data: dict[str, object] = {CONF_MODEL_SUBENTRY_ID: "task_model_profile"}
     if output_mode is not None:
         subentry_data[CONF_OUTPUT_MODE] = output_mode
     if skills is not None:
@@ -88,6 +90,13 @@ def _entry(
             {
                 "data": subentry_data,
                 "subentry_type": SUBENTRY_TYPE_AI_TASK,
+                "title": "Task Model",
+                "unique_id": None,
+            },
+            {
+                "subentry_id": "task_model_profile",
+                "data": {CONF_NAME: "Task Model", CONF_MODEL: "task-model"},
+                "subentry_type": SUBENTRY_TYPE_MODEL,
                 "title": "Task Model",
                 "unique_id": None,
             },
@@ -274,7 +283,7 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
             return_value=object(),
         ),
         patch(
@@ -302,7 +311,7 @@ async def test_ai_task_runtime_passes_selected_skills_capabilities(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
             return_value=object(),
         ),
         patch(
@@ -338,7 +347,7 @@ async def test_ai_task_runtime_adds_web_fetch_capability(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
             return_value=object(),
         ),
         patch(
@@ -399,7 +408,7 @@ async def test_structured_data_task_returns_parsed_json(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
             return_value=object(),
         ),
         patch(
@@ -430,7 +439,7 @@ async def test_structured_data_task_rejects_malformed_json(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
             return_value=object(),
         ),
         patch(
@@ -456,7 +465,7 @@ async def test_structured_data_task_rejects_schema_mismatch(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
             return_value=object(),
         ),
         patch(

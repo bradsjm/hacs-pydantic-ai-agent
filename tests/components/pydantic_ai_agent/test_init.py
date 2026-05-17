@@ -1,6 +1,7 @@
 """Test setup for Pydantic AI Agent."""
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 import sys
 import tomllib
@@ -34,6 +35,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
+    CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
     DOMAIN,
@@ -43,6 +45,7 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
+    SUBENTRY_TYPE_MODEL,
 )
 from custom_components.pydantic_ai_agent.logfire_support import (
     configure_logfire,
@@ -61,12 +64,32 @@ _EXPLICIT_RUNTIME_REQUIREMENTS = {
 }
 
 
-def _conversation_subentry() -> dict[str, object]:
+def _model_subentry(
+    subentry_id: str = "model_profile_1",
+    *,
+    name: str = "Fast GPT",
+    model: str = "gpt-test",
+    model_settings: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Return a model profile config subentry."""
+    data: dict[str, object] = {CONF_NAME: name, CONF_MODEL: model}
+    if model_settings is not None:
+        data[CONF_MODEL_SETTINGS] = dict(model_settings)
+    return {
+        "subentry_id": subentry_id,
+        "data": data,
+        "subentry_type": SUBENTRY_TYPE_MODEL,
+        "title": name,
+        "unique_id": None,
+    }
+
+
+def _conversation_subentry(model_subentry_id: str = "model_profile_1") -> dict[str, object]:
     """Return a conversation config subentry."""
     return {
         "data": {
             CONF_AGENT_NAME: "Kitchen Agent",
-            CONF_MODEL: "gpt-test",
+            CONF_MODEL_SUBENTRY_ID: model_subentry_id,
         },
         "subentry_type": SUBENTRY_TYPE_CONVERSATION,
         "title": "Kitchen Agent",
@@ -74,9 +97,11 @@ def _conversation_subentry() -> dict[str, object]:
     }
 
 
-def _ai_task_subentry(output_mode: str | None = None) -> dict[str, object]:
+def _ai_task_subentry(
+    output_mode: str | None = None, model_subentry_id: str = "task_model_profile"
+) -> dict[str, object]:
     """Return an AI task data config subentry."""
-    data = {CONF_MODEL: "task-model"}
+    data = {CONF_MODEL_SUBENTRY_ID: model_subentry_id}
     if output_mode is not None:
         data[CONF_OUTPUT_MODE] = output_mode
     return {
@@ -140,7 +165,15 @@ def test_runtime_requirements_are_explicit_for_home_assistant_installer() -> Non
 async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
     """Test setup stores provider runtime data."""
     entry = _entry(
-        (_conversation_subentry(), _ai_task_subentry(), _mcp_server_subentry())
+        (
+            _model_subentry(),
+            _model_subentry(
+                "task_model_profile", name="Task Model", model="task-model"
+            ),
+            _conversation_subentry(),
+            _ai_task_subentry(),
+            _mcp_server_subentry(),
+        )
     )
     entry.add_to_hass(hass)
 
@@ -173,6 +206,7 @@ async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
     probe_model.assert_has_awaits(
         [
             call(hass, entry.data, "gpt-test", {}),
+            call(hass, entry.data, "task-model", {}),
             call(
                 hass,
                 entry.data,
@@ -182,7 +216,7 @@ async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
             ),
         ]
     )
-    assert probe_model.await_count == 2
+    assert probe_model.await_count == 3
 
 
 async def test_setup_entry_configures_logfire_before_platform_setup(
@@ -198,7 +232,7 @@ async def test_setup_entry_configures_logfire_before_platform_setup(
         SimpleNamespace(configure=configure),
     )
     entry = _entry(
-        (_conversation_subentry(),),
+        (_model_subentry(), _conversation_subentry()),
         {CONF_LOGFIRE_TOKEN: " lf-token ", CONF_LOGFIRE_INCLUDE_CONTENT: True},
     )
     entry.add_to_hass(hass)
@@ -244,7 +278,9 @@ async def test_setup_entry_does_not_configure_logfire_when_validation_fails(
         "logfire",
         SimpleNamespace(configure=configure),
     )
-    entry = _entry((_conversation_subentry(),), {CONF_LOGFIRE_TOKEN: "lf-token"})
+    entry = _entry(
+        (_model_subentry(), _conversation_subentry()), {CONF_LOGFIRE_TOKEN: "lf-token"}
+    )
     entry.add_to_hass(hass)
 
     with patch(
@@ -391,7 +427,14 @@ async def test_setup_entry_validates_ai_task_selected_output_mode(
     hass: HomeAssistant,
 ) -> None:
     """Test setup validates AI task models with their configured output mode."""
-    entry = _entry((_ai_task_subentry(OUTPUT_MODE_NATIVE),))
+    entry = _entry(
+        (
+            _model_subentry(
+                "task_model_profile", name="Task Model", model="task-model"
+            ),
+            _ai_task_subentry(OUTPUT_MODE_NATIVE),
+        )
+    )
     entry.add_to_hass(hass)
 
     with (
@@ -407,13 +450,19 @@ async def test_setup_entry_validates_ai_task_selected_output_mode(
     ):
         assert await async_setup_entry(hass, entry)
 
-    probe_model.assert_awaited_once_with(
-        hass,
-        entry.data,
-        "task-model",
-        {},
-        structured_output_mode=OUTPUT_MODE_NATIVE,
+    probe_model.assert_has_awaits(
+        [
+            call(hass, entry.data, "task-model", {}),
+            call(
+                hass,
+                entry.data,
+                "task-model",
+                {},
+                structured_output_mode=OUTPUT_MODE_NATIVE,
+            ),
+        ]
     )
+    assert probe_model.await_count == 2
 
 
 def test_platforms_include_conversation_and_ai_task() -> None:
@@ -427,36 +476,24 @@ async def test_setup_entry_validates_each_subentry_model_settings(
     """Test setup validates each unique model and settings combination."""
     entry = _entry(
         (
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL: "shared-model",
-                    CONF_MODEL_SETTINGS: {"timeout": 20.0},
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Garage Agent",
-                    CONF_MODEL: "shared-model",
-                    CONF_MODEL_SETTINGS: {"extra_body": {"service_tier": "flex"}},
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Garage Agent",
-                "unique_id": None,
-            },
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Garage Agent Copy",
-                    CONF_MODEL: "shared-model",
-                    CONF_MODEL_SETTINGS: {"extra_body": {"service_tier": "flex"}},
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Garage Agent Copy",
-                "unique_id": None,
-            },
+            _model_subentry(
+                "first_model",
+                name="First Model",
+                model="shared-model",
+                model_settings={"timeout": 20.0},
+            ),
+            _model_subentry(
+                "second_model",
+                name="Second Model",
+                model="shared-model",
+                model_settings={"extra_body": {"service_tier": "flex"}},
+            ),
+            _model_subentry(
+                "duplicate_model",
+                name="Duplicate Model",
+                model="shared-model",
+                model_settings={"extra_body": {"service_tier": "flex"}},
+            ),
         )
     )
     entry.add_to_hass(hass)
@@ -571,7 +608,7 @@ async def test_setup_entry_validation_errors(
     exception_type: type[Exception],
 ) -> None:
     """Test setup maps stored model validation errors to config-entry errors."""
-    entry = _entry((_conversation_subentry(),))
+    entry = _entry((_model_subentry(), _conversation_subentry()))
     entry.add_to_hass(hass)
 
     with patch(
@@ -597,7 +634,7 @@ async def test_setup_entry_model_errors_keep_entry_reconfigurable(
     reason: str,
 ) -> None:
     """Test subentry model errors do not block reconfiguration."""
-    entry = _entry((_conversation_subentry(),))
+    entry = _entry((_model_subentry(), _conversation_subentry()))
     entry.add_to_hass(hass)
 
     with (
@@ -620,7 +657,7 @@ async def test_setup_entry_model_errors_create_repair_issue(
     hass: HomeAssistant,
 ) -> None:
     """Test reconfigurable model errors create a repair issue."""
-    entry = _entry((_conversation_subentry(),))
+    entry = _entry((_model_subentry(), _conversation_subentry()))
     entry.add_to_hass(hass)
 
     with (
@@ -638,7 +675,7 @@ async def test_setup_entry_model_errors_create_repair_issue(
         assert await async_setup_entry(hass, entry)
 
     issue = ir.async_get(hass).async_get_issue(
-        DOMAIN, model_validation_issue_id(entry, "gpt-test", {})
+        DOMAIN, model_validation_issue_id(entry, "model_profile_1", {})
     )
     assert issue is not None
     assert issue.translation_key == "model_validation_failed"
@@ -654,12 +691,12 @@ async def test_setup_entry_success_clears_model_validation_repair_issue(
     hass: HomeAssistant,
 ) -> None:
     """Test successful setup clears stale model validation repair issues."""
-    entry = _entry((_conversation_subentry(),))
+    entry = _entry((_model_subentry(), _conversation_subentry()))
     entry.add_to_hass(hass)
     ir.async_create_issue(
         hass,
         DOMAIN,
-        model_validation_issue_id(entry, "gpt-test", {}),
+        model_validation_issue_id(entry, "model_profile_1", {}),
         is_fixable=True,
         severity=ir.IssueSeverity.ERROR,
         translation_key="model_validation_failed",
@@ -680,7 +717,7 @@ async def test_setup_entry_success_clears_model_validation_repair_issue(
 
     assert (
         ir.async_get(hass).async_get_issue(
-            DOMAIN, model_validation_issue_id(entry, "gpt-test", {})
+            DOMAIN, model_validation_issue_id(entry, "model_profile_1", {})
         )
         is None
     )
@@ -694,26 +731,18 @@ async def test_setup_entry_model_errors_create_separate_repair_issues_for_settin
     second_settings = {"extra_body": {"service_tier": "flex"}}
     entry = _entry(
         (
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL: "shared-model",
-                    CONF_MODEL_SETTINGS: first_settings,
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Garage Agent",
-                    CONF_MODEL: "shared-model",
-                    CONF_MODEL_SETTINGS: second_settings,
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Garage Agent",
-                "unique_id": None,
-            },
+            _model_subentry(
+                "first_model",
+                name="First Model",
+                model="shared-model",
+                model_settings=first_settings,
+            ),
+            _model_subentry(
+                "second_model",
+                name="Second Model",
+                model="shared-model",
+                model_settings=second_settings,
+            ),
         )
     )
     entry.add_to_hass(hass)
@@ -738,13 +767,13 @@ async def test_setup_entry_model_errors_create_separate_repair_issues_for_settin
     issue_registry = ir.async_get(hass)
     assert (
         issue_registry.async_get_issue(
-            DOMAIN, model_validation_issue_id(entry, "shared-model", first_settings)
+            DOMAIN, model_validation_issue_id(entry, "first_model", first_settings)
         )
         is not None
     )
     assert (
         issue_registry.async_get_issue(
-            DOMAIN, model_validation_issue_id(entry, "shared-model", second_settings)
+            DOMAIN, model_validation_issue_id(entry, "second_model", second_settings)
         )
         is not None
     )
@@ -756,22 +785,12 @@ async def test_setup_entry_transient_failure_preserves_existing_repair_issue(
     """Test transient setup failures do not clear unrelated model repairs."""
     entry = _entry(
         (
-            {
-                "data": {CONF_AGENT_NAME: "First Agent", CONF_MODEL: "first-model"},
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "First Agent",
-                "unique_id": None,
-            },
-            {
-                "data": {CONF_AGENT_NAME: "Bad Agent", CONF_MODEL: "bad-model"},
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Bad Agent",
-                "unique_id": None,
-            },
+            _model_subentry("first_model", name="First Model", model="first-model"),
+            _model_subentry("bad_model", name="Bad Model", model="bad-model"),
         )
     )
     entry.add_to_hass(hass)
-    issue_id = model_validation_issue_id(entry, "bad-model", {})
+    issue_id = model_validation_issue_id(entry, "bad_model", {})
     ir.async_create_issue(
         hass,
         DOMAIN,

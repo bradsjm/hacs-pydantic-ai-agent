@@ -68,7 +68,9 @@ from .const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+    CONF_CONFIGURE_OUTPUT_MODE,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
+    CONF_FALLBACK_MODEL_SUBENTRY_IDS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MCP_ALLOWED_TOOLS,
@@ -77,6 +79,7 @@ from .const import (
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
+    CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
     CONF_PROMPT,
     CONF_PROVIDER_MODE,
@@ -98,6 +101,7 @@ from .const import (
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
+    SUBENTRY_TYPE_MODEL,
     default_conversation_options,
 )
 from .mcp import (
@@ -279,32 +283,7 @@ async def _validate_configured_models_for_provider_update(
     skip_reconfigurable_model_errors: bool,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Probe existing subentry models against new provider settings."""
-    seen: set[tuple[str, str, str | None]] = set()
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type not in (
-            SUBENTRY_TYPE_CONVERSATION,
-            SUBENTRY_TYPE_AI_TASK,
-        ):
-            continue
-        if not (model := subentry.data.get(CONF_MODEL)):
-            continue
-        if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
-            settings = subentry.data.get(CONF_MODEL_SETTINGS)
-            model_settings = dict(settings) if isinstance(settings, Mapping) else {}
-            output_mode = None
-        else:
-            model_settings = {}
-            output_mode = normalise_structured_output_mode(
-                subentry.data.get(CONF_OUTPUT_MODE)
-            )
-        dedupe_key = (
-            model,
-            json.dumps(model_settings, sort_keys=True, separators=(",", ":")),
-            output_mode,
-        )
-        if dedupe_key in seen:
-            continue
-        seen.add(dedupe_key)
+    for model, model_settings, output_mode in _configured_model_probes(entry):
         try:
             if output_mode is None:
                 await async_probe_model(hass, data, model, model_settings)
@@ -328,6 +307,56 @@ async def _validate_configured_models_for_provider_update(
             _LOGGER.exception("Unexpected exception validating provider")
             return {"base": "unknown"}, {}
     return {}, {}
+
+
+def _configured_model_probes(
+    entry: ConfigEntry,
+) -> list[tuple[str, dict[str, Any], str | None]]:
+    """Return unique model profile probes required by configured subentries."""
+    model_profiles = {
+        subentry.subentry_id: subentry
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_MODEL
+    }
+    probes: list[tuple[str, dict[str, Any], str | None]] = []
+    seen: set[tuple[str, str, str | None]] = set()
+
+    def add_probe(profile_id: str, output_mode: str | None) -> None:
+        profile = model_profiles.get(profile_id)
+        if profile is None:
+            return
+        model = profile.data.get(CONF_MODEL)
+        if not isinstance(model, str) or not model:
+            return
+        settings = profile.data.get(CONF_MODEL_SETTINGS)
+        model_settings = dict(settings) if isinstance(settings, Mapping) else {}
+        dedupe_key = (
+            model,
+            json.dumps(model_settings, sort_keys=True, separators=(",", ":")),
+            output_mode,
+        )
+        if dedupe_key in seen:
+            return
+        seen.add(dedupe_key)
+        probes.append((model, model_settings, output_mode))
+
+    for profile_id in model_profiles:
+        add_probe(profile_id, None)
+
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
+            continue
+        output_mode = normalise_structured_output_mode(subentry.data.get(CONF_OUTPUT_MODE))
+        profile_ids = _selected_model_profile_ids(subentry.data)
+        if not profile_ids:
+            _LOGGER.warning(
+                "Skipping legacy AI task subentry without model profile during provider validation: %s",
+                subentry.subentry_id,
+            )
+            continue
+        for profile_id in profile_ids:
+            add_probe(profile_id, output_mode)
+    return probes
 
 
 def _provider_validation_placeholders(
@@ -739,6 +768,47 @@ def _mcp_server_select_options(entry: ConfigEntry | None) -> list[SelectOptionDi
     ]
 
 
+def _model_profile_select_options(entry: ConfigEntry | None) -> list[SelectOptionDict]:
+    """Return configured model profiles as select options."""
+    if entry is None:
+        return []
+    return [
+        SelectOptionDict(label=subentry.title, value=subentry.subentry_id)
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_MODEL
+    ]
+
+
+def _selected_model_profile_ids(data: Mapping[str, Any]) -> list[str]:
+    """Return selected primary plus ordered fallback profile IDs."""
+    primary_id = data.get(CONF_MODEL_SUBENTRY_ID)
+    if not isinstance(primary_id, str) or not primary_id:
+        return []
+    fallback_ids = data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+    if isinstance(fallback_ids, str) or not isinstance(fallback_ids, list):
+        fallback_ids = []
+    return [primary_id, *[item for item in fallback_ids if isinstance(item, str)]]
+
+
+def _selected_model_profile_error(entry: ConfigEntry, data: Mapping[str, Any]) -> str | None:
+    """Return a form error for missing or invalid model profile selections."""
+    primary_id = data.get(CONF_MODEL_SUBENTRY_ID)
+    if not isinstance(primary_id, str) or not primary_id:
+        return "model_profile_required"
+    fallback_ids = data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+    if isinstance(fallback_ids, str) or not isinstance(fallback_ids, list):
+        fallback_ids = []
+    if primary_id in fallback_ids:
+        return "primary_model_in_fallbacks"
+    if len(fallback_ids) != len(set(fallback_ids)):
+        return "duplicate_fallback_model"
+    for profile_id in [primary_id, *fallback_ids]:
+        subentry = entry.subentries.get(profile_id)
+        if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_MODEL:
+            return "model_profile_not_found"
+    return None
+
+
 def _skill_select_options(available_skills: list[AvailableSkill]) -> list[SelectOptionDict]:
     """Return discovered skills as select options."""
     return [
@@ -799,9 +869,7 @@ def _conversation_schema(
 ) -> vol.Schema:
     """Return the conversation subentry schema, pruning unavailable HA APIs."""
     options = dict(options or {})
-    model_settings = options.get(CONF_MODEL_SETTINGS, {})
-    if not isinstance(model_settings, Mapping):
-        model_settings = {}
+    model_options = _model_profile_select_options(entry)
     hass_apis: list[SelectOptionDict] = []
     valid_api_ids: set[str] = set()
     for api in llm.async_get_apis(hass):
@@ -817,35 +885,41 @@ def _conversation_schema(
             CONF_AGENT_NAME,
             default=options.get(CONF_AGENT_NAME, DEFAULT_AGENT_NAME),
         ): str,
-        vol.Required(
-            CONF_MODEL,
-            default=options.get(CONF_MODEL, ""),
-        ): TextSelector(TextSelectorConfig()),
         vol.Optional(
             CONF_PROMPT,
             description={"suggested_value": options.get(CONF_PROMPT, "")},
         ): TemplateSelector(),
-        vol.Optional(
-            _MODEL_SETTING_TEMPERATURE,
-            description={
-                "suggested_value": model_settings.get(_MODEL_SETTING_TEMPERATURE)
-            },
-        ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)),
-        vol.Optional(
-            _MODEL_SETTING_THINKING,
-            description={"suggested_value": _format_thinking_value(model_settings)},
-        ): SelectSelector(
-            SelectSelectorConfig(
-                options=list(_THINKING_OPTIONS),
-                mode=SelectSelectorMode.DROPDOWN,
-                translation_key=_MODEL_SETTING_THINKING,
-            )
-        ),
-        vol.Optional(
-            CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
-            default=False,
-        ): BooleanSelector(),
     }
+    if model_options:
+        configured_profiles = {option["value"] for option in model_options}
+        schema[
+            vol.Required(
+                CONF_MODEL_SUBENTRY_ID,
+                default=options.get(CONF_MODEL_SUBENTRY_ID, ""),
+            )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=model_options,
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key=CONF_MODEL_SUBENTRY_ID,
+            )
+        )
+        schema[
+            vol.Optional(
+                CONF_FALLBACK_MODEL_SUBENTRY_IDS,
+                default=[
+                    profile_id
+                    for profile_id in options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+                    if profile_id in configured_profiles
+                ],
+            )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=model_options,
+                multiple=True,
+                translation_key=CONF_FALLBACK_MODEL_SUBENTRY_IDS,
+            )
+        )
     api_schema_key = vol.Optional(CONF_LLM_HASS_API)
     if CONF_LLM_HASS_API in options:
         api_schema_key = vol.Optional(
@@ -894,6 +968,45 @@ def _conversation_schema(
             SelectSelectorConfig(options=skill_options, multiple=True)
         )
     return vol.Schema(schema)
+
+
+def _model_profile_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
+    """Return the model profile subentry schema."""
+    options = dict(options or {})
+    model_settings = options.get(CONF_MODEL_SETTINGS, {})
+    if not isinstance(model_settings, Mapping):
+        model_settings = {}
+    return vol.Schema(
+        {
+            vol.Required(CONF_NAME, default=options.get(CONF_NAME, "")): TextSelector(
+                TextSelectorConfig()
+            ),
+            vol.Required(
+                CONF_MODEL,
+                default=options.get(CONF_MODEL, ""),
+            ): TextSelector(TextSelectorConfig()),
+            vol.Optional(
+                _MODEL_SETTING_TEMPERATURE,
+                description={
+                    "suggested_value": model_settings.get(_MODEL_SETTING_TEMPERATURE)
+                },
+            ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)),
+            vol.Optional(
+                _MODEL_SETTING_THINKING,
+                description={"suggested_value": _format_thinking_value(model_settings)},
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=list(_THINKING_OPTIONS),
+                    mode=SelectSelectorMode.DROPDOWN,
+                    translation_key=_MODEL_SETTING_THINKING,
+                )
+            ),
+            vol.Optional(
+                CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+                default=False,
+            ): BooleanSelector(),
+        }
+    )
 
 
 def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
@@ -1159,14 +1272,11 @@ def _conversation_data_from_user_input(
     *,
     available_skills: list[AvailableSkill] | None = None,
 ) -> dict[str, Any]:
-    """Return conversation fields, leaving model settings for separate storage."""
+    """Return conversation fields with model profile references."""
     data = {
         key: value
         for key, value in user_input.items()
-        if key
-        not in _MAIN_MODEL_SETTING_KEYS
-        | _ADVANCED_MODEL_SETTING_KEYS
-        | {CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS}
+        if key not in {CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS}
     }
     if not data.get(CONF_LLM_HASS_API):
         data.pop(CONF_LLM_HASS_API, None)
@@ -1174,6 +1284,8 @@ def _conversation_data_from_user_input(
         data.pop(CONF_MCP_SERVER_IDS, None)
     if not data.get(CONF_WEB_FETCH_ENABLED):
         data.pop(CONF_WEB_FETCH_ENABLED, None)
+    if not data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS):
+        data.pop(CONF_FALLBACK_MODEL_SUBENTRY_IDS, None)
     if CONF_SKILLS in user_input and available_skills:
         data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
             user_input, options, available_skills
@@ -1210,6 +1322,18 @@ def _store_model_settings(
         data.pop(CONF_MODEL_SETTINGS, None)
 
 
+def _model_profile_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
+    """Return model profile data excluding form-only setting fields."""
+    return {
+        key: value
+        for key, value in user_input.items()
+        if key
+        not in _MAIN_MODEL_SETTING_KEYS
+        | _ADVANCED_MODEL_SETTING_KEYS
+        | {CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS}
+    }
+
+
 def _ai_task_data_schema(
     options: Mapping[str, Any] | None = None,
     entry: ConfigEntry | None = None,
@@ -1217,16 +1341,43 @@ def _ai_task_data_schema(
 ) -> vol.Schema:
     """Return the AI task data subentry schema."""
     options = dict(options or {})
+    model_options = _model_profile_select_options(entry)
     schema: VolDictType = {
-        vol.Required(
-            CONF_MODEL,
-            default=options.get(CONF_MODEL, ""),
-        ): TextSelector(TextSelectorConfig()),
         vol.Optional(
-            CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+            CONF_CONFIGURE_OUTPUT_MODE,
             default=False,
         ): BooleanSelector(),
     }
+    if model_options:
+        configured_profiles = {option["value"] for option in model_options}
+        schema[
+            vol.Required(
+                CONF_MODEL_SUBENTRY_ID,
+                default=options.get(CONF_MODEL_SUBENTRY_ID, ""),
+            )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=model_options,
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key=CONF_MODEL_SUBENTRY_ID,
+            )
+        )
+        schema[
+            vol.Optional(
+                CONF_FALLBACK_MODEL_SUBENTRY_IDS,
+                default=[
+                    profile_id
+                    for profile_id in options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+                    if profile_id in configured_profiles
+                ],
+            )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=model_options,
+                multiple=True,
+                translation_key=CONF_FALLBACK_MODEL_SUBENTRY_IDS,
+            )
+        )
     mcp_servers = _mcp_server_select_options(entry)
     if mcp_servers:
         mcp_schema_key = vol.Optional(CONF_MCP_SERVER_IDS)
@@ -1301,7 +1452,7 @@ def _ai_task_data_from_user_input(
     data = {
         key: value
         for key, value in user_input.items()
-        if key != CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS
+        if key != CONF_CONFIGURE_OUTPUT_MODE
     }
     data.setdefault(
         CONF_OUTPUT_MODE,
@@ -1311,6 +1462,8 @@ def _ai_task_data_from_user_input(
         data.pop(CONF_MCP_SERVER_IDS, None)
     if not data.get(CONF_WEB_FETCH_ENABLED):
         data.pop(CONF_WEB_FETCH_ENABLED, None)
+    if not data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS):
+        data.pop(CONF_FALLBACK_MODEL_SUBENTRY_IDS, None)
     if CONF_SKILLS in user_input and available_skills:
         data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
             user_input, options, available_skills
@@ -1615,10 +1768,161 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> dict[str, type[ConfigSubentryFlow]]:
         """Return subentries supported by this integration."""
         return {
+            SUBENTRY_TYPE_MODEL: ModelSubentryFlowHandler,
             SUBENTRY_TYPE_CONVERSATION: ConversationSubentryFlowHandler,
             SUBENTRY_TYPE_AI_TASK: AITaskDataSubentryFlowHandler,
             SUBENTRY_TYPE_MCP_SERVER: MCPServerSubentryFlowHandler,
         }
+
+
+class ModelSubentryFlowHandler(ConfigSubentryFlow):
+    """Flow for managing provider-owned model profiles."""
+
+    _options: dict[str, Any]
+    _pending_data: dict[str, Any]
+    _pending_model_settings: dict[str, Any]
+
+    @property
+    def _is_new(self) -> bool:
+        """Return if this flow creates a new subentry."""
+        return self.source == SOURCE_USER
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Add a model profile subentry."""
+        self._options = {}
+        return await self.async_step_init(user_input)
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Reconfigure a model profile subentry."""
+        self._options = self._get_reconfigure_subentry().data.copy()
+        return await self.async_step_init(user_input)
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Manage model profile options."""
+        entry = self._get_entry()
+        if entry.state != ConfigEntryState.LOADED:
+            return self.async_abort(reason="entry_not_loaded")
+
+        if user_input is not None:
+            main_settings, errors, cleared = _parse_model_settings(
+                user_input, _MAIN_MODEL_SETTING_KEYS
+            )
+            data = _model_profile_data_from_user_input(user_input)
+            existing_settings = _model_settings_from_options(self._options)
+            model_settings = _merge_model_settings(
+                existing_settings, main_settings, cleared
+            )
+            if errors:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_model_profile_schema(
+                        self._options | data | {CONF_MODEL_SETTINGS: model_settings}
+                    ),
+                    errors=errors,
+                )
+            if user_input.get(CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS):
+                self._pending_data = data
+                self._pending_model_settings = model_settings
+                return self.async_show_form(
+                    step_id="model_settings",
+                    data_schema=_model_settings_schema(
+                        self._options | {CONF_MODEL_SETTINGS: model_settings}
+                    ),
+                )
+            return await self._async_finish_model_profile(data, model_settings)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_model_profile_schema(self._options),
+        )
+
+    async def async_step_model_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Manage advanced model profile settings."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="model_settings",
+                data_schema=_model_settings_schema(
+                    self._options | {CONF_MODEL_SETTINGS: self._pending_model_settings}
+                ),
+            )
+        advanced_settings, errors, cleared = _parse_model_settings(
+            user_input, _ADVANCED_MODEL_SETTING_KEYS
+        )
+        cleared.update(_ADVANCED_MODEL_SETTING_KEYS - user_input.keys())
+        model_settings = _merge_model_settings(
+            self._pending_model_settings, advanced_settings, cleared
+        )
+        if errors:
+            return self.async_show_form(
+                step_id="model_settings",
+                data_schema=_model_settings_schema(
+                    self._options | {CONF_MODEL_SETTINGS: model_settings}
+                ),
+                errors=errors,
+            )
+        return await self._async_finish_model_profile(
+            self._pending_data, model_settings, error_step="model_settings"
+        )
+
+    async def _async_finish_model_profile(
+        self,
+        data: dict[str, Any],
+        model_settings: Mapping[str, Any],
+        error_step: str = "init",
+    ) -> SubentryFlowResult:
+        """Probe the model profile, then create or update the subentry."""
+        entry = self._get_entry()
+        _store_model_settings(data, model_settings)
+        try:
+            await async_probe_model(
+                self.hass,
+                entry.data,
+                data[CONF_MODEL],
+                data.get(CONF_MODEL_SETTINGS, {}),
+            )
+        except ProviderValidationError as err:
+            _log_provider_validation_failure(
+                step="model profile subentry", model_name=data[CONF_MODEL], err=err
+            )
+            schema = (
+                _model_settings_schema(self._options | {CONF_MODEL_SETTINGS: model_settings})
+                if error_step == "model_settings"
+                else _model_profile_schema(self._options | data)
+            )
+            return self.async_show_form(
+                step_id=error_step,
+                data_schema=schema,
+                errors={"base": err.reason},
+                description_placeholders=_provider_validation_placeholders(err),
+            )
+        except Exception:
+            _LOGGER.exception("Unexpected exception validating model profile")
+            schema = (
+                _model_settings_schema(self._options | {CONF_MODEL_SETTINGS: model_settings})
+                if error_step == "model_settings"
+                else _model_profile_schema(self._options | data)
+            )
+            return self.async_show_form(
+                step_id=error_step,
+                data_schema=schema,
+                errors={"base": "unknown"},
+            )
+        if self._is_new:
+            return self.async_create_entry(title=data[CONF_NAME], data=data)
+        return self.async_update_and_abort(
+            entry,
+            self._get_reconfigure_subentry(),
+            title=data[CONF_NAME],
+            data=data,
+        )
 
 
 class ConversationSubentryFlowHandler(ConfigSubentryFlow):
@@ -1626,7 +1930,6 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
 
     _options: dict[str, Any]
     _pending_conversation_data: dict[str, Any]
-    _pending_model_settings: dict[str, Any]
 
     @property
     def _is_new(self) -> bool:
@@ -1654,32 +1957,26 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
         entry = self._get_entry()
         if entry.state != ConfigEntryState.LOADED:
             return self.async_abort(reason="entry_not_loaded")
+        if not _model_profile_select_options(entry):
+            return self.async_abort(reason="no_models_configured")
         available_skills = await async_available_skills(self.hass, entry.data)
 
         if user_input is not None:
-            main_settings, errors, cleared = _parse_model_settings(
-                user_input, _MAIN_MODEL_SETTING_KEYS
-            )
             data = _conversation_data_from_user_input(
                 user_input,
                 self._options,
                 available_skills=available_skills,
             )
-            existing_settings = _model_settings_from_options(self._options)
-            model_settings = _merge_model_settings(
-                existing_settings, main_settings, cleared
-            )
-            if errors:
-                form_options = data | {CONF_MODEL_SETTINGS: model_settings}
+            if model_error := _selected_model_profile_error(entry, data):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_conversation_schema(
                         self.hass,
-                        self._options | form_options,
+                        self._options | data,
                         entry,
                         available_skills,
                     ),
-                    errors=errors,
+                    errors={CONF_MODEL_SUBENTRY_ID: model_error},
                 )
             if mcp_error := _selected_mcp_server_error(entry, data):
                 return self.async_show_form(
@@ -1692,16 +1989,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                     ),
                     errors={CONF_MCP_SERVER_IDS: mcp_error},
                 )
-            if user_input.get(CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS):
-                self._pending_conversation_data = data
-                self._pending_model_settings = model_settings
-                return self.async_show_form(
-                    step_id="model_settings",
-                    data_schema=_model_settings_schema(
-                        self._options | {CONF_MODEL_SETTINGS: model_settings}
-                    ),
-                )
-            return await self._async_finish_conversation_options(data, model_settings)
+            return self._async_finish_conversation_options(data)
 
         return self.async_show_form(
             step_id="init",
@@ -1710,99 +1998,12 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
             ),
         )
 
-    async def async_step_model_settings(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Manage advanced model settings."""
-        if user_input is None:
-            return self.async_show_form(
-                step_id="model_settings",
-                data_schema=_model_settings_schema(
-                    self._options | {CONF_MODEL_SETTINGS: self._pending_model_settings}
-                ),
-            )
-        advanced_settings, errors, cleared = _parse_model_settings(
-            user_input, _ADVANCED_MODEL_SETTING_KEYS
-        )
-        cleared.update(_ADVANCED_MODEL_SETTING_KEYS - user_input.keys())
-        model_settings = _merge_model_settings(
-            self._pending_model_settings, advanced_settings, cleared
-        )
-        if errors:
-            return self.async_show_form(
-                step_id="model_settings",
-                data_schema=_model_settings_schema(
-                    self._options | {CONF_MODEL_SETTINGS: model_settings}
-                ),
-                errors=errors,
-            )
-        return await self._async_finish_conversation_options(
-            self._pending_conversation_data, model_settings, error_step="model_settings"
-        )
-
-    async def _async_finish_conversation_options(
+    def _async_finish_conversation_options(
         self,
         data: dict[str, Any],
-        model_settings: Mapping[str, Any],
-        error_step: str = "init",
     ) -> SubentryFlowResult:
-        """Probe the selected chat model, then create or update the subentry."""
+        """Create or update the conversation subentry."""
         entry = self._get_entry()
-        available_skills = await async_available_skills(self.hass, entry.data)
-        _store_model_settings(data, model_settings)
-        if mcp_error := _selected_mcp_server_error(entry, data):
-            return self.async_show_form(
-                step_id="init",
-                data_schema=_conversation_schema(
-                    self.hass, self._options | data, entry, available_skills
-                ),
-                errors={CONF_MCP_SERVER_IDS: mcp_error},
-            )
-        try:
-            await async_probe_model(
-                self.hass,
-                entry.data,
-                data[CONF_MODEL],
-                data.get(CONF_MODEL_SETTINGS, {}),
-            )
-        except ProviderValidationError as err:
-            _log_provider_validation_failure(
-                step="conversation subentry", model_name=data[CONF_MODEL], err=err
-            )
-            if error_step == "model_settings":
-                return self.async_show_form(
-                    step_id="model_settings",
-                    data_schema=_model_settings_schema(
-                        self._options | {CONF_MODEL_SETTINGS: model_settings}
-                    ),
-                    errors={"base": err.reason},
-                    description_placeholders=_provider_validation_placeholders(err),
-                )
-            return self.async_show_form(
-                step_id="init",
-                data_schema=_conversation_schema(
-                    self.hass, self._options | data, entry, available_skills
-                ),
-                errors={"base": err.reason},
-                description_placeholders=_provider_validation_placeholders(err),
-            )
-        except Exception:
-            _LOGGER.exception("Unexpected exception validating conversation model")
-            if error_step == "model_settings":
-                return self.async_show_form(
-                    step_id="model_settings",
-                    data_schema=_model_settings_schema(
-                        self._options | {CONF_MODEL_SETTINGS: model_settings}
-                    ),
-                    errors={"base": "unknown"},
-                )
-            return self.async_show_form(
-                step_id="init",
-                data_schema=_conversation_schema(
-                    self.hass, self._options | data, entry, available_skills
-                ),
-                errors={"base": "unknown"},
-            )
         if self._is_new:
             return self.async_create_entry(
                 title=data[CONF_AGENT_NAME],
@@ -1848,6 +2049,8 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
         entry = self._get_entry()
         if entry.state != ConfigEntryState.LOADED:
             return self.async_abort(reason="entry_not_loaded")
+        if not _model_profile_select_options(entry):
+            return self.async_abort(reason="no_models_configured")
         available_skills = await async_available_skills(self.hass, entry.data)
 
         if user_input is not None:
@@ -1856,6 +2059,14 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 self._options,
                 available_skills=available_skills,
             )
+            if model_error := _selected_model_profile_error(entry, data):
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_ai_task_data_schema(
+                        self._options | data, entry, available_skills
+                    ),
+                    errors={CONF_MODEL_SUBENTRY_ID: model_error},
+                )
             if mcp_error := _selected_mcp_server_error(entry, data):
                 return self.async_show_form(
                     step_id="init",
@@ -1864,7 +2075,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                     ),
                     errors={CONF_MCP_SERVER_IDS: mcp_error},
                 )
-            if user_input.get(CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS):
+            if user_input.get(CONF_CONFIGURE_OUTPUT_MODE):
                 self._pending_ai_task_data = data
                 return self.async_show_form(
                     step_id="output_mode",
@@ -1914,16 +2125,22 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 ),
                 errors={CONF_MCP_SERVER_IDS: mcp_error},
             )
+        current_model = ""
         try:
-            await async_probe_model(
-                self.hass,
-                entry.data,
-                data[CONF_MODEL],
-                structured_output_mode=data[CONF_OUTPUT_MODE],
-            )
+            for profile_id in _selected_model_profile_ids(data):
+                profile = entry.subentries[profile_id]
+                settings = profile.data.get(CONF_MODEL_SETTINGS)
+                current_model = profile.data[CONF_MODEL]
+                await async_probe_model(
+                    self.hass,
+                    entry.data,
+                    current_model,
+                    dict(settings) if isinstance(settings, Mapping) else {},
+                    structured_output_mode=data[CONF_OUTPUT_MODE],
+                )
         except ProviderValidationError as err:
             _log_provider_validation_failure(
-                step="AI task subentry", model_name=data[CONF_MODEL], err=err
+                step="AI task subentry", model_name=current_model, err=err
             )
             if error_step == "output_mode":
                 return self.async_show_form(
@@ -1956,11 +2173,13 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 errors={"base": "unknown"},
             )
         if self._is_new:
-            return self.async_create_entry(title=data[CONF_MODEL], data=data)
+            primary = entry.subentries[data[CONF_MODEL_SUBENTRY_ID]]
+            return self.async_create_entry(title=primary.title, data=data)
+        primary = entry.subentries[data[CONF_MODEL_SUBENTRY_ID]]
         return self.async_update_and_abort(
             entry,
             self._get_reconfigure_subentry(),
-            title=data[CONF_MODEL],
+            title=primary.title,
             data=data,
         )
 

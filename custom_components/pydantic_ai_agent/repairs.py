@@ -17,11 +17,11 @@ LOGFIRE_TOKEN_CONFLICT_ISSUE_ID = "logfire_token_conflict"
 
 
 def model_validation_issue_id(
-    entry: ConfigEntry, model: str, model_settings: Mapping[str, Any]
+    entry: ConfigEntry, model_subentry_id: str, model_settings: Mapping[str, Any]
 ) -> str:
     """Return a stable issue ID for one entry/model validation failure."""
     issue_key = json.dumps(
-        {"model": model, "model_settings": model_settings},
+        {"model_subentry_id": model_subentry_id, "model_settings": model_settings},
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -33,6 +33,7 @@ def model_validation_issue_id(
 def async_create_model_validation_issue(
     hass: HomeAssistant,
     entry: ConfigEntry,
+    model_subentry_id: str,
     model: str,
     model_settings: Mapping[str, Any],
     err: ProviderValidationError,
@@ -41,7 +42,7 @@ def async_create_model_validation_issue(
     ir.async_create_issue(
         hass,
         DOMAIN,
-        model_validation_issue_id(entry, model, model_settings),
+        model_validation_issue_id(entry, model_subentry_id, model_settings),
         data={
             "entry_id": entry.entry_id,
             "model": model,
@@ -95,12 +96,13 @@ def async_delete_logfire_token_conflict_issue(
 def async_delete_model_validation_issue(
     hass: HomeAssistant,
     entry: ConfigEntry,
+    model_subentry_id: str,
     model: str,
     model_settings: Mapping[str, Any],
 ) -> None:
     """Delete one model validation repair issue for a successful validation."""
     ir.async_delete_issue(
-        hass, DOMAIN, model_validation_issue_id(entry, model, model_settings)
+        hass, DOMAIN, model_validation_issue_id(entry, model_subentry_id, model_settings)
     )
 
 

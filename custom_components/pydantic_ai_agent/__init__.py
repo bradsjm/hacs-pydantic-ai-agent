@@ -19,8 +19,10 @@ from .config_flow import ProviderValidationError, async_probe_model
 from .const import (
     CONF_BASE_URL,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
+    CONF_FALLBACK_MODEL_SUBENTRY_IDS,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
+    CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
     CONF_SKILLS_FOLDER,
@@ -28,6 +30,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MODEL,
 )
 from .logfire_support import (
     configure_logfire,
@@ -248,25 +251,25 @@ def _normalise_model_settings(settings: Mapping[str, Any]) -> str:
 
 def _configured_subentry_models(
     entry: PydanticAIAgentConfigEntry,
-) -> list[tuple[str, dict[str, Any], str | None]]:
+) -> list[tuple[str, str, dict[str, Any], str | None]]:
     """Return unique model probes needed before the entry can load."""
-    models: list[tuple[str, dict[str, Any], str | None]] = []
+    model_profiles = {
+        subentry.subentry_id: subentry
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_MODEL
+    }
+    models: list[tuple[str, str, dict[str, Any], str | None]] = []
     seen: set[tuple[str, str, str | None]] = set()
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type not in (
-            SUBENTRY_TYPE_CONVERSATION,
-            SUBENTRY_TYPE_AI_TASK,
-        ):
-            continue
-        if not (model := subentry.data.get(CONF_MODEL)):
-            continue
-        if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
-            settings = subentry.data.get(CONF_MODEL_SETTINGS)
-            model_settings = dict(settings) if isinstance(settings, Mapping) else {}
-            output_mode = None
-        else:
-            model_settings = {}
-            output_mode = structured_output_mode(subentry.data.get(CONF_OUTPUT_MODE))
+
+    def add_model(profile_id: str, output_mode: str | None) -> None:
+        profile = model_profiles.get(profile_id)
+        if profile is None:
+            return
+        model = profile.data.get(CONF_MODEL)
+        if not isinstance(model, str) or not model:
+            return
+        settings = profile.data.get(CONF_MODEL_SETTINGS)
+        model_settings = dict(settings) if isinstance(settings, Mapping) else {}
         dedupe_key = (
             model,
             _normalise_model_settings(model_settings),
@@ -275,9 +278,41 @@ def _configured_subentry_models(
         # Several subentries can target the same model/settings pair, so probe
         # each unique runtime capability once during setup.
         if dedupe_key in seen:
-            continue
+            return
         seen.add(dedupe_key)
-        models.append((model, model_settings, output_mode))
+        models.append((profile_id, model, model_settings, output_mode))
+
+    for profile_id in model_profiles:
+        add_model(profile_id, None)
+
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type not in (SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK):
+            continue
+        primary_id = subentry.data.get(CONF_MODEL_SUBENTRY_ID)
+        if not isinstance(primary_id, str) or not primary_id:
+            _LOGGER.warning(
+                "Skipping legacy %s subentry without model profile: %s",
+                subentry.subentry_type,
+                subentry.subentry_id,
+            )
+            continue
+        fallback_ids = subentry.data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+        if isinstance(fallback_ids, str) or not isinstance(fallback_ids, list):
+            fallback_ids = []
+        output_mode = (
+            structured_output_mode(subentry.data.get(CONF_OUTPUT_MODE))
+            if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
+            else None
+        )
+        for profile_id in [primary_id, *fallback_ids]:
+            if profile_id not in model_profiles:
+                _LOGGER.warning(
+                    "Skipping stale model profile reference %s for subentry %s",
+                    profile_id,
+                    subentry.subentry_id,
+                )
+                continue
+            add_model(profile_id, output_mode)
     return models
 
 
@@ -301,12 +336,15 @@ async def _async_validate_configured_models(
     """Probe configured models and surface user-fixable failures as repairs."""
     current_issue_ids: set[str] = set()
     for (
+        model_subentry_id,
         model,
         model_settings,
         output_mode,
     ) in _configured_subentry_models(entry):
         repair_settings = _repair_issue_model_settings(model_settings, output_mode)
-        current_issue_ids.add(model_validation_issue_id(entry, model, repair_settings))
+        current_issue_ids.add(
+            model_validation_issue_id(entry, model_subentry_id, repair_settings)
+        )
         try:
             if output_mode is None:
                 await async_probe_model(hass, entry.data, model, model_settings)
@@ -332,9 +370,11 @@ async def _async_validate_configured_models(
                 raise ConfigEntryAuthFailed(err.message) from err
             if err.reason in _RECONFIGURABLE_MODEL_FAILURE_REASONS:
                 async_create_model_validation_issue(
-                    hass, entry, model, repair_settings, err
+                    hass, entry, model_subentry_id, model, repair_settings, err
                 )
                 continue
             raise ConfigEntryNotReady(err.message) from err
-        async_delete_model_validation_issue(hass, entry, model, repair_settings)
+        async_delete_model_validation_issue(
+            hass, entry, model_subentry_id, model, repair_settings
+        )
     async_delete_stale_model_validation_issues(hass, entry, current_issue_ids)

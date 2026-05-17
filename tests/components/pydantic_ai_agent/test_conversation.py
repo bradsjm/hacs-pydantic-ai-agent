@@ -23,6 +23,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MODEL,
+    CONF_MODEL_SUBENTRY_ID,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_WEB_FETCH_ENABLED,
@@ -30,6 +31,7 @@ from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MODEL,
 )
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
@@ -109,7 +111,7 @@ def _entry(
     """Return a config entry with one conversation subentry."""
     subentry_data: dict[str, object] = {
         CONF_AGENT_NAME: "Kitchen Agent",
-        CONF_MODEL: "gpt-test",
+        CONF_MODEL_SUBENTRY_ID: "model_profile_1",
     }
     if llm_hass_api is not None:
         subentry_data[CONF_LLM_HASS_API] = llm_hass_api
@@ -132,6 +134,13 @@ def _entry(
                 "data": subentry_data,
                 "subentry_type": SUBENTRY_TYPE_CONVERSATION,
                 "title": "Kitchen Agent",
+                "unique_id": None,
+            },
+            {
+                "subentry_id": "model_profile_1",
+                "data": {CONF_NAME: "Fast GPT", CONF_MODEL: "gpt-test"},
+                "subentry_type": SUBENTRY_TYPE_MODEL,
+                "title": "Fast GPT",
                 "unique_id": None,
             },
         ),
@@ -170,7 +179,7 @@ def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigE
             {
                 "data": {
                     CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL: "gpt-kitchen",
+                    CONF_MODEL_SUBENTRY_ID: "kitchen_model",
                 },
                 "subentry_type": SUBENTRY_TYPE_CONVERSATION,
                 "title": "Kitchen Agent",
@@ -179,10 +188,24 @@ def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigE
             {
                 "data": {
                     CONF_AGENT_NAME: "Garage Agent",
-                    CONF_MODEL: "gpt-garage",
+                    CONF_MODEL_SUBENTRY_ID: "garage_model",
                 },
                 "subentry_type": SUBENTRY_TYPE_CONVERSATION,
                 "title": "Garage Agent",
+                "unique_id": None,
+            },
+            {
+                "subentry_id": "kitchen_model",
+                "data": {CONF_NAME: "Kitchen Model", CONF_MODEL: "gpt-kitchen"},
+                "subentry_type": SUBENTRY_TYPE_MODEL,
+                "title": "Kitchen Model",
+                "unique_id": None,
+            },
+            {
+                "subentry_id": "garage_model",
+                "data": {CONF_NAME: "Garage Model", CONF_MODEL: "gpt-garage"},
+                "subentry_type": SUBENTRY_TYPE_MODEL,
+                "title": "Garage Model",
                 "unique_id": None,
             },
         ),
@@ -331,7 +354,7 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     )
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
             return_value=object(),
         ) as chat_model,
         patch(
@@ -349,7 +372,7 @@ async def test_conversation_entity_id_dispatches_assist_agent(
 
     assert result.response.speech["plain"]["speech"] == "runtime response"
     assert chat_model.call_args is not None
-    assert chat_model.call_args.kwargs["model_name"] == "gpt-kitchen"
+    assert chat_model.call_args.args[2].model_name == "gpt-kitchen"
     assert agent_class.call_args.kwargs["output_type"] is str
     _assert_context_management_capability(agent_class.call_args.kwargs["capabilities"])
 
@@ -376,7 +399,7 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
     )
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
             return_value=object(),
         ),
         patch(
@@ -427,7 +450,7 @@ async def test_conversation_runtime_adds_web_fetch_capability(
     )
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
             return_value=object(),
         ),
         patch(
@@ -486,7 +509,7 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
     agent = _Agent()
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
             return_value=object(),
         ),
         patch(
@@ -548,7 +571,7 @@ async def test_conversation_logfire_failures_do_not_block_agent_run(
     )
     with (
         patch(
-            "custom_components.pydantic_ai_agent.entity.openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
             return_value=object(),
         ),
         patch(

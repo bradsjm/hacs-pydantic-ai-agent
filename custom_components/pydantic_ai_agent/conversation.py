@@ -11,13 +11,13 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import PydanticAIAgentConfigEntry
 from .const import (
     CONF_AGENT_NAME,
-    CONF_MODEL,
     CONF_PROMPT,
     CONF_WEB_FETCH_ENABLED,
     DOMAIN,
     SUBENTRY_TYPE_CONVERSATION,
 )
 from .entity import PydanticAIBaseLLMEntity
+from .model_profiles import model_display_names, model_profile_chain
 
 
 async def async_setup_entry(
@@ -28,6 +28,10 @@ async def async_setup_entry(
     """Set up conversation entities."""
     for subentry_id, subentry in config_entry.subentries.items():
         if subentry.subentry_type != SUBENTRY_TYPE_CONVERSATION:
+            continue
+        try:
+            model_profile_chain(config_entry, subentry)
+        except Exception:
             continue
         async_add_entities(
             [PydanticAIConversationEntity(config_entry, subentry)],
@@ -64,9 +68,12 @@ class PydanticAIConversationEntity(
     @property
     def extra_state_attributes(self) -> dict[str, str | bool | list[str] | None]:
         """Return observability attributes."""
+        profiles = model_profile_chain(self.entry, self.subentry)
         return {
             "provider_mode": self.entry.runtime_data.provider_mode,
-            "model": self.subentry.data[CONF_MODEL],
+            "model": profiles[0].model_name,
+            "model_profile": profiles[0].title,
+            "fallback_model_profiles": model_display_names(profiles[1:]),
             "ha_tools_enabled": bool(self.subentry.data.get(CONF_LLM_HASS_API)),
             "ha_llm_api": self.subentry.data.get(CONF_LLM_HASS_API),
             "web_fetch_enabled": bool(

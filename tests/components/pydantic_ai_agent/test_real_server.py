@@ -48,6 +48,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
+    CONF_MODEL_SUBENTRY_ID,
     CONF_PROVIDER_MODE,
     DOMAIN,
     OUTPUT_MODE_TOOL,
@@ -55,6 +56,7 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
+    SUBENTRY_TYPE_MODEL,
 )
 from custom_components.pydantic_ai_agent.provider import openai_compatible_chat_model_from_config
 
@@ -404,8 +406,7 @@ def _conversation_subentry(
     """Return a real-server conversation subentry."""
     data: dict[str, object] = {
         CONF_AGENT_NAME: "Real Conversation Agent",
-        CONF_MODEL: real_server.model,
-        CONF_MODEL_SETTINGS: {"timeout": _REAL_SERVER_TIMEOUT},
+        CONF_MODEL_SUBENTRY_ID: "real_model_profile",
     }
     if llm_hass_api is not None:
         data[CONF_LLM_HASS_API] = llm_hass_api
@@ -422,8 +423,9 @@ def _conversation_subentry(
 
 def _ai_task_subentry(real_server: RealServerConfig) -> dict[str, object]:
     """Return a real-server AI task subentry."""
+    del real_server
     return {
-        "data": {CONF_MODEL: real_server.model},
+        "data": {CONF_MODEL_SUBENTRY_ID: "real_model_profile"},
         "subentry_type": SUBENTRY_TYPE_AI_TASK,
         "title": "Real AI Task",
         "unique_id": None,
@@ -432,9 +434,10 @@ def _ai_task_subentry(real_server: RealServerConfig) -> dict[str, object]:
 
 def _mcp_ai_task_subentry(real_server: RealServerConfig) -> dict[str, object]:
     """Return a real-server AI task subentry with MCP echo access."""
+    del real_server
     return {
         "data": {
-            CONF_MODEL: real_server.model,
+            CONF_MODEL_SUBENTRY_ID: "real_model_profile",
             CONF_MCP_SERVER_IDS: [_MCP_ECHO_SERVER_ID],
         },
         "subentry_type": SUBENTRY_TYPE_AI_TASK,
@@ -457,6 +460,21 @@ def _mcp_echo_subentry(mcp_echo_url: str) -> dict[str, object]:
     }
 
 
+def _model_subentry(real_server: RealServerConfig) -> dict[str, object]:
+    """Return a real-server model profile subentry."""
+    return {
+        "subentry_id": "real_model_profile",
+        "data": {
+            CONF_NAME: "Real Model Profile",
+            CONF_MODEL: real_server.model,
+            CONF_MODEL_SETTINGS: {"timeout": _REAL_SERVER_TIMEOUT},
+        },
+        "subentry_type": SUBENTRY_TYPE_MODEL,
+        "title": "Real Model Profile",
+        "unique_id": None,
+    }
+
+
 def _entry(
     real_server: RealServerConfig, *subentries: dict[str, object]
 ) -> MockConfigEntry:
@@ -466,7 +484,7 @@ def _entry(
         title="Real OpenAI-compatible Provider",
         data=real_server.provider_data,
         source=config_entries.SOURCE_USER,
-        subentries_data=subentries,
+        subentries_data=(_model_subentry(real_server), *subentries),
         options={},
         unique_id=None,
     )
