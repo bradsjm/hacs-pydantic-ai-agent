@@ -25,7 +25,7 @@ from .const import (
     SUBENTRY_TYPE_CONVERSATION,
 )
 from .metrics import AgentRunMetrics, metric_bool, metrics_signal
-from .entity import unique_id_for_subentry_entity
+from .entity import device_identifier_for_subentry, unique_id_for_subentry_entity
 from .model_profiles import model_profile_chain
 
 
@@ -128,10 +128,10 @@ class PydanticAIMetricBinarySensor(BinarySensorEntity):
         self.entity_description = description
         profiles = model_profile_chain(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry_entity(
-            subentry, description.key
+            entry, subentry, description.key
         )
         self._attr_device_info = dr.DeviceInfo(
-            identifiers={(DOMAIN, subentry.subentry_id)},
+            identifiers={device_identifier_for_subentry(entry, subentry)},
             name=_subentry_name(subentry),
             manufacturer="Pydantic AI",
             model=profiles[0].model_name,
@@ -178,10 +178,10 @@ class PydanticAIConfigBinarySensor(BinarySensorEntity):
         self.entity_description = description
         profiles = model_profile_chain(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry_entity(
-            subentry, description.key
+            entry, subentry, description.key
         )
         self._attr_device_info = dr.DeviceInfo(
-            identifiers={(DOMAIN, subentry.subentry_id)},
+            identifiers={device_identifier_for_subentry(entry, subentry)},
             name=_subentry_name(subentry),
             manufacturer="Pydantic AI",
             model=profiles[0].model_name,

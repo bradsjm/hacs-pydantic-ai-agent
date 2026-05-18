@@ -1891,7 +1891,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 data = _normalise_provider_data(user_input)
-                _validate_provider_data(data)
+                _validate_provider_data(self.hass, data)
             except ProviderValidationError as err:
                 errors["base"] = err.reason
                 description_placeholders = _provider_validation_placeholders(err)
@@ -1932,7 +1932,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reauth_entry()
         try:
             data = _normalise_provider_data(user_input)
-            _validate_provider_data(data)
+            _validate_provider_data(self.hass, data)
         except ProviderValidationError as err:
             return self.async_show_form(
                 step_id="reauth_confirm",
@@ -1988,7 +1988,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
 
         try:
             data = _normalise_provider_data(user_input)
-            _validate_provider_data(data)
+            _validate_provider_data(self.hass, data)
         except ProviderValidationError as err:
             return self.async_show_form(
                 step_id="reconfigure",

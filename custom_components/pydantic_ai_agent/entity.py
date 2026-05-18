@@ -130,9 +130,9 @@ class PydanticAIBaseLLMEntity:
         self.entry = entry
         self.subentry = subentry
         profiles = model_profile_chain(entry, subentry)
-        self._attr_unique_id = unique_id_for_subentry(subentry)
+        self._attr_unique_id = unique_id_for_subentry(entry, subentry)
         self._attr_device_info = dr.DeviceInfo(
-            identifiers={(DOMAIN, subentry.subentry_id)},
+            identifiers={device_identifier_for_subentry(entry, subentry)},
             name=name,
             manufacturer="Pydantic AI",
             model=profiles[0].model_name,
@@ -462,14 +462,38 @@ class PydanticAIBaseLLMEntity:
         )
 
 
-def unique_id_for_subentry(subentry: ConfigSubentry) -> str:
+def unique_id_for_subentry(
+    entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
+) -> str:
     """Return the unique ID for one subentry-backed entity."""
+    return f"{DOMAIN}_{entry.entry_id}_{subentry.subentry_type}_{subentry.subentry_id}"
+
+
+def unique_id_for_subentry_entity(
+    entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry, key: str
+) -> str:
+    """Return the unique ID for one subentry-backed diagnostic entity."""
+    return f"{unique_id_for_subentry(entry, subentry)}_{key}"
+
+
+def device_identifier_for_subentry(
+    entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
+) -> tuple[str, str]:
+    """Return the device identifier for one subentry-backed entity."""
+    return (
+        DOMAIN,
+        f"{entry.entry_id}:{subentry.subentry_type}:{subentry.subentry_id}",
+    )
+
+
+def legacy_unique_id_for_subentry(subentry: ConfigSubentry) -> str:
+    """Return the pre-entry-scoped unique ID for one subentry-backed entity."""
     return f"{DOMAIN}_{subentry.subentry_type}_{subentry.subentry_id}"
 
 
-def unique_id_for_subentry_entity(subentry: ConfigSubentry, key: str) -> str:
-    """Return the unique ID for one subentry-backed diagnostic entity."""
-    return f"{unique_id_for_subentry(subentry)}_{key}"
+def legacy_unique_id_for_subentry_entity(subentry: ConfigSubentry, key: str) -> str:
+    """Return the pre-entry-scoped unique ID for one diagnostic entity."""
+    return f"{legacy_unique_id_for_subentry(subentry)}_{key}"
 
 
 def _model_settings_with_chat_template_kwargs(
