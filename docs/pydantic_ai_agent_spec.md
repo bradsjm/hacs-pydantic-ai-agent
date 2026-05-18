@@ -13,9 +13,9 @@ flows, conversation and AI task entity registration, diagnostics, setup-time
 provider validation, repair issues for reconfigurable model validation failures,
 Pydantic AI `Agent` runtime execution, Home Assistant LLM tool conversion,
 remote Streamable HTTP MCP toolsets, per-agent/per-task WebFetch capability,
-local `pydantic-ai-skills` capabilities, ChatLog history conversion, and
-Pydantic AI message adaptation through the in-repo OpenAI-compatible
-Chat Completions client and Pydantic AI model/provider adapter.
+local `pydantic-ai-skills` capabilities, ChatLog history conversion, in-repo
+OpenAI-compatible Chat Completions and Responses adapters, and native Anthropic
+and Google Gemini model construction through Pydantic AI provider/model classes.
 
 Known remaining gaps include runtime capability detection beyond validation
 probes, translation coverage tests, cleanup/cancellation lifecycle tests, and
@@ -196,11 +196,13 @@ the integration subentry actions.
 
 Example instances:
 
-| Provider connection title | Provider mode     | Example model   | HA tools |
-| ------------------------- | ----------------- | --------------- | -------- |
-| `OpenAI Home`             | OpenAI-compatible | `gpt-5.1`       | Enabled  |
-| `Local LLM`               | OpenAI-compatible | `llama-3.3-70b` | Disabled |
-| `Admin Provider`          | OpenAI-compatible | `gpt-5.1`       | Enabled  |
+| Provider connection title | Provider mode                 | Example model       | HA tools |
+| ------------------------- | ----------------------------- | ------------------- | -------- |
+| `OpenAI Home`             | OpenAI-compatible Completions | `gpt-5.1`           | Enabled  |
+| `Local LLM`               | OpenAI-compatible Completions | `llama-3.3-70b`     | Disabled |
+| `Admin Provider`          | OpenAI-compatible Responses   | `gpt-5.1`           | Enabled  |
+| `Anthropic Home`          | Anthropic                     | `claude-sonnet-4-5` | Enabled  |
+| `Gemini Home`             | Google Gemini                 | `gemini-2.5-pro`    | Enabled  |
 
 Each conversation subentry appears as a separate selectable conversation agent in
 Home Assistant Assist configuration. Changing one conversation subentry must not
@@ -346,15 +348,21 @@ independent instance.
 | Field                    | Required | Stored in                        | Notes                                                             |
 | ------------------------ | -------- | -------------------------------- | ----------------------------------------------------------------- |
 | Provider connection name | Yes      | Config entry title/data          | User-facing name for the provider connection.                     |
-| Provider mode            | Yes      | Data                             | `openai_compatible_completions` or `openai_compatible_responses`. |
+| Provider mode            | Yes      | Data                             | One implemented provider mode.                                    |
 | API key                  | Yes      | Data                             | Credential used for provider validation and requests.             |
-| Base URL                 | No       | Data                             | Defaults to `https://api.openai.com/v1` when omitted.             |
+| Base URL                 | No       | Data                             | Optional provider endpoint override.                              |
 | Logfire token            | No       | Data                             | Enables optional Logfire tracing for the provider entry.          |
 | Skills folder            | No       | Data                             | Must be `/config/skills` or a subfolder when configured.          |
 | Initial agent name       | No       | Conversation subentry title/data | Collected by the conversation subentry flow.                      |
 | AI task name             | Yes      | AI task subentry title/data      | Collected by the AI task subentry flow.                           |
 | Language model profile   | No       | Conversation/AI task subentry    | Selected and validated by subentry flows.                         |
 | HA LLM API               | No       | Conversation subentry data       | Tool access is enabled when this selector has values.             |
+
+Provider mode values are `openai_compatible_completions`,
+`openai_compatible_responses`, `anthropic`, and `google_gemini`.
+OpenAI-compatible modes default to `https://api.openai.com/v1` when `base_url`
+is omitted. Native Anthropic and Google Gemini modes use their hosted APIs when
+`base_url` is omitted.
 
 Provider-specific required fields belong in the config flow when the instance
 cannot be validated or used without them.
@@ -802,6 +810,13 @@ Implemented provider modes:
   with optional custom URL.
 - `openai_compatible_responses`: OpenAI-compatible Responses provider with
   optional custom URL.
+- `anthropic`: native Anthropic provider using Pydantic AI's Anthropic
+  model/provider classes, explicit config-entry API key credentials, optional
+  custom base URL, and Home Assistant's shared async HTTP client.
+- `google_gemini`: native Google Gemini Developer API provider using Pydantic
+  AI's Google model/provider classes, explicit config-entry API key credentials,
+  optional custom base URL, and Home Assistant's shared async HTTP client. Vertex
+  AI, Google Cloud IAM, and service-account auth are not implemented.
 
 Each provider mode must define:
 
@@ -813,14 +828,26 @@ Each provider mode must define:
 - Reasoning/thinking support status.
 - Supported portable and provider-specific options.
 
-Future provider modes may include Anthropic, Google, local providers, or other
-Pydantic AI-supported model backends once their configuration and event semantics
-are explicitly specified.
+Future provider modes may include local providers, Google Cloud/Vertex AI, or
+other Pydantic AI-supported model backends once their configuration, dependency,
+credential, and event semantics are explicitly specified.
 
-The current OpenAI-compatible modes are implemented by
+The OpenAI-compatible modes are implemented by
 `openai_compatible_client/` and `openai_compatible_adapter/`, not by the
 OpenAI SDK-backed Pydantic AI classes. See
 `docs/openai_compatible_provider_design.md` for rationale and adapter details.
+Native Anthropic and Google Gemini modes use Pydantic AI's public provider/model
+classes directly with explicit Home Assistant config-entry credentials. Pydantic
+AI `provider:model` strings are accepted only as provider-matching model
+identifiers; runtime construction must not rely on environment-variable
+credentials or implicit provider inference.
+
+Model listing is provider-specific and best-effort. OpenAI-compatible modes use
+the OpenAI-compatible `/models` response shape, Anthropic uses Anthropic's model
+listing endpoint, and Google Gemini uses the Gemini model listing endpoint and
+filters for models advertising `generateContent`. Model-list failures must fall
+back to manual model entry; the selected model is still validated by the provider
+probe.
 
 ### Capability Detection and Shape Validation
 
@@ -1058,12 +1085,14 @@ custom_components/pydantic_ai_agent/
 - `requirements`: pinned or constrained Pydantic AI dependencies compatible with
   the target Home Assistant dependency constraints. For Home Assistant 2026.5.1,
   executable dependencies include `pydantic-ai-slim==1.97.0`,
-  `logfire==4.33.0`, `pydantic-ai-skills==0.10.0`, `tiktoken>=0.12.0`,
+  `anthropic>=0.97.0`, `google-genai>=1.70.0`, `logfire==4.33.0`,
+  `pydantic-ai-skills==0.10.0`, `tiktoken>=0.12.0`,
   `fastmcp-slim[client,server]>=3.3.0`, and `markdownify>=1.2` in both
   `pyproject.toml` and `manifest.json`. These supply the in-repo
-  OpenAI-compatible provider path, remote MCP support, WebFetch content
-  conversion, token counting, optional Logfire tracing, and local skill
-  capabilities without depending on the OpenAI SDK.
+  OpenAI-compatible provider path, native Anthropic and Google Gemini providers,
+  remote MCP support, WebFetch content conversion, token counting, optional
+  Logfire tracing, and local skill capabilities without depending on the OpenAI
+  SDK.
 - `documentation`: repository documentation URL once known.
 - `issue_tracker`: repository issue URL once known.
 - `codeowners`: repository owner(s) once known.

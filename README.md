@@ -12,6 +12,10 @@ Implemented capabilities include:
 - OpenAI-compatible provider connections using the in-repo
   `OpenAICompatibleChatModel` / `OpenAICompatibleProvider` and Home
   Assistant's shared async HTTP client. The OpenAI SDK is not required.
+- Native Anthropic and Google Gemini provider connections using Pydantic AI's
+  provider/model classes with Home Assistant-managed credentials and HTTP
+  clients. Google support is for the Gemini Developer API, not Vertex AI or
+  Google Cloud IAM.
 - Multiple configurable Assist conversation agents per provider connection.
 - Home Assistant control tools for conversation agents when an LLM API is
   selected for that agent.
@@ -56,14 +60,27 @@ This integration requires Home Assistant 2026.5.1 or newer.
 
 1. Go to Settings > Devices & services.
 2. Add `Pydantic AI Agent`.
-3. Configure an OpenAI-compatible provider connection with an API key.
-4. Enter a custom OpenAI-compatible base URL when needed, such as
-   `http://localhost:11434/v1`. If no base URL is entered, the provider uses
-   `https://api.openai.com/v1`.
+3. Choose a provider mode and enter the API key for that provider connection.
+   Supported modes are OpenAI-compatible Chat Completions,
+   OpenAI-compatible Responses, Anthropic, and Google Gemini.
+4. Enter a custom base URL when needed. OpenAI-compatible providers default to
+   `https://api.openai.com/v1`; Anthropic and Google Gemini use their hosted API
+   endpoints when no custom base URL is configured.
 5. Add subentries for the agents and tool sources you want to expose.
 
 Provider-level settings are shared by all subentries under that provider
 connection. Per-agent and per-task settings are stored on their own subentries.
+Model profile subentries can use provider-specific model IDs. Anthropic entries
+also accept `anthropic:<model>` identifiers, and Google Gemini entries also
+accept `google:<model>` or `google-gla:<model>` identifiers. A prefixed model ID
+must match the parent provider mode. Provider credentials are always read from
+the Home Assistant config entry, not from environment variables.
+
+Model discovery is provider-specific. OpenAI-compatible modes use the
+OpenAI-compatible `/models` shape, Anthropic uses Anthropic's model listing API,
+and Google Gemini lists Gemini models that support `generateContent`. If model
+listing fails or a provider omits a model, the model profile form falls back to
+manual model entry and the selected model is still validated by a provider probe.
 
 ### Conversation Agents
 
@@ -152,9 +169,9 @@ Model, permission, provider-configuration, or streaming-capability failures that
 can be fixed by reconfiguration are surfaced as Home Assistant repair issues
 without preventing the provider entry from loading.
 
-OpenAI-compatible provider validation uses a short streamed model probe, but
-runtime conversation responses are still returned to Home Assistant as
-non-streamed results.
+Provider validation uses a short streamed Pydantic AI model probe, but runtime
+conversation responses are still returned to Home Assistant as non-streamed
+results.
 
 Diagnostics redact API keys, Logfire tokens, prompts, sensitive model settings,
 provider headers, MCP URLs, and MCP headers. Runtime diagnostics expose only safe
@@ -256,10 +273,11 @@ Use Python 3.14.2 or newer.
 
 Runtime dependencies are declared in both `pyproject.toml` and
 `custom_components/pydantic_ai_agent/manifest.json`. The integration uses
-`pydantic-ai-slim`, `fastmcp-slim[client,server]`, and the in-repo
+`pydantic-ai-slim`, explicit native provider SDK dependencies for Anthropic and
+Google Gemini, `fastmcp-slim[client,server]`, and the in-repo
 OpenAI-compatible adapter instead of the OpenAI SDK.
 
-The adapter design is documented in
+The OpenAI-compatible adapter design is documented in
 `docs/openai_compatible_provider_design.md`.
 
 Install or update the development environment, then run the local checks:

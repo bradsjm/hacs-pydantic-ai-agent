@@ -6,6 +6,12 @@ This document describes the implemented in-repo OpenAI-compatible provider path
 for `custom_components/pydantic_ai_agent`. Current source, tests, manifests, and
 lockfiles remain authoritative when they differ from this design note.
 
+This document is scoped to the `openai_compatible_completions` and
+`openai_compatible_responses` provider modes. Native Anthropic and Google Gemini
+provider modes are separate runtime paths built in `provider.py` with Pydantic
+AI's public provider/model classes and explicit Home Assistant config-entry
+credentials.
+
 Implemented source areas:
 
 | Area                               | Source                                                           |
@@ -56,8 +62,8 @@ The in-repo adapter exists to:
 - Do not provide an OpenAI SDK compatibility shim.
 - Do not reintroduce `pydantic_ai.models.openai.OpenAIChatModel` or
   `pydantic_ai.providers.openai.OpenAIProvider` as runtime dependencies.
-- Do not implement arbitrary provider registries or provider APIs beyond the
-  explicit Completions and Responses modes.
+- Do not route native Anthropic or Google Gemini support through the in-repo
+  OpenAI-compatible adapter.
 - Do not simulate streaming by chunking completed non-streamed responses.
 - Do not add stdio, SSE, or local process MCP support as part of provider work.
 
@@ -70,6 +76,8 @@ Relevant dependency decisions:
 
 - `pydantic-ai-slim==1.97.0` supplies Pydantic AI core APIs without provider SDK
   extras.
+- `anthropic>=0.97.0` and `google-genai>=1.70.0` are declared explicitly for
+  native Anthropic and Google Gemini provider modes.
 - `fastmcp-slim[client,server]>=3.3.0` is required for remote MCP runtime use
   because Pydantic AI's `MCPToolset` imports FastMCP symbols that require the
   server extra, even when connecting to remote Streamable HTTP servers.
@@ -244,10 +252,12 @@ Conversation and AI task subentries store per-agent/task settings such as model,
 prompt, Home Assistant LLM API selection, MCP server selection, WebFetch,
 selected skills, model settings, and structured output mode.
 
-`provider.py` is the only runtime construction path for the OpenAI-compatible
-model. It builds `OpenAICompatibleProvider` with the entry API key, normalized
-base URL, and Home Assistant's shared async HTTP client, then returns
-`OpenAICompatibleChatModel`.
+`provider.py` is the only runtime construction path for provider models. For
+OpenAI-compatible modes, it builds `OpenAICompatibleProvider` with the entry API
+key, normalized base URL, optional provider headers, and Home Assistant's shared
+async HTTP client, then returns `OpenAICompatibleChatModel` or
+`OpenAICompatibleResponsesModel`. Native Anthropic and Google Gemini modes are
+constructed separately in the same module and do not use this adapter.
 
 `entity.py` constructs a Pydantic AI `Agent` per run using that model plus:
 
