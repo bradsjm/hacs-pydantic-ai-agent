@@ -341,7 +341,9 @@ def _assert_context_management_capability(capabilities: list[object]) -> None:
 
 def _thinking_capabilities(capabilities: list[object]) -> list[Thinking]:
     """Return Thinking capabilities from an Agent constructor call."""
-    return [capability for capability in capabilities if isinstance(capability, Thinking)]
+    return [
+        capability for capability in capabilities if isinstance(capability, Thinking)
+    ]
 
 
 def _state(hass: HomeAssistant, entity_id: str) -> str:

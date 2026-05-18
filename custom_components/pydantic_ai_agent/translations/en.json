@@ -1,363 +1,254 @@
 {
   "config": {
-    "step": {
-      "user": {
-        "title": "Connect Pydantic AI Agent",
-        "description": "Enter credentials for this model provider connection.",
-        "data": {
-          "name": "Provider connection name",
-          "provider_mode": "Provider mode",
-          "api_key": "API key",
-          "base_url": "Base URL",
-          "provider_headers": "Provider HTTP headers",
-          "logfire_token": "Logfire token",
-          "logfire_include_content": "Include prompt and response content in Logfire",
-          "skills_folder": "Skills folder",
-          "enable_skill_script_execution": "Allow skill script execution"
-        },
-        "data_description": {
-          "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
-          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format.",
-          "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
-          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
-          "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
-          "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust."
-        }
-      },
-      "reauth_confirm": {
-        "title": "Reauthenticate Pydantic AI Agent",
-        "description": "Update provider credentials.",
-        "data": {
-          "name": "Provider connection name",
-          "provider_mode": "Provider mode",
-          "api_key": "API key",
-          "base_url": "Base URL",
-          "provider_headers": "Provider HTTP headers",
-          "logfire_token": "Logfire token",
-          "logfire_include_content": "Include prompt and response content in Logfire",
-          "skills_folder": "Skills folder",
-          "enable_skill_script_execution": "Allow skill script execution"
-        },
-        "data_description": {
-          "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
-          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format.",
-          "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
-          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
-          "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
-          "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust."
-        }
-      },
-      "reconfigure": {
-        "title": "Reconfigure Pydantic AI Agent",
-        "description": "Update model provider credentials and connection settings.",
-        "data": {
-          "name": "Provider connection name",
-          "provider_mode": "Provider mode",
-          "api_key": "API key",
-          "base_url": "Base URL",
-          "provider_headers": "Provider HTTP headers",
-          "logfire_token": "Logfire token",
-          "logfire_include_content": "Include prompt and response content in Logfire",
-          "skills_folder": "Skills folder",
-          "enable_skill_script_execution": "Allow skill script execution"
-        },
-        "data_description": {
-          "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
-          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format.",
-          "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
-          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
-          "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
-          "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust."
-        }
-      }
+    "abort": {
+      "already_configured": "This provider connection is already configured.",
+      "cannot_connect": "{error_message}",
+      "entry_not_loaded": "The provider connection is not loaded.",
+      "invalid_auth": "{error_message}",
+      "invalid_model": "{error_message}",
+      "invalid_provider_config": "{error_message}",
+      "model_does_not_support_streaming": "{error_message}",
+      "permission_denied": "{error_message}",
+      "provider_error": "{error_message}",
+      "rate_limited": "{error_message}",
+      "reauth_successful": "Pydantic AI Agent was reauthenticated successfully.",
+      "reconfigure_successful": "Pydantic AI Agent was reconfigured successfully.",
+      "timeout": "{error_message}"
     },
     "error": {
       "cannot_connect": "{error_message}",
       "invalid_auth": "{error_message}",
       "invalid_base_url": "{error_message}",
       "invalid_model": "{error_message}",
-      "model_does_not_support_streaming": "{error_message}",
       "invalid_provider_config": "{error_message}",
       "invalid_provider_headers": "{error_message}",
       "invalid_skills_folder": "{error_message}",
+      "model_does_not_support_streaming": "{error_message}",
       "permission_denied": "{error_message}",
       "provider_error": "{error_message}",
       "rate_limited": "{error_message}",
       "timeout": "{error_message}",
       "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
     },
-    "abort": {
-      "already_configured": "This provider connection is already configured.",
-      "entry_not_loaded": "The provider connection is not loaded.",
-      "reauth_successful": "Pydantic AI Agent was reauthenticated successfully.",
-      "invalid_auth": "{error_message}",
-      "cannot_connect": "{error_message}",
-      "invalid_model": "{error_message}",
-      "model_does_not_support_streaming": "{error_message}",
-      "invalid_provider_config": "{error_message}",
-      "permission_denied": "{error_message}",
-      "provider_error": "{error_message}",
-      "rate_limited": "{error_message}",
-      "reconfigure_successful": "Pydantic AI Agent was reconfigured successfully.",
-      "timeout": "{error_message}"
+    "step": {
+      "reauth_confirm": {
+        "data": {
+          "api_key": "API key",
+          "base_url": "Base URL",
+          "enable_skill_script_execution": "Allow skill script execution",
+          "logfire_include_content": "Include prompt and response content in Logfire",
+          "logfire_token": "Logfire token",
+          "name": "Provider connection name",
+          "provider_headers": "Provider HTTP headers",
+          "provider_mode": "Provider mode",
+          "skills_folder": "Skills folder"
+        },
+        "data_description": {
+          "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
+          "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
+          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
+          "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
+          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format.",
+          "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders."
+        },
+        "description": "Update provider credentials.",
+        "title": "Reauthenticate Pydantic AI Agent"
+      },
+      "reconfigure": {
+        "data": {
+          "api_key": "API key",
+          "base_url": "Base URL",
+          "enable_skill_script_execution": "Allow skill script execution",
+          "logfire_include_content": "Include prompt and response content in Logfire",
+          "logfire_token": "Logfire token",
+          "name": "Provider connection name",
+          "provider_headers": "Provider HTTP headers",
+          "provider_mode": "Provider mode",
+          "skills_folder": "Skills folder"
+        },
+        "data_description": {
+          "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
+          "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
+          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
+          "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
+          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format.",
+          "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders."
+        },
+        "description": "Update model provider credentials and connection settings.",
+        "title": "Reconfigure Pydantic AI Agent"
+      },
+      "user": {
+        "data": {
+          "api_key": "API key",
+          "base_url": "Base URL",
+          "enable_skill_script_execution": "Allow skill script execution",
+          "logfire_include_content": "Include prompt and response content in Logfire",
+          "logfire_token": "Logfire token",
+          "name": "Provider connection name",
+          "provider_headers": "Provider HTTP headers",
+          "provider_mode": "Provider mode",
+          "skills_folder": "Skills folder"
+        },
+        "data_description": {
+          "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
+          "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
+          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
+          "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
+          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format.",
+          "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders."
+        },
+        "description": "Enter credentials for this model provider connection.",
+        "title": "Connect Pydantic AI Agent"
+      }
     }
   },
   "config_subentries": {
-    "model": {
-      "entry_type": "Language model profile",
-      "initiate_flow": {
-        "reconfigure": "Reconfigure language model profile",
-        "user": "Add language model profile"
-      },
-      "step": {
-        "init": {
-          "title": "Configure language model profile (Basic Settings)",
-          "description": "Create a reusable language model profile. Conversation agents and AI tasks select one primary profile and optional fallbacks.",
-          "data": {
-            "name": "Profile name",
-            "model": "Provider model name",
-            "temperature": "Temperature",
-            "thinking": "Thinking (Reasoning) Mode",
-            "configure_advanced_model_settings": "Configure advanced model settings"
-          },
-          "data_description": {
-            "model": "Model name as understood by the configured OpenAI-compatible provider.",
-            "temperature": "Controls response randomness. Leave empty to use the provider or model default.",
-            "thinking": "Optional reasoning effort if supported by the model (levels map to the closest available value).",
-            "configure_advanced_model_settings": "Open a second step for token and iteration limits, sampling, timeout, tool-call behavior, seed, penalties, and request body overrides."
-          }
-        },
-        "model_settings": {
-          "title": "Configure language model profile (Advanced model settings)",
-          "description": "Set advanced model parameter values for this profile. Leave fields empty to use provider defaults.",
-          "data": {
-            "max_tokens": "Max tokens",
-            "max_iterations": "Max iterations",
-            "top_p": "Top P",
-            "timeout": "Timeout",
-            "parallel_tool_calls": "Parallel tool calls",
-            "seed": "Seed",
-            "presence_penalty": "Presence penalty",
-            "frequency_penalty": "Frequency penalty",
-            "extra_body": "Extra body",
-            "chat_template_kwargs": "Chat template arguments"
-          },
-          "data_description": {
-            "max_tokens": "Maximum tokens the model may generate per response. Must be a positive integer.",
-            "max_iterations": "Maximum Pydantic AI agent request iterations for one run. Must be a positive integer. Leave empty to use the conversation or AI task default.",
-            "top_p": "Nucleus sampling value. Leave empty to use the provider default.",
-            "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
-            "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
-            "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
-            "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
-            "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
-            "extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated field.",
-            "chat_template_kwargs": "Optional chat template keyword arguments rendered from Home Assistant templates and sent as extra_body.chat_template_kwargs."
-          }
-        }
-      },
-      "error": {
-        "cannot_connect": "{error_message}",
-        "invalid_auth": "{error_message}",
-        "invalid_model": "{error_message}",
-        "model_does_not_support_streaming": "{error_message}",
-        "invalid_provider_config": "{error_message}",
-        "permission_denied": "{error_message}",
-        "chat_template_kwargs_conflict": "Use the dedicated Chat template arguments field instead of setting chat_template_kwargs in Extra body.",
-        "duplicate_key": "Enter each key only once.",
-        "invalid_chat_template": "Enter a valid Home Assistant template.",
-        "invalid_chat_template_key": "Enter a non-empty key for each chat template argument.",
-        "invalid_chat_template_kwargs": "Enter chat template arguments as key/template rows.",
-        "invalid_integer": "Enter an integer value in this field.",
-        "invalid_json": "Enter valid JSON.",
-        "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",
-        "invalid_number": "Enter a valid number in this field.",
-        "provider_error": "{error_message}",
-        "model_list_unavailable": "The provider model list could not be loaded. Enter the model name manually.",
-        "positive_number": "Enter a number greater than zero.",
-        "rate_limited": "{error_message}",
-        "timeout": "{error_message}",
-        "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
-      },
+    "ai_task_data": {
       "abort": {
         "entry_not_loaded": "The provider connection is not loaded.",
-        "reconfigure_successful": "Language model profile updated."
-      }
-    },
-    "ai_task_data": {
+        "no_models_configured": "Create a language model profile before adding an AI task.",
+        "reconfigure_successful": "AI task configuration updated."
+      },
       "entry_type": "AI task",
+      "error": {
+        "cannot_connect": "{error_message}",
+        "duplicate_fallback_model": "Select each fallback language model profile only once.",
+        "invalid_auth": "{error_message}",
+        "invalid_base_url": "{error_message}",
+        "invalid_model": "{error_message}",
+        "invalid_provider_config": "{error_message}",
+        "mcp_server_not_found": "Selected MCP server was not found.",
+        "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
+        "model_does_not_support_streaming": "{error_message}",
+        "model_profile_not_found": "Selected language model profile was not found.",
+        "model_profile_required": "Select a primary language model profile.",
+        "permission_denied": "{error_message}",
+        "primary_model_in_fallbacks": "The primary language model profile cannot also be selected as a fallback.",
+        "provider_error": "{error_message}",
+        "rate_limited": "{error_message}",
+        "timeout": "{error_message}",
+        "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details.",
+        "unsupported_output_mode": "{error_message}"
+      },
       "initiate_flow": {
         "reconfigure": "Reconfigure AI task",
         "user": "Add AI task"
       },
       "step": {
         "init": {
-          "title": "Configure AI task",
-          "description": "Name this AI task and choose its language model profile for Home Assistant data generation.",
           "data": {
             "ai_task_name": "Task name",
-            "model_subentry_id": "Primary language model profile",
             "fallback_model_subentry_ids": "Fallback language model profiles",
             "mcp_server_ids": "MCP servers",
-            "web_fetch_enabled": "Web fetch",
+            "model_subentry_id": "Primary language model profile",
+            "output_mode": "Structured output mode",
             "skills": "Skills",
-            "output_mode": "Structured output mode"
+            "web_fetch_enabled": "Web fetch"
           },
           "data_description": {
-            "mcp_server_ids": "Optional MCP servers this AI task may use. Only enabled tools will be made available.",
-            "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs.",
-            "skills": "Optional local skills this AI task may load from the provider skills folder.",
             "fallback_model_subentry_ids": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure.",
-            "output_mode": "Tool output is the default and works with providers that support tool calls. Native uses the provider's JSON schema support. Prompted asks for JSON in the prompt and validates the result."
-          }
+            "mcp_server_ids": "Optional MCP servers this AI task may use. Only enabled tools will be made available.",
+            "output_mode": "Tool output is the default and works with providers that support tool calls. Native uses the provider's JSON schema support. Prompted asks for JSON in the prompt and validates the result.",
+            "skills": "Optional local skills this AI task may load from the provider skills folder.",
+            "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs."
+          },
+          "description": "Name this AI task and choose its language model profile for Home Assistant data generation.",
+          "title": "Configure AI task"
         }
+      }
+    },
+    "conversation": {
+      "abort": {
+        "entry_not_loaded": "The provider connection is not loaded.",
+        "no_models_configured": "Create a language model profile before adding a conversation agent.",
+        "reconfigure_successful": "Conversation agent configuration updated."
       },
+      "entry_type": "Conversation agent",
       "error": {
         "cannot_connect": "{error_message}",
+        "duplicate_fallback_model": "Select each fallback language model profile only once.",
+        "duplicate_key": "Enter each key only once.",
         "invalid_auth": "{error_message}",
         "invalid_base_url": "{error_message}",
+        "invalid_integer": "Enter an integer value in this field.",
+        "invalid_json": "Enter valid JSON.",
+        "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",
         "invalid_model": "{error_message}",
-        "unsupported_output_mode": "{error_message}",
+        "invalid_number": "Enter a valid number in this field.",
+        "invalid_provider_config": "{error_message}",
         "mcp_server_not_found": "Selected MCP server was not found.",
         "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
-        "model_profile_required": "Select a primary language model profile.",
-        "model_profile_not_found": "Selected language model profile was not found.",
-        "primary_model_in_fallbacks": "The primary language model profile cannot also be selected as a fallback.",
-        "duplicate_fallback_model": "Select each fallback language model profile only once.",
         "model_does_not_support_streaming": "{error_message}",
-        "invalid_provider_config": "{error_message}",
+        "model_profile_not_found": "Selected language model profile was not found.",
+        "model_profile_required": "Select a primary language model profile.",
         "permission_denied": "{error_message}",
+        "positive_number": "Enter a number greater than zero.",
+        "primary_model_in_fallbacks": "The primary language model profile cannot also be selected as a fallback.",
         "provider_error": "{error_message}",
         "rate_limited": "{error_message}",
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
       },
-      "abort": {
-        "entry_not_loaded": "The provider connection is not loaded.",
-        "no_models_configured": "Create a language model profile before adding an AI task.",
-        "reconfigure_successful": "AI task configuration updated."
-      }
-    },
-    "conversation": {
-      "entry_type": "Conversation agent",
       "initiate_flow": {
         "reconfigure": "Reconfigure conversation agent",
         "user": "Add conversation agent"
       },
       "step": {
         "init": {
-          "title": "Configure conversation agent",
-          "description": "Choose the language model profile and Home Assistant tool access for this conversation agent.",
           "data": {
             "agent_name": "Agent name",
-            "model_subentry_id": "Primary language model profile",
             "fallback_model_subentry_ids": "Fallback language model profiles",
-            "prompt": "Instructions",
             "llm_hass_api": "Control Home Assistant",
             "mcp_server_ids": "MCP servers",
-            "web_fetch_enabled": "Web fetch",
-            "skills": "Skills"
+            "model_subentry_id": "Primary language model profile",
+            "prompt": "Instructions",
+            "skills": "Skills",
+            "web_fetch_enabled": "Web fetch"
           },
           "data_description": {
-            "prompt": "Instruct how the LLM should respond. This can be a template.",
+            "fallback_model_subentry_ids": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure.",
             "llm_hass_api": "Select which tools the model can use to interact with your devices and entities.",
             "mcp_server_ids": "Optional MCP servers this conversation agent may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
-            "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP.",
+            "prompt": "Instruct how the LLM should respond. This can be a template.",
             "skills": "Optional local skills this conversation agent may load from the provider skills folder.",
-            "fallback_model_subentry_ids": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure."
-          }
+            "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
+          },
+          "description": "Choose the language model profile and Home Assistant tool access for this conversation agent.",
+          "title": "Configure conversation agent"
         },
         "model_settings": {
-          "title": "Advanced model settings",
-          "description": "Set advanced values for this conversation agent. Leave fields empty to use provider defaults.",
           "data": {
-            "max_tokens": "Max tokens",
-            "top_p": "Top P",
-            "timeout": "Timeout",
-            "parallel_tool_calls": "Parallel tool calls",
-            "seed": "Seed",
-            "presence_penalty": "Presence penalty",
+            "extra_body": "Extra body",
             "frequency_penalty": "Frequency penalty",
-            "extra_body": "Extra body"
+            "max_tokens": "Max tokens",
+            "parallel_tool_calls": "Parallel tool calls",
+            "presence_penalty": "Presence penalty",
+            "seed": "Seed",
+            "timeout": "Timeout",
+            "top_p": "Top P"
           },
           "data_description": {
-            "max_tokens": "Maximum tokens the model may generate. Must be a positive integer.",
-            "top_p": "Nucleus sampling value. Leave empty to use the provider default.",
-            "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
-            "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
-            "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
-            "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
+            "extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted.",
             "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
-            "extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted."
-          }
+            "max_tokens": "Maximum tokens the model may generate. Must be a positive integer.",
+            "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
+            "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
+            "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
+            "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
+            "top_p": "Nucleus sampling value. Leave empty to use the provider default."
+          },
+          "description": "Set advanced values for this conversation agent. Leave fields empty to use provider defaults.",
+          "title": "Advanced model settings"
         }
-      },
-      "error": {
-        "cannot_connect": "{error_message}",
-        "invalid_auth": "{error_message}",
-        "invalid_base_url": "{error_message}",
-        "invalid_model": "{error_message}",
-        "mcp_server_not_found": "Selected MCP server was not found.",
-        "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
-        "model_profile_required": "Select a primary language model profile.",
-        "model_profile_not_found": "Selected language model profile was not found.",
-        "primary_model_in_fallbacks": "The primary language model profile cannot also be selected as a fallback.",
-        "duplicate_fallback_model": "Select each fallback language model profile only once.",
-        "model_does_not_support_streaming": "{error_message}",
-        "invalid_provider_config": "{error_message}",
-        "permission_denied": "{error_message}",
-        "duplicate_key": "Enter each key only once.",
-        "invalid_integer": "Enter an integer value in this field.",
-        "invalid_json": "Enter valid JSON.",
-        "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",
-        "invalid_number": "Enter a valid number in this field.",
-        "provider_error": "{error_message}",
-        "positive_number": "Enter a number greater than zero.",
-        "rate_limited": "{error_message}",
-        "timeout": "{error_message}",
-        "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
-      },
-      "abort": {
-        "entry_not_loaded": "The provider connection is not loaded.",
-        "no_models_configured": "Create a language model profile before adding a conversation agent.",
-        "reconfigure_successful": "Conversation agent configuration updated."
       }
     },
     "mcp_server": {
+      "abort": {
+        "already_configured": "This MCP server URL is already configured.",
+        "entry_not_loaded": "The provider connection is not loaded.",
+        "reconfigure_successful": "MCP server configuration updated. Assign it to conversation agents or AI tasks."
+      },
       "entry_type": "MCP tools server (HTTP)",
-      "initiate_flow": {
-        "reconfigure": "Reconfigure MCP server",
-        "user": "Add MCP server"
-      },
-      "step": {
-        "init": {
-          "title": "Configure remote MCP server (Step 1 of 2)",
-          "description": "Add a remote Streamable HTTP MCP server. Once added, you can assign it to conversation agents or AI tasks.",
-          "data": {
-            "name": "Server name",
-            "mcp_url": "MCP server URL",
-            "mcp_headers": "HTTP headers",
-            "mcp_include_return_schema": "Include tool return schemas",
-            "mcp_deferred_loading": "Defer tool loading"
-          },
-          "data_description": {
-            "mcp_url": "HTTP or HTTPS URL for the remote Streamable HTTP MCP endpoint. HTTPS is recommended when using headers or sensitive tool data.",
-            "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
-            "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility.",
-            "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools."
-          }
-        },
-        "tools": {
-          "title": "Discovered MCP tools (Step 2 of 2)",
-          "description": "Select tools you want to make available to conversation agents or AI tasks.",
-          "data": {
-            "mcp_allowed_tools": "MCP tool list:"
-          },
-          "data_description": {
-            "mcp_allowed_tools": "Only selected tools will be enabled for use with conversation agents or AI tasks."
-          }
-        }
-      },
       "error": {
         "cannot_connect": "{error_message}",
         "invalid_auth": "{error_message}",
@@ -369,44 +260,140 @@
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the MCP server. Check Home Assistant logs for details."
       },
-      "abort": {
-        "already_configured": "This MCP server URL is already configured.",
-        "entry_not_loaded": "The provider connection is not loaded.",
-        "reconfigure_successful": "MCP server configuration updated. Assign it to conversation agents or AI tasks."
-      }
-    }
-  },
-  "services": {
-    "list_mcp_tools": {
-      "name": "List MCP tools",
-      "description": "List cached MCP tools for a configured server, discovering them if no cache exists.",
-      "fields": {
-        "config_entry_id": {
-          "name": "Config entry",
-          "description": "Pydantic AI Agent provider connection config entry."
+      "initiate_flow": {
+        "reconfigure": "Reconfigure MCP server",
+        "user": "Add MCP server"
+      },
+      "step": {
+        "init": {
+          "data": {
+            "mcp_deferred_loading": "Defer tool loading",
+            "mcp_headers": "HTTP headers",
+            "mcp_include_return_schema": "Include tool return schemas",
+            "mcp_url": "MCP server URL",
+            "name": "Server name"
+          },
+          "data_description": {
+            "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools.",
+            "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
+            "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility.",
+            "mcp_url": "HTTP or HTTPS URL for the remote Streamable HTTP MCP endpoint. HTTPS is recommended when using headers or sensitive tool data."
+          },
+          "description": "Add a remote Streamable HTTP MCP server. Once added, you can assign it to conversation agents or AI tasks.",
+          "title": "Configure remote MCP server (Step 1 of 2)"
         },
-        "mcp_server_id": {
-          "name": "MCP server ID",
-          "description": "Optional MCP server subentry ID. If omitted, all configured MCP servers are listed."
+        "tools": {
+          "data": {
+            "mcp_allowed_tools": "MCP tool list:"
+          },
+          "data_description": {
+            "mcp_allowed_tools": "Only selected tools will be enabled for use with conversation agents or AI tasks."
+          },
+          "description": "Select tools you want to make available to conversation agents or AI tasks.",
+          "title": "Discovered MCP tools (Step 2 of 2)"
         }
       }
     },
-    "refresh_mcp_tools": {
-      "name": "Refresh MCP tools",
-      "description": "Reconnect to configured MCP servers and refresh their tool catalogs.",
-      "fields": {
-        "config_entry_id": {
-          "name": "Config entry",
-          "description": "Pydantic AI Agent provider connection config entry."
+    "model": {
+      "abort": {
+        "entry_not_loaded": "The provider connection is not loaded.",
+        "reconfigure_successful": "Language model profile updated."
+      },
+      "entry_type": "Language model profile",
+      "error": {
+        "cannot_connect": "{error_message}",
+        "chat_template_kwargs_conflict": "Use the dedicated Chat template arguments field instead of setting chat_template_kwargs in Extra body.",
+        "duplicate_key": "Enter each key only once.",
+        "invalid_auth": "{error_message}",
+        "invalid_chat_template": "Enter a valid Home Assistant template.",
+        "invalid_chat_template_key": "Enter a non-empty key for each chat template argument.",
+        "invalid_chat_template_kwargs": "Enter chat template arguments as key/template rows.",
+        "invalid_integer": "Enter an integer value in this field.",
+        "invalid_json": "Enter valid JSON.",
+        "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",
+        "invalid_model": "{error_message}",
+        "invalid_number": "Enter a valid number in this field.",
+        "invalid_provider_config": "{error_message}",
+        "model_does_not_support_streaming": "{error_message}",
+        "model_list_unavailable": "The provider model list could not be loaded. Enter the model name manually.",
+        "permission_denied": "{error_message}",
+        "positive_number": "Enter a number greater than zero.",
+        "provider_error": "{error_message}",
+        "rate_limited": "{error_message}",
+        "timeout": "{error_message}",
+        "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
+      },
+      "initiate_flow": {
+        "reconfigure": "Reconfigure language model profile",
+        "user": "Add language model profile"
+      },
+      "step": {
+        "init": {
+          "data": {
+            "configure_advanced_model_settings": "Configure advanced model settings",
+            "model": "Provider model name",
+            "name": "Profile name",
+            "temperature": "Temperature",
+            "thinking": "Thinking (Reasoning) Mode"
+          },
+          "data_description": {
+            "configure_advanced_model_settings": "Open a second step for token and iteration limits, sampling, timeout, tool-call behavior, seed, penalties, and request body overrides.",
+            "model": "Model name as understood by the configured OpenAI-compatible provider.",
+            "temperature": "Controls response randomness. Leave empty to use the provider or model default.",
+            "thinking": "Optional reasoning effort if supported by the model (levels map to the closest available value)."
+          },
+          "description": "Create a reusable language model profile. Conversation agents and AI tasks select one primary profile and optional fallbacks.",
+          "title": "Configure language model profile (Basic Settings)"
         },
-        "mcp_server_id": {
-          "name": "MCP server ID",
-          "description": "Optional MCP server subentry ID. If omitted, all configured MCP servers are refreshed."
+        "model_settings": {
+          "data": {
+            "chat_template_kwargs": "Chat template arguments",
+            "extra_body": "Extra body",
+            "frequency_penalty": "Frequency penalty",
+            "max_iterations": "Max iterations",
+            "max_tokens": "Max tokens",
+            "parallel_tool_calls": "Parallel tool calls",
+            "presence_penalty": "Presence penalty",
+            "seed": "Seed",
+            "timeout": "Timeout",
+            "top_p": "Top P"
+          },
+          "data_description": {
+            "chat_template_kwargs": "Optional chat template keyword arguments rendered from Home Assistant templates and sent as extra_body.chat_template_kwargs.",
+            "extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated field.",
+            "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
+            "max_iterations": "Maximum Pydantic AI agent request iterations for one run. Must be a positive integer. Leave empty to use the conversation or AI task default.",
+            "max_tokens": "Maximum tokens the model may generate per response. Must be a positive integer.",
+            "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
+            "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
+            "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
+            "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
+            "top_p": "Nucleus sampling value. Leave empty to use the provider default."
+          },
+          "description": "Set advanced model parameter values for this profile. Leave fields empty to use provider defaults.",
+          "title": "Configure language model profile (Advanced model settings)"
         }
       }
     }
   },
+  "issues": {
+    "logfire_token_conflict": {
+      "description": "Provider connection {entry_title} has a Logfire token that differs from the token already active in this Home Assistant process. Logfire traces are disabled for this entry until Home Assistant restarts with only one token configured, or this entry is reconfigured to use the active token.",
+      "title": "Pydantic AI Agent Logfire token conflict"
+    },
+    "model_validation_failed": {
+      "description": "Provider connection {entry_title} could not validate model {model}: {error_message} Reason: {reason}. Reconfigure the affected conversation agent, AI task, or provider credentials, then reload the integration.",
+      "title": "Pydantic AI Agent model validation failed"
+    }
+  },
   "selector": {
+    "output_mode": {
+      "options": {
+        "native": "Native",
+        "prompted": "Prompted",
+        "tool": "Tool"
+      }
+    },
     "provider_mode": {
       "options": {
         "openai_compatible_completions": "OpenAI-compatible Completions",
@@ -416,31 +403,44 @@
     "thinking": {
       "options": {
         "": "Provider default",
-        "true": "Enabled",
         "false": "Disabled",
-        "minimal": "Minimal",
+        "high": "High",
         "low": "Low",
         "medium": "Medium",
-        "high": "High",
+        "minimal": "Minimal",
+        "true": "Enabled",
         "xhigh": "Extra high"
-      }
-    },
-    "output_mode": {
-      "options": {
-        "tool": "Tool",
-        "native": "Native",
-        "prompted": "Prompted"
       }
     }
   },
-  "issues": {
-    "model_validation_failed": {
-      "title": "Pydantic AI Agent model validation failed",
-      "description": "Provider connection {entry_title} could not validate model {model}: {error_message} Reason: {reason}. Reconfigure the affected conversation agent, AI task, or provider credentials, then reload the integration."
+  "services": {
+    "list_mcp_tools": {
+      "description": "List cached MCP tools for a configured server, discovering them if no cache exists.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Pydantic AI Agent provider connection config entry.",
+          "name": "Config entry"
+        },
+        "mcp_server_id": {
+          "description": "Optional MCP server subentry ID. If omitted, all configured MCP servers are listed.",
+          "name": "MCP server ID"
+        }
+      },
+      "name": "List MCP tools"
     },
-    "logfire_token_conflict": {
-      "title": "Pydantic AI Agent Logfire token conflict",
-      "description": "Provider connection {entry_title} has a Logfire token that differs from the token already active in this Home Assistant process. Logfire traces are disabled for this entry until Home Assistant restarts with only one token configured, or this entry is reconfigured to use the active token."
+    "refresh_mcp_tools": {
+      "description": "Reconnect to configured MCP servers and refresh their tool catalogs.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Pydantic AI Agent provider connection config entry.",
+          "name": "Config entry"
+        },
+        "mcp_server_id": {
+          "description": "Optional MCP server subentry ID. If omitted, all configured MCP servers are refreshed.",
+          "name": "MCP server ID"
+        }
+      },
+      "name": "Refresh MCP tools"
     }
   }
 }

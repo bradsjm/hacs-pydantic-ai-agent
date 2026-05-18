@@ -3,21 +3,57 @@ repos:
     rev: v0.15.12
     hooks:
       - id: ruff-check
+        args:
+          - --fix
+        files: ^(custom_components|tests)/.+\.(py|pyi)$
       - id: ruff-format
+        files: ^(custom_components|tests)/.+\.(py|pyi)$
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.2
+    hooks:
+      - id: codespell
+        args:
+          - --ignore-words-list=hass,hel
+          - --skip=./.*,*.csv,*.json,uv.lock,package-lock.json
+          - --quiet-level=2
+        exclude_types: [csv, json, html]
+        exclude: ^\.agents/
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.24.1
+    hooks:
+      - id: zizmor
+        args:
+          - --pedantic
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      - id: check-added-large-files
+      - id: check-executables-have-shebangs
+        stages: [manual]
+        exclude: ^\.agents/
       - id: check-json
+      - id: check-merge-conflict
+      - id: check-toml
       - id: check-yaml
       - id: end-of-file-fixer
+        exclude: ^\.agents/
       - id: trailing-whitespace
-  - repo: local
+        exclude: ^\.agents/
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.38.0
     hooks:
       - id: yamllint
-        name: yamllint
-        entry: scripts/yaml-check
-        language: system
-        files: \.(ya?ml|yamllint)$
+        files: ^(\.github/.*|\.pre-commit-config\.yaml|\.yamllint|custom_components/.+\.ya?ml)$
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.6.2
+    hooks:
+      - id: prettier
+        additional_dependencies:
+          - prettier@3.6.2
+          - prettier-plugin-sort-json@4.2.0
+        exclude: ^\.agents/
+  - repo: local
+    hooks:
       - id: markdownlint
         name: markdownlint
         entry: scripts/markdown-check

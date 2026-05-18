@@ -289,7 +289,9 @@ def _assert_context_management_capability(capabilities: list[object]) -> None:
 
 def _thinking_capabilities(capabilities: list[object]) -> list[Thinking]:
     """Return Thinking capabilities from an Agent constructor call."""
-    return [capability for capability in capabilities if isinstance(capability, Thinking)]
+    return [
+        capability for capability in capabilities if isinstance(capability, Thinking)
+    ]
 
 
 def _state(hass: HomeAssistant, entity_id: str) -> str:
@@ -386,9 +388,7 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
 
 async def test_plain_data_task_uses_thinking_capability(hass: HomeAssistant) -> None:
     """Test configured AI task thinking is passed as a capability."""
-    entity_id = await _setup_ai_task_entity(
-        hass, model_settings={"thinking": False}
-    )
+    entity_id = await _setup_ai_task_entity(hass, model_settings={"thinking": False})
 
     with (
         patch(

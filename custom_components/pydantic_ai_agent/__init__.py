@@ -147,9 +147,7 @@ async def async_setup_entry(
     """Validate configured subentries, then set up entity platforms."""
     provider_mode = entry.data[CONF_PROVIDER_MODE]
     if provider_mode not in PROVIDER_MODES:
-        raise ConfigEntryNotReady(
-            f"Unsupported provider mode: {provider_mode!r}"
-        )
+        raise ConfigEntryNotReady(f"Unsupported provider mode: {provider_mode!r}")
     await _async_validate_configured_models(hass, entry)
     await async_configure_logfire(hass, entry)
 

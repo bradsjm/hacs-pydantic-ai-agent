@@ -263,9 +263,9 @@ async def test_device_diagnostics_filters_to_matching_subentry(
 
     diagnostics = await async_get_device_diagnostics(hass, entry, device)
 
-    assert [item["subentry_id"] for item in diagnostics["subentries"]] == [
-        matching_id
-    ]
+    assert [item["subentry_id"] for item in diagnostics["subentries"]] == [matching_id]
     assert diagnostics["subentries"][0]["data"][CONF_PROMPT] == REDACTED
-    assert diagnostics["runtime"]["metrics"]["last_run_model_profile"] == "Kitchen Model"
+    assert (
+        diagnostics["runtime"]["metrics"]["last_run_model_profile"] == "Kitchen Model"
+    )
     assert diagnostics["runtime"]["metrics"]["last_run_total_tokens"] == 12

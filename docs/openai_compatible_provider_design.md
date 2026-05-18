@@ -8,14 +8,14 @@ lockfiles remain authoritative when they differ from this design note.
 
 Implemented source areas:
 
-| Area                               | Source                                                               |
-| ---------------------------------- | -------------------------------------------------------------------- |
-| Low-level HTTP client              | `custom_components/pydantic_ai_agent/openai_compatible_client/`      |
-| Pydantic AI model/provider adapter | `custom_components/pydantic_ai_agent/openai_compatible_adapter/`     |
-| Home Assistant model factory       | `custom_components/pydantic_ai_agent/provider.py`                    |
-| Config-flow provider probe         | `custom_components/pydantic_ai_agent/config_flow.py`                 |
-| Runtime agent construction         | `custom_components/pydantic_ai_agent/entity.py`                      |
-| Real-provider tests                | `tests/components/pydantic_ai_agent/test_real_server.py`             |
+| Area                               | Source                                                           |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| Low-level HTTP client              | `custom_components/pydantic_ai_agent/openai_compatible_client/`  |
+| Pydantic AI model/provider adapter | `custom_components/pydantic_ai_agent/openai_compatible_adapter/` |
+| Home Assistant model factory       | `custom_components/pydantic_ai_agent/provider.py`                |
+| Config-flow provider probe         | `custom_components/pydantic_ai_agent/config_flow.py`             |
+| Runtime agent construction         | `custom_components/pydantic_ai_agent/entity.py`                  |
+| Real-provider tests                | `tests/components/pydantic_ai_agent/test_real_server.py`         |
 
 ## Rationale
 
