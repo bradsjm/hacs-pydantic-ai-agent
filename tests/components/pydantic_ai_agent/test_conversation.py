@@ -16,7 +16,14 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers import llm
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from pydantic_ai import AgentRunResultEvent, ModelResponse, PartStartEvent, TextPart
+from pydantic_ai import (
+    AgentRunResultEvent,
+    FunctionToolset,
+    ModelResponse,
+    PartStartEvent,
+    TextPart,
+)
+from pydantic_ai.capabilities import ToolSearch
 
 from custom_components.pydantic_ai_agent import PydanticAIAgentRuntimeData
 from custom_components.pydantic_ai_agent.const import (
@@ -675,6 +682,57 @@ async def test_conversation_runtime_adds_web_fetch_capability(
     web_fetch.assert_called_once_with(local=True)
     capabilities = agent_class.call_args.kwargs["capabilities"]
     assert web_fetch_capability in capabilities
+    _assert_context_management_capability(capabilities)
+
+
+async def test_conversation_runtime_adds_keyword_tool_search_for_deferred_mcp(
+    hass: HomeAssistant,
+) -> None:
+    """Test deferred MCP toolsets force local keyword tool search."""
+    entry = _entry(None)
+    entry.add_to_hass(hass)
+    deferred_toolset = FunctionToolset().defer_loading()
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.async_runtime_mcp_toolsets",
+            new_callable=AsyncMock,
+            return_value=[deferred_toolset],
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=_Agent(),
+        ) as agent_class,
+    ):
+        await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    capabilities = agent_class.call_args.kwargs["capabilities"]
+    assert any(
+        isinstance(capability, ToolSearch) and capability.strategy == "keywords"
+        for capability in capabilities
+    )
     _assert_context_management_capability(capabilities)
 
 

@@ -51,6 +51,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
     CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SERVER_IDS,
@@ -1906,6 +1907,7 @@ async def test_create_mcp_server_subentry(
             CONF_MCP_URL: "https://8.8.8.8/mcp",
             CONF_MCP_HEADERS: {"Authorization": "Bearer token"},
             CONF_MCP_INCLUDE_RETURN_SCHEMA: True,
+            CONF_MCP_DEFERRED_LOADING: False,
         },
         server_id="Filesystem MCP",
         apply_allowlist=False,
@@ -1917,8 +1919,61 @@ async def test_create_mcp_server_subentry(
         CONF_MCP_URL: "https://8.8.8.8/mcp",
         CONF_MCP_HEADERS: {"Authorization": "Bearer token"},
         CONF_MCP_INCLUDE_RETURN_SCHEMA: True,
+        CONF_MCP_DEFERRED_LOADING: False,
         CONF_MCP_ALLOWED_TOOLS: ["read_file"],
     }
+    mock_probe_model.assert_not_awaited()
+
+
+async def test_create_mcp_server_subentry_stores_deferred_loading(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test adding an MCP server subentry stores deferred loading opt-in."""
+    entry = await _loaded_entry(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.async_validate_mcp_url",
+            new_callable=AsyncMock,
+            return_value="https://8.8.8.8/mcp",
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
+            new_callable=AsyncMock,
+            return_value=[{"name": "read_file", "description": "Read files"}],
+        ) as discover_tools,
+    ):
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Deferred MCP",
+                CONF_MCP_URL: "https://8.8.8.8/mcp",
+                CONF_MCP_DEFERRED_LOADING: True,
+            },
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_MCP_ALLOWED_TOOLS: ["read_file"]},
+        )
+
+    discover_tools.assert_awaited_once_with(
+        hass,
+        {
+            CONF_NAME: "Deferred MCP",
+            CONF_MCP_URL: "https://8.8.8.8/mcp",
+            CONF_MCP_INCLUDE_RETURN_SCHEMA: True,
+            CONF_MCP_DEFERRED_LOADING: True,
+        },
+        server_id="Deferred MCP",
+        apply_allowlist=False,
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_MCP_DEFERRED_LOADING] is True
     mock_probe_model.assert_not_awaited()
 
 
@@ -2318,6 +2373,7 @@ async def test_reconfigure_mcp_server_subentry_clears_headers(
             CONF_NAME: "Echo MCP",
             CONF_MCP_URL: "https://mcp.example.com/mcp",
             CONF_MCP_INCLUDE_RETURN_SCHEMA: True,
+            CONF_MCP_DEFERRED_LOADING: False,
         },
         server_id=subentry.subentry_id,
         apply_allowlist=False,

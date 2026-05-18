@@ -34,6 +34,7 @@ from homeassistant.util import slugify
 from ._redaction import redact_data
 from .const import (
     CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_URL,
@@ -263,6 +264,7 @@ def mcp_config_from_subentry(subentry: Any) -> dict[str, Any]:
         CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
             data.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
         ),
+        CONF_MCP_DEFERRED_LOADING: bool(data.get(CONF_MCP_DEFERRED_LOADING, False)),
         CONF_MCP_ALLOWED_TOOLS: parse_allowed_tools(data.get(CONF_MCP_ALLOWED_TOOLS)),
     }
 
@@ -278,6 +280,7 @@ def _mcp_config_from_data(
         CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
             data.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
         ),
+        CONF_MCP_DEFERRED_LOADING: bool(data.get(CONF_MCP_DEFERRED_LOADING, False)),
         CONF_MCP_ALLOWED_TOOLS: parse_allowed_tools(data.get(CONF_MCP_ALLOWED_TOOLS)),
     }
 
@@ -560,7 +563,15 @@ async def async_runtime_mcp_toolsets(
             process_tool_call=process_tool_call,
             include_return_schema=config[CONF_MCP_INCLUDE_RETURN_SCHEMA],
         )
-        toolsets.append(PrefixedToolset(toolset, f"mcp_{slugify(server_id)}"))
+        toolset = toolset.filtered(
+            lambda _ctx, tool_def, allowed_tools=allowed_tools: (
+                tool_def.name in allowed_tools
+            )
+        )
+        toolset = PrefixedToolset(toolset, f"mcp_{slugify(server_id)}")
+        if config[CONF_MCP_DEFERRED_LOADING]:
+            toolset = toolset.defer_loading()
+        toolsets.append(toolset)
     missing_server_ids = selected_servers - configured_server_ids
     if missing_server_ids:
         missing_server_id = sorted(missing_server_ids)[0]

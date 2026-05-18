@@ -11,7 +11,7 @@ from typing import Any, cast
 
 import httpx
 from pydantic_ai import Agent, AgentRunResultEvent
-from pydantic_ai.capabilities import WebFetch
+from pydantic_ai.capabilities import ToolSearch, WebFetch
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
@@ -37,6 +37,7 @@ from pydantic_ai.messages import (
     ToolReturnPart,
 )
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai.toolsets import DeferredLoadingToolset
 from pydantic_ai.usage import UsageLimits
 import voluptuous as vol
 
@@ -194,6 +195,17 @@ class PydanticAIBaseLLMEntity:
                     self.entry,
                     self.subentry.data.get(CONF_MCP_SERVER_IDS),
                 )
+                run_capabilities = list(capabilities)
+                if any(
+                    isinstance(toolset, DeferredLoadingToolset)
+                    for toolset in mcp_toolsets
+                ):
+                    run_capabilities = [
+                        capability
+                        for capability in run_capabilities
+                        if not isinstance(capability, ToolSearch)
+                    ]
+                    run_capabilities.append(ToolSearch(strategy="keywords"))
                 agent = Agent(
                     chat_model_for_profile(self.hass, self.entry, profile),
                     output_type=cast(Any, agent_output_type),
@@ -203,7 +215,7 @@ class PydanticAIBaseLLMEntity:
                     tools=tools_from_llm_api(chat_log.llm_api),
                     toolsets=mcp_toolsets,
                     max_concurrency=1,
-                    capabilities=capabilities,
+                    capabilities=run_capabilities,
                 )
                 instrument_agent(self.hass, self.entry, agent)
                 outcome = await self._async_run_agent(

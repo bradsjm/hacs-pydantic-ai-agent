@@ -82,6 +82,7 @@ from .const import (
     CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
     CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SERVER_IDS,
@@ -1737,6 +1738,10 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
                 CONF_MCP_INCLUDE_RETURN_SCHEMA,
                 default=options.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True),
             ): BooleanSelector(),
+            vol.Optional(
+                CONF_MCP_DEFERRED_LOADING,
+                default=options.get(CONF_MCP_DEFERRED_LOADING, False),
+            ): BooleanSelector(),
         }
     )
 
@@ -1807,6 +1812,9 @@ def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str,
         CONF_MCP_URL: normalise_mcp_url(user_input[CONF_MCP_URL]),
         CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
             user_input.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
+        ),
+        CONF_MCP_DEFERRED_LOADING: bool(
+            user_input.get(CONF_MCP_DEFERRED_LOADING, False)
         ),
     }
     headers = parse_mcp_headers(user_input.get(CONF_MCP_HEADERS))

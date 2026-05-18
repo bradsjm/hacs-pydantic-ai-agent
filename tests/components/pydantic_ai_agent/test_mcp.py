@@ -16,6 +16,7 @@ from homeassistant.util.ssl import SSL_ALPN_HTTP11, client_context
 
 from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_URL,
@@ -208,6 +209,7 @@ def _mcp_entry(
     subentry_id: str = "mcp_server_1",
     allowed_tools: list[str] | None = None,
     include_return_schema: bool | None = None,
+    deferred_loading: bool | None = None,
 ) -> MockConfigEntry:
     """Return a config entry with one MCP server subentry."""
     data: dict[str, object] = {
@@ -218,6 +220,8 @@ def _mcp_entry(
     }
     if include_return_schema is not None:
         data[CONF_MCP_INCLUDE_RETURN_SCHEMA] = include_return_schema
+    if deferred_loading is not None:
+        data[CONF_MCP_DEFERRED_LOADING] = deferred_loading
     return MockConfigEntry(
         domain=DOMAIN,
         title="Hosted OpenAI",
@@ -267,6 +271,22 @@ def test_mcp_config_from_subentry_defaults_return_schema_preference(
     assert (
         mcp_config_from_subentry(subentry)[CONF_MCP_INCLUDE_RETURN_SCHEMA]
         is expected_value
+    )
+
+
+@pytest.mark.parametrize(
+    ("stored_value", "expected_value"),
+    [(None, False), (True, True), (False, False)],
+)
+def test_mcp_config_from_subentry_defaults_deferred_loading_preference(
+    stored_value: bool | None, expected_value: bool
+) -> None:
+    """Test stored MCP config preserves deferred loading preference."""
+    entry = _mcp_entry(deferred_loading=stored_value)
+    subentry = next(iter(entry.subentries.values()))
+
+    assert (
+        mcp_config_from_subentry(subentry)[CONF_MCP_DEFERRED_LOADING] is expected_value
     )
 
 
@@ -415,6 +435,11 @@ async def test_runtime_mcp_toolsets_enforces_tool_allowlist(
         def __init__(self, *_args: object, **kwargs: object) -> None:
             self.process_tool_call = kwargs["process_tool_call"]
             self.include_return_schema = kwargs["include_return_schema"]
+            self.filter_func = None
+
+        def filtered(self, filter_func: object) -> "FakeMCPToolset":
+            self.filter_func = filter_func
+            return self
 
     def fake_prefixed_toolset(toolset: FakeMCPToolset, prefix: str) -> SimpleNamespace:
         return SimpleNamespace(toolset=toolset, prefix=prefix)
@@ -435,6 +460,7 @@ async def test_runtime_mcp_toolsets_enforces_tool_allowlist(
     assert len(toolsets) == 1
     assert toolsets[0].prefix == "mcp_mcp_server_1"
     assert toolsets[0].toolset.include_return_schema is True
+    assert toolsets[0].toolset.filter_func is not None
 
     async def call_tool(
         tool_name: str, tool_args: dict[str, object]
@@ -466,12 +492,13 @@ async def test_runtime_mcp_toolsets_passes_return_schema_preference(
         def __init__(self, *_args: object, **kwargs: object) -> None:
             self.include_return_schema = kwargs["include_return_schema"]
 
+        def filtered(self, _filter_func: object) -> "FakeMCPToolset":
+            return self
+
     def fake_prefixed_toolset(toolset: FakeMCPToolset, prefix: str) -> SimpleNamespace:
         return SimpleNamespace(toolset=toolset, prefix=prefix)
 
-    entry = _mcp_entry(
-        allowed_tools=["echo"], include_return_schema=stored_value
-    )
+    entry = _mcp_entry(allowed_tools=["echo"], include_return_schema=stored_value)
     with (
         patch("custom_components.pydantic_ai_agent.mcp.MCPToolset", FakeMCPToolset),
         patch(
@@ -485,3 +512,49 @@ async def test_runtime_mcp_toolsets_passes_return_schema_preference(
         toolsets = await async_runtime_mcp_toolsets(hass, entry, ["mcp_server_1"])
 
     assert toolsets[0].toolset.include_return_schema is expected_value
+
+
+async def test_runtime_mcp_toolsets_defers_allowlisted_tools_when_enabled(
+    hass: HomeAssistant,
+) -> None:
+    """Test deferred MCP toolsets filter raw tools before prefixing and deferring."""
+
+    class FakeMCPToolset:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            self.filter_func = None
+
+        def filtered(self, filter_func: object) -> "FakeMCPToolset":
+            self.filter_func = filter_func
+            return self
+
+    class FakePrefixedToolset:
+        def __init__(self, toolset: FakeMCPToolset, prefix: str) -> None:
+            self.toolset = toolset
+            self.prefix = prefix
+            self.deferred = False
+
+        def defer_loading(self) -> "FakePrefixedToolset":
+            self.deferred = True
+            return self
+
+    entry = _mcp_entry(allowed_tools=["echo"], deferred_loading=True)
+    with (
+        patch("custom_components.pydantic_ai_agent.mcp.MCPToolset", FakeMCPToolset),
+        patch(
+            "custom_components.pydantic_ai_agent.mcp.PrefixedToolset",
+            FakePrefixedToolset,
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.mcp._mcp_client", return_value=object()
+        ),
+    ):
+        toolsets = await async_runtime_mcp_toolsets(hass, entry, ["mcp_server_1"])
+
+    assert len(toolsets) == 1
+    assert toolsets[0].prefix == "mcp_mcp_server_1"
+    assert toolsets[0].deferred is True
+    assert toolsets[0].toolset.filter_func is not None
+    assert toolsets[0].toolset.filter_func(None, SimpleNamespace(name="echo")) is True
+    assert (
+        toolsets[0].toolset.filter_func(None, SimpleNamespace(name="hidden")) is False
+    )
