@@ -127,8 +127,8 @@
         "init": {
           "data": {
             "ai_task_name": "Task name",
-            "enable_skills": "Enable skills",
             "enable_skill_script_execution": "Allow skill script execution",
+            "enable_skills": "Enable skills",
             "fallback_model_subentry_ids": "Fallback language model profiles",
             "mcp_server_ids": "MCP servers",
             "model_subentry_id": "Primary language model profile",
@@ -138,8 +138,8 @@
             "web_fetch_enabled": "Web fetch"
           },
           "data_description": {
-            "enable_skills": "Allow this AI task to load selected local skills.",
             "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
+            "enable_skills": "Allow this AI task to load selected local skills.",
             "fallback_model_subentry_ids": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure.",
             "mcp_server_ids": "Optional MCP servers this AI task may use. Only enabled tools will be made available.",
             "output_mode": "Tool output is the default and works with providers that support tool calls. Native uses the provider's JSON schema support. Prompted asks for JSON in the prompt and validates the result.",
@@ -193,8 +193,8 @@
         "init": {
           "data": {
             "agent_name": "Agent name",
-            "enable_skills": "Enable skills",
             "enable_skill_script_execution": "Allow skill script execution",
+            "enable_skills": "Enable skills",
             "fallback_model_subentry_ids": "Fallback language model profiles",
             "llm_hass_api": "Control Home Assistant",
             "mcp_server_ids": "MCP servers",
@@ -205,8 +205,8 @@
             "web_fetch_enabled": "Web fetch"
           },
           "data_description": {
-            "enable_skills": "Allow this conversation agent to load selected local skills.",
             "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
+            "enable_skills": "Allow this conversation agent to load selected local skills.",
             "fallback_model_subentry_ids": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure.",
             "llm_hass_api": "Select which tools the model can use to interact with your devices and entities.",
             "mcp_server_ids": "Optional MCP servers this conversation agent may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
@@ -398,6 +398,8 @@
     },
     "provider_mode": {
       "options": {
+        "anthropic": "Anthropic",
+        "google_gemini": "Google Gemini",
         "openai_compatible_completions": "OpenAI-compatible Completions",
         "openai_compatible_responses": "OpenAI-compatible Responses"
       }

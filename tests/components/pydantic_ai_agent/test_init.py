@@ -59,6 +59,8 @@ _REPO_ROOT = Path(__file__).parents[3]
 _EXPLICIT_RUNTIME_REQUIREMENTS = {
     "logfire==4.33.0",
     "pydantic-ai-slim==1.97.0",
+    "anthropic>=0.97.0",
+    "google-genai>=1.70.0",
     "pydantic-ai-skills==0.10.0",
     "tiktoken>=0.12.0",
     "fastmcp-slim[client,server]>=3.3.0",

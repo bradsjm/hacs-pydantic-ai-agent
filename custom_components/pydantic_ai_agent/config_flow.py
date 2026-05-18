@@ -109,6 +109,8 @@ from .const import (
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
     PROVIDER_MODES,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     STRUCTURED_OUTPUT_MODES,
@@ -131,6 +133,10 @@ from .mcp import (
     parse_mcp_headers,
 )
 from .provider import (
+    anthropic_model,
+    google_gemini_model,
+    list_anthropic_model_names,
+    list_google_gemini_model_names,
     normalise_base_url,
     openai_compatible_completions_model_from_config,
     openai_compatible_client_from_config,
@@ -573,12 +579,27 @@ def _map_structured_http_error(
 def _openai_compatible_model(
     hass: HomeAssistant, data: Mapping[str, Any], model_name: str
 ) -> Any:
-    """Build a Pydantic AI OpenAI-compatible model for validation."""
+    """Build a Pydantic AI model for validation."""
     provider_mode = data[CONF_PROVIDER_MODE]
-    if provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS:
-        return openai_compatible_completions_model_from_config(hass, data, model_name)
-    if provider_mode == PROVIDER_OPENAI_COMPATIBLE_RESPONSES:
-        return openai_compatible_responses_model_from_config(hass, data, model_name)
+    try:
+        if provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS:
+            return openai_compatible_completions_model_from_config(
+                hass, data, model_name
+            )
+        if provider_mode == PROVIDER_OPENAI_COMPATIBLE_RESPONSES:
+            return openai_compatible_responses_model_from_config(hass, data, model_name)
+        kwargs = {
+            "api_key": data[CONF_API_KEY],
+            "base_url": _normalise_base_url(data),
+            "headers": dict(data.get(CONF_PROVIDER_HEADERS, {})),
+            "model_name": model_name,
+        }
+        if provider_mode == PROVIDER_ANTHROPIC:
+            return anthropic_model(hass, **kwargs)
+        if provider_mode == PROVIDER_GOOGLE_GEMINI:
+            return google_gemini_model(hass, **kwargs)
+    except ValueError as err:
+        raise ProviderValidationError("invalid_model", str(err)) from err
     raise ProviderValidationError(
         "invalid_provider_config", f"Unsupported provider mode: {provider_mode!r}."
     )
@@ -588,6 +609,11 @@ async def async_list_provider_model_names(
     hass: HomeAssistant, data: Mapping[str, Any]
 ) -> list[str]:
     """Return model names advertised by the configured provider."""
+    provider_mode = data[CONF_PROVIDER_MODE]
+    if provider_mode == PROVIDER_ANTHROPIC:
+        return await list_anthropic_model_names(hass, data, timeout=DEFAULT_TIMEOUT)
+    if provider_mode == PROVIDER_GOOGLE_GEMINI:
+        return await list_google_gemini_model_names(hass, data, timeout=DEFAULT_TIMEOUT)
     client = openai_compatible_client_from_config(hass, data)
     return await client.models.list(timeout=DEFAULT_TIMEOUT)
 

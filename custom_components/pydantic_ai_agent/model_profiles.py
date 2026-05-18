@@ -18,12 +18,16 @@ from .const import (
     CONF_MODEL_SETTINGS,
     CONF_MODEL_SUBENTRY_ID,
     DEFAULT_TIMEOUT,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     SUBENTRY_TYPE_MODEL,
 )
 from .chat_template_kwargs import reject_chat_template_kwargs_in_extra_body
 from .provider import (
+    anthropic_model,
+    google_gemini_model,
     openai_compatible_completions_model,
     openai_compatible_responses_model,
 )
@@ -123,7 +127,7 @@ def chat_model_for_profile(
     entry: PydanticAIAgentConfigEntry,
     profile: ModelProfile,
 ) -> Any:
-    """Build the configured OpenAI-compatible Pydantic AI model for one profile."""
+    """Build the configured Pydantic AI model for one profile."""
     runtime_data = entry.runtime_data
     kwargs = {
         "api_key": runtime_data.api_key,
@@ -131,10 +135,17 @@ def chat_model_for_profile(
         "headers": runtime_data.provider_headers,
         "model_name": profile.model_name,
     }
-    if runtime_data.provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS:
-        return openai_compatible_completions_model(hass, **kwargs)
-    if runtime_data.provider_mode == PROVIDER_OPENAI_COMPATIBLE_RESPONSES:
-        return openai_compatible_responses_model(hass, **kwargs)
+    try:
+        if runtime_data.provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS:
+            return openai_compatible_completions_model(hass, **kwargs)
+        if runtime_data.provider_mode == PROVIDER_OPENAI_COMPATIBLE_RESPONSES:
+            return openai_compatible_responses_model(hass, **kwargs)
+        if runtime_data.provider_mode == PROVIDER_ANTHROPIC:
+            return anthropic_model(hass, **kwargs)
+        if runtime_data.provider_mode == PROVIDER_GOOGLE_GEMINI:
+            return google_gemini_model(hass, **kwargs)
+    except ValueError as err:
+        raise HomeAssistantError(str(err)) from err
     raise HomeAssistantError(
         f"Unsupported provider mode: {runtime_data.provider_mode!r}"
     )
