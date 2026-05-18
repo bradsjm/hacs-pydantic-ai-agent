@@ -706,7 +706,7 @@ async def async_probe_model(
         ) from err
     except UnexpectedModelBehavior as err:
         raise ProviderValidationError("provider_error", str(err)) from err
-    except TimeoutError as err:
+    except (TimeoutError, httpx.TimeoutException) as err:
         raise ProviderValidationError("timeout", "Request timed out.") from err
     except (ImportError, UserError) as err:
         raise ProviderValidationError("invalid_provider_config", str(err)) from err

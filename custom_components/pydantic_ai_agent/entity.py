@@ -526,7 +526,7 @@ def _home_assistant_error(err: Exception) -> HomeAssistantError:
         return HomeAssistantError(_format_api_error(err))
     if isinstance(err, UnexpectedModelBehavior):
         return HomeAssistantError("Provider returned an unexpected response")
-    if isinstance(err, TimeoutError):
+    if isinstance(err, TimeoutError | httpx.TimeoutException):
         return HomeAssistantError("Provider request timed out")
     if isinstance(err, UsageLimitExceeded):
         return HomeAssistantError("Model requested too many tool iterations")
@@ -541,7 +541,7 @@ def _should_fallback(err: Exception) -> bool:
     """Return if a failed model attempt should try the next profile."""
     if isinstance(err, ModelHTTPError):
         return err.status_code in {408, 409, 429} or 500 <= err.status_code <= 599
-    if isinstance(err, TimeoutError | UsageLimitExceeded):
+    if isinstance(err, TimeoutError | httpx.TimeoutException | UsageLimitExceeded):
         return True
     if isinstance(err, ModelAPIError):
         return _has_connection_failure(err)

@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from _pytest.logging import LogCaptureFixture
+import httpx
 from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 import pytest
@@ -74,6 +75,7 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
+    PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     SUBENTRY_TYPE_AI_TASK,
@@ -307,6 +309,7 @@ def test_http_error_status_categories(
         ),
         (ssl.SSLError("certificate verify failed"), "cannot_connect", "TLS error."),
         (TimeoutError(), "timeout", "Request timed out."),
+        (httpx.ReadTimeout("timeout"), "timeout", "Request timed out."),
     ],
 )
 def test_api_error_connection_categories(
@@ -388,6 +391,32 @@ async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
     assert model_request_stream.call_args.args[0] is stream_result
     assert model_request_stream.call_args.kwargs["model_settings"] == {"timeout": 10.0}
     assert stream_events.events_yielded == 1
+
+
+async def test_probe_model_maps_raw_httpx_timeout(
+    hass: HomeAssistant,
+) -> None:
+    """Test raw SDK/httpx timeouts are reported as validation timeouts."""
+    data = {
+        CONF_NAME: "Google Gemini",
+        CONF_PROVIDER_MODE: PROVIDER_GOOGLE_GEMINI,
+        CONF_API_KEY: "gemini-test",
+    }
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            side_effect=httpx.ReadTimeout("timeout"),
+        ),
+        pytest.raises(ProviderValidationError) as exc_info,
+    ):
+        await async_probe_model(hass, data, "gemini-3.1-flash-lite")
+
+    assert exc_info.value.reason == "timeout"
+    assert exc_info.value.message == "Request timed out."
 
 
 async def test_probe_model_can_require_native_structured_output(

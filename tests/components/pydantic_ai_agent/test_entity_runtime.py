@@ -98,6 +98,7 @@ def test_should_fallback_for_timeout_usage_and_transport_api_errors() -> None:
     api_error.__cause__ = httpx.ConnectError("refused")
 
     assert _should_fallback(TimeoutError())
+    assert _should_fallback(httpx.ReadTimeout("timeout"))
     assert _should_fallback(UsageLimitExceeded("too many requests"))
     assert _should_fallback(api_error)
     assert not _should_fallback(ModelAPIError("gpt-test", "bad request"))
@@ -145,6 +146,7 @@ def test_has_connection_failure_stops_on_cycles() -> None:
         ),
         (UnexpectedModelBehavior("bad"), "Provider returned an unexpected response"),
         (TimeoutError(), "Provider request timed out"),
+        (httpx.ReadTimeout("timeout"), "Provider request timed out"),
         (UsageLimitExceeded("too many"), "Model requested too many tool iterations"),
         (
             MCPValidationError("invalid", "MCP failed"),
