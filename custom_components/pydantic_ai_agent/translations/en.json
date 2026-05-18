@@ -35,21 +35,17 @@
         "data": {
           "api_key": "API key",
           "base_url": "Base URL",
-          "enable_skill_script_execution": "Allow skill script execution",
           "logfire_include_content": "Include prompt and response content in Logfire",
           "logfire_token": "Logfire token",
           "name": "Provider connection name",
           "provider_headers": "Provider HTTP headers",
-          "provider_mode": "Provider mode",
-          "skills_folder": "Skills folder"
+          "provider_mode": "Provider mode"
         },
         "data_description": {
           "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
-          "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
           "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
           "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
-          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format.",
-          "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders."
+          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
         },
         "description": "Update provider credentials.",
         "title": "Reauthenticate Pydantic AI Agent"
@@ -58,21 +54,17 @@
         "data": {
           "api_key": "API key",
           "base_url": "Base URL",
-          "enable_skill_script_execution": "Allow skill script execution",
           "logfire_include_content": "Include prompt and response content in Logfire",
           "logfire_token": "Logfire token",
           "name": "Provider connection name",
           "provider_headers": "Provider HTTP headers",
-          "provider_mode": "Provider mode",
-          "skills_folder": "Skills folder"
+          "provider_mode": "Provider mode"
         },
         "data_description": {
           "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
-          "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
           "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
           "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
-          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format.",
-          "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders."
+          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
         },
         "description": "Update model provider credentials and connection settings.",
         "title": "Reconfigure Pydantic AI Agent"
@@ -81,21 +73,17 @@
         "data": {
           "api_key": "API key",
           "base_url": "Base URL",
-          "enable_skill_script_execution": "Allow skill script execution",
           "logfire_include_content": "Include prompt and response content in Logfire",
           "logfire_token": "Logfire token",
           "name": "Provider connection name",
           "provider_headers": "Provider HTTP headers",
-          "provider_mode": "Provider mode",
-          "skills_folder": "Skills folder"
+          "provider_mode": "Provider mode"
         },
         "data_description": {
           "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
-          "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
           "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
           "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
-          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format.",
-          "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders."
+          "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
         },
         "description": "Enter credentials for this model provider connection.",
         "title": "Connect Pydantic AI Agent"
@@ -126,6 +114,7 @@
         "primary_model_in_fallbacks": "The primary language model profile cannot also be selected as a fallback.",
         "provider_error": "{error_message}",
         "rate_limited": "{error_message}",
+        "skills_refreshed": "Skill options were refreshed. Review selected skills and submit again.",
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details.",
         "unsupported_output_mode": "{error_message}"
@@ -138,18 +127,24 @@
         "init": {
           "data": {
             "ai_task_name": "Task name",
+            "enable_skills": "Enable skills",
+            "enable_skill_script_execution": "Allow skill script execution",
             "fallback_model_subentry_ids": "Fallback language model profiles",
             "mcp_server_ids": "MCP servers",
             "model_subentry_id": "Primary language model profile",
             "output_mode": "Structured output mode",
             "skills": "Skills",
+            "skills_folder": "Skills folder",
             "web_fetch_enabled": "Web fetch"
           },
           "data_description": {
+            "enable_skills": "Allow this AI task to load selected local skills.",
+            "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
             "fallback_model_subentry_ids": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure.",
             "mcp_server_ids": "Optional MCP servers this AI task may use. Only enabled tools will be made available.",
             "output_mode": "Tool output is the default and works with providers that support tool calls. Native uses the provider's JSON schema support. Prompted asks for JSON in the prompt and validates the result.",
-            "skills": "Optional local skills this AI task may load from the provider skills folder.",
+            "skills": "Optional local skills this AI task may load from its configured skills folder.",
+            "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
             "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs."
           },
           "description": "Name this AI task and choose its language model profile for Home Assistant data generation.",
@@ -186,6 +181,7 @@
         "primary_model_in_fallbacks": "The primary language model profile cannot also be selected as a fallback.",
         "provider_error": "{error_message}",
         "rate_limited": "{error_message}",
+        "skills_refreshed": "Skill options were refreshed. Review selected skills and submit again.",
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
       },
@@ -197,20 +193,26 @@
         "init": {
           "data": {
             "agent_name": "Agent name",
+            "enable_skills": "Enable skills",
+            "enable_skill_script_execution": "Allow skill script execution",
             "fallback_model_subentry_ids": "Fallback language model profiles",
             "llm_hass_api": "Control Home Assistant",
             "mcp_server_ids": "MCP servers",
             "model_subentry_id": "Primary language model profile",
             "prompt": "Instructions",
             "skills": "Skills",
+            "skills_folder": "Skills folder",
             "web_fetch_enabled": "Web fetch"
           },
           "data_description": {
+            "enable_skills": "Allow this conversation agent to load selected local skills.",
+            "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
             "fallback_model_subentry_ids": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure.",
             "llm_hass_api": "Select which tools the model can use to interact with your devices and entities.",
             "mcp_server_ids": "Optional MCP servers this conversation agent may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
             "prompt": "Instruct how the LLM should respond. This can be a template.",
-            "skills": "Optional local skills this conversation agent may load from the provider skills folder.",
+            "skills": "Optional local skills this conversation agent may load from its configured skills folder.",
+            "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
             "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
           },
           "description": "Choose the language model profile and Home Assistant tool access for this conversation agent.",

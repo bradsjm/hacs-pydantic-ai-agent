@@ -5,15 +5,12 @@ from types import SimpleNamespace
 import sys
 
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
-from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 
 from custom_components.pydantic_ai_agent.const import (
+    CONF_ENABLE_SKILLS,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_SKILLS_FOLDER,
-    DOMAIN,
 )
 from custom_components.pydantic_ai_agent.skills import (
     AvailableSkill,
@@ -170,17 +167,11 @@ async def test_async_skills_helpers_return_empty_for_invalid_folder(
         async_skills_capabilities,
     )
 
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Hosted OpenAI",
-        data={
-            CONF_SKILLS_FOLDER: "/tmp/skills",
-            CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
-        },
-        source=config_entries.SOURCE_USER,
-        options={},
-        unique_id=None,
-    )
+    settings = {
+        CONF_ENABLE_SKILLS: True,
+        CONF_SKILLS_FOLDER: "/tmp/skills",
+        CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
+    }
 
-    assert await async_available_skills(hass, entry.data) == []
-    assert await async_skills_capabilities(hass, entry, ["alpha"]) == []
+    assert await async_available_skills(hass, settings) == []
+    assert await async_skills_capabilities(hass, settings, ["alpha"]) == []

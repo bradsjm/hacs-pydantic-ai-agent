@@ -76,6 +76,7 @@ from .const import (
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
+    CONF_ENABLE_SKILLS,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_FALLBACK_MODEL_SUBENTRY_IDS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
@@ -294,18 +295,6 @@ def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
             default=bool(data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False)),
         )
     ] = BooleanSelector()
-    schema[
-        vol.Required(
-            CONF_SKILLS_FOLDER,
-            default=data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
-        )
-    ] = TextSelector(TextSelectorConfig())
-    schema[
-        vol.Optional(
-            CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
-            default=bool(data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)),
-        )
-    ] = BooleanSelector()
     return vol.Schema(schema)
 
 
@@ -329,10 +318,6 @@ def _dedupe_data(data: Mapping[str, Any]) -> dict[str, Any]:
     dedupe = {
         CONF_PROVIDER_MODE: data[CONF_PROVIDER_MODE],
         CONF_API_KEY: data[CONF_API_KEY],
-        CONF_SKILLS_FOLDER: data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
-        CONF_ENABLE_SKILL_SCRIPT_EXECUTION: bool(
-            data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
-        ),
     }
     if base_url := data.get(CONF_BASE_URL):
         dedupe[CONF_BASE_URL] = base_url
@@ -780,20 +765,16 @@ def _invalid_structured_output_message(output_mode: str) -> str:
 def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
     """Return normalized provider data for storage and validation."""
     data = dict(user_input)
+    data.pop(CONF_SKILLS_FOLDER, None)
+    data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
+    data.pop(CONF_ENABLE_SKILLS, None)
+    data.pop(CONF_SKILLS, None)
     data[CONF_BASE_URL] = _normalise_base_url(data)
     headers = _parse_provider_headers(data.get(CONF_PROVIDER_HEADERS))
     if headers:
         data[CONF_PROVIDER_HEADERS] = headers
     else:
         data.pop(CONF_PROVIDER_HEADERS, None)
-    data[CONF_SKILLS_FOLDER] = _normalise_skills_folder(data.get(CONF_SKILLS_FOLDER))
-    data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION] = bool(
-        data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
-    )
-    if data[CONF_SKILLS_FOLDER] == DEFAULT_SKILLS_FOLDER:
-        data.pop(CONF_SKILLS_FOLDER, None)
-    if not data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION]:
-        data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
     if not data[CONF_BASE_URL]:
         data.pop(CONF_BASE_URL, None)
     token = data.get(CONF_LOGFIRE_TOKEN)
@@ -826,7 +807,6 @@ def _validate_provider_data(hass: HomeAssistant, data: Mapping[str, Any]) -> Non
             "invalid_provider_config",
             f"Unsupported provider mode: {data.get(CONF_PROVIDER_MODE)!r}.",
         )
-    _validate_skills_folder(hass, data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER))
 
 
 def _validate_skills_folder(hass: HomeAssistant, folder: object) -> None:
@@ -843,35 +823,6 @@ def _validate_skills_folder(hass: HomeAssistant, folder: object) -> None:
 def _provider_data_matches(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
     """Return if two provider configurations identify the same connection."""
     return _dedupe_data(left) == _dedupe_data(right)
-
-
-def _provider_skill_source(data: Mapping[str, Any]) -> tuple[str, bool]:
-    """Return provider skill-source settings that define the trust boundary."""
-    return (
-        data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
-        bool(data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)),
-    )
-
-
-def _clear_subentry_skills_after_skill_source_change(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    new_data: Mapping[str, Any],
-) -> None:
-    """Clear selected skills when the provider skill source changes."""
-    if _provider_skill_source(entry.data) == _provider_skill_source(new_data):
-        return
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type not in {
-            SUBENTRY_TYPE_CONVERSATION,
-            SUBENTRY_TYPE_AI_TASK,
-        }:
-            continue
-        if CONF_SKILLS not in subentry.data:
-            continue
-        data = dict(subentry.data)
-        data.pop(CONF_SKILLS, None)
-        hass.config_entries.async_update_subentry(entry, subentry, data=data)
 
 
 def _mcp_server_select_options(entry: ConfigEntry | None) -> list[SelectOptionDict]:
@@ -967,6 +918,77 @@ def _merge_submitted_skills_with_hidden(
         return []
     return selected + _hidden_configured_skill_names(
         options.get(CONF_SKILLS), available_skills
+    )
+
+
+def _normalise_skill_settings(data: dict[str, Any]) -> None:
+    """Normalize and prune per-agent skill settings in place."""
+    enable_skills = bool(data.get(CONF_ENABLE_SKILLS, False))
+    data[CONF_SKILLS_FOLDER] = _normalise_skills_folder(data.get(CONF_SKILLS_FOLDER))
+    data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION] = bool(
+        data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
+    )
+    if not enable_skills:
+        data.pop(CONF_ENABLE_SKILLS, None)
+        data.pop(CONF_SKILLS, None)
+        data.pop(CONF_SKILLS_FOLDER, None)
+        data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
+        return
+    data[CONF_ENABLE_SKILLS] = True
+    if data[CONF_SKILLS_FOLDER] == DEFAULT_SKILLS_FOLDER:
+        data.pop(CONF_SKILLS_FOLDER, None)
+    if not data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION]:
+        data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
+
+
+def _skill_source(data: Mapping[str, Any]) -> tuple[bool, str, bool]:
+    """Return the fields that determine selectable skills for one agent."""
+    return (
+        bool(data.get(CONF_ENABLE_SKILLS, False)),
+        _normalise_skills_folder(data.get(CONF_SKILLS_FOLDER)),
+        bool(data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)),
+    )
+
+
+def _append_skill_schema_fields(
+    schema: VolDictType,
+    options: Mapping[str, Any],
+    available_skills: list[AvailableSkill] | None,
+) -> None:
+    """Append per-agent skill controls to a subentry form schema."""
+    enable_skills = bool(options.get(CONF_ENABLE_SKILLS, False))
+    schema[
+        vol.Optional(
+            CONF_ENABLE_SKILLS,
+            default=enable_skills,
+        )
+    ] = BooleanSelector()
+    schema[
+        vol.Required(
+            CONF_SKILLS_FOLDER,
+            default=options.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
+        )
+    ] = TextSelector(TextSelectorConfig())
+    schema[
+        vol.Optional(
+            CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
+            default=bool(options.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)),
+        )
+    ] = BooleanSelector()
+    skill_options = _skill_select_options(available_skills or [])
+    if not skill_options:
+        return
+    skills_schema_key = vol.Optional(CONF_SKILLS)
+    if CONF_SKILLS in options:
+        selected_skill_names = selected_available_skill_names(
+            options[CONF_SKILLS], available_skills or []
+        )
+        skills_schema_key = vol.Optional(
+            CONF_SKILLS,
+            default=selected_skill_names,
+        )
+    schema[skills_schema_key] = SelectSelector(
+        SelectSelectorConfig(options=skill_options, multiple=True)
     )
 
 
@@ -1075,20 +1097,7 @@ def _conversation_schema(
             default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
         )
     ] = BooleanSelector()
-    skill_options = _skill_select_options(available_skills or [])
-    if skill_options:
-        skills_schema_key = vol.Optional(CONF_SKILLS)
-        if CONF_SKILLS in options:
-            selected_skill_names = selected_available_skill_names(
-                options[CONF_SKILLS], available_skills or []
-            )
-            skills_schema_key = vol.Optional(
-                CONF_SKILLS,
-                default=selected_skill_names,
-            )
-        schema[skills_schema_key] = SelectSelector(
-            SelectSelectorConfig(options=skill_options, multiple=True)
-        )
+    _append_skill_schema_fields(schema, options, available_skills)
     return vol.Schema(schema)
 
 
@@ -1110,6 +1119,8 @@ def _model_profile_schema(
         if existing_model := options.get(CONF_MODEL):
             if isinstance(existing_model, str) and existing_model not in model_options:
                 model_options.insert(0, existing_model)
+        default_model = options.get(CONF_MODEL, model_options[0])
+        model_schema_key = vol.Required(CONF_MODEL, default=default_model)
         model_selector = SelectSelector(
             SelectSelectorConfig(
                 options=model_options,
@@ -1121,10 +1132,13 @@ def _model_profile_schema(
         model_selector = TextSelector(TextSelectorConfig())
     return vol.Schema(
         {
-            vol.Required(CONF_NAME, default=options.get(CONF_NAME, "")): TextSelector(
+            model_schema_key: model_selector,
+            vol.Required(
+                CONF_NAME,
+                default=options.get(CONF_NAME, options.get(CONF_MODEL, "")),
+            ): TextSelector(
                 TextSelectorConfig()
             ),
-            model_schema_key: model_selector,
             vol.Optional(
                 _MODEL_SETTING_TEMPERATURE,
                 description={
@@ -1533,14 +1547,17 @@ def _conversation_data_from_user_input(
         data.pop(CONF_WEB_FETCH_ENABLED, None)
     if not data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS):
         data.pop(CONF_FALLBACK_MODEL_SUBENTRY_IDS, None)
-    if CONF_SKILLS in user_input and available_skills:
+    if data.get(CONF_ENABLE_SKILLS) and CONF_SKILLS in user_input and available_skills:
         data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
             user_input, options, available_skills
         )
-    elif CONF_SKILLS not in user_input and options.get(CONF_SKILLS):
+    elif data.get(CONF_ENABLE_SKILLS) and CONF_SKILLS not in user_input and options.get(
+        CONF_SKILLS
+    ):
         data[CONF_SKILLS] = options[CONF_SKILLS]
     if not data.get(CONF_SKILLS):
         data.pop(CONF_SKILLS, None)
+    _normalise_skill_settings(data)
     return data
 
 
@@ -1651,20 +1668,6 @@ def _ai_task_data_schema(
             default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
         )
     ] = BooleanSelector()
-    skill_options = _skill_select_options(available_skills or [])
-    if skill_options:
-        skills_schema_key = vol.Optional(CONF_SKILLS)
-        if CONF_SKILLS in options:
-            selected_skill_names = selected_available_skill_names(
-                options[CONF_SKILLS], available_skills or []
-            )
-            skills_schema_key = vol.Optional(
-                CONF_SKILLS,
-                default=selected_skill_names,
-            )
-        schema[skills_schema_key] = SelectSelector(
-            SelectSelectorConfig(options=skill_options, multiple=True)
-        )
     schema[
         vol.Required(
             CONF_OUTPUT_MODE,
@@ -1679,6 +1682,7 @@ def _ai_task_data_schema(
             translation_key=CONF_OUTPUT_MODE,
         )
     )
+    _append_skill_schema_fields(schema, options, available_skills)
     return vol.Schema(schema)
 
 
@@ -1700,14 +1704,17 @@ def _ai_task_data_from_user_input(
         data.pop(CONF_WEB_FETCH_ENABLED, None)
     if not data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS):
         data.pop(CONF_FALLBACK_MODEL_SUBENTRY_IDS, None)
-    if CONF_SKILLS in user_input and available_skills:
+    if data.get(CONF_ENABLE_SKILLS) and CONF_SKILLS in user_input and available_skills:
         data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
             user_input, options, available_skills
         )
-    elif CONF_SKILLS not in user_input and options.get(CONF_SKILLS):
+    elif data.get(CONF_ENABLE_SKILLS) and CONF_SKILLS not in user_input and options.get(
+        CONF_SKILLS
+    ):
         data[CONF_SKILLS] = options[CONF_SKILLS]
     if not data.get(CONF_SKILLS):
         data.pop(CONF_SKILLS, None)
+    _normalise_skill_settings(data)
     return data
 
 
@@ -1863,6 +1870,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Pydantic AI Agent."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     def _async_update_provider_and_abort(
         self, entry: ConfigEntry, data: dict[str, Any]
@@ -1961,7 +1969,6 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors=errors,
                 description_placeholders=description_placeholders,
             )
-        _clear_subentry_skills_after_skill_source_change(self.hass, entry, data)
         return self._async_update_provider_and_abort(entry, data)
 
     async def async_step_reconfigure(
@@ -2019,7 +2026,6 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                 description_placeholders=description_placeholders,
             )
 
-        _clear_subentry_skills_after_skill_source_change(self.hass, entry, data)
         return self._async_update_provider_and_abort(entry, data)
 
     @classmethod
@@ -2096,6 +2102,11 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Show the model profile form with discovered model options when available."""
         model_names = await self._async_model_names()
+        form_options = dict(options)
+        if self._is_new and model_names and not form_options.get(CONF_MODEL):
+            default_model = sorted(set(model_names))[0]
+            form_options[CONF_MODEL] = default_model
+            form_options.setdefault(CONF_NAME, default_model)
         form_errors = dict(errors or {})
         if (
             show_model_discovery_error
@@ -2105,7 +2116,7 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
             form_errors["base"] = "model_list_unavailable"
         return self.async_show_form(
             step_id="init",
-            data_schema=_model_profile_schema(options, model_names),
+            data_schema=_model_profile_schema(form_options, model_names),
             errors=form_errors,
             description_placeholders=description_placeholders,
         )
@@ -2123,6 +2134,12 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
                 self.hass, user_input, _MAIN_MODEL_SETTING_KEYS
             )
             data = _model_profile_data_from_user_input(user_input)
+            model_names = await self._async_model_names() if self._is_new else None
+            if model_names:
+                default_model = sorted(set(model_names))[0]
+                name = str(data.get(CONF_NAME, "")).strip()
+                if not name or name == default_model:
+                    data[CONF_NAME] = data[CONF_MODEL]
             existing_settings = _model_settings_from_options(self._options)
             model_settings = _merge_model_settings(
                 existing_settings, main_settings, cleared
@@ -2274,9 +2291,47 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
             return self.async_abort(reason="entry_not_loaded")
         if not _model_profile_select_options(entry):
             return self.async_abort(reason="no_models_configured")
-        available_skills = await async_available_skills(self.hass, entry.data)
+        available_skills = await async_available_skills(self.hass, self._options)
 
         if user_input is not None:
+            try:
+                _validate_skills_folder(
+                    self.hass,
+                    user_input.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
+                )
+            except ProviderValidationError as err:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_conversation_schema(
+                        self.hass,
+                        self._options | user_input,
+                        entry,
+                        available_skills,
+                    ),
+                    errors={"base": err.reason},
+                    description_placeholders=_provider_validation_placeholders(err),
+                )
+            if _skill_source(user_input) != _skill_source(self._options):
+                refreshed_options = dict(user_input)
+                refreshed_options[CONF_SKILLS_FOLDER] = _normalise_skills_folder(
+                    refreshed_options.get(CONF_SKILLS_FOLDER)
+                )
+                refreshed_options.pop(CONF_SKILLS, None)
+                self._options = refreshed_options
+                refreshed_skills = await async_available_skills(
+                    self.hass, refreshed_options
+                )
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_conversation_schema(
+                        self.hass,
+                        refreshed_options,
+                        entry,
+                        refreshed_skills,
+                    ),
+                    errors={"base": "skills_refreshed"},
+                )
+            available_skills = await async_available_skills(self.hass, user_input)
             data = _conversation_data_from_user_input(
                 user_input,
                 self._options,
@@ -2367,9 +2422,41 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             return self.async_abort(reason="entry_not_loaded")
         if not _model_profile_select_options(entry):
             return self.async_abort(reason="no_models_configured")
-        available_skills = await async_available_skills(self.hass, entry.data)
+        available_skills = await async_available_skills(self.hass, self._options)
 
         if user_input is not None:
+            try:
+                _validate_skills_folder(
+                    self.hass,
+                    user_input.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
+                )
+            except ProviderValidationError as err:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_ai_task_data_schema(
+                        self._options | user_input, entry, available_skills
+                    ),
+                    errors={"base": err.reason},
+                    description_placeholders=_provider_validation_placeholders(err),
+                )
+            if _skill_source(user_input) != _skill_source(self._options):
+                refreshed_options = dict(user_input)
+                refreshed_options[CONF_SKILLS_FOLDER] = _normalise_skills_folder(
+                    refreshed_options.get(CONF_SKILLS_FOLDER)
+                )
+                refreshed_options.pop(CONF_SKILLS, None)
+                self._options = refreshed_options
+                refreshed_skills = await async_available_skills(
+                    self.hass, refreshed_options
+                )
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_ai_task_data_schema(
+                        refreshed_options, entry, refreshed_skills
+                    ),
+                    errors={"base": "skills_refreshed"},
+                )
+            available_skills = await async_available_skills(self.hass, user_input)
             data = _ai_task_data_from_user_input(
                 user_input,
                 self._options,
@@ -2404,7 +2491,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Probe the selected AI task model, then create or update the subentry."""
         entry = self._get_entry()
-        available_skills = await async_available_skills(self.hass, entry.data)
+        available_skills = await async_available_skills(self.hass, data)
         if mcp_error := _selected_mcp_server_error(entry, data):
             return self.async_show_form(
                 step_id="init",

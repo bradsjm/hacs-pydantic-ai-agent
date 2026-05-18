@@ -35,7 +35,6 @@ async def test_system_health_reports_safe_aggregate_counts(
             CONF_NAME: "Local Provider",
             CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-secret",
-            CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
         },
         source=config_entries.SOURCE_USER,
         subentries_data=(
@@ -46,7 +45,10 @@ async def test_system_health_reports_safe_aggregate_counts(
                 "unique_id": None,
             },
             {
-                "data": {CONF_AGENT_NAME: "Kitchen Agent"},
+                "data": {
+                    CONF_AGENT_NAME: "Kitchen Agent",
+                    CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
+                },
                 "subentry_type": SUBENTRY_TYPE_CONVERSATION,
                 "title": "Kitchen Agent",
                 "unique_id": None,
@@ -83,8 +85,6 @@ async def test_system_health_reports_safe_aggregate_counts(
         base_url="https://provider.example.com/v1",
         logfire_enabled=False,
         logfire_include_content=False,
-        skills_folder="/config/skills",
-        enable_skill_script_execution=True,
         mcp_tool_cache={mcp_subentry_id: [{"name": "secret_tool"}]},
     )
     other_entry = MockConfigEntry(

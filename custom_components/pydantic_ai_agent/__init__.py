@@ -18,6 +18,7 @@ import voluptuous as vol
 from .config_flow import ProviderValidationError, async_probe_model
 from .const import (
     CONF_BASE_URL,
+    CONF_ENABLE_SKILLS,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_FALLBACK_MODEL_SUBENTRY_IDS,
     CONF_MAX_ITERATIONS,
@@ -27,6 +28,7 @@ from .const import (
     CONF_OUTPUT_MODE,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    CONF_SKILLS,
     CONF_SKILLS_FOLDER,
     DEFAULT_SKILLS_FOLDER,
     DOMAIN,
@@ -102,8 +104,6 @@ class PydanticAIAgentRuntimeData:
     base_url: str | None
     logfire_enabled: bool
     logfire_include_content: bool
-    skills_folder: str
-    enable_skill_script_execution: bool
     provider_headers: dict[str, str] = field(default_factory=dict)
     mcp_servers: list[dict[str, Any]] = field(default_factory=list)
     mcp_tool_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
@@ -159,10 +159,6 @@ async def async_setup_entry(
         provider_headers=dict(entry.data.get(CONF_PROVIDER_HEADERS, {})),
         logfire_enabled=logfire_enabled(hass, entry),
         logfire_include_content=logfire_include_content(hass, entry),
-        skills_folder=entry.data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
-        enable_skill_script_execution=bool(
-            entry.data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
-        ),
         mcp_servers=[
             {CONF_NAME: subentry.title, **dict(subentry.data)}
             for subentry in mcp_subentries(entry)
@@ -182,6 +178,49 @@ async def async_unload_entry(
     if unloaded:
         async_delete_logfire_token_conflict_issue(hass, entry)
     return unloaded
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
+) -> bool:
+    """Migrate provider-owned skill settings to subentry-owned settings."""
+    if entry.version != 1:
+        return False
+    old_folder = entry.data.get(CONF_SKILLS_FOLDER)
+    old_folder_configured = CONF_SKILLS_FOLDER in entry.data
+    old_script_execution = bool(
+        entry.data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
+    )
+    old_script_configured = CONF_ENABLE_SKILL_SCRIPT_EXECUTION in entry.data
+
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type not in {SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK}:
+            continue
+        data = dict(subentry.data)
+        enable_skills = (
+            bool(data.get(CONF_SKILLS))
+            or old_folder_configured
+            or old_script_execution
+        )
+        if enable_skills:
+            data[CONF_ENABLE_SKILLS] = True
+        if old_folder_configured and CONF_SKILLS_FOLDER not in data:
+            data[CONF_SKILLS_FOLDER] = old_folder
+        if old_script_configured and CONF_ENABLE_SKILL_SCRIPT_EXECUTION not in data:
+            data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION] = True
+        if data.get(CONF_SKILLS_FOLDER) == DEFAULT_SKILLS_FOLDER:
+            data.pop(CONF_SKILLS_FOLDER, None)
+        if not data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False):
+            data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
+        if not data.get(CONF_ENABLE_SKILLS, False):
+            data.pop(CONF_ENABLE_SKILLS, None)
+        hass.config_entries.async_update_subentry(entry, subentry, data=data)
+
+    data = dict(entry.data)
+    data.pop(CONF_SKILLS_FOLDER, None)
+    data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
+    hass.config_entries.async_update_entry(entry, data=data, minor_version=2)
+    return True
 
 
 async def async_remove_entry(

@@ -31,6 +31,7 @@ from pydantic_ai.models.test import TestModel
 from custom_components.pydantic_ai_agent import PydanticAIAgentRuntimeData
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
+    CONF_ENABLE_SKILLS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
@@ -40,7 +41,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_WEB_FETCH_ENABLED,
-    DEFAULT_SKILLS_FOLDER,
     DOMAIN,
     OUTPUT_MODE_TOOL,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
@@ -188,6 +188,7 @@ def _entry(
     if llm_hass_api is not None:
         subentry_data[CONF_LLM_HASS_API] = llm_hass_api
     if skills is not None:
+        subentry_data[CONF_ENABLE_SKILLS] = True
         subentry_data[CONF_SKILLS] = skills
     if web_fetch_enabled:
         subentry_data[CONF_WEB_FETCH_ENABLED] = True
@@ -233,8 +234,6 @@ def _entry(
         base_url=None,
         logfire_enabled=False,
         logfire_include_content=False,
-        skills_folder=DEFAULT_SKILLS_FOLDER,
-        enable_skill_script_execution=False,
     )
     return entry
 
@@ -298,8 +297,6 @@ def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigE
         base_url=None,
         logfire_enabled=logfire,
         logfire_include_content=logfire,
-        skills_folder=DEFAULT_SKILLS_FOLDER,
-        enable_skill_script_execution=False,
     )
     return entry
 
@@ -783,7 +780,9 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
             agent_id=entity_id,
         )
 
-    skills_capabilities.assert_awaited_once_with(hass, entry, ["kitchen-skill"])
+    assert skills_capabilities.call_args.args[0] is hass
+    assert skills_capabilities.call_args.args[1][CONF_ENABLE_SKILLS] is True
+    assert skills_capabilities.call_args.args[2] == ["kitchen-skill"]
     capabilities = agent_class.call_args.kwargs["capabilities"]
     assert capability in capabilities
     _assert_context_management_capability(capabilities)

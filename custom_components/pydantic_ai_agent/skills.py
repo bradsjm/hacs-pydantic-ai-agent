@@ -6,11 +6,11 @@ from pathlib import Path
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
+    CONF_ENABLE_SKILLS,
     CONF_SKILLS_FOLDER,
     DEFAULT_SKILLS_FOLDER,
 )
@@ -67,10 +67,12 @@ async def async_available_skills(
 
 async def async_skills_capabilities(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    skill_settings: Mapping[str, Any],
     selected_skill_names: object,
 ) -> list[Any]:
     """Return a SkillsCapability for selected skills that still exist."""
+    if not skill_settings.get(CONF_ENABLE_SKILLS, False):
+        return []
     if not selected_skill_names:
         return []
     if isinstance(selected_skill_names, str):
@@ -83,11 +85,11 @@ async def async_skills_capabilities(
         return []
 
     try:
-        folder = skills_folder_path(hass, entry.data.get(CONF_SKILLS_FOLDER))
+        folder = skills_folder_path(hass, skill_settings.get(CONF_SKILLS_FOLDER))
     except ValueError as err:
         _LOGGER.warning("Ignoring invalid Pydantic AI skills folder: %s", err)
         return []
-    enable_scripts = bool(entry.data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False))
+    enable_scripts = bool(skill_settings.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False))
     return await hass.async_add_executor_job(
         _build_skills_capabilities,
         folder,

@@ -175,7 +175,7 @@ class PydanticAIBaseLLMEntity:
         user_prompt, message_history = split_last_user_prompt(messages)
         capabilities = await async_skills_capabilities(
             self.hass,
-            self.entry,
+            self.subentry.data,
             self.subentry.data.get(CONF_SKILLS),
         )
         if self.subentry.data.get(CONF_WEB_FETCH_ENABLED):

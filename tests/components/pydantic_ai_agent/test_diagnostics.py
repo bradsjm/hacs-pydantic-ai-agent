@@ -177,8 +177,6 @@ async def test_diagnostics_exposes_safe_runtime_mcp_counts(
         base_url="https://provider.example.com/v1",
         logfire_enabled=False,
         logfire_include_content=False,
-        skills_folder="/config/skills",
-        enable_skill_script_execution=False,
         mcp_servers=[{CONF_MCP_URL: "https://mcp.example.com/mcp"}],
         mcp_tool_cache={mcp_subentry_id: [{"name": "secret_tool"}, {"name": "x"}]},
     )
@@ -241,8 +239,6 @@ async def test_device_diagnostics_filters_to_matching_subentry(
         base_url=None,
         logfire_enabled=False,
         logfire_include_content=False,
-        skills_folder="/config/skills",
-        enable_skill_script_execution=False,
     )
     record_run_success(
         hass,

@@ -52,7 +52,9 @@ async def system_health_info(hass: HomeAssistant) -> dict[str, Any]:
         "skill_script_execution_count": sum(
             1
             for entry in entries
-            if entry.data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
+            for subentry in entry.subentries.values()
+            if subentry.subentry_type in {SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK}
+            and subentry.data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
         ),
     }
 

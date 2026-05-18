@@ -27,6 +27,7 @@ from custom_components.pydantic_ai_agent.ai_task import (
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_AI_TASK_NAME,
+    CONF_ENABLE_SKILLS,
     CONF_MAX_ITERATIONS,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
@@ -35,7 +36,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_WEB_FETCH_ENABLED,
-    DEFAULT_SKILLS_FOLDER,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
@@ -104,6 +104,7 @@ def _entry(
     if output_mode is not None:
         subentry_data[CONF_OUTPUT_MODE] = output_mode
     if skills is not None:
+        subentry_data[CONF_ENABLE_SKILLS] = True
         subentry_data[CONF_SKILLS] = skills
     if web_fetch_enabled:
         subentry_data[CONF_WEB_FETCH_ENABLED] = True
@@ -148,8 +149,6 @@ def _entry(
         base_url=None,
         logfire_enabled=False,
         logfire_include_content=False,
-        skills_folder=DEFAULT_SKILLS_FOLDER,
-        enable_skill_script_execution=False,
     )
     return entry
 
@@ -573,6 +572,7 @@ async def test_ai_task_runtime_passes_selected_skills_capabilities(
         )
 
     assert result.data == "plain result"
+    assert skills_capabilities.call_args.args[1][CONF_ENABLE_SKILLS] is True
     assert skills_capabilities.call_args.args[2] == ["report-skill"]
     capabilities = agent_class.call_args.kwargs["capabilities"]
     assert capability in capabilities
