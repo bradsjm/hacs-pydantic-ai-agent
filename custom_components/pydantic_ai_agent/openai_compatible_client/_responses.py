@@ -20,10 +20,14 @@ class ResponsesResource:
         self._client = client
 
     @overload
-    async def create(self, *, stream: Literal[False] = False, **kwargs: Any) -> Response: ...
+    async def create(
+        self, *, stream: Literal[False] = False, **kwargs: Any
+    ) -> Response: ...
 
     @overload
-    async def create(self, *, stream: Literal[True], **kwargs: Any) -> ResponseStream: ...
+    async def create(
+        self, *, stream: Literal[True], **kwargs: Any
+    ) -> ResponseStream: ...
 
     async def create(
         self,

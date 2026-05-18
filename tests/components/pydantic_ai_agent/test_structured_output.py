@@ -46,7 +46,9 @@ def test_structured_output_name_is_prefixed_bounded_and_collision_safe() -> None
 def test_structured_output_name_handles_digest_collision() -> None:
     """Test output names keep searching when the digest fallback is reserved too."""
     first = structured_output_name("Kitchen Report", "fallback")
-    digest = structured_output_name("Kitchen Report", "fallback", reserved_names={first})
+    digest = structured_output_name(
+        "Kitchen Report", "fallback", reserved_names={first}
+    )
     assert structured_output_name(
         "Kitchen Report", "fallback", reserved_names={first, digest}
     ).endswith("_2")

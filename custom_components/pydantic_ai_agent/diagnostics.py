@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from ._redaction import redact_data
 from .const import (
     CONF_BASE_URL,
+    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_LOGFIRE_TOKEN,
     CONF_MCP_HEADERS,
     CONF_MCP_URL,
@@ -43,7 +44,10 @@ _SENSITIVE_KEYS = {
     "x-api-key",
 }
 
-_MODEL_PROFILE_SENSITIVE_KEYS = _SENSITIVE_KEYS | {"extra_body"}
+_MODEL_PROFILE_SENSITIVE_KEYS = _SENSITIVE_KEYS | {
+    CONF_CHAT_TEMPLATE_KWARGS,
+    "extra_body",
+}
 
 
 def _redact(data: dict[str, Any]) -> dict[str, Any]:

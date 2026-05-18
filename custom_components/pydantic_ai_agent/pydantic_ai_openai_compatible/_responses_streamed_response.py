@@ -164,7 +164,9 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
                 self._refusal_text = event.refusal or self._refusal_text
                 continue
 
-            raise UnexpectedModelBehavior(f"Unsupported Responses stream event: {event_type!r}")
+            raise UnexpectedModelBehavior(
+                f"Unsupported Responses stream event: {event_type!r}"
+            )
 
         if self._refusal_text:
             self.provider_details = {
@@ -180,7 +182,9 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
         item_id = _item_id(item, event)
         item_type = item.get("type")
         if item_type == "function_call":
-            details = {"namespace": item["namespace"]} if item.get("namespace") else None
+            details = (
+                {"namespace": item["namespace"]} if item.get("namespace") else None
+            )
             return [
                 self._parts_manager.handle_tool_call_part(
                     vendor_part_id=item_id,
@@ -210,7 +214,11 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
         item_id = _item_id(item, event)
         item_type = item.get("type")
         if item_type == "function_call":
-            args = None if item_id in self._tool_arg_delta_item_ids else item.get("arguments")
+            args = (
+                None
+                if item_id in self._tool_arg_delta_item_ids
+                else item.get("arguments")
+            )
             maybe_event = self._parts_manager.handle_tool_call_delta(
                 vendor_part_id=item_id,
                 args=args,
@@ -296,7 +304,9 @@ def _reasoning_vendor_id(event: ResponseStreamEvent) -> str:
     return f"{_event_item_id(event)}-{event.summary_index}"
 
 
-def _raw_content_updater(delta: str) -> Callable[[dict[str, Any] | None], dict[str, Any]]:
+def _raw_content_updater(
+    delta: str,
+) -> Callable[[dict[str, Any] | None], dict[str, Any]]:
     """Return a provider-details updater for raw reasoning deltas."""
 
     def update(existing: dict[str, Any] | None) -> dict[str, Any]:

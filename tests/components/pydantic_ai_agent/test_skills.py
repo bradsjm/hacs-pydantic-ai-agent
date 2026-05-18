@@ -27,7 +27,9 @@ from custom_components.pydantic_ai_agent.skills import (
 
 def _skill(name: str, *, scripts: object | None = None) -> SimpleNamespace:
     """Return a fake discovered skill."""
-    return SimpleNamespace(name=name, description=f"{name} description", scripts=scripts)
+    return SimpleNamespace(
+        name=name, description=f"{name} description", scripts=scripts
+    )
 
 
 def test_skills_folder_path_stays_under_config_skills(hass: HomeAssistant) -> None:
@@ -70,9 +72,7 @@ def test_discover_available_skills_hides_script_skills_until_enabled(
     )
 
     assert _discover_available_skills(tmp_path, enable_scripts=False) == [
-        AvailableSkill(
-            name="plain", description="plain description", has_scripts=False
-        )
+        AvailableSkill(name="plain", description="plain description", has_scripts=False)
     ]
     assert [skill.name for skill in _discover_available_skills(tmp_path, True)] == [
         "plain",
@@ -86,7 +86,9 @@ def test_build_skills_capabilities_filters_selection_and_script_tools(
     """Test runtime skills capability uses selected safe skills only."""
 
     class SkillsCapability:
-        def __init__(self, *, skills: list[object], exclude_tools: set[str] | None) -> None:
+        def __init__(
+            self, *, skills: list[object], exclude_tools: set[str] | None
+        ) -> None:
             self.skills = skills
             self.exclude_tools = exclude_tools
 

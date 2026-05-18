@@ -42,6 +42,9 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
     CONF_BASE_URL,
+    CONF_CHAT_TEMPLATE_KWARG_KEY,
+    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_LOGFIRE_INCLUDE_CONTENT,
@@ -708,6 +711,54 @@ async def test_probe_model_merges_configured_model_settings(
     }
 
 
+async def test_probe_model_renders_chat_template_kwargs(
+    hass: HomeAssistant,
+) -> None:
+    """Test provider validation renders dedicated chat template kwargs."""
+    data = {
+        CONF_NAME: "Hosted OpenAI",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        CONF_API_KEY: "sk-test",
+    }
+    stream_events = _SingleEventStream()
+
+    @asynccontextmanager
+    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
+        yield stream_events
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            side_effect=stream,
+        ) as model_request_stream,
+    ):
+        await async_probe_model(
+            hass,
+            data,
+            "gpt-test",
+            {
+                "extra_body": {"service_tier": "flex"},
+                CONF_CHAT_TEMPLATE_KWARGS: [
+                    {
+                        CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
+                    }
+                ],
+            },
+        )
+
+    assert model_request_stream.call_args.kwargs["model_settings"] == {
+        "extra_body": {
+            "service_tier": "flex",
+            CONF_CHAT_TEMPLATE_KWARGS: {"enable_thinking": True},
+        },
+        "timeout": 10.0,
+    }
+
+
 async def test_probe_model_responses_uses_streamed_request(
     hass: HomeAssistant,
 ) -> None:
@@ -750,6 +801,7 @@ async def test_probe_model_responses_validates_structured_response(
         CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
         CONF_API_KEY: "sk-test",
     }
+
     class StructuredEventStream:
         """Async stream with a structured probe response."""
 
@@ -1501,6 +1553,12 @@ async def test_create_model_profile_with_advanced_model_settings(
             "presence_penalty": 0.2,
             "frequency_penalty": 0.3,
             "extra_body": 'reasoning: {"effort": "high"}\nservice_tier: "flex"\nnullable: null',
+            CONF_CHAT_TEMPLATE_KWARGS: [
+                {
+                    CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+                    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
+                }
+            ],
         },
     )
 
@@ -1520,6 +1578,12 @@ async def test_create_model_profile_with_advanced_model_settings(
             "service_tier": "flex",
             "nullable": None,
         },
+        CONF_CHAT_TEMPLATE_KWARGS: [
+            {
+                CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+                CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
+            }
+        ],
     }
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_MODEL_SETTINGS] == expected_settings
@@ -1538,6 +1602,36 @@ async def test_create_model_profile_with_advanced_model_settings(
         ({"extra_body": "missing-separator"}, {"extra_body": "invalid_key_value"}),
         ({"extra_body": "foo: not-json"}, {"extra_body": "invalid_json"}),
         ({"extra_body": "foo: true\nfoo: false"}, {"extra_body": "duplicate_key"}),
+        (
+            {"extra_body": 'chat_template_kwargs: {"foo": "bar"}'},
+            {"extra_body": "chat_template_kwargs_conflict"},
+        ),
+        (
+            {
+                CONF_CHAT_TEMPLATE_KWARGS: [
+                    {
+                        CONF_CHAT_TEMPLATE_KWARG_KEY: "",
+                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
+                    }
+                ]
+            },
+            {CONF_CHAT_TEMPLATE_KWARGS: "invalid_chat_template_key"},
+        ),
+        (
+            {
+                CONF_CHAT_TEMPLATE_KWARGS: [
+                    {
+                        CONF_CHAT_TEMPLATE_KWARG_KEY: "duplicate",
+                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
+                    },
+                    {
+                        CONF_CHAT_TEMPLATE_KWARG_KEY: "duplicate",
+                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ false }}",
+                    },
+                ]
+            },
+            {CONF_CHAT_TEMPLATE_KWARGS: "duplicate_key"},
+        ),
     ],
 )
 async def test_model_profile_advanced_model_settings_validation_errors(

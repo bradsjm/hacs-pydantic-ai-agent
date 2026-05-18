@@ -8,7 +8,9 @@ from ..openai_compatible_client import ChatCompletion, ChatCompletionChunk, Resp
 from ..openai_compatible_client._types import CompletionUsage, ResponseUsage
 
 
-def map_usage(response: ChatCompletion | ChatCompletionChunk | Response) -> RequestUsage:
+def map_usage(
+    response: ChatCompletion | ChatCompletionChunk | Response,
+) -> RequestUsage:
     """Map OpenAI-compatible usage to Pydantic AI request usage."""
     raw_usage = response.usage
     if raw_usage is None:

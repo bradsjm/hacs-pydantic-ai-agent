@@ -82,14 +82,19 @@ async def map_messages(
         else:
             assert_never(message)
 
-    instruction_parts = model._get_instruction_parts(messages, model_request_parameters) or []
+    instruction_parts = (
+        model._get_instruction_parts(messages, model_request_parameters) or []
+    )
     instructions = "\n\n".join(part.content for part in instruction_parts)
     return instructions or omit, mapped_messages
 
 
 def _system_role(model: Model[Any]) -> str:
     """Return the OpenAI-compatible system prompt role."""
-    return OpenAIModelProfile.from_profile(model.profile).openai_system_prompt_role or "system"
+    return (
+        OpenAIModelProfile.from_profile(model.profile).openai_system_prompt_role
+        or "system"
+    )
 
 
 async def _map_model_request(
@@ -124,7 +129,9 @@ async def _map_model_request(
             assert_never(part)
 
 
-def _map_model_response(model: Model[Any], message: ModelResponse) -> list[dict[str, Any]]:
+def _map_model_response(
+    model: Model[Any], message: ModelResponse
+) -> list[dict[str, Any]]:
     """Map a prior model response to Responses input items."""
     mapped: list[dict[str, Any]] = []
     for item in message.parts:
@@ -145,7 +152,9 @@ def _map_model_response(model: Model[Any], message: ModelResponse) -> list[dict[
                     "status": "completed",
                     "content": [content],
                 }
-                if item.provider_details and (phase := item.provider_details.get("phase")):
+                if item.provider_details and (
+                    phase := item.provider_details.get("phase")
+                ):
                     mapped_item["phase"] = phase
                 mapped.append(mapped_item)
             else:
@@ -266,7 +275,11 @@ def _map_binary_content(item: BinaryContent) -> dict[str, Any]:
         }
     if item.is_document:
         data = f"data:{item.media_type};base64,{base64.b64encode(item.data).decode()}"
-        return {"type": "input_file", "file_data": data, "filename": f"filename.{item.format}"}
+        return {
+            "type": "input_file",
+            "file_data": data,
+            "filename": f"filename.{item.format}",
+        }
     raise UserError(f"Unsupported binary content type: {item.media_type}")
 
 

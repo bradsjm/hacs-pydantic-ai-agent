@@ -151,7 +151,9 @@ async def test_unsupported_attachment_type_raises(
 
 def test_split_last_user_prompt_returns_none_without_user_prompt() -> None:
     """Test history is unchanged when no user prompt exists."""
-    messages: list[ModelMessage] = [ModelResponse(parts=[TextPart(content="assistant")])]
+    messages: list[ModelMessage] = [
+        ModelResponse(parts=[TextPart(content="assistant")])
+    ]
 
     prompt, history = split_last_user_prompt(messages)
 

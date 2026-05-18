@@ -38,7 +38,10 @@ class OpenAICompatibleProvider(Provider[AsyncOpenAICompatible]):
 
     @overload
     def __init__(
-        self, *, client: AsyncOpenAICompatible, name: str = "openai-compatible-completions"
+        self,
+        *,
+        client: AsyncOpenAICompatible,
+        name: str = "openai-compatible-completions",
     ) -> None: ...
 
     @overload

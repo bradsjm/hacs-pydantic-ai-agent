@@ -1,6 +1,6 @@
 """Shared Pydantic AI entity runtime."""
 
-from collections.abc import AsyncIterable, AsyncIterator, Sequence
+from collections.abc import AsyncIterable, AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 import errno
 import json
@@ -48,11 +48,16 @@ from homeassistant.helpers import device_registry as dr, llm
 
 from . import PydanticAIAgentConfigEntry
 from .const import (
+    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_MCP_SERVER_IDS,
     CONF_OUTPUT_MODE,
     CONF_SKILLS,
     CONF_WEB_FETCH_ENABLED,
     DOMAIN,
+)
+from .chat_template_kwargs import (
+    reject_chat_template_kwargs_in_extra_body,
+    render_chat_template_kwargs,
 )
 from .context_management import SlidingWindowContextCapability
 from .ha_toolset import tool_definitions_from_llm_api, tools_from_llm_api
@@ -178,6 +183,9 @@ class PydanticAIBaseLLMEntity:
         for index, profile in enumerate(profiles):
             try:
                 settings = model_settings(profile)
+                settings = _model_settings_with_chat_template_kwargs(
+                    self.hass, profile, settings
+                )
                 usage_limits = UsageLimits(
                     request_limit=profile_max_iterations(profile, max_iterations),
                 )
@@ -375,7 +383,9 @@ class PydanticAIBaseLLMEntity:
         self, outcome: AgentRunOutcome, agent_id: str | None = None
     ) -> None:
         """Record successful run metrics and fire the completion event."""
-        entity_id = agent_id or getattr(self, "entity_id", None) or self.subentry.subentry_id
+        entity_id = (
+            agent_id or getattr(self, "entity_id", None) or self.subentry.subentry_id
+        )
         record_run_success(
             self.hass,
             self.entry.entry_id,
@@ -404,7 +414,9 @@ class PydanticAIBaseLLMEntity:
         model_profile: str | None = None,
     ) -> None:
         """Record failed run metrics and fire the failure event."""
-        entity_id = agent_id or getattr(self, "entity_id", None) or self.subentry.subentry_id
+        entity_id = (
+            agent_id or getattr(self, "entity_id", None) or self.subentry.subentry_id
+        )
         record_run_failure(
             self.hass,
             self.entry.entry_id,
@@ -433,6 +445,26 @@ class PydanticAIBaseLLMEntity:
                 tool.name for tool in tool_definitions_from_llm_api(api_instance)
             ),
         )
+
+
+def _model_settings_with_chat_template_kwargs(
+    hass: HomeAssistant, profile: ModelProfile, settings: ModelSettings
+) -> ModelSettings:
+    """Return request settings with rendered chat-template kwargs injected."""
+    rendered_kwargs = render_chat_template_kwargs(
+        hass, profile.model_settings.get(CONF_CHAT_TEMPLATE_KWARGS)
+    )
+    if not rendered_kwargs:
+        reject_chat_template_kwargs_in_extra_body(settings.get("extra_body"))
+        return settings
+
+    request_settings = dict(settings)
+    extra_body = request_settings.get("extra_body")
+    reject_chat_template_kwargs_in_extra_body(extra_body)
+    request_extra_body = dict(extra_body) if isinstance(extra_body, Mapping) else {}
+    request_extra_body[CONF_CHAT_TEMPLATE_KWARGS] = rendered_kwargs
+    request_settings["extra_body"] = request_extra_body
+    return ModelSettings(**cast(Any, request_settings))
 
 
 def _format_http_error(err: ModelHTTPError) -> str:

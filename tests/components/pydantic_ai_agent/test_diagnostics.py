@@ -14,6 +14,9 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
+    CONF_CHAT_TEMPLATE_KWARG_KEY,
+    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MCP_HEADERS,
@@ -27,6 +30,7 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
+    SUBENTRY_TYPE_MODEL,
 )
 from custom_components.pydantic_ai_agent.diagnostics import (
     async_get_config_entry_diagnostics,
@@ -76,6 +80,23 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
             },
             {
                 "data": {
+                    CONF_NAME: "Reasoning Model",
+                    CONF_MODEL: "gpt-test",
+                    CONF_MODEL_SETTINGS: {
+                        CONF_CHAT_TEMPLATE_KWARGS: [
+                            {
+                                CONF_CHAT_TEMPLATE_KWARG_KEY: "secret_arg",
+                                CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ states('sensor.secret') }}",
+                            }
+                        ],
+                    },
+                },
+                "subentry_type": SUBENTRY_TYPE_MODEL,
+                "title": "Reasoning Model",
+                "unique_id": None,
+            },
+            {
+                "data": {
                     CONF_NAME: "Filesystem MCP",
                     CONF_MCP_URL: "https://user:pass@mcp.example.com/mcp?token=visible",
                     CONF_MCP_HEADERS: {
@@ -108,6 +129,8 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
     assert subentry_data[CONF_MODEL_SETTINGS]["extra_headers"] == REDACTED
     assert subentry_data[CONF_MODEL_SETTINGS]["extra_body"]["api_key"] == REDACTED
     assert diagnostics["subentries"][0]["ha_tools_enabled"] is True
-    mcp_data = diagnostics["subentries"][1]["data"]
+    model_data = diagnostics["subentries"][1]["data"]
+    assert model_data[CONF_MODEL_SETTINGS][CONF_CHAT_TEMPLATE_KWARGS] == REDACTED
+    mcp_data = diagnostics["subentries"][2]["data"]
     assert mcp_data[CONF_MCP_URL] == REDACTED
     assert mcp_data[CONF_MCP_HEADERS] == REDACTED

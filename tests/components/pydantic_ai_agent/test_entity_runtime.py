@@ -27,9 +27,16 @@ from pydantic_ai.exceptions import (
     UsageLimitExceeded,
     UserError,
 )
+from pydantic_ai.settings import ModelSettings
 
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+
+from custom_components.pydantic_ai_agent.const import (
+    CONF_CHAT_TEMPLATE_KWARG_KEY,
+    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_CHAT_TEMPLATE_KWARGS,
+)
 
 from custom_components.pydantic_ai_agent.entity import (
     _StreamRunState,
@@ -37,10 +44,12 @@ from custom_components.pydantic_ai_agent.entity import (
     _agent_messages_to_chat_deltas,
     _has_connection_failure,
     _home_assistant_error,
+    _model_settings_with_chat_template_kwargs,
     _should_fallback,
 )
 from custom_components.pydantic_ai_agent.metrics import MetricsStore, record_run_failure
 from custom_components.pydantic_ai_agent.mcp import MCPValidationError
+from custom_components.pydantic_ai_agent.model_profiles import ModelProfile
 
 
 async def _collect_deltas(
@@ -62,8 +71,7 @@ async def _collect_event_deltas(events: list[Any]) -> tuple[list[dict[str, Any]]
 
     state = _StreamRunState()
     deltas = [
-        delta
-        async for delta in _agent_events_to_chat_deltas(stream(), set(), state)
+        delta async for delta in _agent_events_to_chat_deltas(stream(), set(), state)
     ]
     return deltas, state.result
 
@@ -183,6 +191,52 @@ def test_record_run_failure_updates_health_metrics(hass: HomeAssistant) -> None:
     assert record.consecutive_failures == 1
     assert record.provider_healthy is False
     assert record.last_run_succeeded is False
+
+
+def test_model_settings_with_chat_template_kwargs_renders_without_mutation(
+    hass: HomeAssistant,
+) -> None:
+    """Test dedicated chat template kwargs merge into copied extra_body."""
+    profile = ModelProfile(
+        subentry_id="model-1",
+        title="Fast GPT",
+        model_name="gpt-test",
+        model_settings={
+            CONF_CHAT_TEMPLATE_KWARGS: [
+                {
+                    CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+                    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
+                }
+            ]
+        },
+    )
+    settings = ModelSettings(extra_body={"service_tier": "flex"})
+
+    result = _model_settings_with_chat_template_kwargs(hass, profile, settings)
+
+    assert result == {
+        "extra_body": {
+            "service_tier": "flex",
+            CONF_CHAT_TEMPLATE_KWARGS: {"enable_thinking": True},
+        }
+    }
+    assert settings == {"extra_body": {"service_tier": "flex"}}
+
+
+def test_model_settings_with_chat_template_kwargs_rejects_extra_body_conflict(
+    hass: HomeAssistant,
+) -> None:
+    """Test raw extra_body cannot also configure chat_template_kwargs."""
+    profile = ModelProfile(
+        subentry_id="model-1",
+        title="Fast GPT",
+        model_name="gpt-test",
+        model_settings={},
+    )
+    settings = ModelSettings(extra_body={CONF_CHAT_TEMPLATE_KWARGS: {"old": "path"}})
+
+    with pytest.raises(HomeAssistantError, match="dedicated model setting"):
+        _model_settings_with_chat_template_kwargs(hass, profile, settings)
 
 
 async def test_agent_messages_to_chat_deltas_preserves_assistant_parts() -> None:

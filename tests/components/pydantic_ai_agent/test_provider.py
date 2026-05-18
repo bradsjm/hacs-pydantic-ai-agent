@@ -3,7 +3,10 @@
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 
-from custom_components.pydantic_ai_agent.const import CONF_BASE_URL, CONF_PROVIDER_HEADERS
+from custom_components.pydantic_ai_agent.const import (
+    CONF_BASE_URL,
+    CONF_PROVIDER_HEADERS,
+)
 from custom_components.pydantic_ai_agent.provider import (
     normalise_base_url,
     openai_compatible_completions_model_from_config,

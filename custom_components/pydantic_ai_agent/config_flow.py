@@ -46,12 +46,15 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError, TemplateError
 from homeassistant.helpers import llm
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    ObjectSelector,
+    ObjectSelectorConfig,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -61,6 +64,7 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
     TextSelectorType,
 )
+from homeassistant.helpers.template import Template
 from homeassistant.helpers.typing import VolDictType
 
 from ._redaction import redact_data
@@ -68,6 +72,9 @@ from .const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
     CONF_BASE_URL,
+    CONF_CHAT_TEMPLATE_KWARG_KEY,
+    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_FALLBACK_MODEL_SUBENTRY_IDS,
@@ -107,6 +114,10 @@ from .const import (
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_MODEL,
     default_conversation_options,
+)
+from .chat_template_kwargs import (
+    reject_chat_template_kwargs_in_extra_body,
+    render_chat_template_kwargs,
 )
 from .mcp import (
     MCPValidationError,
@@ -168,6 +179,7 @@ _MODEL_SETTING_PRESENCE_PENALTY = "presence_penalty"
 _MODEL_SETTING_FREQUENCY_PENALTY = "frequency_penalty"
 _MODEL_SETTING_THINKING = "thinking"
 _MODEL_SETTING_EXTRA_BODY = "extra_body"
+_MODEL_SETTING_CHAT_TEMPLATE_KWARGS = CONF_CHAT_TEMPLATE_KWARGS
 _MAX_METADATA_REPR_LENGTH = 1000
 _SENSITIVE_METADATA_KEYS = {
     "access_token",
@@ -197,6 +209,7 @@ _ADVANCED_MODEL_SETTING_KEYS = {
     _MODEL_SETTING_PRESENCE_PENALTY,
     _MODEL_SETTING_FREQUENCY_PENALTY,
     _MODEL_SETTING_EXTRA_BODY,
+    _MODEL_SETTING_CHAT_TEMPLATE_KWARGS,
 }
 _REMOVED_MODEL_SETTING_KEYS = {"extra_headers"}
 _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "xhigh")
@@ -248,9 +261,7 @@ def _parse_provider_headers(value: object) -> dict[str, str]:
 def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     """Return the provider connection schema."""
     data = user_input or {}
-    provider_mode = data.get(
-        CONF_PROVIDER_MODE, PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS
-    )
+    provider_mode = data.get(CONF_PROVIDER_MODE, PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS)
     schema: VolDictType = {
         vol.Required(CONF_NAME, default=DEFAULT_SERVICE_NAME): str,
         vol.Required(CONF_PROVIDER_MODE, default=provider_mode): SelectSelector(
@@ -617,6 +628,14 @@ async def async_probe_model(
     try:
         settings = dict(model_settings or {})
         settings.pop(_MODEL_SETTING_MAX_ITERATIONS, None)
+        chat_template_kwargs = settings.pop(_MODEL_SETTING_CHAT_TEMPLATE_KWARGS, None)
+        reject_chat_template_kwargs_in_extra_body(
+            settings.get(_MODEL_SETTING_EXTRA_BODY)
+        )
+        if rendered_kwargs := render_chat_template_kwargs(hass, chat_template_kwargs):
+            extra_body = dict(settings.get(_MODEL_SETTING_EXTRA_BODY) or {})
+            extra_body[CONF_CHAT_TEMPLATE_KWARGS] = rendered_kwargs
+            settings[_MODEL_SETTING_EXTRA_BODY] = extra_body
         settings.setdefault(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT)
         model = _openai_compatible_model(hass, data, model_name)
         model_request_parameters = None
@@ -676,6 +695,8 @@ async def async_probe_model(
     except TimeoutError as err:
         raise ProviderValidationError("timeout", "Request timed out.") from err
     except (ImportError, UserError) as err:
+        raise ProviderValidationError("invalid_provider_config", str(err)) from err
+    except HomeAssistantError as err:
         raise ProviderValidationError("invalid_provider_config", str(err)) from err
 
 
@@ -1218,6 +1239,26 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
                     )
                 },
             ): TextSelector(TextSelectorConfig(multiline=True)),
+            vol.Optional(
+                _MODEL_SETTING_CHAT_TEMPLATE_KWARGS,
+                default=_format_chat_template_kwargs(
+                    model_settings.get(_MODEL_SETTING_CHAT_TEMPLATE_KWARGS)
+                ),
+            ): ObjectSelector(
+                ObjectSelectorConfig(
+                    multiple=True,
+                    fields={
+                        CONF_CHAT_TEMPLATE_KWARG_KEY: {
+                            "selector": {"text": None},
+                            "required": True,
+                        },
+                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: {
+                            "selector": {"template": None},
+                            "required": True,
+                        },
+                    },
+                )
+            ),
         }
     )
 
@@ -1233,6 +1274,26 @@ def _format_key_value_json_setting(value: object) -> str:
     return "\n".join(
         f"{key}: {json.dumps(value[key], sort_keys=True)}" for key in sorted(value)
     )
+
+
+def _format_chat_template_kwargs(value: object) -> list[dict[str, str]]:
+    """Return stored chat template kwargs in selector-compatible shape."""
+    if not isinstance(value, list):
+        return []
+    formatted: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        key = item.get(CONF_CHAT_TEMPLATE_KWARG_KEY)
+        value_template = item.get(CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE)
+        if isinstance(key, str) and isinstance(value_template, str):
+            formatted.append(
+                {
+                    CONF_CHAT_TEMPLATE_KWARG_KEY: key,
+                    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: value_template,
+                }
+            )
+    return formatted
 
 
 def _format_thinking_value(model_settings: Mapping[str, Any]) -> str:
@@ -1316,6 +1377,47 @@ def _parse_key_value_json_setting(value: object) -> dict[str, Any]:
             parsed[key] = json.loads(item.strip())
         except json.JSONDecodeError as err:
             raise ValueError("invalid_json") from err
+    try:
+        reject_chat_template_kwargs_in_extra_body(parsed)
+    except HomeAssistantError as err:
+        raise ValueError("chat_template_kwargs_conflict") from err
+    return parsed
+
+
+def _parse_chat_template_kwargs(
+    hass: HomeAssistant, value: object
+) -> list[dict[str, str]]:
+    """Return configured chat template kwargs from selector input."""
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise ValueError("invalid_chat_template_kwargs")
+    parsed: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise ValueError("invalid_chat_template_kwargs")
+        key = str(item.get(CONF_CHAT_TEMPLATE_KWARG_KEY, "")).strip()
+        value_template = item.get(CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE)
+        if not key and not value_template:
+            continue
+        if not key:
+            raise ValueError("invalid_chat_template_key")
+        if key in seen:
+            raise ValueError("duplicate_key")
+        if not isinstance(value_template, str) or not value_template.strip():
+            raise ValueError("invalid_chat_template")
+        try:
+            Template(value_template, hass).ensure_valid()
+        except TemplateError as err:
+            raise ValueError("invalid_chat_template") from err
+        seen.add(key)
+        parsed.append(
+            {
+                CONF_CHAT_TEMPLATE_KWARG_KEY: key,
+                CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: value_template,
+            }
+        )
     return parsed
 
 
@@ -1334,7 +1436,7 @@ def _parse_thinking_setting(value: object) -> bool | str:
 
 
 def _parse_model_settings(
-    user_input: Mapping[str, Any], setting_keys: set[str]
+    hass: HomeAssistant, user_input: Mapping[str, Any], setting_keys: set[str]
 ) -> tuple[dict[str, Any], dict[str, str], set[str]]:
     """Return parsed model settings, field errors, and explicitly cleared keys."""
     settings: dict[str, Any] = {}
@@ -1369,6 +1471,11 @@ def _parse_model_settings(
                 settings[key] = value
             elif key == _MODEL_SETTING_EXTRA_BODY:
                 settings[key] = _parse_key_value_json_setting(value)
+            elif key == _MODEL_SETTING_CHAT_TEMPLATE_KWARGS:
+                if parsed := _parse_chat_template_kwargs(hass, value):
+                    settings[key] = parsed
+                else:
+                    cleared.add(key)
             elif key == _MODEL_SETTING_THINKING:
                 settings[key] = _parse_thinking_setting(value)
         except ValueError as err:
@@ -1378,7 +1485,15 @@ def _parse_model_settings(
 
 def _model_setting_error(key: str, detail: str) -> str:
     """Return a translation key for a model setting validation error."""
-    if detail in {"invalid_json", "invalid_key_value", "duplicate_key"}:
+    if detail in {
+        "chat_template_kwargs_conflict",
+        "duplicate_key",
+        "invalid_chat_template",
+        "invalid_chat_template_key",
+        "invalid_chat_template_kwargs",
+        "invalid_json",
+        "invalid_key_value",
+    }:
         return detail
     if key in {
         _MODEL_SETTING_MAX_TOKENS,
@@ -1996,7 +2111,7 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
 
         if user_input is not None:
             main_settings, errors, cleared = _parse_model_settings(
-                user_input, _MAIN_MODEL_SETTING_KEYS
+                self.hass, user_input, _MAIN_MODEL_SETTING_KEYS
             )
             data = _model_profile_data_from_user_input(user_input)
             existing_settings = _model_settings_from_options(self._options)
@@ -2038,7 +2153,7 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
                 ),
             )
         advanced_settings, errors, cleared = _parse_model_settings(
-            user_input, _ADVANCED_MODEL_SETTING_KEYS
+            self.hass, user_input, _ADVANCED_MODEL_SETTING_KEYS
         )
         cleared.update(_ADVANCED_MODEL_SETTING_KEYS - user_input.keys())
         model_settings = _merge_model_settings(

@@ -139,7 +139,8 @@
             "seed": "Seed",
             "presence_penalty": "Presence penalty",
             "frequency_penalty": "Frequency penalty",
-            "extra_body": "Extra body"
+            "extra_body": "Extra body",
+            "chat_template_kwargs": "Chat template arguments"
           },
           "data_description": {
             "max_tokens": "Maximum tokens the model may generate per response. Must be a positive integer.",
@@ -150,7 +151,8 @@
             "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
             "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
             "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
-            "extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted."
+            "extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated field.",
+            "chat_template_kwargs": "Optional chat template keyword arguments rendered from Home Assistant templates and sent as extra_body.chat_template_kwargs."
           }
         }
       },
@@ -161,7 +163,11 @@
         "model_does_not_support_streaming": "{error_message}",
         "invalid_provider_config": "{error_message}",
         "permission_denied": "{error_message}",
+        "chat_template_kwargs_conflict": "Use the dedicated Chat template arguments field instead of setting chat_template_kwargs in Extra body.",
         "duplicate_key": "Enter each key only once.",
+        "invalid_chat_template": "Enter a valid Home Assistant template.",
+        "invalid_chat_template_key": "Enter a non-empty key for each chat template argument.",
+        "invalid_chat_template_kwargs": "Enter chat template arguments as key/template rows.",
         "invalid_integer": "Enter an integer value in this field.",
         "invalid_json": "Enter valid JSON.",
         "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",

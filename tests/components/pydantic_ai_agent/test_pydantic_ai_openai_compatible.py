@@ -221,17 +221,17 @@ async def test_responses_request_maps_tools_structured_output_and_reasoning() ->
     assert body["include"] == ["reasoning.encrypted_content"]
     assert body["text"] == {
         "format": {
-                "type": "json_schema",
-                "name": "probe_response",
-                "schema": {
-                    "type": "object",
-                    "properties": {},
-                    "additionalProperties": False,
-                    "required": [],
-                },
-                "strict": True,
-            }
+            "type": "json_schema",
+            "name": "probe_response",
+            "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+                "required": [],
+            },
+            "strict": True,
         }
+    }
     assert isinstance(response.parts[0], ThinkingPart)
     assert response.parts[0].id == "rs-1"
     assert response.parts[0].signature == "sig"
@@ -516,7 +516,10 @@ async def test_responses_request_stream_yields_text_reasoning_and_usage() -> Non
         },
     ]
     body = "".join(
-        [*(f"data: {json.dumps(event)}\n\n" for event in response_events), "data: [DONE]\n\n"]
+        [
+            *(f"data: {json.dumps(event)}\n\n" for event in response_events),
+            "data: [DONE]\n\n",
+        ]
     )
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -596,7 +599,10 @@ async def test_responses_request_stream_accumulates_tool_call_deltas() -> None:
         },
     ]
     body = "".join(
-        [*(f"data: {json.dumps(event)}\n\n" for event in response_events), "data: [DONE]\n\n"]
+        [
+            *(f"data: {json.dumps(event)}\n\n" for event in response_events),
+            "data: [DONE]\n\n",
+        ]
     )
 
     async def handler(request: httpx.Request) -> httpx.Response:

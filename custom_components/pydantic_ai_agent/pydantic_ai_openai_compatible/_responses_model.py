@@ -171,7 +171,9 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
             self, messages, model_request_parameters
         )
         if text and text.get("format", {}).get("type") == "json_object":
-            json_instruction = instructions if isinstance(instructions, str) else "Return JSON."
+            json_instruction = (
+                instructions if isinstance(instructions, str) else "Return JSON."
+            )
             input_items.insert(
                 0,
                 {
@@ -288,7 +290,10 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
 
 
 def _system_role(model: Model[Any]) -> str:
-    return OpenAIModelProfile.from_profile(model.profile).openai_system_prompt_role or "system"
+    return (
+        OpenAIModelProfile.from_profile(model.profile).openai_system_prompt_role
+        or "system"
+    )
 
 
 def _reasoning(
@@ -298,7 +303,9 @@ def _reasoning(
     effort = model_settings.get("openai_reasoning_effort")
     if effort is None and model_request_parameters.thinking is not None:
         thinking = model_request_parameters.thinking
-        effort = "medium" if thinking is True else "none" if thinking is False else thinking
+        effort = (
+            "medium" if thinking is True else "none" if thinking is False else thinking
+        )
     summary = model_settings.get("openai_reasoning_summary")
     reasoning: dict[str, str] = {}
     if isinstance(effort, str) and effort:

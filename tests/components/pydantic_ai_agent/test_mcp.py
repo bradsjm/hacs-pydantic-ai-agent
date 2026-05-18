@@ -300,7 +300,9 @@ async def test_discover_mcp_tools_from_config_shapes_and_filters_tools(
 
     with (
         patch("custom_components.pydantic_ai_agent.mcp.MCPToolset", FakeMCPToolset),
-        patch("custom_components.pydantic_ai_agent.mcp._mcp_client", return_value=object()),
+        patch(
+            "custom_components.pydantic_ai_agent.mcp._mcp_client", return_value=object()
+        ),
     ):
         tools = await async_discover_mcp_tools_from_config(
             hass,
@@ -353,7 +355,9 @@ async def test_discover_mcp_tools_from_config_maps_connection_errors(
 
     with (
         patch("custom_components.pydantic_ai_agent.mcp.MCPToolset", FakeMCPToolset),
-        patch("custom_components.pydantic_ai_agent.mcp._mcp_client", return_value=object()),
+        patch(
+            "custom_components.pydantic_ai_agent.mcp._mcp_client", return_value=object()
+        ),
         pytest.raises(MCPValidationError) as err,
     ):
         await async_discover_mcp_tools_from_config(
@@ -398,14 +402,18 @@ async def test_runtime_mcp_toolsets_enforces_tool_allowlist(
             "custom_components.pydantic_ai_agent.mcp.PrefixedToolset",
             side_effect=fake_prefixed_toolset,
         ),
-        patch("custom_components.pydantic_ai_agent.mcp._mcp_client", return_value=object()),
+        patch(
+            "custom_components.pydantic_ai_agent.mcp._mcp_client", return_value=object()
+        ),
     ):
         toolsets = await async_runtime_mcp_toolsets(hass, entry, ["mcp_server_1"])
 
     assert len(toolsets) == 1
     assert toolsets[0].prefix == "mcp_mcp_server_1"
 
-    async def call_tool(tool_name: str, tool_args: dict[str, object]) -> dict[str, object]:
+    async def call_tool(
+        tool_name: str, tool_args: dict[str, object]
+    ) -> dict[str, object]:
         return {"tool": tool_name, "args": tool_args}
 
     assert await toolsets[0].toolset.process_tool_call(

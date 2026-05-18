@@ -10,6 +10,7 @@ from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai.settings import ModelSettings
 
 from .const import (
+    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_FALLBACK_MODEL_SUBENTRY_IDS,
     CONF_MAX_ITERATIONS,
     CONF_MODEL,
@@ -20,6 +21,7 @@ from .const import (
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     SUBENTRY_TYPE_MODEL,
 )
+from .chat_template_kwargs import reject_chat_template_kwargs_in_extra_body
 from .provider import (
     openai_compatible_completions_model,
     openai_compatible_responses_model,
@@ -86,6 +88,8 @@ def model_settings(profile: ModelProfile) -> ModelSettings:
     """Return Pydantic AI model settings for one profile."""
     settings = dict(profile.model_settings)
     settings.pop(CONF_MAX_ITERATIONS, None)
+    settings.pop(CONF_CHAT_TEMPLATE_KWARGS, None)
+    reject_chat_template_kwargs_in_extra_body(settings.get("extra_body"))
     settings.setdefault("timeout", DEFAULT_TIMEOUT)
     return ModelSettings(**settings)
 

@@ -44,7 +44,10 @@ class PydanticAIConfigSensorDescription(SensorEntityDescription):
     """Description for one Pydantic AI configuration sensor."""
 
     value_fn: Callable[[PydanticAIAgentConfigEntry, ConfigSubentry], int | str | None]
-    subentry_types: tuple[str, ...] = (SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK)
+    subentry_types: tuple[str, ...] = (
+        SUBENTRY_TYPE_CONVERSATION,
+        SUBENTRY_TYPE_AI_TASK,
+    )
 
 
 SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
@@ -157,7 +160,9 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
         key="primary_language_model",
         name="Primary language model",
         icon="mdi:brain",
-        value_fn=lambda entry, subentry: model_profile_chain(entry, subentry)[0].model_name,
+        value_fn=lambda entry, subentry: (
+            model_profile_chain(entry, subentry)[0].model_name
+        ),
     ),
     PydanticAIConfigSensorDescription(
         key="mcp_servers_enabled",

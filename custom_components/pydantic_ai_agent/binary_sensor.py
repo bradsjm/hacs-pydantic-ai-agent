@@ -40,7 +40,10 @@ class PydanticAIConfigBinarySensorDescription(BinarySensorEntityDescription):
     """Description for one Pydantic AI configuration binary sensor."""
 
     value_fn: Callable[[ConfigSubentry], bool]
-    subentry_types: tuple[str, ...] = (SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK)
+    subentry_types: tuple[str, ...] = (
+        SUBENTRY_TYPE_CONVERSATION,
+        SUBENTRY_TYPE_AI_TASK,
+    )
 
 
 BINARY_SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricBinarySensorDescription, ...] = (
@@ -74,7 +77,9 @@ CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
         key="web_fetch_enabled",
         name="Web fetch enabled",
         icon="mdi:web",
-        value_fn=lambda subentry: bool(subentry.data.get(CONF_WEB_FETCH_ENABLED, False)),
+        value_fn=lambda subentry: bool(
+            subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
+        ),
     ),
 )
 
