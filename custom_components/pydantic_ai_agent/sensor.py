@@ -21,12 +21,15 @@ from . import PydanticAIAgentConfigEntry
 from .const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
+    CONF_MCP_SERVER_IDS,
+    CONF_OUTPUT_MODE,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
 from .metrics import AgentRunMetrics, metric_value, metrics_signal
 from .model_profiles import model_profile_chain
+from .structured_output import structured_output_mode
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -36,16 +39,26 @@ class PydanticAIMetricSensorDescription(SensorEntityDescription):
     value_fn: Callable[[AgentRunMetrics], int | float | str | None]
 
 
+@dataclass(frozen=True, kw_only=True)
+class PydanticAIConfigSensorDescription(SensorEntityDescription):
+    """Description for one Pydantic AI configuration sensor."""
+
+    value_fn: Callable[[PydanticAIAgentConfigEntry, ConfigSubentry], int | str | None]
+    subentry_types: tuple[str, ...] = (SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK)
+
+
 SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     PydanticAIMetricSensorDescription(
         key="last_run_model_profile",
         name="Last run model profile",
+        icon="mdi:brain",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda record: metric_value(record, "last_run_model_profile"),
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_input_tokens",
         name="Last run input tokens",
+        icon="mdi:calculator",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -54,6 +67,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     PydanticAIMetricSensorDescription(
         key="last_run_output_tokens",
         name="Last run output tokens",
+        icon="mdi:calculator",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -62,6 +76,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     PydanticAIMetricSensorDescription(
         key="last_run_total_tokens",
         name="Last run total tokens",
+        icon="mdi:counter",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -70,6 +85,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     PydanticAIMetricSensorDescription(
         key="last_run_model_request_count",
         name="Last run model request count",
+        icon="mdi:api",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda record: metric_value(record, "last_run_model_request_count"),
@@ -77,6 +93,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     PydanticAIMetricSensorDescription(
         key="last_run_tool_use_count",
         name="Last run tool use count",
+        icon="mdi:toolbox-outline",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda record: metric_value(record, "last_run_tool_use_count"),
@@ -84,6 +101,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     PydanticAIMetricSensorDescription(
         key="cumulative_input_tokens",
         name="Cumulative input tokens",
+        icon="mdi:calculator",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -92,6 +110,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     PydanticAIMetricSensorDescription(
         key="cumulative_output_tokens",
         name="Cumulative output tokens",
+        icon="mdi:calculator",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -100,6 +119,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     PydanticAIMetricSensorDescription(
         key="cumulative_total_tokens",
         name="Cumulative total tokens",
+        icon="mdi:counter",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -118,15 +138,45 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     PydanticAIMetricSensorDescription(
         key="last_error_type",
         name="Last error type",
+        icon="mdi:alert-circle-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda record: metric_value(record, "last_error_type"),
     ),
     PydanticAIMetricSensorDescription(
         key="consecutive_failures",
         name="Consecutive failures",
+        icon="mdi:alert-circle-outline",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda record: metric_value(record, "consecutive_failures"),
+    ),
+)
+
+CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
+    PydanticAIConfigSensorDescription(
+        key="primary_language_model",
+        name="Primary language model",
+        icon="mdi:brain",
+        value_fn=lambda entry, subentry: model_profile_chain(entry, subentry)[0].model_name,
+    ),
+    PydanticAIConfigSensorDescription(
+        key="mcp_servers_enabled",
+        name="MCP servers enabled",
+        icon="mdi:server-network-outline",
+        native_unit_of_measurement="servers",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda _entry, subentry: len(
+            subentry.data.get(CONF_MCP_SERVER_IDS, [])
+        ),
+    ),
+    PydanticAIConfigSensorDescription(
+        key="structured_output_mode",
+        name="Structured output mode",
+        icon="mdi:code-json",
+        subentry_types=(SUBENTRY_TYPE_AI_TASK,),
+        value_fn=lambda _entry, subentry: structured_output_mode(
+            subentry.data.get(CONF_OUTPUT_MODE)
+        ),
     ),
 )
 
@@ -142,6 +192,14 @@ async def async_setup_entry(
             [
                 PydanticAIMetricSensor(config_entry, subentry, description)
                 for description in SENSOR_DESCRIPTIONS
+            ],
+            config_subentry_id=subentry.subentry_id,
+        )
+        async_add_entities(
+            [
+                PydanticAIConfigSensor(config_entry, subentry, description)
+                for description in CONFIG_SENSOR_DESCRIPTIONS
+                if subentry.subentry_type in description.subentry_types
             ],
             config_subentry_id=subentry.subentry_id,
         )
@@ -194,6 +252,39 @@ class PydanticAIMetricSensor(SensorEntity):
     def _handle_metrics_update(self) -> None:
         """Write the updated metric state."""
         self.async_write_ha_state()
+
+
+class PydanticAIConfigSensor(SensorEntity):
+    """Sensor that exposes one static Pydantic AI configuration value."""
+
+    _attr_has_entity_name = True
+
+    entity_description: PydanticAIConfigSensorDescription
+
+    def __init__(
+        self,
+        entry: PydanticAIAgentConfigEntry,
+        subentry: ConfigSubentry,
+        description: PydanticAIConfigSensorDescription,
+    ) -> None:
+        """Initialize the configuration sensor."""
+        self.entry = entry
+        self.subentry = subentry
+        self.entity_description = description
+        profiles = model_profile_chain(entry, subentry)
+        self._attr_unique_id = f"{subentry.subentry_id}_{description.key}"
+        self._attr_device_info = dr.DeviceInfo(
+            identifiers={(DOMAIN, subentry.subentry_id)},
+            name=_subentry_name(subentry),
+            manufacturer="Pydantic AI",
+            model=profiles[0].model_name,
+            entry_type=dr.DeviceEntryType.SERVICE,
+        )
+
+    @property
+    def native_value(self) -> int | str | None:
+        """Return the configured value."""
+        return self.entity_description.value_fn(self.entry, self.subentry)
 
 
 def _agent_subentries(entry: PydanticAIAgentConfigEntry) -> Iterable[ConfigSubentry]:

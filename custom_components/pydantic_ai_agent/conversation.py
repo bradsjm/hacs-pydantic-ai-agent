@@ -45,6 +45,7 @@ class PydanticAIConversationEntity(
     """Conversation entity backed by Pydantic AI direct model streaming."""
 
     _attr_has_entity_name = True
+    _attr_icon = "mdi:message-processing-outline"
     _attr_name = None
     _attr_supports_streaming = False
 

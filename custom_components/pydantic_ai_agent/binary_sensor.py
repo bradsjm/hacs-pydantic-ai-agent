@@ -8,6 +8,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigSubentry
+from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -18,6 +19,7 @@ from . import PydanticAIAgentConfigEntry
 from .const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
+    CONF_WEB_FETCH_ENABLED,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -33,18 +35,46 @@ class PydanticAIMetricBinarySensorDescription(BinarySensorEntityDescription):
     value_fn: Callable[[AgentRunMetrics], bool | None]
 
 
+@dataclass(frozen=True, kw_only=True)
+class PydanticAIConfigBinarySensorDescription(BinarySensorEntityDescription):
+    """Description for one Pydantic AI configuration binary sensor."""
+
+    value_fn: Callable[[ConfigSubentry], bool]
+    subentry_types: tuple[str, ...] = (SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK)
+
+
 BINARY_SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricBinarySensorDescription, ...] = (
     PydanticAIMetricBinarySensorDescription(
         key="provider_healthy",
         name="Provider healthy",
+        icon="mdi:heart-pulse",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda record: metric_bool(record, "provider_healthy"),
     ),
     PydanticAIMetricBinarySensorDescription(
         key="last_run_succeeded",
         name="Last run succeeded",
+        icon="mdi:check-circle-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda record: metric_bool(record, "last_run_succeeded"),
+    ),
+)
+
+CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
+    PydanticAIConfigBinarySensorDescription, ...
+] = (
+    PydanticAIConfigBinarySensorDescription(
+        key="assist_enabled",
+        name="Assist enabled",
+        icon="mdi:assistant",
+        subentry_types=(SUBENTRY_TYPE_CONVERSATION,),
+        value_fn=lambda subentry: bool(subentry.data.get(CONF_LLM_HASS_API)),
+    ),
+    PydanticAIConfigBinarySensorDescription(
+        key="web_fetch_enabled",
+        name="Web fetch enabled",
+        icon="mdi:web",
+        value_fn=lambda subentry: bool(subentry.data.get(CONF_WEB_FETCH_ENABLED, False)),
     ),
 )
 
@@ -60,6 +90,14 @@ async def async_setup_entry(
             [
                 PydanticAIMetricBinarySensor(config_entry, subentry, description)
                 for description in BINARY_SENSOR_DESCRIPTIONS
+            ],
+            config_subentry_id=subentry.subentry_id,
+        )
+        async_add_entities(
+            [
+                PydanticAIConfigBinarySensor(config_entry, subentry, description)
+                for description in CONFIG_BINARY_SENSOR_DESCRIPTIONS
+                if subentry.subentry_type in description.subentry_types
             ],
             config_subentry_id=subentry.subentry_id,
         )
@@ -112,6 +150,38 @@ class PydanticAIMetricBinarySensor(BinarySensorEntity):
     def _handle_metrics_update(self) -> None:
         """Write the updated metric state."""
         self.async_write_ha_state()
+
+
+class PydanticAIConfigBinarySensor(BinarySensorEntity):
+    """Binary sensor that exposes one static Pydantic AI configuration value."""
+
+    _attr_has_entity_name = True
+
+    entity_description: PydanticAIConfigBinarySensorDescription
+
+    def __init__(
+        self,
+        entry: PydanticAIAgentConfigEntry,
+        subentry: ConfigSubentry,
+        description: PydanticAIConfigBinarySensorDescription,
+    ) -> None:
+        """Initialize the configuration binary sensor."""
+        self.subentry = subentry
+        self.entity_description = description
+        profiles = model_profile_chain(entry, subentry)
+        self._attr_unique_id = f"{subentry.subentry_id}_{description.key}"
+        self._attr_device_info = dr.DeviceInfo(
+            identifiers={(DOMAIN, subentry.subentry_id)},
+            name=_subentry_name(subentry),
+            manufacturer="Pydantic AI",
+            model=profiles[0].model_name,
+            entry_type=dr.DeviceEntryType.SERVICE,
+        )
+
+    @property
+    def is_on(self) -> bool:
+        """Return the configured boolean value."""
+        return self.entity_description.value_fn(self.subentry)
 
 
 def _agent_subentries(entry: PydanticAIAgentConfigEntry) -> Iterable[ConfigSubentry]:

@@ -46,6 +46,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
     """AI task entity that requests structured output from the model."""
 
     _attr_has_entity_name = True
+    _attr_icon = "mdi:robot-outline"
     _attr_name = None
     _attr_supported_features = (
         ai_task.AITaskEntityFeature.GENERATE_DATA
