@@ -19,16 +19,17 @@ Implemented source areas:
 
 ## Rationale
 
-The integration needs an OpenAI-compatible Chat Completions provider without the
-OpenAI SDK dependency. Home Assistant installs custom integration requirements
-into the same runtime as Core, so dependency size, dependency conflicts, async
-client ownership, diagnostics, and lifecycle behavior matter.
+The integration needs OpenAI-compatible Completions and Responses providers
+without the OpenAI SDK dependency. Home Assistant installs custom integration
+requirements into the same runtime as Core, so dependency size, dependency
+conflicts, async client ownership, diagnostics, and lifecycle behavior matter.
 
 The in-repo adapter exists to:
 
 - use Home Assistant's managed `httpx.AsyncClient` configuration;
 - avoid adding the OpenAI SDK dependency;
-- support OpenAI-compatible endpoints through a small Chat Completions surface;
+- support OpenAI-compatible endpoints through small Completions and Responses
+  surfaces;
 - preserve Pydantic AI's public `Model` and `Provider` contracts;
 - map provider/network errors to Pydantic AI exceptions consistently;
 - preserve provider-specific reasoning metadata needed by reasoning models;
@@ -36,12 +37,18 @@ The in-repo adapter exists to:
 
 ## Goals
 
-- Support the `openai_compatible` provider mode through Chat Completions.
+- Support the `openai_compatible_completions` provider mode through Chat
+  Completions.
+- Support the `openai_compatible_responses` provider mode through the Responses
+  API.
 - Use `https://api.openai.com/v1` when no custom `base_url` is configured.
 - Share Home Assistant's async HTTP client when constructed from integration
   runtime code.
 - Support plain text, tool calls, tool results, structured output modes, model
-  settings, usage mapping, and SSE streaming events used by provider probing.
+  settings, and usage mapping for both provider modes.
+- Keep Chat Completions SSE streaming support for provider probing. Probe
+  Responses providers with non-streamed `/responses` requests until Responses
+  streaming is wired into runtime behavior.
 - Keep runtime conversation entities non-streaming until Home Assistant streaming
   support is explicitly implemented.
 - Keep diagnostics and tests free of API keys, headers, `.env` values, and raw
@@ -52,7 +59,8 @@ The in-repo adapter exists to:
 - Do not provide an OpenAI SDK compatibility shim.
 - Do not reintroduce `pydantic_ai.models.openai.OpenAIChatModel` or
   `pydantic_ai.providers.openai.OpenAIProvider` as runtime dependencies.
-- Do not implement arbitrary provider registries or non-Chat-Completions APIs.
+- Do not implement arbitrary provider registries or provider APIs beyond the
+  explicit Completions and Responses modes.
 - Do not expose Home Assistant conversation streaming based only on the low-level
   client streaming support.
 - Do not add stdio, SSE, or local process MCP support as part of provider work.

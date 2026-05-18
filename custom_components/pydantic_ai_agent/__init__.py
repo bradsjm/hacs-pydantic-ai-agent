@@ -30,6 +30,7 @@ from .const import (
     CONF_SKILLS_FOLDER,
     DEFAULT_SKILLS_FOLDER,
     DOMAIN,
+    PROVIDER_MODES,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MODEL,
@@ -143,6 +144,10 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> bool:
     """Validate configured subentries, then set up entity platforms."""
+    if entry.data.get(CONF_PROVIDER_MODE) not in PROVIDER_MODES:
+        raise ConfigEntryNotReady(
+            f"Unsupported provider mode: {entry.data.get(CONF_PROVIDER_MODE)!r}"
+        )
     await _async_validate_configured_models(hass, entry)
     await async_configure_logfire(hass, entry)
 

@@ -32,7 +32,7 @@ from custom_components.pydantic_ai_agent.const import (
     DEFAULT_SKILLS_FOLDER,
     DOMAIN,
     OUTPUT_MODE_TOOL,
-    PROVIDER_OPENAI_COMPATIBLE,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MODEL,
 )
@@ -160,7 +160,7 @@ def _entry(
         title="Hosted OpenAI",
         data={
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test",
         },
         source=config_entries.SOURCE_USER,
@@ -183,7 +183,7 @@ def _entry(
         unique_id=None,
     )
     entry.runtime_data = PydanticAIAgentRuntimeData(
-        provider_mode=PROVIDER_OPENAI_COMPATIBLE,
+        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         name="Hosted OpenAI",
         api_key="sk-test",
         base_url=None,
@@ -199,7 +199,7 @@ def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigE
     """Return a config entry with two conversation subentries."""
     data: dict[str, object] = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
     if logfire:
@@ -248,7 +248,7 @@ def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigE
         unique_id=None,
     )
     entry.runtime_data = PydanticAIAgentRuntimeData(
-        provider_mode=PROVIDER_OPENAI_COMPATIBLE,
+        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         name="Hosted OpenAI",
         api_key="sk-test",
         base_url=None,

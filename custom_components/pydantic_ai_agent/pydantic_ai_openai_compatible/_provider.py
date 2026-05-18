@@ -19,7 +19,7 @@ class OpenAICompatibleProvider(Provider[AsyncOpenAICompatible]):
     @property
     def name(self) -> str:
         """Return the provider name."""
-        return "openai-compatible"
+        return self._name
 
     @property
     def base_url(self) -> str:
@@ -37,7 +37,9 @@ class OpenAICompatibleProvider(Provider[AsyncOpenAICompatible]):
         return openai_model_profile(model_name)
 
     @overload
-    def __init__(self, *, client: AsyncOpenAICompatible) -> None: ...
+    def __init__(
+        self, *, client: AsyncOpenAICompatible, name: str = "openai-compatible-completions"
+    ) -> None: ...
 
     @overload
     def __init__(
@@ -48,6 +50,7 @@ class OpenAICompatibleProvider(Provider[AsyncOpenAICompatible]):
         headers: dict[str, str] | None = None,
         http_client: httpx.AsyncClient | None = None,
         client: None = None,
+        name: str = "openai-compatible-completions",
     ) -> None: ...
 
     def __init__(
@@ -58,8 +61,10 @@ class OpenAICompatibleProvider(Provider[AsyncOpenAICompatible]):
         headers: dict[str, str] | None = None,
         http_client: httpx.AsyncClient | None = None,
         client: AsyncOpenAICompatible | None = None,
+        name: str = "openai-compatible-completions",
     ) -> None:
         """Initialize the provider."""
+        self._name = name
         if client is not None:
             if (
                 api_key is not None

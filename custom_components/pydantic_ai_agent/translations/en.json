@@ -399,7 +399,8 @@
   "selector": {
     "provider_mode": {
       "options": {
-        "openai_compatible": "OpenAI-compatible"
+        "openai_compatible_completions": "OpenAI-compatible Completions",
+        "openai_compatible_responses": "OpenAI-compatible Responses"
       }
     },
     "thinking": {

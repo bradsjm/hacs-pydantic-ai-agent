@@ -117,6 +117,61 @@ async def test_models_list_parses_ids_and_sends_headers() -> None:
     await http_client.aclose()
 
 
+async def test_responses_create_serializes_payload_and_headers() -> None:
+    """Test Responses requests use the /responses endpoint."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["authorization"] = request.headers.get("authorization")
+        captured["custom"] = request.headers.get("x-custom")
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp-1",
+                "model": "test-model",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "id": "msg-1",
+                        "content": [{"type": "output_text", "text": "OK"}],
+                    }
+                ],
+                "usage": {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3},
+            },
+        )
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = AsyncOpenAICompatible(
+        api_key="secret",
+        base_url="https://provider.test/v1/",
+        http_client=http_client,
+    )
+
+    response = await client.responses.create(
+        model="test-model",
+        input=[{"role": "user", "content": "Hi"}],
+        text=omit,
+        extra_body={"nullable": None, "omitted": omit},
+        extra_headers={"x-custom": "value"},
+    )
+
+    assert response is not None
+    assert response.output[0]["content"][0]["text"] == "OK"
+    assert captured["url"] == "https://provider.test/v1/responses"
+    assert captured["authorization"] == "Bearer secret"
+    assert captured["custom"] == "value"
+    assert captured["body"] == {
+        "model": "test-model",
+        "input": [{"role": "user", "content": "Hi"}],
+        "stream": False,
+        "nullable": None,
+    }
+    await http_client.aclose()
+
+
 async def test_models_list_rejects_invalid_response_shape() -> None:
     """Test models list rejects malformed provider responses."""
 

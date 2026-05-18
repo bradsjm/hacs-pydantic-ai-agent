@@ -15,16 +15,19 @@ from pydantic_ai.messages import (
     PartEndEvent,
     PartStartEvent,
     TextPart,
+    ThinkingPart,
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
 )
 from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.output import OutputObjectDefinition
 from pydantic_ai.tools import ToolDefinition
 
 from custom_components.pydantic_ai_agent.pydantic_ai_openai_compatible import (
     OpenAICompatibleChatModel,
     OpenAICompatibleProvider,
+    OpenAICompatibleResponsesModel,
 )
 
 _REPO_ROOT = Path(__file__).parents[3]
@@ -41,6 +44,21 @@ def _model_with_transport(
         http_client=http_client,
     )
     return OpenAICompatibleChatModel("test-model", provider=provider), http_client
+
+
+def _responses_model_with_transport(
+    handler: httpx.MockTransport,
+    model_name: str = "test-model",
+) -> tuple[OpenAICompatibleResponsesModel, httpx.AsyncClient]:
+    """Return a Responses model backed by a mock HTTP transport."""
+    http_client = httpx.AsyncClient(transport=handler)
+    provider = OpenAICompatibleProvider(
+        api_key="sk-test",
+        base_url="https://provider.test/v1",
+        http_client=http_client,
+        name="openai-compatible-responses",
+    )
+    return OpenAICompatibleResponsesModel(model_name, provider=provider), http_client
 
 
 async def test_request_returns_text_model_response() -> None:
@@ -76,9 +94,150 @@ async def test_request_returns_text_model_response() -> None:
     )
 
     assert response.text == "Hello"
-    assert response.provider_name == "openai-compatible"
+    assert response.provider_name == "openai-compatible-completions"
     assert response.usage.input_tokens == 4
     assert response.usage.output_tokens == 5
+    await http_client.aclose()
+
+
+async def test_responses_request_returns_text_model_response() -> None:
+    """Test non-streamed Responses text output maps to ModelResponse."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp-1",
+                "created_at": 1,
+                "model": "test-model",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "id": "msg-1",
+                        "content": [{"type": "output_text", "text": "Hello"}],
+                    }
+                ],
+                "usage": {"input_tokens": 4, "output_tokens": 5, "total_tokens": 9},
+            },
+        )
+
+    model, http_client = _responses_model_with_transport(httpx.MockTransport(handler))
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("Hi")])],
+        {},
+        ModelRequestParameters(),
+    )
+
+    assert response.text == "Hello"
+    assert response.provider_name == "openai-compatible-responses"
+    assert response.provider_response_id == "resp-1"
+    assert isinstance(response.parts[0], TextPart)
+    assert response.parts[0].id == "msg-1"
+    assert response.usage.input_tokens == 4
+    assert response.usage.output_tokens == 5
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert "instructions" not in body
+    await http_client.aclose()
+
+
+async def test_responses_request_maps_tools_structured_output_and_reasoning() -> None:
+    """Test Responses request/response protocol-specific mapping."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp-1",
+                "model": "test-model",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "reasoning",
+                        "id": "rs-1",
+                        "encrypted_content": "sig",
+                        "summary": [{"type": "summary_text", "text": "I should call"}],
+                    },
+                    {
+                        "type": "function_call",
+                        "id": "fc-1",
+                        "call_id": "call-1",
+                        "name": "turn_on",
+                        "arguments": '{"entity":"light.kitchen"}',
+                    },
+                ],
+            },
+        )
+
+    model, http_client = _responses_model_with_transport(
+        httpx.MockTransport(handler), "gpt-5"
+    )
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("Turn on the kitchen")])],
+        {"max_tokens": 20},
+        ModelRequestParameters(
+            function_tools=[
+                ToolDefinition(
+                    name="turn_on",
+                    description="Turn on a light",
+                    parameters_json_schema={"type": "object", "properties": {}},
+                    strict=True,
+                )
+            ],
+            output_mode="native",
+            output_object=OutputObjectDefinition(
+                name="probe_response",
+                json_schema={"type": "object"},
+                strict=True,
+            ),
+            thinking=True,
+        ),
+    )
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["tools"] == [
+        {
+            "type": "function",
+            "name": "turn_on",
+            "description": "Turn on a light",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+                "required": [],
+            },
+            "strict": True,
+        }
+    ]
+    assert body["tool_choice"] == "auto"
+    assert body["max_output_tokens"] == 20
+    assert body["reasoning"] == {"effort": "medium"}
+    assert body["include"] == ["reasoning.encrypted_content"]
+    assert body["text"] == {
+        "format": {
+                "type": "json_schema",
+                "name": "probe_response",
+                "schema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                    "required": [],
+                },
+                "strict": True,
+            }
+        }
+    assert isinstance(response.parts[0], ThinkingPart)
+    assert response.parts[0].id == "rs-1"
+    assert response.parts[0].signature == "sig"
+    assert isinstance(response.parts[1], ToolCallPart)
+    assert response.parts[1].id == "fc-1"
+    assert response.parts[1].tool_call_id == "call-1"
     await http_client.aclose()
 
 

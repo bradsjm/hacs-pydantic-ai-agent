@@ -2,5 +2,10 @@
 
 from ._chat_model import OpenAICompatibleChatModel
 from ._provider import OpenAICompatibleProvider
+from ._responses_model import OpenAICompatibleResponsesModel
 
-__all__ = ["OpenAICompatibleChatModel", "OpenAICompatibleProvider"]
+__all__ = [
+    "OpenAICompatibleChatModel",
+    "OpenAICompatibleProvider",
+    "OpenAICompatibleResponsesModel",
+]

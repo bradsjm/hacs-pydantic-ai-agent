@@ -42,7 +42,7 @@ from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_TOOL,
-    PROVIDER_OPENAI_COMPATIBLE,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
@@ -135,7 +135,7 @@ def _entry(
     """Return a config entry."""
     data: dict[str, object] = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
     if data_extra is not None:
@@ -194,7 +194,7 @@ async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
         assert await async_setup_entry(hass, entry)
         forward_setups.assert_awaited_once()
 
-    assert entry.runtime_data.provider_mode == PROVIDER_OPENAI_COMPATIBLE
+    assert entry.runtime_data.provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS
     assert entry.runtime_data.name == "Hosted OpenAI"
     assert entry.runtime_data.api_key == "sk-test"
     assert entry.runtime_data.base_url is None
@@ -220,6 +220,17 @@ async def test_setup_entry_stores_runtime_data(hass: HomeAssistant) -> None:
         ]
     )
     assert probe_model.await_count == 3
+
+
+async def test_setup_entry_rejects_unsupported_provider_mode(
+    hass: HomeAssistant,
+) -> None:
+    """Test stale provider modes fail setup instead of being aliased."""
+    entry = _entry(data_extra={CONF_PROVIDER_MODE: "openai_compatible"})
+    entry.add_to_hass(hass)
+
+    with pytest.raises(ConfigEntryNotReady, match="Unsupported provider mode"):
+        await async_setup_entry(hass, entry)
 
 
 async def test_setup_entry_configures_logfire_before_platform_setup(
@@ -571,7 +582,7 @@ async def test_setup_entry_without_subentries_stores_runtime_data(
     ):
         assert await async_setup_entry(hass, entry)
 
-    assert entry.runtime_data.provider_mode == PROVIDER_OPENAI_COMPATIBLE
+    assert entry.runtime_data.provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS
 
 
 async def test_multiple_entries_setup_and_unload_are_isolated(
@@ -584,7 +595,7 @@ async def test_multiple_entries_setup_and_unload_are_isolated(
         title="Other OpenAI",
         data={
             CONF_NAME: "Other OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "other-key",
         },
         source=config_entries.SOURCE_USER,

@@ -4,8 +4,8 @@
 
 - This is the `pydantic_ai_agent` Home Assistant custom integration, distributed through HACS from `custom_components/pydantic_ai_agent`.
 - Treat `docs/pydantic_ai_agent_spec.md` as the product/architecture direction, not proof that a feature is implemented. Verify against source before documenting or relying on behavior.
-- Runtime dependencies are pinned in both `pyproject.toml` and `manifest.json`: `pydantic-ai-slim==1.97.0`, `logfire==4.33.0`, `pydantic-ai-skills==0.10.0`, `tiktoken>=0.12.0`, `fastmcp-slim[client,server]>=3.3.0`, and `markdownify>=1.2`; use the in-repo `OpenAICompatibleChatModel`/`OpenAICompatibleProvider`, not the OpenAI SDK-backed Pydantic AI classes. Do not add the OpenAI SDK dependency unless explicitly requested.
-- The only provider mode currently implemented is `openai_compatible`; when `base_url` is omitted the in-repo provider defaults to `https://api.openai.com/v1` without using the OpenAI SDK.
+- Runtime dependencies are pinned in both `pyproject.toml` and `manifest.json`: `pydantic-ai-slim==1.97.0`, `logfire==4.33.0`, `pydantic-ai-skills==0.10.0`, `tiktoken>=0.12.0`, `fastmcp-slim[client,server]>=3.3.0`, and `markdownify>=1.2`; use the in-repo `OpenAICompatibleChatModel`/`OpenAICompatibleResponsesModel`/`OpenAICompatibleProvider`, not the OpenAI SDK-backed Pydantic AI classes. Do not add the OpenAI SDK dependency unless explicitly requested.
+- The implemented provider modes are `openai_compatible_completions` and `openai_compatible_responses`; when `base_url` is omitted the in-repo provider defaults to `https://api.openai.com/v1` without using the OpenAI SDK.
 
 ## Home Assistant Patterns
 
@@ -54,7 +54,7 @@
 - `conversation.py` registers one Home Assistant conversation entity per `conversation` subentry, does not advertise streaming, and advertises `CONTROL` only when `CONF_LLM_HASS_API` is configured.
 - `ai_task.py` registers one Home Assistant AI task entity per `ai_task_data` subentry for data generation and attachment input; image generation is not implemented.
 - `entity.py` owns the shared Pydantic AI `Agent` runtime, Home Assistant LLM API tool conversion, remote MCP toolsets, selected `pydantic-ai-skills` capabilities, usage limits, and cleanup of MCP HTTP clients.
-- `openai_compatible_client/` owns the lightweight async Chat Completions HTTP client and SSE parser; `pydantic_ai_openai_compatible/` owns the Pydantic AI `Model`/`Provider` adapter and message/usage/error mapping.
+- `openai_compatible_client/` owns the lightweight async Completions/Responses HTTP client and Chat SSE parser; `pydantic_ai_openai_compatible/` owns the Pydantic AI `Model`/`Provider` adapter and message/usage/error mapping.
 - `mcp.py` supports remote Streamable HTTP MCP server subentries only; stdio, SSE, and local command MCP servers are not implemented.
 - `skills.py` discovers local `pydantic-ai-skills` from `/config/skills` or subfolders and excludes skill script execution unless explicitly enabled on the provider entry.
 

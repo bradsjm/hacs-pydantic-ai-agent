@@ -75,10 +75,10 @@ Verified current behavior:
   `fastmcp-slim[client,server]>=3.3.0`, and `markdownify>=1.2`. FastMCP
   support is supplied by the explicit slim dependency, and WebFetch content
   conversion is handled without the Pydantic AI `web-fetch` extra.
-- Provider requests use the in-repo OpenAI-compatible Chat Completions adapter,
-  not the OpenAI SDK. The adapter preserves provider reasoning metadata in
-  tool-call history for reasoning providers that require it on follow-up
-  requests.
+- Provider requests use the in-repo OpenAI-compatible Completions or Responses
+  adapters, not the OpenAI SDK. The adapters preserve provider reasoning
+  metadata in tool-call history for reasoning providers that require it on
+  follow-up requests.
 
 ## Real Home Data Used For Design
 

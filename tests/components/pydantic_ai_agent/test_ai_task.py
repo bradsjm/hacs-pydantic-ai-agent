@@ -38,7 +38,7 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
-    PROVIDER_OPENAI_COMPATIBLE,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_MODEL,
 )
@@ -117,7 +117,7 @@ def _entry(
         title="Hosted OpenAI",
         data={
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test",
         },
         source=config_entries.SOURCE_USER,
@@ -140,7 +140,7 @@ def _entry(
         unique_id=None,
     )
     entry.runtime_data = PydanticAIAgentRuntimeData(
-        provider_mode=PROVIDER_OPENAI_COMPATIBLE,
+        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         name="Hosted OpenAI",
         api_key="sk-test",
         base_url=None,

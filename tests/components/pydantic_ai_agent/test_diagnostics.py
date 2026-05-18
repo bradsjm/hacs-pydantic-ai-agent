@@ -24,7 +24,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
     DOMAIN,
-    PROVIDER_OPENAI_COMPATIBLE,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
 )
@@ -49,7 +49,7 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
         title="Local Provider",
         data={
             CONF_NAME: "Local Provider",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-secret",
             CONF_BASE_URL: "http://localhost:11434/v1",
             CONF_PROVIDER_HEADERS: {"Authorization": "Bearer provider-secret"},

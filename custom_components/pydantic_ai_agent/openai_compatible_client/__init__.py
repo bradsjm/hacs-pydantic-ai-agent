@@ -14,7 +14,7 @@ from ._exceptions import (
     OpenAICompatibleError,
 )
 from ._sentinels import NOT_GIVEN, NotGiven, Omit, omit
-from ._types import ChatCompletion, ChatCompletionChunk
+from ._types import ChatCompletion, ChatCompletionChunk, Response
 
 __all__ = [
     "APIConnectionError",
@@ -27,5 +27,6 @@ __all__ = [
     "NotGiven",
     "Omit",
     "OpenAICompatibleError",
+    "Response",
     "omit",
 ]

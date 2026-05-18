@@ -23,7 +23,7 @@ from pydantic_ai import (
     TextPartDelta,
     ToolCallPart,
 )
-from pydantic_ai.messages import ModelResponseStreamEvent
+from pydantic_ai.messages import ModelResponse, ModelResponseStreamEvent
 from pydantic_ai.direct import model_request_stream
 from pydantic_ai.exceptions import (
     ModelAPIError,
@@ -99,7 +99,8 @@ from .const import (
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
     PROVIDER_MODES,
-    PROVIDER_OPENAI_COMPATIBLE,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     STRUCTURED_OUTPUT_MODES,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -117,8 +118,9 @@ from .mcp import (
 )
 from .provider import (
     normalise_base_url,
-    openai_compatible_chat_model_from_config,
+    openai_compatible_completions_model_from_config,
     openai_compatible_client_from_config,
+    openai_compatible_responses_model_from_config,
 )
 from .skills import (
     AvailableSkill,
@@ -246,7 +248,9 @@ def _parse_provider_headers(value: object) -> dict[str, str]:
 def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     """Return the provider connection schema."""
     data = user_input or {}
-    provider_mode = data.get(CONF_PROVIDER_MODE, PROVIDER_OPENAI_COMPATIBLE)
+    provider_mode = data.get(
+        CONF_PROVIDER_MODE, PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS
+    )
     schema: VolDictType = {
         vol.Required(CONF_NAME, default=DEFAULT_SERVICE_NAME): str,
         vol.Required(CONF_PROVIDER_MODE, default=provider_mode): SelectSelector(
@@ -567,11 +571,18 @@ def _map_structured_http_error(
     return _map_http_error(err)
 
 
-def _openai_compatible_chat_model(
+def _openai_compatible_model(
     hass: HomeAssistant, data: Mapping[str, Any], model_name: str
 ) -> Any:
-    """Build a Pydantic AI OpenAI-compatible chat model for validation."""
-    return openai_compatible_chat_model_from_config(hass, data, model_name)
+    """Build a Pydantic AI OpenAI-compatible model for validation."""
+    provider_mode = data[CONF_PROVIDER_MODE]
+    if provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS:
+        return openai_compatible_completions_model_from_config(hass, data, model_name)
+    if provider_mode == PROVIDER_OPENAI_COMPATIBLE_RESPONSES:
+        return openai_compatible_responses_model_from_config(hass, data, model_name)
+    raise ProviderValidationError(
+        "invalid_provider_config", f"Unsupported provider mode: {provider_mode!r}."
+    )
 
 
 async def async_list_provider_model_names(
@@ -607,7 +618,7 @@ async def async_probe_model(
         settings = dict(model_settings or {})
         settings.pop(_MODEL_SETTING_MAX_ITERATIONS, None)
         settings.setdefault(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT)
-        model = _openai_compatible_chat_model(hass, data, model_name)
+        model = _openai_compatible_model(hass, data, model_name)
         model_request_parameters = None
         if structured_output_mode is not None:
             output_mode = normalise_structured_output_mode(structured_output_mode)
@@ -626,10 +637,28 @@ async def async_probe_model(
                 ),
             )
         ]
+        model_settings_obj = ModelSettings(**settings)
+        if data[CONF_PROVIDER_MODE] == PROVIDER_OPENAI_COMPATIBLE_RESPONSES:
+            response = await model.request(
+                messages,
+                model_settings=model_settings_obj,
+                model_request_parameters=model_request_parameters
+                or ModelRequestParameters(),
+            )
+            if structured_output_mode is not None:
+                _validate_structured_probe_response(
+                    response,
+                    normalise_structured_output_mode(structured_output_mode),
+                )
+            elif not response.parts:
+                raise ProviderValidationError(
+                    "provider_error", "The provider returned an empty response."
+                )
+            return
         async with model_request_stream(
             model,
             messages,
-            model_settings=ModelSettings(**settings),
+            model_settings=model_settings_obj,
             model_request_parameters=model_request_parameters,
         ) as stream:
             if structured_output_mode is not None:
@@ -732,6 +761,39 @@ def _structured_probe_data_from_tool_args(args: object) -> object:
     return None
 
 
+def _validate_structured_probe_response(
+    response: ModelResponse,
+    output_mode: str,
+) -> None:
+    """Validate a non-streamed structured-output probe response."""
+    output_tool_data: object | None = None
+    text_parts: list[str] = []
+    for part in response.parts:
+        if isinstance(part, ToolCallPart) and part.tool_name == _STRUCTURED_PROBE_OUTPUT_NAME:
+            output_tool_data = part.args
+        elif isinstance(part, TextPart):
+            text_parts.append(part.content)
+    if output_tool_data is not None:
+        data = _structured_probe_data_from_tool_args(output_tool_data)
+    elif text_parts:
+        try:
+            data = json.loads("".join(text_parts))
+        except json.JSONDecodeError as err:
+            raise ProviderValidationError(
+                "invalid_provider_config",
+                _invalid_structured_output_message(output_mode),
+            ) from err
+    else:
+        raise ProviderValidationError(
+            "provider_error", "The provider returned an empty structured response."
+        )
+    if not isinstance(data, Mapping) or data.get("ok") is not True:
+        raise ProviderValidationError(
+            "invalid_provider_config",
+            "The provider returned structured output that did not match the schema.",
+        )
+
+
 def _invalid_structured_output_message(output_mode: str) -> str:
     """Return a validation error for malformed structured output."""
     if output_mode == OUTPUT_MODE_NATIVE:
@@ -758,10 +820,7 @@ def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
         data.pop(CONF_SKILLS_FOLDER, None)
     if not data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION]:
         data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
-    if (
-        data[CONF_PROVIDER_MODE] != PROVIDER_OPENAI_COMPATIBLE
-        or not data[CONF_BASE_URL]
-    ):
+    if not data[CONF_BASE_URL]:
         data.pop(CONF_BASE_URL, None)
     token = data.get(CONF_LOGFIRE_TOKEN)
     if isinstance(token, str):
@@ -788,6 +847,11 @@ def _normalise_skills_folder(folder: object) -> str:
 
 def _validate_provider_data(data: Mapping[str, Any]) -> None:
     """Validate provider data that does not require a model."""
+    if data.get(CONF_PROVIDER_MODE) not in PROVIDER_MODES:
+        raise ProviderValidationError(
+            "invalid_provider_config",
+            f"Unsupported provider mode: {data.get(CONF_PROVIDER_MODE)!r}.",
+        )
     _validate_skills_folder(data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER))
 
 

@@ -1,4 +1,4 @@
-"""Pydantic models for Chat Completions responses."""
+"""Pydantic models for OpenAI-compatible API responses."""
 
 from typing import Any, Literal
 
@@ -35,6 +35,47 @@ class CompletionUsage(OpenAICompatibleModel):
     total_tokens: int | None = None
     completion_tokens_details: CompletionTokenDetails | None = None
     prompt_tokens_details: PromptTokenDetails | None = None
+
+
+class ResponseOutputTokenDetails(OpenAICompatibleModel):
+    """Token detail counts returned by Responses APIs."""
+
+    reasoning_tokens: int | None = None
+
+
+class ResponseUsage(OpenAICompatibleModel):
+    """Token usage for a Responses API response."""
+
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    output_tokens_details: ResponseOutputTokenDetails | None = None
+
+
+class ResponseIncompleteDetails(OpenAICompatibleModel):
+    """Incomplete response details."""
+
+    reason: str | None = None
+
+
+class ResponseConversation(OpenAICompatibleModel):
+    """Responses API conversation metadata."""
+
+    id: str | None = None
+
+
+class Response(OpenAICompatibleModel):
+    """Non-streamed Responses API response."""
+
+    id: str | None = None
+    object: str | None = None
+    created_at: float | int | None = None
+    model: str | None = None
+    status: str | None = None
+    output: list[dict[str, Any]] = []
+    usage: ResponseUsage | None = None
+    incomplete_details: ResponseIncompleteDetails | None = None
+    conversation: ResponseConversation | None = None
 
 
 class FunctionCall(OpenAICompatibleModel):

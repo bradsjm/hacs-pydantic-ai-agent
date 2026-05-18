@@ -55,14 +55,14 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
-    PROVIDER_OPENAI_COMPATIBLE,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_MODEL,
 )
 from custom_components.pydantic_ai_agent.provider import (
-    openai_compatible_chat_model_from_config,
+    openai_compatible_completions_model_from_config,
 )
 
 pytestmark = [pytest.mark.real_server, pytest.mark.usefixtures("socket_enabled")]
@@ -109,7 +109,7 @@ class RealServerConfig:
         """Return config-entry provider data for OpenAI-compatible mode."""
         return {
             CONF_NAME: "Real OpenAI-compatible Provider",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: self.api_key,
             CONF_BASE_URL: self.base_url,
         }
@@ -667,7 +667,7 @@ async def test_real_server_stream_events_include_text(
     hass: HomeAssistant, real_server: RealServerConfig
 ) -> None:
     """Test the configured provider emits usable Pydantic AI text stream events."""
-    model = openai_compatible_chat_model_from_config(
+    model = openai_compatible_completions_model_from_config(
         hass, real_server.provider_data, real_server.model
     )
     text_parts: list[str] = []

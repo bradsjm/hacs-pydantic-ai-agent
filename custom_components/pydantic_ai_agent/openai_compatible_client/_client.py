@@ -4,6 +4,7 @@ import httpx
 
 from ._chat import ChatResource
 from ._models import ModelsResource
+from ._responses import ResponsesResource
 
 
 class AsyncOpenAICompatible:
@@ -24,6 +25,7 @@ class AsyncOpenAICompatible:
         self.http_client = http_client
         self.chat = ChatResource(self)
         self.models = ModelsResource(self)
+        self.responses = ResponsesResource(self)
 
     @property
     def auth_headers(self) -> dict[str, str]:

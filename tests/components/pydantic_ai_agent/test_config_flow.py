@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from _pytest.logging import LogCaptureFixture
 from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
+from pydantic_ai.messages import ModelResponse
 import pytest
 import voluptuous as vol
 
@@ -66,7 +67,8 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
-    PROVIDER_OPENAI_COMPATIBLE,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
@@ -161,7 +163,7 @@ async def _loaded_entry(
     """Return a loaded provider config entry."""
     data: dict[str, object] = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
     if data_extra is not None:
@@ -329,13 +331,13 @@ async def test_probe_model_streaming_not_supported_reported(
     """Test non-streaming models are reported explicitly."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
         ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
@@ -353,7 +355,7 @@ async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
     """Test provider validation completes a streaming response."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
     stream_result = AsyncMock()
@@ -365,7 +367,7 @@ async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model",
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model",
             return_value=stream_result,
         ),
         patch(
@@ -387,7 +389,7 @@ async def test_probe_model_can_require_native_structured_output(
     """Test provider validation can require native structured output."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
 
@@ -422,7 +424,7 @@ async def test_probe_model_can_require_native_structured_output(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
         ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
@@ -453,7 +455,7 @@ async def test_probe_model_can_require_tool_structured_output(
     """Test provider probing can request tool structured output."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
 
@@ -492,7 +494,7 @@ async def test_probe_model_can_require_tool_structured_output(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
         ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
@@ -524,7 +526,7 @@ async def test_probe_model_can_require_prompted_structured_output(
     """Test provider probing can request prompted structured output."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
 
@@ -557,7 +559,7 @@ async def test_probe_model_can_require_prompted_structured_output(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
         ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
@@ -587,7 +589,7 @@ async def test_probe_model_rejects_invalid_native_structured_output(
     """Test native structured output probing rejects non-JSON responses."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
 
@@ -620,7 +622,7 @@ async def test_probe_model_rejects_invalid_native_structured_output(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
         ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
@@ -644,13 +646,13 @@ async def test_probe_model_maps_structured_http_400_to_output_mode_error(
     """Test structured-output HTTP 400 is not reported as an invalid model."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
         ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
@@ -676,7 +678,7 @@ async def test_probe_model_merges_configured_model_settings(
     """Test provider validation preserves configured model settings."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
     stream_events = _SingleEventStream()
@@ -687,7 +689,7 @@ async def test_probe_model_merges_configured_model_settings(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
         ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
@@ -707,13 +709,72 @@ async def test_probe_model_merges_configured_model_settings(
     }
 
 
+async def test_probe_model_responses_uses_non_streamed_request(
+    hass: HomeAssistant,
+) -> None:
+    """Test Responses provider validation uses the Responses request path."""
+    data = {
+        CONF_NAME: "Hosted OpenAI Responses",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+        CONF_API_KEY: "sk-test",
+    }
+    model = SimpleNamespace(
+        request=AsyncMock(
+            return_value=ModelResponse(parts=[TextPart(content="OK")]),
+        )
+    )
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model",
+            return_value=model,
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+        ) as model_request_stream,
+    ):
+        await async_probe_model(hass, data, "gpt-test")
+
+    model.request.assert_awaited_once()
+    model_request_stream.assert_not_called()
+
+
+async def test_probe_model_responses_validates_structured_response(
+    hass: HomeAssistant,
+) -> None:
+    """Test Responses provider structured probes validate non-streamed output."""
+    data = {
+        CONF_NAME: "Hosted OpenAI Responses",
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+        CONF_API_KEY: "sk-test",
+    }
+    model = SimpleNamespace(
+        request=AsyncMock(
+            return_value=ModelResponse(parts=[TextPart(content='{"ok":true}')]),
+        )
+    )
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model",
+        return_value=model,
+    ):
+        await async_probe_model(
+            hass,
+            data,
+            "gpt-test",
+            structured_output_mode=OUTPUT_MODE_NATIVE,
+        )
+
+    model.request.assert_awaited_once()
+
+
 async def test_probe_model_openai_compatible_uses_normalized_base_url(
     hass: HomeAssistant,
 ) -> None:
     """Test OpenAI-compatible validation builds a provider with the base URL."""
     data = {
         CONF_NAME: "Local LLM",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "local-key",
         CONF_BASE_URL: "http://localhost:11434/v1/",
     }
@@ -955,26 +1016,26 @@ def mock_list_provider_model_names() -> Generator[AsyncMock]:
         (
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
             },
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
             },
         ),
         (
             {
                 CONF_NAME: "Local LLM",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "local-key",
                 CONF_BASE_URL: "http://localhost:11434/v1/",
                 CONF_PROVIDER_HEADERS: "X-Provider: enabled\nAuthorization: Bearer override",
             },
             {
                 CONF_NAME: "Local LLM",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "local-key",
                 CONF_BASE_URL: "http://localhost:11434/v1",
                 CONF_PROVIDER_HEADERS: {
@@ -986,28 +1047,28 @@ def mock_list_provider_model_names() -> Generator[AsyncMock]:
         (
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
                 CONF_LOGFIRE_TOKEN: "   ",
                 CONF_LOGFIRE_INCLUDE_CONTENT: True,
             },
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
             },
         ),
         (
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
                 CONF_LOGFIRE_TOKEN: " lf-token ",
                 CONF_LOGFIRE_INCLUDE_CONTENT: True,
             },
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
                 CONF_LOGFIRE_TOKEN: "lf-token",
                 CONF_LOGFIRE_INCLUDE_CONTENT: True,
@@ -1016,14 +1077,14 @@ def mock_list_provider_model_names() -> Generator[AsyncMock]:
         (
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
                 CONF_SKILLS_FOLDER: "/config/skills/custom",
                 CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
             },
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
                 CONF_SKILLS_FOLDER: "/config/skills/custom",
                 CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
@@ -1067,7 +1128,7 @@ async def test_openai_compatible_config_flow_allows_default_base_url(
         result["flow_id"],
         {
             CONF_NAME: "Local LLM",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "local-key",
         },
     )
@@ -1075,7 +1136,7 @@ async def test_openai_compatible_config_flow_allows_default_base_url(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
         CONF_NAME: "Local LLM",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "local-key",
     }
 
@@ -1092,7 +1153,7 @@ async def test_config_flow_rejects_invalid_provider_headers(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test",
             CONF_PROVIDER_HEADERS: "not a header",
         },
@@ -1118,7 +1179,7 @@ async def test_config_flow_rejects_skills_folder_outside_config(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test",
             CONF_SKILLS_FOLDER: skills_folder,
         },
@@ -2275,7 +2336,7 @@ async def test_subentry_flow_aborts_when_entry_not_loaded(
         title="Hosted OpenAI",
         data={
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test",
         },
         source=config_entries.SOURCE_USER,
@@ -2331,7 +2392,7 @@ async def test_conversation_subentry_maps_real_probe_http_error(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_chat_model"
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
         ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
@@ -2452,7 +2513,7 @@ async def test_duplicate_config_flow_aborts(
     """Test duplicate provider credentials abort."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
     entry = MockConfigEntry(
@@ -2483,7 +2544,7 @@ async def test_config_flow_allows_same_provider_with_different_skills_folder(
     """Test skills settings are part of provider entry identity."""
     data = {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
     }
     entry = MockConfigEntry(
@@ -2529,7 +2590,7 @@ async def test_reconfigure_provider_data_updates_entry(
         data_schema(
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
             }
         )[CONF_PROVIDER_HEADERS]
@@ -2540,7 +2601,7 @@ async def test_reconfigure_provider_data_updates_entry(
         result["flow_id"],
         {
             CONF_NAME: "Local LLM",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "local-key",
             CONF_BASE_URL: "http://localhost:11434/v1/",
             CONF_PROVIDER_HEADERS: "X-New: value",
@@ -2551,7 +2612,7 @@ async def test_reconfigure_provider_data_updates_entry(
     assert result["reason"] == "reconfigure_successful"
     assert entry.data == {
         CONF_NAME: "Local LLM",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "local-key",
         CONF_BASE_URL: "http://localhost:11434/v1",
         CONF_PROVIDER_HEADERS: {"X-New": "value"},
@@ -2579,7 +2640,7 @@ async def test_reconfigure_provider_uses_update_listener_for_reload(
             result["flow_id"],
             {
                 CONF_NAME: "Local LLM",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "local-key",
             },
         )
@@ -2600,7 +2661,7 @@ async def test_reauth_provider_without_update_listener_schedules_reload(
         title="Hosted OpenAI",
         data={
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "old-key",
         },
         source=config_entries.SOURCE_USER,
@@ -2615,7 +2676,7 @@ async def test_reauth_provider_without_update_listener_schedules_reload(
             result["flow_id"],
             {
                 CONF_NAME: "Hosted OpenAI",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "new-key",
             },
         )
@@ -2652,7 +2713,7 @@ async def test_reconfigure_provider_skill_source_clears_subentry_skills(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test",
             CONF_SKILLS_FOLDER: "/config/skills/trusted",
         },
@@ -2681,7 +2742,7 @@ async def test_reconfigure_provider_blank_logfire_token_disables_logfire(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test-updated",
             CONF_LOGFIRE_TOKEN: "",
             CONF_LOGFIRE_INCLUDE_CONTENT: False,
@@ -2705,7 +2766,7 @@ async def test_reconfigure_provider_keeps_custom_base_url(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test",
             CONF_BASE_URL: "http://localhost:11434/v1/",
         },
@@ -2715,7 +2776,7 @@ async def test_reconfigure_provider_keeps_custom_base_url(
     assert result["reason"] == "reconfigure_successful"
     assert entry.data == {
         CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         CONF_API_KEY: "sk-test",
         CONF_BASE_URL: "http://localhost:11434/v1",
     }
@@ -2731,7 +2792,7 @@ async def test_reconfigure_provider_duplicate_aborts(
         title="Other OpenAI",
         data={
             CONF_NAME: "Other OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "other-key",
         },
         source=config_entries.SOURCE_USER,
@@ -2751,7 +2812,7 @@ async def test_reconfigure_provider_duplicate_aborts(
         result["flow_id"],
         {
             CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test",
         },
     )
@@ -2772,7 +2833,7 @@ async def test_reconfigure_provider_allows_default_base_url(
         result["flow_id"],
         {
             CONF_NAME: "Local LLM",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE,
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "local-key",
         },
     )

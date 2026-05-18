@@ -338,18 +338,18 @@ remote Streamable HTTP MCP servers.
 The config flow should collect only values required to create a working,
 independent instance.
 
-| Field                    | Required | Stored in                        | Notes                                                    |
-| ------------------------ | -------- | -------------------------------- | -------------------------------------------------------- |
-| Provider connection name | Yes      | Config entry title/data          | User-facing name for the provider connection.            |
-| Provider mode            | Yes      | Data                             | Current value: `openai_compatible`.                      |
-| API key                  | Yes      | Data                             | Credential used for provider validation and requests.    |
-| Base URL                 | No       | Data                             | Defaults to `https://api.openai.com/v1` when omitted.    |
-| Logfire token            | No       | Data                             | Enables optional Logfire tracing for the provider entry. |
-| Skills folder            | No       | Data                             | Must be `/config/skills` or a subfolder when configured. |
-| Initial agent name       | No       | Conversation subentry title/data | Collected by the conversation subentry flow.             |
-| AI task name             | Yes      | AI task subentry title/data      | Collected by the AI task subentry flow.                  |
-| Language model profile   | No       | Conversation/AI task subentry    | Selected and validated by subentry flows.                |
-| HA LLM API               | No       | Conversation subentry data       | Tool access is enabled when this selector has values.    |
+| Field                    | Required | Stored in                        | Notes                                                              |
+| ------------------------ | -------- | -------------------------------- | ------------------------------------------------------------------ |
+| Provider connection name | Yes      | Config entry title/data          | User-facing name for the provider connection.                      |
+| Provider mode            | Yes      | Data                             | `openai_compatible_completions` or `openai_compatible_responses`.  |
+| API key                  | Yes      | Data                             | Credential used for provider validation and requests.              |
+| Base URL                 | No       | Data                             | Defaults to `https://api.openai.com/v1` when omitted.              |
+| Logfire token            | No       | Data                             | Enables optional Logfire tracing for the provider entry.           |
+| Skills folder            | No       | Data                             | Must be `/config/skills` or a subfolder when configured.           |
+| Initial agent name       | No       | Conversation subentry title/data | Collected by the conversation subentry flow.                       |
+| AI task name             | Yes      | AI task subentry title/data      | Collected by the AI task subentry flow.                            |
+| Language model profile   | No       | Conversation/AI task subentry    | Selected and validated by subentry flows.                          |
+| HA LLM API               | No       | Conversation subentry data       | Tool access is enabled when this selector has values.              |
 
 Provider-specific required fields belong in the config flow when the instance
 cannot be validated or used without them.
@@ -782,9 +782,10 @@ provider registry.
 
 Implemented provider modes:
 
-| Provider mode       | Purpose                                                               |
-| ------------------- | --------------------------------------------------------------------- |
-| `openai_compatible` | OpenAI-compatible Chat Completions provider with optional custom URL. |
+- `openai_compatible_completions`: OpenAI-compatible Chat Completions provider
+  with optional custom URL.
+- `openai_compatible_responses`: OpenAI-compatible Responses provider with
+  optional custom URL.
 
 Each provider mode must define:
 
@@ -800,7 +801,7 @@ Future provider modes may include Anthropic, Google, local providers, or other
 Pydantic AI-supported model backends once their configuration and event semantics
 are explicitly specified.
 
-The current OpenAI-compatible mode is implemented by
+The current OpenAI-compatible modes are implemented by
 `openai_compatible_client/` and `pydantic_ai_openai_compatible/`, not by the
 OpenAI SDK-backed Pydantic AI classes. See
 `docs/openai_compatible_provider_design.md` for rationale and adapter details.
