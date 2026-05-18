@@ -13,7 +13,6 @@ from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
     ConfigEntryNotReady,
 )
-from homeassistant.helpers import device_registry as dr, entity_registry as er
 import voluptuous as vol
 
 from .config_flow import ProviderValidationError, async_probe_model
@@ -172,9 +171,6 @@ async def async_setup_entry(
         ],
     )
 
-    await _async_migrate_entity_unique_ids(hass, entry)
-    _migrate_device_identifiers(hass, entry)
-
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_update_entry))
     return True
@@ -195,101 +191,6 @@ async def async_remove_entry(
 ) -> None:
     """Clean up repair issues when a config entry is permanently removed."""
     async_delete_entry_repair_issues(hass, entry)
-
-
-async def _async_migrate_entity_unique_ids(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
-    """Migrate pre-entry-scoped entity unique IDs for this config entry."""
-    old_to_new = _legacy_unique_id_map(entry)
-    if not old_to_new:
-        return
-    entity_registry = er.async_get(hass)
-
-    def update_entry(registry_entry: er.RegistryEntry) -> dict[str, str] | None:
-        new_unique_id = old_to_new.get(registry_entry.unique_id)
-        if new_unique_id is None:
-            return None
-        if entity_registry.async_get_entity_id(
-            registry_entry.domain, registry_entry.platform, new_unique_id
-        ):
-            _LOGGER.warning(
-                "Skipping Pydantic AI entity unique ID migration for %s because %s "
-                "already exists",
-                registry_entry.entity_id,
-                new_unique_id,
-            )
-            return None
-        return {"new_unique_id": new_unique_id}
-
-    await er.async_migrate_entries(hass, entry.entry_id, update_entry)
-
-
-def _migrate_device_identifiers(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
-    """Add entry-scoped identifiers to pre-existing subentry devices."""
-    from .entity import device_identifier_for_subentry
-
-    device_registry = dr.async_get(hass)
-    for subentry in _agent_subentries(entry):
-        legacy_identifier = (DOMAIN, subentry.subentry_id)
-        new_identifier = device_identifier_for_subentry(entry, subentry)
-        if device_registry.async_get_device(identifiers={new_identifier}):
-            continue
-        device = device_registry.async_get_device(identifiers={legacy_identifier})
-        if device is None:
-            continue
-        device_registry.async_update_device(
-            device.id,
-            new_identifiers={new_identifier},
-        )
-
-
-def _legacy_unique_id_map(entry: PydanticAIAgentConfigEntry) -> dict[str, str]:
-    """Return old-to-new entity unique IDs for current subentries."""
-    from .binary_sensor import BINARY_SENSOR_DESCRIPTIONS, CONFIG_BINARY_SENSOR_DESCRIPTIONS
-    from .entity import (
-        legacy_unique_id_for_subentry,
-        legacy_unique_id_for_subentry_entity,
-        unique_id_for_subentry,
-        unique_id_for_subentry_entity,
-    )
-    from .sensor import CONFIG_SENSOR_DESCRIPTIONS, SENSOR_DESCRIPTIONS
-
-    mapping: dict[str, str] = {}
-    for subentry in _agent_subentries(entry):
-        mapping[legacy_unique_id_for_subentry(subentry)] = unique_id_for_subentry(
-            entry, subentry
-        )
-        # Early development builds used the raw subentry ID for the primary entity.
-        mapping[subentry.subentry_id] = unique_id_for_subentry(entry, subentry)
-
-        for description in (
-            *SENSOR_DESCRIPTIONS,
-            *CONFIG_SENSOR_DESCRIPTIONS,
-            *BINARY_SENSOR_DESCRIPTIONS,
-            *CONFIG_BINARY_SENSOR_DESCRIPTIONS,
-        ):
-            if subentry.subentry_type not in getattr(description, "subentry_types", (subentry.subentry_type,)):
-                continue
-            mapping[
-                legacy_unique_id_for_subentry_entity(subentry, description.key)
-            ] = unique_id_for_subentry_entity(entry, subentry, description.key)
-    return mapping
-
-
-def _agent_subentries(entry: PydanticAIAgentConfigEntry) -> list[Any]:
-    """Return conversation and AI task subentries for setup migrations."""
-    return [
-        subentry
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type
-        in {
-            SUBENTRY_TYPE_CONVERSATION,
-            SUBENTRY_TYPE_AI_TASK,
-        }
-    ]
 
 
 async def async_update_entry(

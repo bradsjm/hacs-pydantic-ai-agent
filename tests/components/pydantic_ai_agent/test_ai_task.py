@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pydantic_ai import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.capabilities import Thinking
+from pydantic_ai.models.test import TestModel
 from pydantic_ai.output import NativeOutput, PromptedOutput, ToolOutput
 import voluptuous as vol
 
@@ -319,7 +320,9 @@ async def test_ai_task_subentries_add_separate_entities(
     subentry = next(iter(entry.subentries.values()))
     entity = added_entities[0][0][0]
     assert added_entities[0][1] == subentry.subentry_id
-    assert entity.unique_id == f"{DOMAIN}_{subentry.subentry_type}_{subentry.subentry_id}"
+    assert entity.unique_id == (
+        f"{DOMAIN}_{entry.entry_id}_{subentry.subentry_type}_{subentry.subentry_id}"
+    )
 
 
 def test_ai_task_entity_uses_task_name() -> None:
@@ -667,6 +670,27 @@ async def test_structured_data_task_returns_parsed_json(
     assert agent_class.call_args.kwargs["output_type"].name == (
         "pydantic_ai_agent_output_structured_task"
     )
+
+
+async def test_structured_data_task_supports_test_model_without_patching_agent_run(
+    hass: HomeAssistant,
+) -> None:
+    """Test structured AI tasks can run through Pydantic AI TestModel."""
+    entity_id = await _setup_ai_task_entity(hass, OUTPUT_MODE_TOOL)
+
+    with patch(
+        "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+        return_value=TestModel(custom_output_args={"name": "Kitchen"}),
+    ):
+        result = await ai_task.async_generate_data(
+            hass,
+            task_name="Structured task",
+            entity_id=entity_id,
+            instructions="Generate JSON",
+            structure=vol.Schema({vol.Required("name"): str}),
+        )
+
+    assert result.data == {"name": "Kitchen"}
 
 
 async def test_structured_data_task_rejects_malformed_json(

@@ -486,16 +486,6 @@ def device_identifier_for_subentry(
     )
 
 
-def legacy_unique_id_for_subentry(subentry: ConfigSubentry) -> str:
-    """Return the pre-entry-scoped unique ID for one subentry-backed entity."""
-    return f"{DOMAIN}_{subentry.subentry_type}_{subentry.subentry_id}"
-
-
-def legacy_unique_id_for_subentry_entity(subentry: ConfigSubentry, key: str) -> str:
-    """Return the pre-entry-scoped unique ID for one diagnostic entity."""
-    return f"{legacy_unique_id_for_subentry(subentry)}_{key}"
-
-
 def _model_settings_with_chat_template_kwargs(
     hass: HomeAssistant, profile: ModelProfile, settings: ModelSettings
 ) -> ModelSettings:

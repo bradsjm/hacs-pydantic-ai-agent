@@ -1,6 +1,6 @@
 """Test Pydantic AI Agent conversation entities."""
 
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import AsyncGenerator, AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 import sys
 from types import SimpleNamespace
@@ -19,11 +19,13 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pydantic_ai import (
     AgentRunResultEvent,
     FunctionToolset,
+    ModelRequest,
     ModelResponse,
     PartStartEvent,
     TextPart,
 )
 from pydantic_ai.capabilities import Thinking, ToolSearch
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
 from custom_components.pydantic_ai_agent import PydanticAIAgentRuntimeData
@@ -409,19 +411,29 @@ async def test_conversation_subentries_add_separate_entity_agents(
         subentries[1].subentry_id,
     ]
     assert [item[0][0].unique_id for item in added_entities] == [
-        f"{DOMAIN}_{subentries[0].subentry_type}_{subentries[0].subentry_id}",
-        f"{DOMAIN}_{subentries[1].subentry_type}_{subentries[1].subentry_id}",
+        f"{DOMAIN}_{entry.entry_id}_{subentries[0].subentry_type}_{subentries[0].subentry_id}",
+        f"{DOMAIN}_{entry.entry_id}_{subentries[1].subentry_type}_{subentries[1].subentry_id}",
     ]
     assert [item[0][0].device_info for item in added_entities] == [
         {
-            "identifiers": {(DOMAIN, subentries[0].subentry_id)},
+            "identifiers": {
+                (
+                    DOMAIN,
+                    f"{entry.entry_id}:{subentries[0].subentry_type}:{subentries[0].subentry_id}",
+                )
+            },
             "name": "Kitchen Agent",
             "manufacturer": "Pydantic AI",
             "model": "gpt-kitchen",
             "entry_type": dr.DeviceEntryType.SERVICE,
         },
         {
-            "identifiers": {(DOMAIN, subentries[1].subentry_id)},
+            "identifiers": {
+                (
+                    DOMAIN,
+                    f"{entry.entry_id}:{subentries[1].subentry_type}:{subentries[1].subentry_id}",
+                )
+            },
             "name": "Garage Agent",
             "manufacturer": "Pydantic AI",
             "model": "gpt-garage",
@@ -632,6 +644,57 @@ async def test_conversation_runtime_supports_test_model_without_patching_agent_r
         )
 
     assert result.response.speech["plain"]["speech"] == "test model response"
+
+
+async def test_conversation_runtime_supports_function_model_without_patching_agent_run(
+    hass: HomeAssistant,
+) -> None:
+    """Test a deterministic Pydantic AI FunctionModel runtime path."""
+    entry = _entry(None)
+    entry.add_to_hass(hass)
+    captured_messages: list[ModelRequest | ModelResponse] = []
+
+    async def model_function(
+        messages: list[ModelRequest | ModelResponse], info: AgentInfo
+    ) -> ModelResponse:
+        captured_messages.extend(messages)
+        assert info.function_tools == []
+        return ModelResponse(parts=[TextPart(content="function model response")])
+
+    async def stream_function(
+        messages: list[ModelRequest | ModelResponse], info: AgentInfo
+    ) -> AsyncIterator[str]:
+        captured_messages.extend(messages)
+        assert info.function_tools == []
+        yield "function model response"
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with patch(
+        "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+        return_value=FunctionModel(model_function, stream_function=stream_function),
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "hello from function model",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert result.response.speech["plain"]["speech"] == "function model response"
+    assert captured_messages
+    assert "hello from function model" in repr(captured_messages[-1])
 
 
 async def test_conversation_runtime_defaults_max_iterations(

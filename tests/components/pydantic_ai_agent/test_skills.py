@@ -45,6 +45,23 @@ def test_skills_folder_path_stays_under_config_skills(hass: HomeAssistant) -> No
             skills_folder_path(hass, invalid)
 
 
+def test_skills_folder_path_rejects_symlink_escape(
+    hass: HomeAssistant, tmp_path: Path
+) -> None:
+    """Test configured skills folders cannot escape through symlinks."""
+    skills_root = Path(hass.config.path("skills"))
+    skills_root.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    symlink = skills_root / "escape"
+    if symlink.exists() or symlink.is_symlink():
+        symlink.unlink()
+    symlink.symlink_to(outside)
+
+    with pytest.raises(ValueError, match="inside /config/skills"):
+        skills_folder_path(hass, "/config/skills/escape")
+
+
 def test_selected_available_skill_names_filters_stale_values() -> None:
     """Test configured skills are kept only when still discoverable."""
     available = [

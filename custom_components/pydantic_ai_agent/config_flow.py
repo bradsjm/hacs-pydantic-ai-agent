@@ -139,6 +139,7 @@ from .skills import (
     AvailableSkill,
     async_available_skills,
     selected_available_skill_names,
+    skills_folder_path,
 )
 from .structured_output import (
     structured_model_request_parameters,
@@ -818,33 +819,25 @@ def _normalise_skills_folder(folder: object) -> str:
     return configured.rstrip("/")
 
 
-def _validate_provider_data(data: Mapping[str, Any]) -> None:
+def _validate_provider_data(hass: HomeAssistant, data: Mapping[str, Any]) -> None:
     """Validate provider data that does not require a model."""
     if data.get(CONF_PROVIDER_MODE) not in PROVIDER_MODES:
         raise ProviderValidationError(
             "invalid_provider_config",
             f"Unsupported provider mode: {data.get(CONF_PROVIDER_MODE)!r}.",
         )
-    _validate_skills_folder(data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER))
+    _validate_skills_folder(hass, data.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER))
 
 
-def _validate_skills_folder(folder: object) -> None:
+def _validate_skills_folder(hass: HomeAssistant, folder: object) -> None:
     """Validate that skills folders stay inside Home Assistant config."""
-    configured = str(folder or DEFAULT_SKILLS_FOLDER).strip()
-    path = PurePosixPath(configured)
-    if any(part == ".." for part in path.parts):
+    try:
+        skills_folder_path(hass, folder)
+    except ValueError as err:
         raise ProviderValidationError(
             "invalid_skills_folder",
             "Skills folder must be /config/skills or one of its subfolders.",
-        )
-    if not (
-        configured == DEFAULT_SKILLS_FOLDER
-        or configured.startswith(f"{DEFAULT_SKILLS_FOLDER}/")
-    ):
-        raise ProviderValidationError(
-            "invalid_skills_folder",
-            "Skills folder must be /config/skills or one of its subfolders.",
-        )
+        ) from err
 
 
 def _provider_data_matches(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:

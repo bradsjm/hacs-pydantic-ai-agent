@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager
 import errno
 import logging
+from pathlib import Path
 import socket
 import ssl
 import sys
@@ -1268,6 +1269,36 @@ async def test_config_flow_rejects_skills_folder_outside_config(
             CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test",
             CONF_SKILLS_FOLDER: skills_folder,
+        },
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_skills_folder"}
+
+
+async def test_config_flow_rejects_symlinked_skills_folder_escape(
+    hass: HomeAssistant, mock_probe_model: AsyncMock, tmp_path: Path
+) -> None:
+    """Test provider setup rejects skills folders escaping through symlinks."""
+    skills_root = Path(hass.config.path("skills"))
+    skills_root.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    symlink = skills_root / "escape"
+    if symlink.exists() or symlink.is_symlink():
+        symlink.unlink()
+    symlink.symlink_to(outside)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Hosted OpenAI",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            CONF_API_KEY: "sk-test",
+            CONF_SKILLS_FOLDER: "/config/skills/escape",
         },
     )
 
