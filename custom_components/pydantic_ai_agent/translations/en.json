@@ -42,7 +42,7 @@
           "provider_mode": "Provider mode"
         },
         "data_description": {
-          "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
+          "base_url": "API base URL used with OpenAI Compatible Endpoints (defaults to https://api.openai.com/v1)",
           "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
           "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection.",
           "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
