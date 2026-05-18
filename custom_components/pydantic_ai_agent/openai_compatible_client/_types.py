@@ -78,6 +78,24 @@ class Response(OpenAICompatibleModel):
     conversation: ResponseConversation | None = None
 
 
+class ResponseStreamEvent(OpenAICompatibleModel):
+    """One Responses API streaming event."""
+
+    type: str
+    response: Response | None = None
+    item: dict[str, Any] | None = None
+    item_id: str | None = None
+    output_index: int | None = None
+    content_index: int | None = None
+    summary_index: int | None = None
+    delta: str | None = None
+    text: str | None = None
+    refusal: str | None = None
+    part: dict[str, Any] | None = None
+    annotation: Any = None
+    logprobs: Any = None
+
+
 class FunctionCall(OpenAICompatibleModel):
     """Function call name and JSON argument payload."""
 

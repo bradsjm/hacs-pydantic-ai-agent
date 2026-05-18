@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from ._chat import serialize_payload
 from ._exceptions import APIConnectionError, APITimeoutError
 from ._sentinels import NOT_GIVEN, is_omitted
-from ._streaming import raise_for_status
+from ._streaming import ResponseStream, raise_for_status
 from ._types import Response
 
 
@@ -23,7 +23,7 @@ class ResponsesResource:
     async def create(self, *, stream: Literal[False] = False, **kwargs: Any) -> Response: ...
 
     @overload
-    async def create(self, *, stream: Literal[True], **kwargs: Any) -> None: ...
+    async def create(self, *, stream: Literal[True], **kwargs: Any) -> ResponseStream: ...
 
     async def create(
         self,
@@ -33,18 +33,26 @@ class ResponsesResource:
         extra_body: dict[str, Any] | None = None,
         timeout: float | httpx.Timeout | None | object = NOT_GIVEN,
         **kwargs: Any,
-    ) -> Response | None:
+    ) -> Response | ResponseStream:
         """Create a response."""
-        if stream:
-            raise NotImplementedError("Responses streaming is not implemented")
         body = serialize_payload(kwargs)
         assert isinstance(body, dict)
-        body["stream"] = False
+        body["stream"] = stream
         if extra_body:
             body.update(serialize_payload(extra_body))
 
         headers = self._client.auth_headers | (extra_headers or {})
         request_timeout = None if is_omitted(timeout) else timeout
+        if stream:
+            return ResponseStream(
+                self._client.http_client.stream(
+                    "POST",
+                    self._client.url_for("/responses"),
+                    json=body,
+                    headers=headers,
+                    timeout=request_timeout,
+                )
+            )
         try:
             response = await self._client.http_client.post(
                 self._client.url_for("/responses"),

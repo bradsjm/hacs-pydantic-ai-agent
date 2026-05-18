@@ -3,14 +3,19 @@
 import errno
 import socket
 import ssl
-from typing import Any
+from collections.abc import AsyncIterator
+from typing import Any, cast
 
 import httpx
 import pytest
 from pydantic_ai import (
+    AgentRunResultEvent,
     ModelRequest,
     ModelResponse,
+    PartDeltaEvent,
+    PartStartEvent,
     TextPart,
+    TextPartDelta,
     ThinkingPart,
     ToolCallPart,
     ToolReturnPart,
@@ -27,6 +32,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.core import HomeAssistant
 
 from custom_components.pydantic_ai_agent.entity import (
+    _StreamRunState,
+    _agent_events_to_chat_deltas,
     _agent_messages_to_chat_deltas,
     _has_connection_failure,
     _home_assistant_error,
@@ -44,6 +51,21 @@ async def _collect_deltas(
         delta
         async for delta in _agent_messages_to_chat_deltas(messages, output_tool_names)
     ]
+
+
+async def _collect_event_deltas(events: list[Any]) -> tuple[list[dict[str, Any]], Any]:
+    """Collect chat deltas from live Agent events."""
+
+    async def stream() -> AsyncIterator[Any]:
+        for event in events:
+            yield event
+
+    state = _StreamRunState()
+    deltas = [
+        delta
+        async for delta in _agent_events_to_chat_deltas(stream(), set(), state)
+    ]
+    return deltas, state.result
 
 
 @pytest.mark.parametrize("status_code", [408, 409, 429, 500, 503])
@@ -191,6 +213,21 @@ async def test_agent_messages_to_chat_deltas_preserves_assistant_parts() -> None
     assert tool_call.tool_name == "HassTurnOn"
     assert tool_call.tool_args == {"name": "Kitchen"}
     assert tool_call.id == "tool-1"
+
+
+async def test_agent_events_to_chat_deltas_does_not_replay_final_result() -> None:
+    """Test live stream deltas are not duplicated by the final run result."""
+    result = object()
+    deltas, final_result = await _collect_event_deltas(
+        [
+            PartStartEvent(index=0, part=TextPart(content="hel")),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta="lo")),
+            AgentRunResultEvent(cast(Any, result)),
+        ]
+    )
+
+    assert deltas == [{"role": "assistant"}, {"content": "hel"}, {"content": "lo"}]
+    assert final_result is result
 
 
 async def test_agent_messages_to_chat_deltas_converts_output_tool_to_content() -> None:

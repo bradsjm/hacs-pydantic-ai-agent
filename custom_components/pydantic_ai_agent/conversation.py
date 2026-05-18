@@ -47,7 +47,7 @@ class PydanticAIConversationEntity(
     _attr_has_entity_name = True
     _attr_icon = "mdi:message-processing-outline"
     _attr_name = None
-    _attr_supports_streaming = False
+    _attr_supports_streaming = True
 
     def __init__(
         self, entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
@@ -98,5 +98,5 @@ class PydanticAIConversationEntity(
         except conversation.ConverseError as err:
             return err.as_conversation_result()
 
-        await self._async_handle_chat_log(chat_log)
+        await self._async_handle_chat_log(chat_log, stream=True)
         return conversation.async_get_result_from_chat_log(user_input, chat_log)

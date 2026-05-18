@@ -1,15 +1,15 @@
-"""SSE streaming support for Chat Completions."""
+"""SSE streaming support for OpenAI-compatible APIs."""
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 import json
-from typing import Any, Self, cast
+from typing import Any, Generic, Self, TypeVar, cast
 
 import httpx
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from ._exceptions import APIConnectionError, APIStatusError, APITimeoutError
-from ._types import ChatCompletionChunk
+from ._types import ChatCompletionChunk, ResponseStreamEvent
 
 
 async def response_body(response: httpx.Response) -> Any:
@@ -33,8 +33,13 @@ async def raise_for_status(response: httpx.Response) -> None:
     raise APIStatusError(message=message, response=response, body=body)
 
 
-class ChatCompletionStream:
-    """Async iterator over Chat Completions SSE chunks."""
+_EventT = TypeVar("_EventT", bound=BaseModel)
+
+
+class _SSEStream(Generic[_EventT]):
+    """Async iterator over typed Server-Sent Events."""
+
+    _event_type: type[_EventT]
 
     def __init__(
         self, response_context: AbstractAsyncContextManager[httpx.Response]
@@ -59,25 +64,23 @@ class ChatCompletionStream:
         await self.close()
         return False
 
-    def __aiter__(self) -> "ChatCompletionStream":
+    def __aiter__(self) -> Self:
         """Return the async stream iterator."""
         return self
 
-    async def __anext__(self) -> ChatCompletionChunk:
-        """Return the next parsed SSE chunk."""
+    async def __anext__(self) -> _EventT:
+        """Return the next parsed SSE event."""
         await self._ensure_entered()
         assert self._lines is not None
         try:
             async for line in self._lines:
-                if not line or line.startswith(":"):
-                    continue
-                if not line.startswith("data:"):
+                if not line or line.startswith(":") or not line.startswith("data:"):
                     continue
                 data = line.removeprefix("data:").strip()
                 if data == "[DONE]":
                     raise StopAsyncIteration
                 try:
-                    return ChatCompletionChunk.model_validate_json(data)
+                    return self._event_type.model_validate_json(data)
                 except ValidationError as err:
                     raise APIConnectionError(
                         message=f"Invalid streaming response: {err}",
@@ -118,3 +121,15 @@ class ChatCompletionStream:
             raise APITimeoutError(message=str(err), request=err.request) from err
         except httpx.RequestError as err:
             raise APIConnectionError(message=str(err), request=err.request) from err
+
+
+class ChatCompletionStream(_SSEStream[ChatCompletionChunk]):
+    """Async iterator over Chat Completions SSE chunks."""
+
+    _event_type = ChatCompletionChunk
+
+
+class ResponseStream(_SSEStream[ResponseStreamEvent]):
+    """Async iterator over Responses API SSE events."""
+
+    _event_type = ResponseStreamEvent

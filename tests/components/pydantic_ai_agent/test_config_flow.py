@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, Mock, patch
 from _pytest.logging import LogCaptureFixture
 from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
-from pydantic_ai.messages import ModelResponse
 import pytest
 import voluptuous as vol
 
@@ -709,20 +708,21 @@ async def test_probe_model_merges_configured_model_settings(
     }
 
 
-async def test_probe_model_responses_uses_non_streamed_request(
+async def test_probe_model_responses_uses_streamed_request(
     hass: HomeAssistant,
 ) -> None:
-    """Test Responses provider validation uses the Responses request path."""
+    """Test Responses provider validation uses the streaming request path."""
     data = {
         CONF_NAME: "Hosted OpenAI Responses",
         CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
         CONF_API_KEY: "sk-test",
     }
-    model = SimpleNamespace(
-        request=AsyncMock(
-            return_value=ModelResponse(parts=[TextPart(content="OK")]),
-        )
-    )
+    model = SimpleNamespace()
+    stream_events = _SingleEventStream()
+
+    @asynccontextmanager
+    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
+        yield stream_events
 
     with (
         patch(
@@ -731,32 +731,64 @@ async def test_probe_model_responses_uses_non_streamed_request(
         ),
         patch(
             "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            side_effect=stream,
         ) as model_request_stream,
     ):
         await async_probe_model(hass, data, "gpt-test")
 
-    model.request.assert_awaited_once()
-    model_request_stream.assert_not_called()
+    model_request_stream.assert_called_once()
+    assert model_request_stream.call_args.args[0] is model
+    assert stream_events.events_yielded == 1
 
 
 async def test_probe_model_responses_validates_structured_response(
     hass: HomeAssistant,
 ) -> None:
-    """Test Responses provider structured probes validate non-streamed output."""
+    """Test Responses provider structured probes validate streamed output."""
     data = {
         CONF_NAME: "Hosted OpenAI Responses",
         CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
         CONF_API_KEY: "sk-test",
     }
-    model = SimpleNamespace(
-        request=AsyncMock(
-            return_value=ModelResponse(parts=[TextPart(content='{"ok":true}')]),
-        )
-    )
+    class StructuredEventStream:
+        """Async stream with a structured probe response."""
 
-    with patch(
-        "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model",
-        return_value=model,
+        def __init__(self) -> None:
+            """Initialize the stream."""
+            self._events = iter(
+                (
+                    PartStartEvent(index=0, part=TextPart(content='{"ok":true}')),
+                    PartEndEvent(index=0, part=TextPart(content='{"ok":true}')),
+                )
+            )
+
+        def __aiter__(self) -> "StructuredEventStream":
+            """Return the async iterator."""
+            return self
+
+        async def __anext__(self) -> object:
+            """Return the next stream event."""
+            try:
+                return next(self._events)
+            except StopIteration as err:
+                raise StopAsyncIteration from err
+
+    model = SimpleNamespace()
+    stream_events = StructuredEventStream()
+
+    @asynccontextmanager
+    async def stream(*_: object, **__: object) -> AsyncGenerator[StructuredEventStream]:
+        yield stream_events
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model",
+            return_value=model,
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            side_effect=stream,
+        ) as model_request_stream,
     ):
         await async_probe_model(
             hass,
@@ -765,7 +797,7 @@ async def test_probe_model_responses_validates_structured_response(
             structured_output_mode=OUTPUT_MODE_NATIVE,
         )
 
-    model.request.assert_awaited_once()
+    model_request_stream.assert_called_once()
 
 
 async def test_probe_model_openai_compatible_uses_normalized_base_url(

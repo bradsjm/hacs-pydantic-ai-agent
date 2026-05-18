@@ -51,10 +51,10 @@
 
 - `__init__.py` owns setup/unload, typed `entry.runtime_data`, update reloads, setup-time validation of configured subentry models, repair issue creation/cleanup for reconfigurable validation failures, forwarding of both `conversation` and `ai_task` platforms, and response actions for MCP tool listing/refresh.
 - `config_flow.py` owns parent provider config, reauth/reconfigure, `conversation`, `ai_task_data`, and `mcp_server` subentry flows, model settings parsing, skill selection, MCP validation/discovery, structured output configuration, and the async Pydantic AI provider probe.
-- `conversation.py` registers one Home Assistant conversation entity per `conversation` subentry, does not advertise streaming, and advertises `CONTROL` only when `CONF_LLM_HASS_API` is configured.
+- `conversation.py` registers one Home Assistant conversation entity per `conversation` subentry, advertises streaming, and advertises `CONTROL` only when `CONF_LLM_HASS_API` is configured.
 - `ai_task.py` registers one Home Assistant AI task entity per `ai_task_data` subentry for data generation and attachment input; image generation is not implemented.
-- `entity.py` owns the shared Pydantic AI `Agent` runtime, Home Assistant LLM API tool conversion, remote MCP toolsets, selected `pydantic-ai-skills` capabilities, usage limits, and cleanup of MCP HTTP clients.
-- `openai_compatible_client/` owns the lightweight async Completions/Responses HTTP client and Chat SSE parser; `pydantic_ai_openai_compatible/` owns the Pydantic AI `Model`/`Provider` adapter and message/usage/error mapping.
+- `entity.py` owns the shared Pydantic AI `Agent` runtime, Home Assistant LLM API tool conversion, remote MCP toolsets, selected `pydantic-ai-skills` capabilities, usage limits, live conversation streaming through `run_stream_events()`, and cleanup of MCP HTTP clients.
+- `openai_compatible_client/` owns the lightweight async Completions/Responses HTTP client and SSE parsers; `pydantic_ai_openai_compatible/` owns the Pydantic AI `Model`/`Provider` adapter and message/usage/error mapping.
 - `mcp.py` supports remote Streamable HTTP MCP server subentries only; stdio, SSE, and local command MCP servers are not implemented.
 - `skills.py` discovers local `pydantic-ai-skills` from `/config/skills` or subfolders and excludes skill script execution unless explicitly enabled on the provider entry.
 

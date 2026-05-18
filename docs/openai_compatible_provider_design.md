@@ -46,11 +46,8 @@ The in-repo adapter exists to:
   runtime code.
 - Support plain text, tool calls, tool results, structured output modes, model
   settings, and usage mapping for both provider modes.
-- Keep Chat Completions SSE streaming support for provider probing. Probe
-  Responses providers with non-streamed `/responses` requests until Responses
-  streaming is wired into runtime behavior.
-- Keep runtime conversation entities non-streaming until Home Assistant streaming
-  support is explicitly implemented.
+- Support SSE streaming for both Chat Completions and Responses provider modes,
+  including provider probing and Home Assistant conversation runtime streaming.
 - Keep diagnostics and tests free of API keys, headers, `.env` values, and raw
   provider payloads.
 
@@ -61,8 +58,7 @@ The in-repo adapter exists to:
   `pydantic_ai.providers.openai.OpenAIProvider` as runtime dependencies.
 - Do not implement arbitrary provider registries or provider APIs beyond the
   explicit Completions and Responses modes.
-- Do not expose Home Assistant conversation streaming based only on the low-level
-  client streaming support.
+- Do not simulate streaming by chunking completed non-streamed responses.
 - Do not add stdio, SSE, or local process MCP support as part of provider work.
 
 ## Dependency Contract
@@ -213,14 +209,15 @@ Streaming implementation details:
 - status errors read the streamed response body before raising so provider error
   details are preserved;
 - stream entry and iteration errors are mapped through `_map_api_errors()`;
-- `ChatCompletionStream.close()` closes the SSE line iterator and response
-  context;
+- `ChatCompletionStream.close()` and `ResponseStream.close()` close the SSE line
+  iterator and response context;
+- Home Assistant conversation runtime consumes Pydantic AI
+  `run_stream_events(...)` so visible assistant deltas are emitted live while the
+  final `AgentRunResultEvent` is used only for usage and health metrics;
+- streamed conversation handling does not append final `new_messages()` after
+  live deltas, preventing duplicate final assistant text;
 - the real-server probe test drains the event loop after validation to avoid
   racing async-generator finalization.
-
-Runtime Home Assistant conversation entities still set `_attr_supports_streaming`
-to `False`. Do not document or expose runtime streaming UX until `conversation.py`
-is explicitly changed and tested for that behavior.
 
 ## Error Handling
 

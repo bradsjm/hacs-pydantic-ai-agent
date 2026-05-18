@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator, Iterable
 from contextlib import asynccontextmanager
 import sys
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -15,7 +16,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers import llm
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from pydantic_ai import ModelResponse, TextPart
+from pydantic_ai import AgentRunResultEvent, ModelResponse, PartStartEvent, TextPart
 
 from custom_components.pydantic_ai_agent import PydanticAIAgentRuntimeData
 from custom_components.pydantic_ai_agent.const import (
@@ -54,6 +55,25 @@ class _TextStream:
         self._events = iter((text,))
 
     def __aiter__(self) -> "_TextStream":
+        """Return the async iterator."""
+        return self
+
+    async def __anext__(self) -> object:
+        """Return the next stream event."""
+        try:
+            return next(self._events)
+        except StopIteration as err:
+            raise StopAsyncIteration from err
+
+
+class _EventStream:
+    """Async iterator over Pydantic AI stream events."""
+
+    def __init__(self, events: Iterable[object]) -> None:
+        """Initialize the event stream."""
+        self._events = iter(events)
+
+    def __aiter__(self) -> "_EventStream":
         """Return the async iterator."""
         return self
 
@@ -115,6 +135,20 @@ class _Agent:
 
     async def __aexit__(self, *_args: object) -> None:
         """Exit the agent context."""
+
+    @asynccontextmanager
+    async def run_stream_events(
+        self, *_args: object, **kwargs: object
+    ) -> AsyncGenerator[_EventStream]:
+        """Return deterministic streamed Agent events."""
+        self.run_kwargs = kwargs
+        result = _StreamResult()
+        yield _EventStream(
+            (
+                PartStartEvent(index=0, part=TextPart(content="runtime response")),
+                AgentRunResultEvent(cast(Any, result)),
+            )
+        )
 
     @asynccontextmanager
     async def run_stream(
@@ -315,14 +349,14 @@ def test_conversation_entity_controls_home_assistant_with_llm_api() -> None:
     assert entity.extra_state_attributes["web_fetch_enabled"] is False
 
 
-def test_conversation_entity_does_not_advertise_streaming() -> None:
-    """Test Agent-backed conversation entities do not advertise streaming."""
+def test_conversation_entity_advertises_streaming() -> None:
+    """Test Agent-backed conversation entities advertise streaming."""
     entry = _entry(None)
     subentry = next(iter(entry.subentries.values()))
 
     entity = PydanticAIConversationEntity(entry, subentry)
 
-    assert entity.supports_streaming is False
+    assert entity.supports_streaming is True
 
 
 def test_conversation_entity_without_llm_api_has_no_control() -> None:

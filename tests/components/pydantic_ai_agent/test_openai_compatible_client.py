@@ -248,6 +248,64 @@ async def test_chat_completion_stream_status_errors_read_body() -> None:
     await http_client.aclose()
 
 
+async def test_responses_stream_parses_sse_events() -> None:
+    """Test Responses streaming SSE parsing."""
+    body = "".join(
+        [
+            'data: {"type":"response.created","response":{"id":"resp-1","model":"m","status":"in_progress","output":[]}}\n\n',
+            'data: {"type":"response.output_text.delta","item_id":"msg-1","delta":"OK"}\n\n',
+            'data: {"type":"response.completed","response":{"id":"resp-1","model":"m","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}}\n\n',
+            "data: [DONE]\n\n",
+        ]
+    )
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=body, headers={"content-type": "text/event-stream"}
+        )
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = AsyncOpenAICompatible(
+        api_key=None, base_url="https://provider.test/v1", http_client=http_client
+    )
+
+    stream = await client.responses.create(model="m", input=[], stream=True)
+    events = [event async for event in stream]
+
+    assert [event.type for event in events] == [
+        "response.created",
+        "response.output_text.delta",
+        "response.completed",
+    ]
+    assert events[1].delta == "OK"
+    assert events[2].response is not None
+    assert events[2].response.usage is not None
+    assert events[2].response.usage.output_tokens == 2
+    await http_client.aclose()
+
+
+async def test_responses_stream_status_errors_read_body() -> None:
+    """Test streamed Responses status errors expose the provider body."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": {"message": "bad response"}})
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = AsyncOpenAICompatible(
+        api_key=None, base_url="https://provider.test/v1", http_client=http_client
+    )
+
+    stream = await client.responses.create(model="m", input=[], stream=True)
+    with pytest.raises(APIStatusError) as exc_info:
+        async with stream:
+            _ = [event async for event in stream]
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.body == {"error": {"message": "bad response"}}
+    assert exc_info.value.message == "bad response"
+    await http_client.aclose()
+
+
 async def test_status_errors_include_status_and_body() -> None:
     """Test HTTP status errors expose useful response details."""
 

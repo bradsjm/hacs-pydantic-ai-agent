@@ -23,7 +23,7 @@ from pydantic_ai import (
     TextPartDelta,
     ToolCallPart,
 )
-from pydantic_ai.messages import ModelResponse, ModelResponseStreamEvent
+from pydantic_ai.messages import ModelResponseStreamEvent
 from pydantic_ai.direct import model_request_stream
 from pydantic_ai.exceptions import (
     ModelAPIError,
@@ -638,23 +638,6 @@ async def async_probe_model(
             )
         ]
         model_settings_obj = ModelSettings(**settings)
-        if data[CONF_PROVIDER_MODE] == PROVIDER_OPENAI_COMPATIBLE_RESPONSES:
-            response = await model.request(
-                messages,
-                model_settings=model_settings_obj,
-                model_request_parameters=model_request_parameters
-                or ModelRequestParameters(),
-            )
-            if structured_output_mode is not None:
-                _validate_structured_probe_response(
-                    response,
-                    normalise_structured_output_mode(structured_output_mode),
-                )
-            elif not response.parts:
-                raise ProviderValidationError(
-                    "provider_error", "The provider returned an empty response."
-                )
-            return
         async with model_request_stream(
             model,
             messages,
@@ -759,39 +742,6 @@ def _structured_probe_data_from_tool_args(args: object) -> object:
                 _invalid_structured_output_message(OUTPUT_MODE_TOOL),
             ) from err
     return None
-
-
-def _validate_structured_probe_response(
-    response: ModelResponse,
-    output_mode: str,
-) -> None:
-    """Validate a non-streamed structured-output probe response."""
-    output_tool_data: object | None = None
-    text_parts: list[str] = []
-    for part in response.parts:
-        if isinstance(part, ToolCallPart) and part.tool_name == _STRUCTURED_PROBE_OUTPUT_NAME:
-            output_tool_data = part.args
-        elif isinstance(part, TextPart):
-            text_parts.append(part.content)
-    if output_tool_data is not None:
-        data = _structured_probe_data_from_tool_args(output_tool_data)
-    elif text_parts:
-        try:
-            data = json.loads("".join(text_parts))
-        except json.JSONDecodeError as err:
-            raise ProviderValidationError(
-                "invalid_provider_config",
-                _invalid_structured_output_message(output_mode),
-            ) from err
-    else:
-        raise ProviderValidationError(
-            "provider_error", "The provider returned an empty structured response."
-        )
-    if not isinstance(data, Mapping) or data.get("ok") is not True:
-        raise ProviderValidationError(
-            "invalid_provider_config",
-            "The provider returned structured output that did not match the schema.",
-        )
 
 
 def _invalid_structured_output_message(output_mode: str) -> str:

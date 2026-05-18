@@ -28,6 +28,7 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT
 
 from ..openai_compatible_client import AsyncOpenAICompatible, NOT_GIVEN, Response, omit
+from ..openai_compatible_client._streaming import ResponseStream
 from ._chat_model import _map_api_errors
 from ._provider import OpenAICompatibleProvider
 from ._responses_message_mapping import (
@@ -35,6 +36,7 @@ from ._responses_message_mapping import (
     map_messages,
     map_tool_definition,
 )
+from ._responses_streamed_response import OpenAICompatibleResponsesStreamedResponse
 from ._usage import map_usage
 
 _FINISH_REASON_MAP: dict[str, FinishReason] = {
@@ -103,6 +105,7 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
             response = await self._responses_create(
                 messages, settings, model_request_parameters
             )
+        assert isinstance(response, Response)
         return self._process_response(response)
 
     @asynccontextmanager
@@ -114,15 +117,34 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
         run_context: AgentDepsT | None = None,
     ) -> AsyncIterator[StreamedResponse]:
         """Make a streamed model request."""
-        raise NotImplementedError("Responses streaming is not implemented")
-        yield  # pragma: no cover
+        check_allow_model_requests()
+        model_settings, model_request_parameters = self.prepare_request(
+            model_settings,
+            model_request_parameters,
+        )
+        settings = model_settings or {}
+        with _map_api_errors(self.model_name):
+            response = await self._responses_create(
+                messages, settings, model_request_parameters, stream=True
+            )
+            assert isinstance(response, ResponseStream)
+            async with response:
+                yield OpenAICompatibleResponsesStreamedResponse(
+                    model_request_parameters=model_request_parameters,
+                    _model_name=self.model_name,
+                    _response=response,
+                    _provider_name=self._provider.name,
+                    _provider_url=self._provider.base_url,
+                )
 
     async def _responses_create(
         self,
         messages: list[ModelMessage],
         model_settings: ModelSettings,
         model_request_parameters: ModelRequestParameters,
-    ) -> Response:
+        *,
+        stream: bool = False,
+    ) -> Response | ResponseStream:
         """Create a Responses request using the low-level client."""
         tools, tool_choice = self._get_tools_and_tool_choice(
             model_settings, model_request_parameters
@@ -174,7 +196,7 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
             if tools
             else omit,
             max_output_tokens=model_settings.get("max_tokens", omit),
-            stream=False,
+            stream=stream,
             timeout=model_settings.get("timeout", NOT_GIVEN),
             reasoning=_reasoning(model_settings, model_request_parameters),
             include=["reasoning.encrypted_content"]
@@ -187,7 +209,6 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
             extra_headers=extra_headers,
             extra_body=model_settings.get("extra_body"),
         )
-        assert response is not None
         return response
 
     def _get_tools_and_tool_choice(

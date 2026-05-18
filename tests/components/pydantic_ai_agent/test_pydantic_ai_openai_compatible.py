@@ -484,6 +484,152 @@ async def test_request_stream_yields_text_and_usage() -> None:
     await http_client.aclose()
 
 
+async def test_responses_request_stream_yields_text_reasoning_and_usage() -> None:
+    """Test streamed Responses text and reasoning map to Pydantic AI events."""
+    response_events = [
+        {
+            "type": "response.created",
+            "response": {
+                "id": "resp-1",
+                "model": "test-model",
+                "status": "in_progress",
+                "output": [],
+            },
+        },
+        {
+            "type": "response.reasoning_summary_text.delta",
+            "item_id": "rs-1",
+            "summary_index": 0,
+            "delta": "I should answer.",
+        },
+        {"type": "response.output_text.delta", "item_id": "msg-1", "delta": "O"},
+        {"type": "response.output_text.delta", "item_id": "msg-1", "delta": "K"},
+        {
+            "type": "response.completed",
+            "response": {
+                "id": "resp-1",
+                "model": "test-model",
+                "status": "completed",
+                "output": [],
+                "usage": {"input_tokens": 2, "output_tokens": 3, "total_tokens": 5},
+            },
+        },
+    ]
+    body = "".join(
+        [*(f"data: {json.dumps(event)}\n\n" for event in response_events), "data: [DONE]\n\n"]
+    )
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=body, headers={"content-type": "text/event-stream"}
+        )
+
+    model, http_client = _responses_model_with_transport(httpx.MockTransport(handler))
+    async with model.request_stream(
+        [ModelRequest(parts=[UserPromptPart("Hi")])],
+        {},
+        ModelRequestParameters(),
+    ) as stream:
+        events = [event async for event in stream]
+        response = stream.get()
+
+    assert any(
+        isinstance(event, PartStartEvent) and isinstance(event.part, ThinkingPart)
+        for event in events
+    )
+    assert any(
+        isinstance(event, PartStartEvent) and isinstance(event.part, TextPart)
+        for event in events
+    )
+    assert response.text == "OK"
+    assert any(
+        isinstance(part, ThinkingPart) and part.content == "I should answer."
+        for part in response.parts
+    )
+    assert response.provider_response_id == "resp-1"
+    assert response.usage.input_tokens == 2
+    assert response.usage.output_tokens == 3
+    await http_client.aclose()
+
+
+async def test_responses_request_stream_accumulates_tool_call_deltas() -> None:
+    """Test streamed Responses function-call argument fragments are accumulated."""
+    response_events = [
+        {
+            "type": "response.output_item.added",
+            "item": {
+                "type": "function_call",
+                "id": "fc-1",
+                "call_id": "call-1",
+                "name": "turn_on",
+                "arguments": "",
+            },
+        },
+        {
+            "type": "response.function_call_arguments.delta",
+            "item_id": "fc-1",
+            "delta": '{"entity"',
+        },
+        {
+            "type": "response.function_call_arguments.delta",
+            "item_id": "fc-1",
+            "delta": ':"light.kitchen"}',
+        },
+        {
+            "type": "response.output_item.done",
+            "item": {
+                "type": "function_call",
+                "id": "fc-1",
+                "call_id": "call-1",
+                "name": "turn_on",
+                "arguments": '{"entity":"light.kitchen"}',
+            },
+        },
+        {
+            "type": "response.completed",
+            "response": {
+                "id": "resp-1",
+                "model": "test-model",
+                "status": "completed",
+                "output": [],
+            },
+        },
+    ]
+    body = "".join(
+        [*(f"data: {json.dumps(event)}\n\n" for event in response_events), "data: [DONE]\n\n"]
+    )
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=body, headers={"content-type": "text/event-stream"}
+        )
+
+    model, http_client = _responses_model_with_transport(httpx.MockTransport(handler))
+    async with model.request_stream(
+        [ModelRequest(parts=[UserPromptPart("Turn on kitchen")])],
+        {},
+        ModelRequestParameters(
+            function_tools=[
+                ToolDefinition(
+                    name="turn_on",
+                    parameters_json_schema={"type": "object", "properties": {}},
+                )
+            ]
+        ),
+    ) as stream:
+        events = [event async for event in stream]
+        response = stream.get()
+
+    tool_call = next(part for part in response.parts if isinstance(part, ToolCallPart))
+    assert tool_call.tool_name == "turn_on"
+    assert tool_call.args == '{"entity":"light.kitchen"}'
+    assert any(
+        isinstance(event, PartEndEvent) and isinstance(event.part, ToolCallPart)
+        for event in events
+    )
+    await http_client.aclose()
+
+
 async def test_request_stream_accumulates_tool_call_deltas() -> None:
     """Test streamed function tool call argument fragments are accumulated."""
     body = "".join(

@@ -154,8 +154,8 @@ Implementation checklist before coding each feature:
 - Support multiple independent integration instances.
 - Allow each instance to use its own API key, provider mode, base URL, model,
   instructions, Home Assistant tool access, and advanced model options.
-- Append assistant responses into Assist through Home Assistant `ChatLog`; the
-  current conversation entity does not advertise streaming.
+- Stream assistant responses into Assist through Home Assistant `ChatLog` for
+  conversation entities.
 - Surface high-level tool calls, tool results, and displayable reasoning or
   thinking summaries through Home Assistant `ChatLog` so the Assist UI can show
   details.
@@ -832,11 +832,11 @@ Requirements:
   and base URL.
 
 Current implementation note: capability detection is not generally implemented.
-Conversation entities do not advertise streaming support. Home Assistant control
-is advertised when an LLM API is configured, and structured-output support is
+Conversation entities advertise streaming support. Home Assistant control is
+advertised when an LLM API is configured, and structured-output support is
 validated for AI task models through the configured Pydantic AI output mode.
-The provider validation probe uses Pydantic AI's streaming request path, but
-runtime conversation responses remain non-streaming Home Assistant responses.
+The provider validation probe and conversation runtime both use Pydantic AI's
+streaming request path.
 
 Examples:
 

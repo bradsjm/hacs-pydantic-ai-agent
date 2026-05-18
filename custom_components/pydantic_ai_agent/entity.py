@@ -10,7 +10,7 @@ import ssl
 from typing import Any, cast
 
 import httpx
-from pydantic_ai import Agent
+from pydantic_ai import Agent, AgentRunResultEvent
 from pydantic_ai.capabilities import WebFetch
 from pydantic_ai.exceptions import (
     ModelAPIError,
@@ -20,11 +20,19 @@ from pydantic_ai.exceptions import (
     UsageLimitExceeded,
 )
 from pydantic_ai.messages import (
+    FunctionToolCallEvent,
+    FunctionToolResultEvent,
+    OutputToolCallEvent,
+    OutputToolResultEvent,
+    PartDeltaEvent,
+    PartStartEvent,
     ModelMessage,
     ModelRequest,
     ModelResponse,
     TextPart,
+    TextPartDelta,
     ThinkingPart,
+    ThinkingPartDelta,
     ToolCallPart,
     ToolReturnPart,
 )
@@ -89,6 +97,14 @@ class AgentRunOutcome:
     model_profile: str
 
 
+@dataclass
+class _StreamRunState:
+    """Mutable state shared with the ChatLog streaming delta generator."""
+
+    result: Any | None = None
+    emitted_deltas: bool = False
+
+
 class PydanticAIBaseLLMEntity:
     """Shared Pydantic AI streaming runtime for subentry-backed entities."""
 
@@ -123,6 +139,7 @@ class PydanticAIBaseLLMEntity:
         structure: vol.Schema | None = None,
         max_iterations: int = 10,
         record_success: bool = True,
+        stream: bool = False,
     ) -> object | None:
         """Run a Pydantic AI Agent and stream its response into ChatLog."""
         profiles = model_profile_chain(self.entry, self.subentry)
@@ -192,6 +209,7 @@ class PydanticAIBaseLLMEntity:
                     usage_limits,
                     structured_output_tool_names,
                     structure is not None,
+                    stream,
                 )
                 if record_success:
                     self._record_agent_run_success(outcome, agent_id)
@@ -226,6 +244,7 @@ class PydanticAIBaseLLMEntity:
         usage_limits: UsageLimits,
         structured_output_tool_names: set[str],
         has_structure: bool,
+        stream: bool,
     ) -> AgentRunOutcome:
         """Run one model profile attempt and append only successful messages."""
         try:
@@ -239,6 +258,27 @@ class PydanticAIBaseLLMEntity:
                     model_name=profile.model_name,
                 ) as span:
                     start = self.hass.loop.time()
+                    if stream and not has_structure:
+                        result = await self._async_run_agent_streaming(
+                            agent,
+                            user_prompt,
+                            message_history,
+                            settings,
+                            usage_limits,
+                            chat_log,
+                            agent_id,
+                            structured_output_tool_names,
+                        )
+                        if span is not None:
+                            _set_span_usage_attributes(span, result)
+                        duration = self.hass.loop.time() - start
+                        return AgentRunOutcome(
+                            output=result.output,
+                            usage=result.usage,
+                            duration=duration,
+                            model_profile=profile.title,
+                        )
+
                     if not has_structure:
                         result = await agent.run(
                             user_prompt,
@@ -288,6 +328,48 @@ class PydanticAIBaseLLMEntity:
         except Exception:
             _LOGGER.debug("Model profile attempt failed: %s", profile.title)
             raise
+
+    async def _async_run_agent_streaming(
+        self,
+        agent: Agent[Any, Any],
+        user_prompt: str | Sequence[Any] | None,
+        message_history: list[ModelMessage],
+        settings: ModelSettings,
+        usage_limits: UsageLimits,
+        chat_log: conversation.ChatLog,
+        agent_id: str,
+        structured_output_tool_names: set[str],
+    ) -> Any:
+        """Run one Agent attempt and stream live deltas into the HA ChatLog."""
+        state = _StreamRunState()
+        try:
+            async with agent.run_stream_events(
+                user_prompt,
+                message_history=message_history,
+                model_settings=settings,
+                usage_limits=usage_limits,
+            ) as events:
+                async for _content in chat_log.async_add_delta_content_stream(
+                    agent_id,
+                    cast(
+                        AsyncIterable[Any],
+                        _agent_events_to_chat_deltas(
+                            events,
+                            structured_output_tool_names,
+                            state,
+                        ),
+                    ),
+                ):
+                    pass
+        except Exception as err:
+            if state.emitted_deltas:
+                raise HomeAssistantError(
+                    "Streaming model failed after sending a partial response"
+                ) from err
+            raise
+        if state.result is None:
+            raise HomeAssistantError("Agent stream did not produce a final result")
+        return state.result
 
     def _record_agent_run_success(
         self, outcome: AgentRunOutcome, agent_id: str | None = None
@@ -472,6 +554,109 @@ async def _text_stream_to_chat_deltas(
 async def _single_text(text: str) -> AsyncIterator[str]:
     """Yield one text chunk as an async iterator."""
     yield text
+
+
+async def _agent_events_to_chat_deltas(
+    events: AsyncIterable[Any],
+    output_tool_names: set[str],
+    state: _StreamRunState,
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield HA ChatLog deltas from live Pydantic AI Agent events."""
+    assistant_open = False
+    emitted_tool_call_ids: set[str] = set()
+    async for event in events:
+        if isinstance(event, AgentRunResultEvent):
+            state.result = event.result
+            continue
+        if isinstance(event, PartStartEvent):
+            if event.index == 0:
+                state.emitted_deltas = True
+                yield {"role": "assistant"}
+                assistant_open = True
+            async for delta in _part_start_to_chat_deltas(event, output_tool_names):
+                state.emitted_deltas = True
+                yield delta
+            continue
+        if isinstance(event, PartDeltaEvent):
+            if not assistant_open:
+                state.emitted_deltas = True
+                yield {"role": "assistant"}
+                assistant_open = True
+            async for delta in _part_delta_to_chat_deltas(event):
+                state.emitted_deltas = True
+                yield delta
+            continue
+        if isinstance(event, FunctionToolCallEvent | OutputToolCallEvent):
+            if not assistant_open:
+                state.emitted_deltas = True
+                yield {"role": "assistant"}
+                assistant_open = True
+            async for delta in _tool_call_event_to_chat_deltas(
+                event.part,
+                output_tool_names,
+                emitted_tool_call_ids,
+            ):
+                state.emitted_deltas = True
+                yield delta
+            continue
+        if isinstance(event, FunctionToolResultEvent | OutputToolResultEvent):
+            state.emitted_deltas = True
+            yield {
+                "role": "tool_result",
+                "tool_call_id": event.part.tool_call_id,
+                "tool_name": event.part.tool_name,
+                "tool_result": event.part.content,
+            }
+            assistant_open = False
+
+
+async def _part_start_to_chat_deltas(
+    event: PartStartEvent,
+    output_tool_names: set[str],
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield initial HA deltas for a Pydantic AI part-start event."""
+    part = event.part
+    if isinstance(part, TextPart) and part.content:
+        yield {"content": part.content}
+    elif isinstance(part, ThinkingPart) and part.content:
+        yield {"thinking_content": part.content}
+    elif isinstance(part, ToolCallPart) and part.tool_name in output_tool_names:
+        yield {"content": json.dumps(part.args_as_dict())}
+
+
+async def _part_delta_to_chat_deltas(
+    event: PartDeltaEvent,
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield incremental HA deltas for a Pydantic AI part-delta event."""
+    delta = event.delta
+    if isinstance(delta, TextPartDelta) and delta.content_delta:
+        yield {"content": delta.content_delta}
+    elif isinstance(delta, ThinkingPartDelta) and delta.content_delta:
+        yield {"thinking_content": delta.content_delta}
+
+
+async def _tool_call_event_to_chat_deltas(
+    part: ToolCallPart,
+    output_tool_names: set[str],
+    emitted_tool_call_ids: set[str],
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield a HA tool-call delta when Pydantic AI starts executing a tool."""
+    if part.tool_name in output_tool_names:
+        yield {"content": json.dumps(part.args_as_dict())}
+        return
+    if part.tool_call_id in emitted_tool_call_ids:
+        return
+    emitted_tool_call_ids.add(part.tool_call_id)
+    yield {
+        "tool_calls": [
+            llm.ToolInput(
+                id=part.tool_call_id,
+                tool_name=part.tool_name,
+                tool_args=part.args_as_dict(),
+                external=True,
+            )
+        ]
+    }
 
 
 def _json_output(output: object) -> str:
