@@ -908,6 +908,8 @@ Requirements:
   them.
 - Require explicit selected servers and at least one allowed tool before exposing
   MCP tools at runtime.
+- Configure whether each server includes MCP tool return schemas at runtime,
+  enabled by default.
 - Prefix runtime tool names so tools from different MCP servers do not collide.
 - Close MCP HTTP clients after each agent run.
 

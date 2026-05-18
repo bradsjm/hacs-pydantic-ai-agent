@@ -336,11 +336,13 @@
           "data": {
             "name": "Server name",
             "mcp_url": "MCP server URL",
-            "mcp_headers": "HTTP headers"
+            "mcp_headers": "HTTP headers",
+            "mcp_include_return_schema": "Include tool return schemas"
           },
           "data_description": {
             "mcp_url": "HTTP or HTTPS URL for the remote Streamable HTTP MCP endpoint. HTTPS is recommended when using headers or sensitive tool data.",
-            "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format."
+            "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
+            "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility."
           }
         },
         "tools": {

@@ -52,6 +52,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_ITERATIONS,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
+    CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
     CONF_MODEL,
@@ -1904,6 +1905,7 @@ async def test_create_mcp_server_subentry(
             CONF_NAME: "Filesystem MCP",
             CONF_MCP_URL: "https://8.8.8.8/mcp",
             CONF_MCP_HEADERS: {"Authorization": "Bearer token"},
+            CONF_MCP_INCLUDE_RETURN_SCHEMA: True,
         },
         server_id="Filesystem MCP",
         apply_allowlist=False,
@@ -1914,6 +1916,7 @@ async def test_create_mcp_server_subentry(
         CONF_NAME: "Filesystem MCP",
         CONF_MCP_URL: "https://8.8.8.8/mcp",
         CONF_MCP_HEADERS: {"Authorization": "Bearer token"},
+        CONF_MCP_INCLUDE_RETURN_SCHEMA: True,
         CONF_MCP_ALLOWED_TOOLS: ["read_file"],
     }
     mock_probe_model.assert_not_awaited()
@@ -2154,6 +2157,7 @@ async def test_reconfigure_mcp_server_subentry_drops_stale_tools(
                 "data": {
                     CONF_NAME: "Echo MCP",
                     CONF_MCP_URL: "https://mcp.example.com/mcp",
+                    CONF_MCP_INCLUDE_RETURN_SCHEMA: False,
                     CONF_MCP_ALLOWED_TOOLS: ["old_tool", "stale_tool"],
                 },
                 "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
@@ -2173,6 +2177,9 @@ async def test_reconfigure_mcp_server_subentry_drops_stale_tools(
     )
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    assert data_schema({})[CONF_MCP_INCLUDE_RETURN_SCHEMA] is False
 
     with patch(
         "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
@@ -2181,7 +2188,11 @@ async def test_reconfigure_mcp_server_subentry_drops_stale_tools(
     ):
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
-            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+            {
+                CONF_NAME: "Echo MCP",
+                CONF_MCP_URL: "https://mcp.example.com/mcp",
+                CONF_MCP_INCLUDE_RETURN_SCHEMA: False,
+            },
         )
         assert result["type"] is FlowResultType.FORM
         assert result["step_id"] == "tools"
@@ -2193,6 +2204,7 @@ async def test_reconfigure_mcp_server_subentry_drops_stale_tools(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
+    assert subentry.data[CONF_MCP_INCLUDE_RETURN_SCHEMA] is False
     assert subentry.data[CONF_MCP_ALLOWED_TOOLS] == ["new_tool", "old_tool"]
 
 
@@ -2302,7 +2314,11 @@ async def test_reconfigure_mcp_server_subentry_clears_headers(
 
     discover_tools.assert_awaited_once_with(
         hass,
-        {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        {
+            CONF_NAME: "Echo MCP",
+            CONF_MCP_URL: "https://mcp.example.com/mcp",
+            CONF_MCP_INCLUDE_RETURN_SCHEMA: True,
+        },
         server_id=subentry.subentry_id,
         apply_allowlist=False,
     )

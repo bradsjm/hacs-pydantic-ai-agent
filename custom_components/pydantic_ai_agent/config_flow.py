@@ -83,6 +83,7 @@ from .const import (
     CONF_MAX_ITERATIONS,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
+    CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
     CONF_MODEL,
@@ -1732,6 +1733,10 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
                 CONF_MCP_HEADERS,
                 default=_format_mcp_headers(options.get(CONF_MCP_HEADERS)),
             ): TextSelector(TextSelectorConfig(multiline=True)),
+            vol.Optional(
+                CONF_MCP_INCLUDE_RETURN_SCHEMA,
+                default=options.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True),
+            ): BooleanSelector(),
         }
     )
 
@@ -1800,6 +1805,9 @@ def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str,
     data: dict[str, Any] = {
         CONF_NAME: str(user_input[CONF_NAME]).strip(),
         CONF_MCP_URL: normalise_mcp_url(user_input[CONF_MCP_URL]),
+        CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
+            user_input.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
+        ),
     }
     headers = parse_mcp_headers(user_input.get(CONF_MCP_HEADERS))
     if headers:

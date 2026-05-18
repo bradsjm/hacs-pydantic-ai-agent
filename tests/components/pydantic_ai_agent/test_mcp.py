@@ -17,6 +17,7 @@ from homeassistant.util.ssl import SSL_ALPN_HTTP11, client_context
 from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
+    CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_URL,
     DOMAIN,
     SUBENTRY_TYPE_MCP_SERVER,
@@ -30,6 +31,7 @@ from custom_components.pydantic_ai_agent.mcp import (
     async_discover_mcp_tools_from_config,
     async_runtime_mcp_toolsets,
     cached_mcp_tools,
+    mcp_config_from_subentry,
     normalise_mcp_url,
     parse_allowed_tools,
     parse_mcp_headers,
@@ -205,8 +207,17 @@ def _mcp_entry(
     *,
     subentry_id: str = "mcp_server_1",
     allowed_tools: list[str] | None = None,
+    include_return_schema: bool | None = None,
 ) -> MockConfigEntry:
     """Return a config entry with one MCP server subentry."""
+    data: dict[str, object] = {
+        CONF_NAME: "Echo MCP",
+        CONF_MCP_URL: "https://mcp.example.com/mcp",
+        CONF_MCP_HEADERS: {"Authorization": "Bearer secret"},
+        CONF_MCP_ALLOWED_TOOLS: allowed_tools or [],
+    }
+    if include_return_schema is not None:
+        data[CONF_MCP_INCLUDE_RETURN_SCHEMA] = include_return_schema
     return MockConfigEntry(
         domain=DOMAIN,
         title="Hosted OpenAI",
@@ -215,12 +226,7 @@ def _mcp_entry(
         subentries_data=(
             {
                 "subentry_id": subentry_id,
-                "data": {
-                    CONF_NAME: "Echo MCP",
-                    CONF_MCP_URL: "https://mcp.example.com/mcp",
-                    CONF_MCP_HEADERS: {"Authorization": "Bearer secret"},
-                    CONF_MCP_ALLOWED_TOOLS: allowed_tools or [],
-                },
+                "data": data,
                 "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
                 "title": "Echo MCP",
                 "unique_id": None,
@@ -245,6 +251,23 @@ def test_parse_allowed_tools_normalizes_strings_and_sequences() -> None:
 
     with pytest.raises(vol.Invalid):
         parse_allowed_tools(123)
+
+
+@pytest.mark.parametrize(
+    ("stored_value", "expected_value"),
+    [(None, True), (True, True), (False, False)],
+)
+def test_mcp_config_from_subentry_defaults_return_schema_preference(
+    stored_value: bool | None, expected_value: bool
+) -> None:
+    """Test stored MCP config preserves return schema preference."""
+    entry = _mcp_entry(include_return_schema=stored_value)
+    subentry = next(iter(entry.subentries.values()))
+
+    assert (
+        mcp_config_from_subentry(subentry)[CONF_MCP_INCLUDE_RETURN_SCHEMA]
+        is expected_value
+    )
 
 
 def test_schema_hash_is_stable_for_json_equivalent_schemas() -> None:
@@ -391,6 +414,7 @@ async def test_runtime_mcp_toolsets_enforces_tool_allowlist(
     class FakeMCPToolset:
         def __init__(self, *_args: object, **kwargs: object) -> None:
             self.process_tool_call = kwargs["process_tool_call"]
+            self.include_return_schema = kwargs["include_return_schema"]
 
     def fake_prefixed_toolset(toolset: FakeMCPToolset, prefix: str) -> SimpleNamespace:
         return SimpleNamespace(toolset=toolset, prefix=prefix)
@@ -410,6 +434,7 @@ async def test_runtime_mcp_toolsets_enforces_tool_allowlist(
 
     assert len(toolsets) == 1
     assert toolsets[0].prefix == "mcp_mcp_server_1"
+    assert toolsets[0].toolset.include_return_schema is True
 
     async def call_tool(
         tool_name: str, tool_args: dict[str, object]
@@ -426,3 +451,37 @@ async def test_runtime_mcp_toolsets_enforces_tool_allowlist(
         )
     assert err.value.reason == "mcp_tool_not_allowed"
     assert err.value.tool_name == "read_file"
+
+
+@pytest.mark.parametrize(
+    ("stored_value", "expected_value"),
+    [(None, True), (True, True), (False, False)],
+)
+async def test_runtime_mcp_toolsets_passes_return_schema_preference(
+    hass: HomeAssistant, stored_value: bool | None, expected_value: bool
+) -> None:
+    """Test runtime MCP toolsets pass per-server return schema preference."""
+
+    class FakeMCPToolset:
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            self.include_return_schema = kwargs["include_return_schema"]
+
+    def fake_prefixed_toolset(toolset: FakeMCPToolset, prefix: str) -> SimpleNamespace:
+        return SimpleNamespace(toolset=toolset, prefix=prefix)
+
+    entry = _mcp_entry(
+        allowed_tools=["echo"], include_return_schema=stored_value
+    )
+    with (
+        patch("custom_components.pydantic_ai_agent.mcp.MCPToolset", FakeMCPToolset),
+        patch(
+            "custom_components.pydantic_ai_agent.mcp.PrefixedToolset",
+            side_effect=fake_prefixed_toolset,
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.mcp._mcp_client", return_value=object()
+        ),
+    ):
+        toolsets = await async_runtime_mcp_toolsets(hass, entry, ["mcp_server_1"])
+
+    assert toolsets[0].toolset.include_return_schema is expected_value

@@ -123,6 +123,7 @@ MCP server configuration supports:
 - HTTP or HTTPS MCP endpoint URLs.
 - Optional JSON HTTP headers.
 - Optional comma-separated allowed tool names.
+- Optional tool return schema inclusion, enabled by default.
 
 Use the `pydantic_ai_agent.list_mcp_tools` action to list cached discovered
 tools, or `pydantic_ai_agent.refresh_mcp_tools` to reconnect and refresh tool
