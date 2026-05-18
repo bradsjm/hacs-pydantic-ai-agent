@@ -93,6 +93,21 @@ def async_delete_logfire_token_conflict_issue(
 
 
 @callback
+def async_delete_entry_repair_issues(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete repair issues owned by a permanently removed entry."""
+    async_delete_logfire_token_conflict_issue(hass, entry)
+    prefix = f"{MODEL_VALIDATION_ISSUE_PREFIX}_{entry.entry_id}_"
+    issue_registry = ir.async_get(hass)
+    issue_ids = [
+        issue_id
+        for domain, issue_id in issue_registry.issues
+        if domain == DOMAIN and issue_id.startswith(prefix)
+    ]
+    for issue_id in issue_ids:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+
+
+@callback
 def async_delete_model_validation_issue(
     hass: HomeAssistant,
     entry: ConfigEntry,

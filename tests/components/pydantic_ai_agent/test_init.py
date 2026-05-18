@@ -26,6 +26,7 @@ from custom_components.pydantic_ai_agent import (
     async_setup,
     async_setup_entry,
     async_unload_entry,
+    async_remove_entry,
 )
 from custom_components.pydantic_ai_agent.metrics import EVENT_MCP_TOOL_REFRESH_COMPLETED
 from custom_components.pydantic_ai_agent.config_flow import ProviderValidationError
@@ -878,3 +879,35 @@ async def test_unload_entry_unloads_platforms(hass: HomeAssistant) -> None:
 
     unload_platforms.assert_awaited_once()
     assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_remove_entry_cleans_entry_repair_issues(hass: HomeAssistant) -> None:
+    """Test permanent removal deletes entry-owned repair issues."""
+    entry = _entry((_model_subentry(),))
+    entry.add_to_hass(hass)
+    logfire_issue_id = f"logfire_token_conflict_{entry.entry_id}"
+    model_issue_id = model_validation_issue_id(entry, "model_profile_1", {})
+    unrelated_entry = _entry()
+    unrelated_model_issue_id = model_validation_issue_id(
+        unrelated_entry, "model_profile_1", {}
+    )
+    for issue_id, translation_key in (
+        (logfire_issue_id, "logfire_token_conflict"),
+        (model_issue_id, "model_validation_failed"),
+        (unrelated_model_issue_id, "model_validation_failed"),
+    ):
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=True,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=translation_key,
+        )
+
+    await async_remove_entry(hass, entry)
+
+    issue_registry = ir.async_get(hass)
+    assert issue_registry.async_get_issue(DOMAIN, logfire_issue_id) is None
+    assert issue_registry.async_get_issue(DOMAIN, model_issue_id) is None
+    assert issue_registry.async_get_issue(DOMAIN, unrelated_model_issue_id) is not None

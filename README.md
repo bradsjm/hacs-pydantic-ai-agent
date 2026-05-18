@@ -31,8 +31,8 @@ Implemented capabilities include:
   while keeping Home Assistant `ChatLog` as the canonical history.
 - Optional Logfire tracing with Home Assistant metadata.
 - Config entry reauthentication, provider reconfiguration, subentry
-  reconfiguration, diagnostics redaction, and repair issues for model-validation
-  and Logfire-token conflicts.
+  reconfiguration, system health, diagnostics redaction, device diagnostics, and
+  repair issues for model-validation and Logfire-token conflicts.
 
 ## Installation
 
@@ -82,9 +82,9 @@ Conversation agents support:
 - Optional Web fetch URL content fetching. Web fetch is disabled by default and
   can be enabled without selecting any MCP servers.
 - Optional local skill selection from the configured skills folder.
-- Optional model settings including temperature, thinking, max tokens, max
-  iterations, top P, timeout, parallel tool calls, seed, penalties, and extra body
-  fields.
+- Optional model settings including temperature, capability-backed thinking, max
+  tokens, max iterations, top P, timeout, parallel tool calls, seed, penalties,
+  and extra body fields.
 - Optional provider HTTP headers configured on the provider entry and used for
   model discovery and model requests.
 - Automatic hidden context trimming for very long conversations. Stored Assist
@@ -157,7 +157,20 @@ runtime conversation responses are still returned to Home Assistant as
 non-streamed results.
 
 Diagnostics redact API keys, Logfire tokens, prompts, sensitive model settings,
-MCP headers, and MCP URL passwords.
+provider headers, MCP URLs, and MCP headers. Runtime diagnostics expose only safe
+counts such as configured MCP server count, cached MCP server count, and cached
+tool counts per server. Device diagnostics are scoped to the matching agent or AI
+task subentry and include safe runtime metrics for that subentry.
+
+System health reports aggregate, non-secret counts for configured and loaded
+entries, provider modes, model profiles, conversation agents, AI tasks, MCP
+servers and caches, Logfire-enabled entries, and skill-script-execution entries.
+
+Entity unique IDs use the breaking prefixed format
+`pydantic_ai_agent_<subentry_type>_<subentry_id>` for conversation and AI task
+entities, and `pydantic_ai_agent_<subentry_type>_<subentry_id>_<metric_key>` for
+sensor and binary sensor entities. No migration shim is provided for older
+development builds.
 
 ### Logfire Tracing
 

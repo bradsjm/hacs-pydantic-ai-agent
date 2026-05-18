@@ -23,7 +23,8 @@ from pydantic_ai import (
     PartStartEvent,
     TextPart,
 )
-from pydantic_ai.capabilities import ToolSearch
+from pydantic_ai.capabilities import Thinking, ToolSearch
+from pydantic_ai.models.test import TestModel
 
 from custom_components.pydantic_ai_agent import PydanticAIAgentRuntimeData
 from custom_components.pydantic_ai_agent.const import (
@@ -336,6 +337,11 @@ def _assert_context_management_capability(capabilities: list[object]) -> None:
     )
 
 
+def _thinking_capabilities(capabilities: list[object]) -> list[Thinking]:
+    """Return Thinking capabilities from an Agent constructor call."""
+    return [capability for capability in capabilities if isinstance(capability, Thinking)]
+
+
 def _state(hass: HomeAssistant, entity_id: str) -> str:
     """Return a state value for an expected entity."""
     state = hass.states.get(entity_id)
@@ -403,8 +409,8 @@ async def test_conversation_subentries_add_separate_entity_agents(
         subentries[1].subentry_id,
     ]
     assert [item[0][0].unique_id for item in added_entities] == [
-        subentries[0].subentry_id,
-        subentries[1].subentry_id,
+        f"{DOMAIN}_{subentries[0].subentry_type}_{subentries[0].subentry_id}",
+        f"{DOMAIN}_{subentries[1].subentry_type}_{subentries[1].subentry_id}",
     ]
     assert [item[0][0].device_info for item in added_entities] == [
         {
@@ -545,6 +551,87 @@ async def test_conversation_runtime_uses_configured_max_iterations(
         )
 
     assert getattr(agent.run_kwargs["usage_limits"], "request_limit") == 24
+
+
+async def test_conversation_runtime_uses_thinking_capability(
+    hass: HomeAssistant,
+) -> None:
+    """Test configured thinking is represented as a Pydantic AI capability."""
+    entry = _entry(None, model_settings={"thinking": "high"})
+    entry.add_to_hass(hass)
+    agent = _Agent()
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ) as agent_class,
+    ):
+        await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    model_settings = agent_class.call_args.kwargs["model_settings"]
+    assert model_settings.get("thinking") is None
+    capabilities = agent_class.call_args.kwargs["capabilities"]
+    _assert_context_management_capability(capabilities)
+    thinking = _thinking_capabilities(capabilities)
+    assert len(thinking) == 1
+    assert thinking[0].effort == "high"
+
+
+async def test_conversation_runtime_supports_test_model_without_patching_agent_run(
+    hass: HomeAssistant,
+) -> None:
+    """Test a deterministic Pydantic AI TestModel runtime path."""
+    entry = _entry(None)
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with patch(
+        "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+        return_value=TestModel(custom_output_text="test model response"),
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert result.response.speech["plain"]["speech"] == "test model response"
 
 
 async def test_conversation_runtime_defaults_max_iterations(

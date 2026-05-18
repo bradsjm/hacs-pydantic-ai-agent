@@ -2,12 +2,14 @@
 
 import sys
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import Mock
 
 import pytest
 from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.redact import REDACTED
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -34,8 +36,11 @@ from custom_components.pydantic_ai_agent.const import (
 )
 from custom_components.pydantic_ai_agent.diagnostics import (
     async_get_config_entry_diagnostics,
+    async_get_device_diagnostics,
 )
+from custom_components.pydantic_ai_agent import PydanticAIAgentRuntimeData
 from custom_components.pydantic_ai_agent.logfire_support import async_configure_logfire
+from custom_components.pydantic_ai_agent.metrics import record_run_success
 
 
 async def test_diagnostics_redacts_sensitive_config_entry_data(
@@ -134,3 +139,133 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
     mcp_data = diagnostics["subentries"][2]["data"]
     assert mcp_data[CONF_MCP_URL] == REDACTED
     assert mcp_data[CONF_MCP_HEADERS] == REDACTED
+
+
+async def test_diagnostics_exposes_safe_runtime_mcp_counts(
+    hass: HomeAssistant,
+) -> None:
+    """Test config-entry diagnostics expose only safe MCP runtime counts."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Local Provider",
+        data={
+            CONF_NAME: "Local Provider",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            CONF_API_KEY: "sk-secret",
+        },
+        source=config_entries.SOURCE_USER,
+        subentries_data=(
+            {
+                "data": {
+                    CONF_NAME: "Filesystem MCP",
+                    CONF_MCP_URL: "https://mcp.example.com/mcp",
+                    CONF_MCP_HEADERS: {"Authorization": "Bearer mcp-secret"},
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Filesystem MCP",
+                "unique_id": None,
+            },
+        ),
+        unique_id=None,
+    )
+    entry.add_to_hass(hass)
+    mcp_subentry_id = next(iter(entry.subentries))
+    entry.runtime_data = PydanticAIAgentRuntimeData(
+        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        name="Local Provider",
+        api_key="sk-secret",
+        base_url="https://provider.example.com/v1",
+        logfire_enabled=False,
+        logfire_include_content=False,
+        skills_folder="/config/skills",
+        enable_skill_script_execution=False,
+        mcp_servers=[{CONF_MCP_URL: "https://mcp.example.com/mcp"}],
+        mcp_tool_cache={mcp_subentry_id: [{"name": "secret_tool"}, {"name": "x"}]},
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diagnostics["runtime"] == {
+        "loaded": True,
+        "configured_mcp_server_count": 1,
+        "cached_mcp_server_count": 1,
+        "cached_mcp_tool_counts": {mcp_subentry_id: 2},
+    }
+    assert "mcp.example.com" not in str(diagnostics["runtime"])
+    assert "secret_tool" not in str(diagnostics["runtime"])
+
+
+async def test_device_diagnostics_filters_to_matching_subentry(
+    hass: HomeAssistant,
+) -> None:
+    """Test device diagnostics include only matching subentry and metrics."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Local Provider",
+        data={
+            CONF_NAME: "Local Provider",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            CONF_API_KEY: "sk-secret",
+        },
+        source=config_entries.SOURCE_USER,
+        subentries_data=(
+            {
+                "data": {
+                    CONF_AGENT_NAME: "Kitchen Agent",
+                    CONF_PROMPT: "Private system prompt",
+                    CONF_MODEL: "gpt-test",
+                },
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Kitchen Agent",
+                "unique_id": None,
+            },
+            {
+                "data": {
+                    CONF_AGENT_NAME: "Garage Agent",
+                    CONF_PROMPT: "Other private prompt",
+                    CONF_MODEL: "gpt-other",
+                },
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Garage Agent",
+                "unique_id": None,
+            },
+        ),
+        unique_id=None,
+    )
+    entry.add_to_hass(hass)
+    matching_id = next(iter(entry.subentries))
+    entry.runtime_data = PydanticAIAgentRuntimeData(
+        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        name="Local Provider",
+        api_key="sk-secret",
+        base_url=None,
+        logfire_enabled=False,
+        logfire_include_content=False,
+        skills_folder="/config/skills",
+        enable_skill_script_execution=False,
+    )
+    record_run_success(
+        hass,
+        entry.entry_id,
+        entry.runtime_data.metrics,
+        matching_id,
+        model_profile="Kitchen Model",
+        duration=1.5,
+        usage=SimpleNamespace(
+            input_tokens=10,
+            output_tokens=2,
+            total_tokens=12,
+            requests=1,
+            tool_calls=3,
+        ),
+    )
+    device = cast(dr.DeviceEntry, SimpleNamespace(identifiers={(DOMAIN, matching_id)}))
+
+    diagnostics = await async_get_device_diagnostics(hass, entry, device)
+
+    assert [item["subentry_id"] for item in diagnostics["subentries"]] == [
+        matching_id
+    ]
+    assert diagnostics["subentries"][0]["data"][CONF_PROMPT] == REDACTED
+    assert diagnostics["runtime"]["metrics"]["last_run_model_profile"] == "Kitchen Model"
+    assert diagnostics["runtime"]["metrics"]["last_run_total_tokens"] == 12

@@ -9,6 +9,14 @@
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/bradsjm/hacs-pydantic-agent/issues",
+  "loggers": [
+    "pydantic_ai",
+    "pydantic_ai_skills",
+    "logfire",
+    "fastmcp",
+    "httpx",
+    "httpcore"
+  ],
   "requirements": [
     "logfire==4.33.0",
     "pydantic-ai-slim==1.97.0",

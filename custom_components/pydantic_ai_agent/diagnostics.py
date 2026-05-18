@@ -1,11 +1,13 @@
 """Diagnostics for Pydantic AI Agent."""
 
 from collections.abc import Mapping
+from dataclasses import asdict
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 
 from ._redaction import redact_data
 from .const import (
@@ -18,6 +20,7 @@ from .const import (
     CONF_MODEL_SETTINGS,
     CONF_PROMPT,
     CONF_PROVIDER_HEADERS,
+    DOMAIN,
     SUBENTRY_TYPE_MODEL,
 )
 from .logfire_support import (
@@ -103,6 +106,83 @@ async def async_get_config_entry_diagnostics(
         "subentries": subentries,
         "runtime": {
             "loaded": hasattr(entry, "runtime_data"),
+            **_runtime_diagnostics(entry),
         },
     }
     return _redact(diagnostics)
+
+
+async def async_get_device_diagnostics(
+    hass: HomeAssistant, entry: ConfigEntry, device: dr.DeviceEntry
+) -> dict[str, Any]:
+    """Return diagnostics for one subentry device."""
+    subentry_id = _device_subentry_id(device)
+    subentries = []
+    if subentry_id is not None:
+        subentry = entry.subentries.get(subentry_id)
+        if subentry is not None:
+            model_settings = subentry.data.get(CONF_MODEL_SETTINGS)
+            subentries.append(
+                {
+                    "subentry_id": subentry.subentry_id,
+                    "subentry_type": subentry.subentry_type,
+                    "title": subentry.title,
+                    "data": _redact_subentry_data(
+                        subentry.subentry_type, dict(subentry.data)
+                    ),
+                    "model": subentry.data.get(CONF_MODEL),
+                    "ha_tools_enabled": bool(subentry.data.get(CONF_LLM_HASS_API)),
+                    "model_settings_keys": sorted(model_settings)
+                    if isinstance(model_settings, Mapping)
+                    else [],
+                }
+            )
+    diagnostics = {
+        "entry": {
+            "entry_id": entry.entry_id,
+            "title": entry.title,
+            "state": entry.state.value,
+        },
+        "device": {"subentry_id": subentry_id},
+        "subentries": subentries,
+        "runtime": {
+            "loaded": hasattr(entry, "runtime_data"),
+            "metrics": _runtime_metrics(entry, subentry_id),
+        },
+    }
+    return _redact(diagnostics)
+
+
+def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
+    """Return safe config-entry runtime diagnostics."""
+    runtime_data = getattr(entry, "runtime_data", None)
+    if runtime_data is None:
+        return {
+            "configured_mcp_server_count": 0,
+            "cached_mcp_server_count": 0,
+            "cached_mcp_tool_counts": {},
+        }
+    return {
+        "configured_mcp_server_count": len(runtime_data.mcp_servers),
+        "cached_mcp_server_count": len(runtime_data.mcp_tool_cache),
+        "cached_mcp_tool_counts": {
+            server_id: len(tools)
+            for server_id, tools in runtime_data.mcp_tool_cache.items()
+        },
+    }
+
+
+def _runtime_metrics(entry: ConfigEntry, subentry_id: str | None) -> dict[str, Any]:
+    """Return safe runtime metrics for one subentry."""
+    runtime_data = getattr(entry, "runtime_data", None)
+    if runtime_data is None or subentry_id is None:
+        return {}
+    return asdict(runtime_data.metrics.record_for(subentry_id))
+
+
+def _device_subentry_id(device: dr.DeviceEntry) -> str | None:
+    """Return the integration subentry id represented by a device."""
+    for domain, identifier in device.identifiers:
+        if domain == DOMAIN:
+            return identifier
+    return None

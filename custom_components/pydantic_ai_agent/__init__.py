@@ -55,6 +55,7 @@ from .mcp import (
 from .repairs import (
     async_delete_logfire_token_conflict_issue,
     async_create_model_validation_issue,
+    async_delete_entry_repair_issues,
     async_delete_model_validation_issue,
     async_delete_stale_model_validation_issues,
     model_validation_issue_id,
@@ -182,6 +183,13 @@ async def async_unload_entry(
     if unloaded:
         async_delete_logfire_token_conflict_issue(hass, entry)
     return unloaded
+
+
+async def async_remove_entry(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
+) -> None:
+    """Clean up repair issues when a config entry is permanently removed."""
+    async_delete_entry_repair_issues(hass, entry)
 
 
 async def async_update_entry(

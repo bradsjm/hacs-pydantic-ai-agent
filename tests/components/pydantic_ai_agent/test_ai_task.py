@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic_ai import ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.capabilities import Thinking
 from pydantic_ai.output import NativeOutput, PromptedOutput, ToolOutput
 import voluptuous as vol
 
@@ -285,6 +286,11 @@ def _assert_context_management_capability(capabilities: list[object]) -> None:
     )
 
 
+def _thinking_capabilities(capabilities: list[object]) -> list[Thinking]:
+    """Return Thinking capabilities from an Agent constructor call."""
+    return [capability for capability in capabilities if isinstance(capability, Thinking)]
+
+
 def _state(hass: HomeAssistant, entity_id: str) -> str:
     """Return a state value for an expected entity."""
     state = hass.states.get(entity_id)
@@ -313,7 +319,7 @@ async def test_ai_task_subentries_add_separate_entities(
     subentry = next(iter(entry.subentries.values()))
     entity = added_entities[0][0][0]
     assert added_entities[0][1] == subentry.subentry_id
-    assert entity.unique_id == subentry.subentry_id
+    assert entity.unique_id == f"{DOMAIN}_{subentry.subentry_type}_{subentry.subentry_id}"
 
 
 def test_ai_task_entity_uses_task_name() -> None:
@@ -373,6 +379,38 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
 
     assert result.data == "plain result"
     _assert_context_management_capability(agent_class.call_args.kwargs["capabilities"])
+
+
+async def test_plain_data_task_uses_thinking_capability(hass: HomeAssistant) -> None:
+    """Test configured AI task thinking is passed as a capability."""
+    entity_id = await _setup_ai_task_entity(
+        hass, model_settings={"thinking": False}
+    )
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(stream_text="plain result"),
+        ) as agent_class,
+    ):
+        await ai_task.async_generate_data(
+            hass,
+            task_name="Plain task",
+            entity_id=entity_id,
+            instructions="Generate text",
+        )
+
+    model_settings = agent_class.call_args.kwargs["model_settings"]
+    assert model_settings.get("thinking") is None
+    capabilities = agent_class.call_args.kwargs["capabilities"]
+    _assert_context_management_capability(capabilities)
+    thinking = _thinking_capabilities(capabilities)
+    assert len(thinking) == 1
+    assert thinking[0].effort is False
 
 
 async def test_structured_data_task_fires_output_event(hass: HomeAssistant) -> None:

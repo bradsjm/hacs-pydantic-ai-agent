@@ -323,9 +323,14 @@ remote Streamable HTTP MCP servers.
 - Diagnostics may include provider mode, base URL when it is not secret, model,
   option values, feature flags, configured model setting keys, and safe last error
   details.
+- Config-entry diagnostics may include safe runtime MCP state: loaded flag,
+  configured server count, cached server count, and cached tool counts per server.
+- Device diagnostics must scope config and runtime metrics to the matching
+  `(DOMAIN, subentry_id)` device identifier.
 - Diagnostics must not expose API keys, auth headers, bearer tokens, cookies,
   passwords, secret/token fields, extra headers, raw prompts/instructions, or
-  provider payloads that may contain private Home Assistant state.
+  provider payloads that may contain private Home Assistant state. MCP URLs and
+  headers must be fully redacted.
 - Redaction must be recursive so sensitive keys inside `model_settings`,
   provider HTTP headers, `extra_body`, and provider metadata are masked as well.
 - Diagnostics must still be structured and concise. Do not include tracebacks or
@@ -389,7 +394,7 @@ without recreating the parent provider/service entry.
 | Skill selection            | Choose discovered local skills to expose as capabilities.   |
 | Max iterations             | Bound Pydantic AI request/tool-loop iterations.             |
 | Temperature                | Portable generation control where supported.                |
-| Thinking                   | Provider-dependent thinking control.                        |
+| Thinking                   | Provider-dependent `Thinking` runtime capability.           |
 | Max tokens                 | Bound response size where supported.                        |
 | Top-p                      | Provider/model-specific generation control where supported. |
 | Timeout                    | Bound provider waits.                                       |
@@ -521,6 +526,7 @@ custom_components/pydantic_ai_agent/
 ├── pydantic_ai_openai_compatible/
 ├── logfire_support.py
 ├── diagnostics.py
+├── system_health.py
 ├── repairs.py
 └── translations/
     └── en.json
@@ -530,7 +536,6 @@ Optional future files:
 
 ```text
 custom_components/pydantic_ai_agent/
-├── system_health.py
 └── providers.py
 ```
 
@@ -570,8 +575,12 @@ custom_components/pydantic_ai_agent/
   message mapping, streaming response adapter, usage mapping, and error mapping.
 - `logfire_support.py`: Optional Logfire configuration, per-run instrumentation
   metadata, and Logfire conflict repair data.
-- `diagnostics.py`: Redacted config entry diagnostics for provider settings,
-  subentry summaries, model settings, feature flags, and runtime status.
+- `diagnostics.py`: Redacted config entry and device diagnostics for provider
+  settings, subentry summaries, model settings, feature flags, runtime status,
+  and safe MCP/cache counts.
+- `system_health.py`: Aggregate non-secret system health counts for entries,
+  provider modes, agent/task subentries, MCP caches, Logfire, and skill script
+  execution.
 - `repairs.py`: Model validation repair issue IDs, issue creation, issue
   deletion, and stale issue cleanup.
 - `translations/en.json`: Config flow, subentry flow, actionable errors, aborts,
@@ -644,6 +653,12 @@ Unload:
 3. Remove update listeners.
 4. Clear runtime data through Home Assistant's config entry lifecycle.
 
+Remove:
+
+1. Delete repair issues owned by the removed provider entry, including model
+   validation issues and Logfire token conflict issues.
+2. Do not delete repair issues owned by other provider entries.
+
 Reload:
 
 1. Triggered by options changes or reauth completion.
@@ -662,8 +677,9 @@ Responsibilities:
 - Expose control features only when Home Assistant tool access is configured.
 - Do not mark streaming support until streaming is implemented and enabled.
 - Use the conversation subentry agent name as the entity name.
-- Derive unique ID from the subentry ID to avoid entity recreation when the
-  provider, model, or options change.
+- Derive unique ID from `pydantic_ai_agent_<subentry_type>_<subentry_id>` to
+  avoid entity recreation when the provider, model, or options change. Sensor and
+  binary sensor unique IDs append the metric/config description key.
 
 ### Request Flow
 

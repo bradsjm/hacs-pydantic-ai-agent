@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from pydantic_ai.capabilities import Thinking
 from pydantic_ai.settings import ModelSettings
 
 from .const import (
@@ -29,6 +30,8 @@ from .provider import (
 
 if TYPE_CHECKING:
     from . import PydanticAIAgentConfigEntry
+
+_MODEL_SETTING_THINKING = "thinking"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -89,9 +92,17 @@ def model_settings(profile: ModelProfile) -> ModelSettings:
     settings = dict(profile.model_settings)
     settings.pop(CONF_MAX_ITERATIONS, None)
     settings.pop(CONF_CHAT_TEMPLATE_KWARGS, None)
+    settings.pop(_MODEL_SETTING_THINKING, None)
     reject_chat_template_kwargs_in_extra_body(settings.get("extra_body"))
     settings.setdefault("timeout", DEFAULT_TIMEOUT)
     return ModelSettings(**settings)
+
+
+def thinking_capability(profile: ModelProfile) -> Thinking | None:
+    """Return the configured Thinking capability for one profile."""
+    if _MODEL_SETTING_THINKING not in profile.model_settings:
+        return None
+    return Thinking(effort=profile.model_settings[_MODEL_SETTING_THINKING])
 
 
 def max_iterations(profile: ModelProfile, default: int) -> int:

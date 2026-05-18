@@ -79,6 +79,7 @@ from .model_profiles import (
     model_display_names,
     model_profile_chain,
     model_settings,
+    thinking_capability,
 )
 from .skills import async_skills_capabilities
 from .structured_output import (
@@ -129,7 +130,7 @@ class PydanticAIBaseLLMEntity:
         self.entry = entry
         self.subentry = subentry
         profiles = model_profile_chain(entry, subentry)
-        self._attr_unique_id = subentry.subentry_id
+        self._attr_unique_id = unique_id_for_subentry(subentry)
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, subentry.subentry_id)},
             name=name,
@@ -206,6 +207,8 @@ class PydanticAIBaseLLMEntity:
                         if not isinstance(capability, ToolSearch)
                     ]
                     run_capabilities.append(ToolSearch(strategy="keywords"))
+                if thinking := thinking_capability(profile):
+                    run_capabilities.append(thinking)
                 agent = Agent(
                     chat_model_for_profile(self.hass, self.entry, profile),
                     output_type=cast(Any, agent_output_type),
@@ -457,6 +460,16 @@ class PydanticAIBaseLLMEntity:
                 tool.name for tool in tool_definitions_from_llm_api(api_instance)
             ),
         )
+
+
+def unique_id_for_subentry(subentry: ConfigSubentry) -> str:
+    """Return the unique ID for one subentry-backed entity."""
+    return f"{DOMAIN}_{subentry.subentry_type}_{subentry.subentry_id}"
+
+
+def unique_id_for_subentry_entity(subentry: ConfigSubentry, key: str) -> str:
+    """Return the unique ID for one subentry-backed diagnostic entity."""
+    return f"{unique_id_for_subentry(subentry)}_{key}"
 
 
 def _model_settings_with_chat_template_kwargs(

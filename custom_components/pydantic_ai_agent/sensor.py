@@ -28,6 +28,7 @@ from .const import (
     SUBENTRY_TYPE_CONVERSATION,
 )
 from .metrics import AgentRunMetrics, metric_value, metrics_signal
+from .entity import unique_id_for_subentry_entity
 from .model_profiles import model_profile_chain
 from .structured_output import structured_output_mode
 
@@ -228,7 +229,9 @@ class PydanticAIMetricSensor(SensorEntity):
         self.subentry = subentry
         self.entity_description = description
         profiles = model_profile_chain(entry, subentry)
-        self._attr_unique_id = f"{subentry.subentry_id}_{description.key}"
+        self._attr_unique_id = unique_id_for_subentry_entity(
+            subentry, description.key
+        )
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, subentry.subentry_id)},
             name=_subentry_name(subentry),
@@ -277,7 +280,9 @@ class PydanticAIConfigSensor(SensorEntity):
         self.subentry = subentry
         self.entity_description = description
         profiles = model_profile_chain(entry, subentry)
-        self._attr_unique_id = f"{subentry.subentry_id}_{description.key}"
+        self._attr_unique_id = unique_id_for_subentry_entity(
+            subentry, description.key
+        )
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, subentry.subentry_id)},
             name=_subentry_name(subentry),
