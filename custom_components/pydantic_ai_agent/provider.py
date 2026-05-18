@@ -9,7 +9,7 @@ from homeassistant.helpers.httpx_client import get_async_client
 
 from .const import CONF_BASE_URL, CONF_PROVIDER_HEADERS
 from .openai_compatible_client import AsyncOpenAICompatible
-from .pydantic_ai_openai_compatible import (
+from .openai_compatible_adapter import (
     OpenAICompatibleChatModel,
     OpenAICompatibleProvider,
     OpenAICompatibleResponsesModel,

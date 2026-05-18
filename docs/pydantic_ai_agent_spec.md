@@ -523,7 +523,7 @@ custom_components/pydantic_ai_agent/
 ├── skills.py
 ├── structured_output.py
 ├── openai_compatible_client/
-├── pydantic_ai_openai_compatible/
+├── openai_compatible_adapter/
 ├── logfire_support.py
 ├── diagnostics.py
 ├── system_health.py
@@ -571,7 +571,7 @@ custom_components/pydantic_ai_agent/
   native, and prompted output.
 - `openai_compatible_client/`: Lightweight async Chat Completions client and SSE
   parser without the OpenAI SDK.
-- `pydantic_ai_openai_compatible/`: Pydantic AI `Model`/`Provider` adapter,
+- `openai_compatible_adapter/`: Pydantic AI `Model`/`Provider` adapter,
   message mapping, streaming response adapter, usage mapping, and error mapping.
 - `logfire_support.py`: Optional Logfire configuration, per-run instrumentation
   metadata, and Logfire conflict repair data.
@@ -818,7 +818,7 @@ Pydantic AI-supported model backends once their configuration and event semantic
 are explicitly specified.
 
 The current OpenAI-compatible modes are implemented by
-`openai_compatible_client/` and `pydantic_ai_openai_compatible/`, not by the
+`openai_compatible_client/` and `openai_compatible_adapter/`, not by the
 OpenAI SDK-backed Pydantic AI classes. See
 `docs/openai_compatible_provider_design.md` for rationale and adapter details.
 

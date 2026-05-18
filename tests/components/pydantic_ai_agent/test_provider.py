@@ -13,7 +13,7 @@ from custom_components.pydantic_ai_agent.provider import (
     openai_compatible_client_from_config,
     openai_compatible_responses_model_from_config,
 )
-from custom_components.pydantic_ai_agent.pydantic_ai_openai_compatible import (
+from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
     OpenAICompatibleChatModel,
     OpenAICompatibleResponsesModel,
 )

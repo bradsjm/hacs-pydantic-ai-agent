@@ -24,7 +24,7 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.output import OutputObjectDefinition
 from pydantic_ai.tools import ToolDefinition
 
-from custom_components.pydantic_ai_agent.pydantic_ai_openai_compatible import (
+from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
     OpenAICompatibleChatModel,
     OpenAICompatibleProvider,
     OpenAICompatibleResponsesModel,
