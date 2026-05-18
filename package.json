@@ -1,5 +1,5 @@
 {
-  "name": "hacs-pydantic-agent",
+  "name": "hacs-pydantic-ai-agent",
   "private": true,
   "type": "commonjs",
   "scripts": {

@@ -1205,7 +1205,7 @@ wheels = [
 ]
 
 [[package]]
-name = "hacs-pydantic-agent"
+name = "hacs-pydantic-ai-agent"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

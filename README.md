@@ -42,7 +42,7 @@ This integration requires Home Assistant 2026.5.1 or newer.
 
 1. Open HACS in Home Assistant.
 2. Go to Integrations, then Custom repositories.
-3. Add `https://github.com/bradsjm/hacs-pydantic-agent` as an Integration.
+3. Add `https://github.com/bradsjm/hacs-pydantic-ai-agent` as an Integration.
 4. Install `Pydantic AI Agent`.
 5. Restart Home Assistant.
 
@@ -271,6 +271,6 @@ scripts/check
 
 ## Support
 
-Issues: <https://github.com/bradsjm/hacs-pydantic-agent/issues>
+Issues: <https://github.com/bradsjm/hacs-pydantic-ai-agent/issues>
 
 Code owner: `@bradsjm`
