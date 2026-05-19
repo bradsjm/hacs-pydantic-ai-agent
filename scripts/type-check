@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-npx -y --no-install pyright
+npx -y pyright
