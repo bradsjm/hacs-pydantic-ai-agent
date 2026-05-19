@@ -1010,9 +1010,10 @@ def test_conversation_schema_filters_unavailable_skills(hass: HomeAssistant) -> 
     assert data[_SECTION_SKILLS][CONF_SKILLS] == ["kitchen-skill"]
 
 
-def test_ai_task_schema_filters_unavailable_skills() -> None:
+def test_ai_task_schema_filters_unavailable_skills(hass: HomeAssistant) -> None:
     """Test stale AI task skill names are not preselected."""
     data = _ai_task_data_schema(
+        hass,
         {
             CONF_AI_TASK_NAME: "Report task",
             CONF_MODEL: "gpt-test",

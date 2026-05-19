@@ -79,6 +79,7 @@ from .model_profiles import (
     model_display_names,
     model_profile_chain,
     model_settings,
+    primary_model_profile,
     thinking_capability,
 )
 from .skills import async_skills_capabilities
@@ -129,13 +130,13 @@ class PydanticAIBaseLLMEntity:
         """Initialize shared entity metadata."""
         self.entry = entry
         self.subentry = subentry
-        profiles = model_profile_chain(entry, subentry)
+        profile = primary_model_profile(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry(entry, subentry)
         self._attr_device_info = dr.DeviceInfo(
             identifiers={device_identifier_for_subentry(entry, subentry)},
             name=name,
             manufacturer="Pydantic AI",
-            model=profiles[0].model_name,
+            model=profile.model_name,
             entry_type=dr.DeviceEntryType.SERVICE,
         )
 
@@ -149,7 +150,7 @@ class PydanticAIBaseLLMEntity:
         stream: bool = False,
     ) -> object | None:
         """Run a Pydantic AI Agent and stream its response into ChatLog."""
-        profiles = model_profile_chain(self.entry, self.subentry)
+        profiles = model_profile_chain(self.hass, self.entry, self.subentry)
         # ChatLog needs a stable agent id for deltas, but entity_id can be absent
         # before Home Assistant has fully registered the entity.
         agent_id = getattr(self, "entity_id", None) or getattr(self, "unique_id", None)
@@ -210,7 +211,7 @@ class PydanticAIBaseLLMEntity:
                 if thinking := thinking_capability(profile):
                     run_capabilities.append(thinking)
                 agent = Agent(
-                    chat_model_for_profile(self.hass, self.entry, profile),
+                    chat_model_for_profile(self.hass, profile),
                     output_type=cast(Any, agent_output_type),
                     model_settings=settings,
                     tool_retries=0,

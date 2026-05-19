@@ -201,7 +201,10 @@ def test_model_settings_with_chat_template_kwargs_renders_without_mutation(
     """Test dedicated chat template kwargs merge into copied extra_body."""
     profile = ModelProfile(
         subentry_id="model-1",
+        owner_entry_id="entry-1",
         title="Fast GPT",
+        provider_title="Provider",
+        provider_mode="openai_compatible_completions",
         model_name="gpt-test",
         model_settings={
             CONF_CHAT_TEMPLATE_KWARGS: [
@@ -231,7 +234,10 @@ def test_model_settings_with_chat_template_kwargs_rejects_extra_body_conflict(
     """Test raw extra_body cannot also configure chat_template_kwargs."""
     profile = ModelProfile(
         subentry_id="model-1",
+        owner_entry_id="entry-1",
         title="Fast GPT",
+        provider_title="Provider",
+        provider_mode="openai_compatible_completions",
         model_name="gpt-test",
         model_settings={},
     )

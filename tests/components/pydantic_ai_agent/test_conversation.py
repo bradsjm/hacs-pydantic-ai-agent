@@ -495,7 +495,7 @@ async def test_conversation_entity_id_dispatches_assist_agent(
 
     assert result.response.speech["plain"]["speech"] == "runtime response"
     assert chat_model.call_args is not None
-    assert chat_model.call_args.args[2].model_name == "gpt-kitchen"
+    assert chat_model.call_args.args[1].model_name == "gpt-kitchen"
     assert agent_class.call_args.kwargs["output_type"] is str
     _assert_context_management_capability(agent_class.call_args.kwargs["capabilities"])
     assert (

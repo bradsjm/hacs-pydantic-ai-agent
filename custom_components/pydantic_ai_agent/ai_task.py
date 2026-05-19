@@ -33,7 +33,7 @@ async def async_setup_entry(
         if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
             continue
         try:
-            model_profile_chain(config_entry, subentry)
+            model_profile_chain(hass, config_entry, subentry)
         except Exception:
             continue
         async_add_entities(
@@ -64,7 +64,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
     @property
     def extra_state_attributes(self) -> dict[str, str | bool | list[str]]:
         """Return observability attributes."""
-        profiles = model_profile_chain(self.entry, self.subentry)
+        profiles = model_profile_chain(self.hass, self.entry, self.subentry)
         return {
             "provider_mode": self.entry.runtime_data.provider_mode,
             "model": profiles[0].model_name,

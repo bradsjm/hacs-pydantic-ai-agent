@@ -32,6 +32,7 @@ from custom_components.pydantic_ai_agent.metrics import EVENT_MCP_TOOL_REFRESH_C
 from custom_components.pydantic_ai_agent.config_flow import ProviderValidationError
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
+    CONF_FALLBACK_MODEL_SUBENTRY_IDS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MCP_URL,
@@ -53,6 +54,7 @@ from custom_components.pydantic_ai_agent.logfire_support import (
     async_configure_logfire,
     logfire_include_content,
 )
+from custom_components.pydantic_ai_agent.model_profiles import model_profile_ref
 from custom_components.pydantic_ai_agent.repairs import model_validation_issue_id
 
 _REPO_ROOT = Path(__file__).parents[3]
@@ -731,6 +733,78 @@ async def test_setup_entry_model_errors_create_repair_issue(
         "reason": "invalid_model",
         "error_message": "model unavailable",
     }
+
+
+async def test_setup_entry_skips_foreign_fallback_validation_error(
+    hass: HomeAssistant,
+) -> None:
+    """Test foreign fallback validation failures do not block consumer setup."""
+    foreign_entry = _entry(
+        (_model_subentry("foreign_model", model="foreign-model"),),
+        {CONF_NAME: "Fallback OpenAI", CONF_API_KEY: "sk-foreign"},
+    )
+    foreign_entry.add_to_hass(hass)
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.async_probe_model",
+            new_callable=AsyncMock,
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
+    ):
+        await hass.config_entries.async_setup(foreign_entry.entry_id)
+        await hass.async_block_till_done()
+
+    ai_task_subentry = _ai_task_subentry(model_subentry_id="task_model_profile")
+    ai_task_data = ai_task_subentry["data"]
+    assert isinstance(ai_task_data, dict)
+    ai_task_data[CONF_FALLBACK_MODEL_SUBENTRY_IDS] = [
+        model_profile_ref(foreign_entry.entry_id, "foreign_model")
+    ]
+    entry = _entry(
+        (
+            _model_subentry("task_model_profile", name="Task Model", model="task-model"),
+            ai_task_subentry,
+        )
+    )
+    entry.add_to_hass(hass)
+
+    async def probe_model(
+        hass: HomeAssistant,
+        provider_data: Mapping[str, object],
+        model: str,
+        model_settings: Mapping[str, object],
+        *,
+        structured_output_mode: str | None = None,
+    ) -> None:
+        if provider_data is foreign_entry.data:
+            raise ProviderValidationError("invalid_auth", "foreign auth failed")
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.async_probe_model",
+            new_callable=AsyncMock,
+            side_effect=probe_model,
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ) as forward_setups,
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    forward_setups.assert_awaited_once()
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN,
+        model_validation_issue_id(
+            entry, model_profile_ref(foreign_entry.entry_id, "foreign_model"), {}
+        ),
+    )
+    assert issue is None
 
 
 async def test_setup_entry_success_clears_model_validation_repair_issue(

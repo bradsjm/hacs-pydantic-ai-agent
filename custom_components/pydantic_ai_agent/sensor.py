@@ -28,7 +28,7 @@ from .const import (
 )
 from .metrics import AgentRunMetrics, metric_value, metrics_signal
 from .entity import device_identifier_for_subentry, unique_id_for_subentry_entity
-from .model_profiles import model_profile_chain
+from .model_profiles import primary_model_profile
 from .structured_output import structured_output_mode
 
 
@@ -161,7 +161,7 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
         name="Primary language model",
         icon="mdi:brain",
         value_fn=lambda entry, subentry: (
-            model_profile_chain(entry, subentry)[0].model_name
+            primary_model_profile(entry, subentry).model_name
         ),
     ),
     PydanticAIConfigSensorDescription(
@@ -227,7 +227,7 @@ class PydanticAIMetricSensor(SensorEntity):
         self.entry = entry
         self.subentry = subentry
         self.entity_description = description
-        profiles = model_profile_chain(entry, subentry)
+        profile = primary_model_profile(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry_entity(
             entry, subentry, description.key
         )
@@ -235,7 +235,7 @@ class PydanticAIMetricSensor(SensorEntity):
             identifiers={device_identifier_for_subentry(entry, subentry)},
             name=_subentry_name(subentry),
             manufacturer="Pydantic AI",
-            model=profiles[0].model_name,
+            model=profile.model_name,
             entry_type=dr.DeviceEntryType.SERVICE,
         )
 
@@ -278,7 +278,7 @@ class PydanticAIConfigSensor(SensorEntity):
         self.entry = entry
         self.subentry = subentry
         self.entity_description = description
-        profiles = model_profile_chain(entry, subentry)
+        profile = primary_model_profile(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry_entity(
             entry, subentry, description.key
         )
@@ -286,7 +286,7 @@ class PydanticAIConfigSensor(SensorEntity):
             identifiers={device_identifier_for_subentry(entry, subentry)},
             name=_subentry_name(subentry),
             manufacturer="Pydantic AI",
-            model=profiles[0].model_name,
+            model=profile.model_name,
             entry_type=dr.DeviceEntryType.SERVICE,
         )
 
@@ -305,7 +305,7 @@ def _agent_subentries(entry: PydanticAIAgentConfigEntry) -> Iterable[ConfigSuben
         ):
             continue
         try:
-            model_profile_chain(entry, subentry)
+            primary_model_profile(entry, subentry)
         except Exception:
             continue
         yield subentry

@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
     ConfigEntryNotReady,
+    HomeAssistantError,
 )
 import voluptuous as vol
 
@@ -54,6 +55,11 @@ from .mcp import (
     cached_mcp_tools,
     mcp_subentries,
 )
+from .model_profiles import (
+    model_profile_ref,
+    parse_model_profile_ref,
+    resolve_model_profile_ref,
+)
 from .repairs import (
     async_delete_logfire_token_conflict_issue,
     async_create_model_validation_issue,
@@ -74,6 +80,17 @@ _RECONFIGURABLE_MODEL_FAILURE_REASONS = {
     "permission_denied",
 }
 _MODEL_VALIDATION_OUTPUT_MODE_KEY = "_pydantic_ai_agent_output_mode"
+
+
+@dataclass(frozen=True, kw_only=True)
+class _ConfiguredModelProbe:
+    """One setup-time model validation probe."""
+
+    owner_entry: ConfigEntry
+    issue_profile_id: str
+    model: str
+    model_settings: dict[str, Any]
+    output_mode: str | None
 
 PLATFORMS: tuple[Platform, ...] = (
     Platform.CONVERSATION,
@@ -339,19 +356,25 @@ def _normalise_model_settings(settings: Mapping[str, Any]) -> str:
 
 
 def _configured_subentry_models(
+    hass: HomeAssistant,
     entry: PydanticAIAgentConfigEntry,
-) -> list[tuple[str, str, dict[str, Any], str | None]]:
+) -> list[_ConfiguredModelProbe]:
     """Return unique model probes needed before the entry can load."""
     model_profiles = {
         subentry.subentry_id: subentry
         for subentry in entry.subentries.values()
         if subentry.subentry_type == SUBENTRY_TYPE_MODEL
     }
-    models: list[tuple[str, str, dict[str, Any], str | None]] = []
-    seen: set[tuple[str, str, str | None]] = set()
+    models: list[_ConfiguredModelProbe] = []
+    seen: set[tuple[str, str, str, str | None]] = set()
 
-    def add_model(profile_id: str, output_mode: str | None) -> None:
-        profile = model_profiles.get(profile_id)
+    def add_model(
+        owner_entry: ConfigEntry,
+        profile_id: str,
+        issue_profile_id: str,
+        output_mode: str | None,
+    ) -> None:
+        profile = owner_entry.subentries.get(profile_id)
         if profile is None:
             return
         model = profile.data.get(CONF_MODEL)
@@ -360,6 +383,7 @@ def _configured_subentry_models(
         settings = profile.data.get(CONF_MODEL_SETTINGS)
         model_settings = dict(settings) if isinstance(settings, Mapping) else {}
         dedupe_key = (
+            owner_entry.entry_id,
             model,
             _normalise_model_settings(model_settings),
             output_mode,
@@ -369,10 +393,18 @@ def _configured_subentry_models(
         if dedupe_key in seen:
             return
         seen.add(dedupe_key)
-        models.append((profile_id, model, model_settings, output_mode))
+        models.append(
+            _ConfiguredModelProbe(
+                owner_entry=owner_entry,
+                issue_profile_id=issue_profile_id,
+                model=model,
+                model_settings=model_settings,
+                output_mode=output_mode,
+            )
+        )
 
     for profile_id in model_profiles:
-        add_model(profile_id, None)
+        add_model(entry, profile_id, profile_id, None)
 
     for subentry in entry.subentries.values():
         if subentry.subentry_type not in (
@@ -396,15 +428,40 @@ def _configured_subentry_models(
             if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
             else None
         )
-        for profile_id in [primary_id, *fallback_ids]:
-            if profile_id not in model_profiles:
+        add_model(entry, primary_id, primary_id, output_mode)
+        for fallback_id in fallback_ids:
+            if not isinstance(fallback_id, str):
+                continue
+            owner_entry_id, profile_id = parse_model_profile_ref(entry, fallback_id)
+            if owner_entry_id == entry.entry_id:
+                if profile_id not in model_profiles:
+                    _LOGGER.warning(
+                        "Skipping stale model profile reference %s for subentry %s",
+                        fallback_id,
+                        subentry.subentry_id,
+                    )
+                    continue
+                add_model(entry, profile_id, profile_id, output_mode)
+                continue
+            if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
+                continue
+            try:
+                owner_entry, model_subentry = resolve_model_profile_ref(
+                    hass, entry, fallback_id
+                )
+            except HomeAssistantError:
                 _LOGGER.warning(
                     "Skipping stale model profile reference %s for subentry %s",
-                    profile_id,
+                    fallback_id,
                     subentry.subentry_id,
                 )
                 continue
-            add_model(profile_id, output_mode)
+            add_model(
+                owner_entry,
+                model_subentry.subentry_id,
+                model_profile_ref(owner_entry.entry_id, model_subentry.subentry_id),
+                output_mode,
+            )
     return models
 
 
@@ -427,46 +484,47 @@ async def _async_validate_configured_models(
 ) -> None:
     """Probe configured models and surface user-fixable failures as repairs."""
     current_issue_ids: set[str] = set()
-    for (
-        model_subentry_id,
-        model,
-        model_settings,
-        output_mode,
-    ) in _configured_subentry_models(entry):
-        repair_settings = _repair_issue_model_settings(model_settings, output_mode)
+    for probe in _configured_subentry_models(hass, entry):
+        repair_settings = _repair_issue_model_settings(
+            probe.model_settings, probe.output_mode
+        )
         current_issue_ids.add(
-            model_validation_issue_id(entry, model_subentry_id, repair_settings)
+            model_validation_issue_id(entry, probe.issue_profile_id, repair_settings)
         )
         try:
-            if output_mode is None:
-                await async_probe_model(hass, entry.data, model, model_settings)
+            if probe.output_mode is None:
+                await async_probe_model(
+                    hass, probe.owner_entry.data, probe.model, probe.model_settings
+                )
             else:
                 await async_probe_model(
                     hass,
-                    entry.data,
-                    model,
-                    model_settings,
-                    structured_output_mode=output_mode,
+                    probe.owner_entry.data,
+                    probe.model,
+                    probe.model_settings,
+                    structured_output_mode=probe.output_mode,
                 )
         except ProviderValidationError as err:
             _LOGGER.warning(
                 'Provider validation failed during setup for model "%s": '
                 "reason=%s status_code=%s",
-                model,
+                probe.model,
                 err.reason,
                 err.status_code,
             )
+            if probe.owner_entry.entry_id != entry.entry_id:
+                continue
             # Auth failures require reauth, model/configuration failures can be
             # repaired after load, and transient provider failures should retry.
             if err.reason in _AUTH_FAILURE_REASONS:
                 raise ConfigEntryAuthFailed(err.message) from err
             if err.reason in _RECONFIGURABLE_MODEL_FAILURE_REASONS:
                 async_create_model_validation_issue(
-                    hass, entry, model_subentry_id, model, repair_settings, err
+                    hass, entry, probe.issue_profile_id, probe.model, repair_settings, err
                 )
                 continue
             raise ConfigEntryNotReady(err.message) from err
         async_delete_model_validation_issue(
-            hass, entry, model_subentry_id, model, repair_settings
+            hass, entry, probe.issue_profile_id, probe.model, repair_settings
         )
     async_delete_stale_model_validation_issues(hass, entry, current_issue_ids)

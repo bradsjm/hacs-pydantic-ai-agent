@@ -25,7 +25,7 @@ from .const import (
 )
 from .metrics import AgentRunMetrics, metric_bool, metrics_signal
 from .entity import device_identifier_for_subentry, unique_id_for_subentry_entity
-from .model_profiles import model_profile_chain
+from .model_profiles import primary_model_profile
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -125,7 +125,7 @@ class PydanticAIMetricBinarySensor(BinarySensorEntity):
         self.entry = entry
         self.subentry = subentry
         self.entity_description = description
-        profiles = model_profile_chain(entry, subentry)
+        profile = primary_model_profile(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry_entity(
             entry, subentry, description.key
         )
@@ -133,7 +133,7 @@ class PydanticAIMetricBinarySensor(BinarySensorEntity):
             identifiers={device_identifier_for_subentry(entry, subentry)},
             name=_subentry_name(subentry),
             manufacturer="Pydantic AI",
-            model=profiles[0].model_name,
+            model=profile.model_name,
             entry_type=dr.DeviceEntryType.SERVICE,
         )
 
@@ -175,7 +175,7 @@ class PydanticAIConfigBinarySensor(BinarySensorEntity):
         """Initialize the configuration binary sensor."""
         self.subentry = subentry
         self.entity_description = description
-        profiles = model_profile_chain(entry, subentry)
+        profile = primary_model_profile(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry_entity(
             entry, subentry, description.key
         )
@@ -183,7 +183,7 @@ class PydanticAIConfigBinarySensor(BinarySensorEntity):
             identifiers={device_identifier_for_subentry(entry, subentry)},
             name=_subentry_name(subentry),
             manufacturer="Pydantic AI",
-            model=profiles[0].model_name,
+            model=profile.model_name,
             entry_type=dr.DeviceEntryType.SERVICE,
         )
 
@@ -202,7 +202,7 @@ def _agent_subentries(entry: PydanticAIAgentConfigEntry) -> Iterable[ConfigSuben
         ):
             continue
         try:
-            model_profile_chain(entry, subentry)
+            primary_model_profile(entry, subentry)
         except Exception:
             continue
         yield subentry

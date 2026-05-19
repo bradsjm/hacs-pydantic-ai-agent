@@ -2,9 +2,10 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+import logging
+from typing import TYPE_CHECKING, Any, cast
 
-from homeassistant.config_entries import ConfigSubentry
+from homeassistant.config_entries import ConfigEntryState, ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai.capabilities import Thinking
@@ -18,6 +19,7 @@ from .const import (
     CONF_MODEL_SETTINGS,
     CONF_MODEL_SUBENTRY_ID,
     DEFAULT_TIMEOUT,
+    DOMAIN,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
@@ -36,6 +38,7 @@ if TYPE_CHECKING:
     from . import PydanticAIAgentConfigEntry
 
 _MODEL_SETTING_THINKING = "thinking"
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -43,7 +46,10 @@ class ModelProfile:
     """Resolved model profile runtime data."""
 
     subentry_id: str
+    owner_entry_id: str
     title: str
+    provider_title: str
+    provider_mode: str
     model_name: str
     model_settings: dict[str, Any]
 
@@ -55,6 +61,40 @@ def model_profile_subentries(entry: PydanticAIAgentConfigEntry) -> list[ConfigSu
         for subentry in entry.subentries.values()
         if subentry.subentry_type == SUBENTRY_TYPE_MODEL
     ]
+
+
+def model_profile_ref(entry_id: str, subentry_id: str) -> str:
+    """Return the canonical cross-entry model profile reference."""
+    return f"{entry_id}:{subentry_id}"
+
+
+def parse_model_profile_ref(
+    current_entry: PydanticAIAgentConfigEntry, raw_ref: str
+) -> tuple[str, str]:
+    """Parse a model profile reference, treating legacy bare IDs as local."""
+    if ":" in raw_ref:
+        entry_id, subentry_id = raw_ref.split(":", 1)
+        return entry_id, subentry_id
+    return current_entry.entry_id, raw_ref
+
+
+def resolve_model_profile_ref(
+    hass: HomeAssistant, current_entry: PydanticAIAgentConfigEntry, raw_ref: str
+) -> tuple[PydanticAIAgentConfigEntry, ConfigSubentry]:
+    """Resolve a possibly cross-entry model profile reference."""
+    entry_id, subentry_id = parse_model_profile_ref(current_entry, raw_ref)
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if (
+        entry is None
+        or entry.domain != DOMAIN
+        or entry.state != ConfigEntryState.LOADED
+    ):
+        raise HomeAssistantError("Configured model profile was not found")
+    owner_entry = cast("PydanticAIAgentConfigEntry", entry)
+    subentry = owner_entry.subentries.get(subentry_id)
+    if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_MODEL:
+        raise HomeAssistantError("Configured model profile was not found")
+    return owner_entry, subentry
 
 
 def model_profile(entry: PydanticAIAgentConfigEntry, subentry_id: str) -> ModelProfile:
@@ -69,26 +109,51 @@ def model_profile(entry: PydanticAIAgentConfigEntry, subentry_id: str) -> ModelP
     model_settings = dict(raw_settings) if isinstance(raw_settings, Mapping) else {}
     return ModelProfile(
         subentry_id=subentry.subentry_id,
+        owner_entry_id=entry.entry_id,
         title=subentry.title,
+        provider_title=entry.title,
+        provider_mode=entry.runtime_data.provider_mode,
         model_name=model_name,
         model_settings=model_settings,
     )
 
 
-def model_profile_chain(
+def primary_model_profile(
     entry: PydanticAIAgentConfigEntry, owner_subentry: ConfigSubentry
-) -> list[ModelProfile]:
-    """Return primary profile followed by ordered fallback profiles."""
+) -> ModelProfile:
+    """Return the primary model profile for one consumer subentry."""
     primary_id = owner_subentry.data.get(CONF_MODEL_SUBENTRY_ID)
     if not isinstance(primary_id, str) or not primary_id:
         raise HomeAssistantError("Subentry is missing a model profile")
+    return model_profile(entry, primary_id)
+
+
+def model_profile_chain(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry, owner_subentry: ConfigSubentry
+) -> list[ModelProfile]:
+    """Return primary profile followed by ordered fallback profiles."""
+    primary = primary_model_profile(entry, owner_subentry)
     fallback_ids = owner_subentry.data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
     if isinstance(fallback_ids, str) or not isinstance(fallback_ids, list):
         fallback_ids = []
-    chain_ids = [primary_id, *fallback_ids]
-    if primary_id in fallback_ids:
-        raise HomeAssistantError("Primary model profile cannot also be a fallback")
-    return [model_profile(entry, profile_id) for profile_id in chain_ids]
+    primary_ref = model_profile_ref(entry.entry_id, primary.subentry_id)
+    profiles = [primary]
+    for fallback_id in fallback_ids:
+        if not isinstance(fallback_id, str):
+            continue
+        entry_id, subentry_id = parse_model_profile_ref(entry, fallback_id)
+        if model_profile_ref(entry_id, subentry_id) == primary_ref:
+            raise HomeAssistantError("Primary model profile cannot also be a fallback")
+        try:
+            owner_entry, subentry = resolve_model_profile_ref(hass, entry, fallback_id)
+            profiles.append(model_profile(owner_entry, subentry.subentry_id))
+        except HomeAssistantError:
+            _LOGGER.warning(
+                "Skipping unavailable fallback model profile %s for subentry %s",
+                fallback_id,
+                owner_subentry.subentry_id,
+            )
+    return profiles
 
 
 def model_settings(profile: ModelProfile) -> ModelSettings:
@@ -119,15 +184,17 @@ def max_iterations(profile: ModelProfile, default: int) -> int:
 
 def model_display_names(profiles: list[ModelProfile]) -> list[str]:
     """Return display labels for a resolved model chain."""
-    return [profile.title for profile in profiles]
+    return [f"{profile.provider_title} / {profile.title}" for profile in profiles]
 
 
 def chat_model_for_profile(
     hass: HomeAssistant,
-    entry: PydanticAIAgentConfigEntry,
     profile: ModelProfile,
 ) -> Any:
     """Build the configured Pydantic AI model for one profile."""
+    entry = hass.config_entries.async_get_entry(profile.owner_entry_id)
+    if entry is None or entry.domain != DOMAIN or entry.state != ConfigEntryState.LOADED:
+        raise HomeAssistantError("Configured model profile provider was not found")
     runtime_data = entry.runtime_data
     kwargs = {
         "api_key": runtime_data.api_key,

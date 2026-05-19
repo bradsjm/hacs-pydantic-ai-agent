@@ -132,6 +132,11 @@ from .mcp import (
     parse_allowed_tools,
     parse_mcp_headers,
 )
+from .model_profiles import (
+    model_profile_ref,
+    parse_model_profile_ref,
+    resolve_model_profile_ref,
+)
 from .provider import (
     anthropic_model,
     google_gemini_model,
@@ -440,7 +445,12 @@ def _configured_model_probes(
         output_mode = normalise_structured_output_mode(
             subentry.data.get(CONF_OUTPUT_MODE)
         )
-        profile_ids = _selected_model_profile_ids(subentry.data)
+        profile_ids = [
+            subentry_id
+            for raw_ref in _selected_model_profile_ids(subentry.data)
+            for entry_id, subentry_id in [parse_model_profile_ref(entry, raw_ref)]
+            if entry_id == entry.entry_id
+        ]
         if not profile_ids:
             _LOGGER.warning(
                 "Skipping legacy AI task subentry without model profile during provider validation: %s",
@@ -907,6 +917,48 @@ def _model_profile_select_options(entry: ConfigEntry | None) -> list[SelectOptio
     ]
 
 
+def _normalise_fallback_model_profile_refs(
+    entry: ConfigEntry, raw_refs: object
+) -> list[str]:
+    """Return canonical fallback refs, preserving order."""
+    if isinstance(raw_refs, str) or not isinstance(raw_refs, list):
+        return []
+    refs: list[str] = []
+    for raw_ref in raw_refs:
+        if not isinstance(raw_ref, str) or not raw_ref:
+            continue
+        entry_id, subentry_id = parse_model_profile_ref(entry, raw_ref)
+        refs.append(model_profile_ref(entry_id, subentry_id))
+    return refs
+
+
+def _fallback_model_profile_select_options(
+    hass: HomeAssistant, entry: ConfigEntry | None, selected_refs: object = None
+) -> list[SelectOptionDict]:
+    """Return model profiles across loaded provider entries as fallback options."""
+    options: list[SelectOptionDict] = []
+    configured_refs: set[str] = set()
+    for provider_entry in hass.config_entries.async_entries(DOMAIN):
+        if provider_entry.state != ConfigEntryState.LOADED:
+            continue
+        for subentry in provider_entry.subentries.values():
+            if subentry.subentry_type != SUBENTRY_TYPE_MODEL:
+                continue
+            ref = model_profile_ref(provider_entry.entry_id, subentry.subentry_id)
+            configured_refs.add(ref)
+            options.append(
+                SelectOptionDict(
+                    label=f"{provider_entry.title} / {subentry.title}", value=ref
+                )
+            )
+    if entry is None:
+        return options
+    for ref in _normalise_fallback_model_profile_refs(entry, selected_refs):
+        if ref not in configured_refs:
+            options.append(SelectOptionDict(label=f"Unavailable / {ref}", value=ref))
+    return options
+
+
 def _selected_model_profile_ids(data: Mapping[str, Any]) -> list[str]:
     """Return selected primary plus ordered fallback profile IDs."""
     primary_id = data.get(CONF_MODEL_SUBENTRY_ID)
@@ -919,22 +971,27 @@ def _selected_model_profile_ids(data: Mapping[str, Any]) -> list[str]:
 
 
 def _selected_model_profile_error(
-    entry: ConfigEntry, data: Mapping[str, Any]
+    hass: HomeAssistant, entry: ConfigEntry, data: Mapping[str, Any]
 ) -> str | None:
     """Return a form error for missing or invalid model profile selections."""
     primary_id = data.get(CONF_MODEL_SUBENTRY_ID)
     if not isinstance(primary_id, str) or not primary_id:
         return "model_profile_required"
-    fallback_ids = data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
-    if isinstance(fallback_ids, str) or not isinstance(fallback_ids, list):
-        fallback_ids = []
-    if primary_id in fallback_ids:
+    primary_subentry = entry.subentries.get(primary_id)
+    if primary_subentry is None or primary_subentry.subentry_type != SUBENTRY_TYPE_MODEL:
+        return "model_profile_not_found"
+    primary_ref = model_profile_ref(entry.entry_id, primary_id)
+    fallback_ids = _normalise_fallback_model_profile_refs(
+        entry, data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+    )
+    if primary_ref in fallback_ids:
         return "primary_model_in_fallbacks"
     if len(fallback_ids) != len(set(fallback_ids)):
         return "duplicate_fallback_model"
-    for profile_id in [primary_id, *fallback_ids]:
-        subentry = entry.subentries.get(profile_id)
-        if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_MODEL:
+    for profile_id in fallback_ids:
+        try:
+            resolve_model_profile_ref(hass, entry, profile_id)
+        except HomeAssistantError:
             return "model_profile_not_found"
     return None
 
@@ -1075,6 +1132,9 @@ def _conversation_schema(
     """Return the conversation subentry schema, pruning unavailable HA APIs."""
     options = dict(options or {})
     model_options = _model_profile_select_options(entry)
+    fallback_model_options = _fallback_model_profile_select_options(
+        hass, entry, options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+    )
     hass_apis: list[SelectOptionDict] = []
     valid_api_ids: set[str] = set()
     for api in llm.async_get_apis(hass):
@@ -1096,7 +1156,6 @@ def _conversation_schema(
         ): TemplateSelector(),
     }
     if model_options:
-        configured_profiles = {option["value"] for option in model_options}
         schema[
             vol.Required(
                 CONF_MODEL_SUBENTRY_ID,
@@ -1112,15 +1171,15 @@ def _conversation_schema(
         schema[
             vol.Optional(
                 CONF_FALLBACK_MODEL_SUBENTRY_IDS,
-                default=[
-                    profile_id
-                    for profile_id in options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
-                    if profile_id in configured_profiles
-                ],
+                default=_normalise_fallback_model_profile_refs(
+                    entry, options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+                )
+                if entry is not None
+                else [],
             )
         ] = SelectSelector(
             SelectSelectorConfig(
-                options=model_options,
+                options=fallback_model_options,
                 multiple=True,
                 translation_key=CONF_FALLBACK_MODEL_SUBENTRY_IDS,
             )
@@ -1669,6 +1728,7 @@ def _model_profile_data_from_user_input(
 
 
 def _ai_task_data_schema(
+    hass: HomeAssistant,
     options: Mapping[str, Any] | None = None,
     entry: ConfigEntry | None = None,
     available_skills: list[AvailableSkill] | None = None,
@@ -1676,6 +1736,9 @@ def _ai_task_data_schema(
     """Return the AI task data subentry schema."""
     options = dict(options or {})
     model_options = _model_profile_select_options(entry)
+    fallback_model_options = _fallback_model_profile_select_options(
+        hass, entry, options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+    )
     schema: VolDictType = {
         vol.Required(
             CONF_AI_TASK_NAME,
@@ -1683,7 +1746,6 @@ def _ai_task_data_schema(
         ): TextSelector(TextSelectorConfig()),
     }
     if model_options:
-        configured_profiles = {option["value"] for option in model_options}
         schema[
             vol.Required(
                 CONF_MODEL_SUBENTRY_ID,
@@ -1699,15 +1761,15 @@ def _ai_task_data_schema(
         schema[
             vol.Optional(
                 CONF_FALLBACK_MODEL_SUBENTRY_IDS,
-                default=[
-                    profile_id
-                    for profile_id in options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
-                    if profile_id in configured_profiles
-                ],
+                default=_normalise_fallback_model_profile_refs(
+                    entry, options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+                )
+                if entry is not None
+                else [],
             )
         ] = SelectSelector(
             SelectSelectorConfig(
-                options=model_options,
+                options=fallback_model_options,
                 multiple=True,
                 translation_key=CONF_FALLBACK_MODEL_SUBENTRY_IDS,
             )
@@ -2463,7 +2525,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                 self._options,
                 available_skills=available_skills,
             )
-            if model_error := _selected_model_profile_error(entry, data):
+            if model_error := _selected_model_profile_error(self.hass, entry, data):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_conversation_schema(
@@ -2569,6 +2631,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_ai_task_data_schema(
+                        self.hass,
                         self._options | flat_user_input, entry, available_skills
                     ),
                     errors={"base": err.reason},
@@ -2587,6 +2650,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_ai_task_data_schema(
+                        self.hass,
                         refreshed_options, entry, refreshed_skills
                     ),
                     errors={"base": "skills_refreshed"},
@@ -2597,10 +2661,11 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 self._options,
                 available_skills=available_skills,
             )
-            if model_error := _selected_model_profile_error(entry, data):
+            if model_error := _selected_model_profile_error(self.hass, entry, data):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_ai_task_data_schema(
+                        self.hass,
                         self._options | data, entry, available_skills
                     ),
                     errors={CONF_MODEL_SUBENTRY_ID: model_error},
@@ -2609,6 +2674,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_ai_task_data_schema(
+                        self.hass,
                         self._options | data, entry, available_skills
                     ),
                     errors={CONF_MCP_SERVER_IDS: mcp_error},
@@ -2617,7 +2683,9 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_ai_task_data_schema(self._options, entry, available_skills),
+            data_schema=_ai_task_data_schema(
+                self.hass, self._options, entry, available_skills
+            ),
         )
 
     async def _async_finish_ai_task_options(
@@ -2631,6 +2699,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             return self.async_show_form(
                 step_id="init",
                 data_schema=_ai_task_data_schema(
+                    self.hass,
                     self._options | data, entry, available_skills
                 ),
                 errors={CONF_MCP_SERVER_IDS: mcp_error},
@@ -2651,13 +2720,19 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
         entry = self._get_entry()
         current_model = ""
         try:
-            for profile_id in _selected_model_profile_ids(data):
-                profile = entry.subentries[profile_id]
+            primary_id = data[CONF_MODEL_SUBENTRY_ID]
+            primary_profile = entry.subentries[primary_id]
+            profiles = [(entry, primary_profile)]
+            for fallback_ref in _normalise_fallback_model_profile_refs(
+                entry, data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+            ):
+                profiles.append(resolve_model_profile_ref(self.hass, entry, fallback_ref))
+            for owner_entry, profile in profiles:
                 settings = profile.data.get(CONF_MODEL_SETTINGS)
                 current_model = profile.data[CONF_MODEL]
                 await async_probe_model(
                     self.hass,
-                    entry.data,
+                    owner_entry.data,
                     current_model,
                     dict(settings) if isinstance(settings, Mapping) else {},
                     structured_output_mode=data[CONF_OUTPUT_MODE],
@@ -2698,6 +2773,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             return self.async_show_form(
                 step_id="init",
                 data_schema=_ai_task_data_schema(
+                    self.hass,
                     self._options | data, entry, available_skills
                 ),
                 errors={field: reason},
