@@ -30,6 +30,9 @@
       "timeout": "{error_message}",
       "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
     },
+    "progress": {
+      "probe_models": "Validating configured models"
+    },
     "step": {
       "reauth_confirm": {
         "data": {
@@ -48,6 +51,28 @@
           "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
         },
         "description": "Update provider credentials.",
+        "sections": {
+          "advanced_options": {
+            "data": {
+              "provider_headers": "Provider HTTP headers"
+            },
+            "data_description": {
+              "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+            },
+            "name": "Advanced options"
+          },
+          "logfire": {
+            "data": {
+              "logfire_include_content": "Include prompt and response content in Logfire",
+              "logfire_token": "Logfire token"
+            },
+            "data_description": {
+              "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
+              "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection."
+            },
+            "name": "Logfire tracing"
+          }
+        },
         "title": "Reauthenticate Pydantic AI Agent"
       },
       "reconfigure": {
@@ -67,6 +92,28 @@
           "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
         },
         "description": "Update model provider credentials and connection settings.",
+        "sections": {
+          "advanced_options": {
+            "data": {
+              "provider_headers": "Provider HTTP headers"
+            },
+            "data_description": {
+              "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+            },
+            "name": "Advanced options"
+          },
+          "logfire": {
+            "data": {
+              "logfire_include_content": "Include prompt and response content in Logfire",
+              "logfire_token": "Logfire token"
+            },
+            "data_description": {
+              "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
+              "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection."
+            },
+            "name": "Logfire tracing"
+          }
+        },
         "title": "Reconfigure Pydantic AI Agent"
       },
       "user": {
@@ -86,6 +133,28 @@
           "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
         },
         "description": "Enter credentials for this model provider connection.",
+        "sections": {
+          "advanced_options": {
+            "data": {
+              "provider_headers": "Provider HTTP headers"
+            },
+            "data_description": {
+              "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+            },
+            "name": "Advanced options"
+          },
+          "logfire": {
+            "data": {
+              "logfire_include_content": "Include prompt and response content in Logfire",
+              "logfire_token": "Logfire token"
+            },
+            "data_description": {
+              "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
+              "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this provider connection."
+            },
+            "name": "Logfire tracing"
+          }
+        },
         "title": "Connect Pydantic AI Agent"
       }
     }
@@ -123,6 +192,9 @@
         "reconfigure": "Reconfigure AI task",
         "user": "Add AI task"
       },
+      "progress": {
+        "probe_model": "Validating language model"
+      },
       "step": {
         "init": {
           "data": {
@@ -148,6 +220,34 @@
             "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs."
           },
           "description": "Name this AI task and choose its language model profile for Home Assistant data generation.",
+          "sections": {
+            "external_tools": {
+              "data": {
+                "mcp_server_ids": "MCP servers",
+                "web_fetch_enabled": "Web fetch"
+              },
+              "data_description": {
+                "mcp_server_ids": "Optional MCP servers this AI task may use. Only enabled tools will be made available.",
+                "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs."
+              },
+              "name": "External tools and data"
+            },
+            "skill_settings": {
+              "data": {
+                "enable_skill_script_execution": "Allow skill script execution",
+                "enable_skills": "Enable skills",
+                "skills": "Skills",
+                "skills_folder": "Skills folder"
+              },
+              "data_description": {
+                "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
+                "enable_skills": "Allow this AI task to load selected local skills.",
+                "skills": "Optional local skills this AI task may load from its configured skills folder.",
+                "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders."
+              },
+              "name": "Skills"
+            }
+          },
           "title": "Configure AI task"
         }
       }
@@ -216,31 +316,35 @@
             "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
           },
           "description": "Choose the language model profile and Home Assistant tool access for this conversation agent.",
+          "sections": {
+            "external_tools": {
+              "data": {
+                "mcp_server_ids": "MCP servers",
+                "web_fetch_enabled": "Web fetch"
+              },
+              "data_description": {
+                "mcp_server_ids": "Optional MCP servers this conversation agent may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
+                "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
+              },
+              "name": "External tools and data"
+            },
+            "skill_settings": {
+              "data": {
+                "enable_skill_script_execution": "Allow skill script execution",
+                "enable_skills": "Enable skills",
+                "skills": "Skills",
+                "skills_folder": "Skills folder"
+              },
+              "data_description": {
+                "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
+                "enable_skills": "Allow this conversation agent to load selected local skills.",
+                "skills": "Optional local skills this conversation agent may load from its configured skills folder.",
+                "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders."
+              },
+              "name": "Skills"
+            }
+          },
           "title": "Configure conversation agent"
-        },
-        "model_settings": {
-          "data": {
-            "extra_body": "Extra body",
-            "frequency_penalty": "Frequency penalty",
-            "max_tokens": "Max tokens",
-            "parallel_tool_calls": "Parallel tool calls",
-            "presence_penalty": "Presence penalty",
-            "seed": "Seed",
-            "timeout": "Timeout",
-            "top_p": "Top P"
-          },
-          "data_description": {
-            "extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted.",
-            "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
-            "max_tokens": "Maximum tokens the model may generate. Must be a positive integer.",
-            "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
-            "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
-            "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
-            "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
-            "top_p": "Nucleus sampling value. Leave empty to use the provider default."
-          },
-          "description": "Set advanced values for this conversation agent. Leave fields empty to use provider defaults.",
-          "title": "Advanced model settings"
         }
       }
     },
@@ -266,6 +370,9 @@
         "reconfigure": "Reconfigure MCP server",
         "user": "Add MCP server"
       },
+      "progress": {
+        "validate_mcp": "Validating MCP server"
+      },
       "step": {
         "init": {
           "data": {
@@ -282,6 +389,21 @@
             "mcp_url": "HTTP or HTTPS URL for the remote Streamable HTTP MCP endpoint. HTTPS is recommended when using headers or sensitive tool data."
           },
           "description": "Add a remote Streamable HTTP MCP server. Once added, you can assign it to conversation agents or AI tasks.",
+          "sections": {
+            "advanced_mcp": {
+              "data": {
+                "mcp_deferred_loading": "Defer tool loading",
+                "mcp_headers": "HTTP headers",
+                "mcp_include_return_schema": "Include tool return schemas"
+              },
+              "data_description": {
+                "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools.",
+                "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
+                "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility."
+              },
+              "name": "Advanced options"
+            }
+          },
           "title": "Configure remote MCP server (Step 1 of 2)"
         },
         "tools": {
@@ -329,51 +451,53 @@
         "reconfigure": "Reconfigure language model profile",
         "user": "Add language model profile"
       },
+      "progress": {
+        "probe_model": "Validating language model"
+      },
       "step": {
         "init": {
           "data": {
-            "configure_advanced_model_settings": "Configure advanced model settings",
             "model": "Provider model name",
             "name": "Profile name",
             "temperature": "Temperature",
             "thinking": "Thinking (Reasoning) Mode"
           },
           "data_description": {
-            "configure_advanced_model_settings": "Open a second step for token and iteration limits, sampling, timeout, tool-call behavior, seed, penalties, and request body overrides.",
             "model": "Model name as understood by the configured OpenAI-compatible provider.",
             "temperature": "Controls response randomness. Leave empty to use the provider or model default.",
             "thinking": "Optional reasoning effort if supported by the model (levels map to the closest available value)."
           },
           "description": "Create a reusable language model profile. Conversation agents and AI tasks select one primary profile and optional fallbacks.",
-          "title": "Configure language model profile (Basic Settings)"
-        },
-        "model_settings": {
-          "data": {
-            "chat_template_kwargs": "Chat template arguments",
-            "extra_body": "Extra body",
-            "frequency_penalty": "Frequency penalty",
-            "max_iterations": "Max iterations",
-            "max_tokens": "Max tokens",
-            "parallel_tool_calls": "Parallel tool calls",
-            "presence_penalty": "Presence penalty",
-            "seed": "Seed",
-            "timeout": "Timeout",
-            "top_p": "Top P"
+          "sections": {
+            "advanced_model_settings": {
+              "data": {
+                "chat_template_kwargs": "Chat template arguments",
+                "extra_body": "Extra body",
+                "frequency_penalty": "Frequency penalty",
+                "max_iterations": "Max iterations",
+                "max_tokens": "Max tokens",
+                "parallel_tool_calls": "Parallel tool calls",
+                "presence_penalty": "Presence penalty",
+                "seed": "Seed",
+                "timeout": "Timeout",
+                "top_p": "Top P"
+              },
+              "data_description": {
+                "chat_template_kwargs": "Optional chat template keyword arguments rendered from Home Assistant templates and sent as extra_body.chat_template_kwargs.",
+                "extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated field.",
+                "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
+                "max_iterations": "Maximum Pydantic AI agent request iterations for one run. Must be a positive integer. Leave empty to use the conversation or AI task default.",
+                "max_tokens": "Maximum tokens the model may generate per response. Must be a positive integer.",
+                "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
+                "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
+                "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
+                "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
+                "top_p": "Nucleus sampling value. Leave empty to use the provider default."
+              },
+              "name": "Advanced model settings"
+            }
           },
-          "data_description": {
-            "chat_template_kwargs": "Optional chat template keyword arguments rendered from Home Assistant templates and sent as extra_body.chat_template_kwargs.",
-            "extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated field.",
-            "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
-            "max_iterations": "Maximum Pydantic AI agent request iterations for one run. Must be a positive integer. Leave empty to use the conversation or AI task default.",
-            "max_tokens": "Maximum tokens the model may generate per response. Must be a positive integer.",
-            "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
-            "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
-            "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
-            "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
-            "top_p": "Nucleus sampling value. Leave empty to use the provider default."
-          },
-          "description": "Set advanced model parameter values for this profile. Leave fields empty to use provider defaults.",
-          "title": "Configure language model profile (Advanced model settings)"
+          "title": "Configure language model profile"
         }
       }
     }

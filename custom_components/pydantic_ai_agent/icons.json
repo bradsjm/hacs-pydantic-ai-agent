@@ -1,0 +1,10 @@
+{
+  "services": {
+    "list_mcp_tools": {
+      "service": "mdi:toolbox-outline"
+    },
+    "refresh_mcp_tools": {
+      "service": "mdi:sync"
+    }
+  }
+}

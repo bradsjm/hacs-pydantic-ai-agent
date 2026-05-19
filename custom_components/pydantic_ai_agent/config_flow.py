@@ -46,6 +46,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import section
 from homeassistant.exceptions import HomeAssistantError, TemplateError
 from homeassistant.helpers import llm
 from homeassistant.helpers.selector import (
@@ -75,7 +76,6 @@ from .const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
-    CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
     CONF_ENABLE_SKILLS,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_FALLBACK_MODEL_SUBENTRY_IDS,
@@ -226,6 +226,12 @@ _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "x
 _OUTPUT_MODE_OPTIONS = tuple(
     SelectOptionDict(value=value, label=value) for value in STRUCTURED_OUTPUT_MODES
 )
+_SECTION_ADVANCED_MCP = "advanced_mcp"
+_SECTION_ADVANCED_MODEL_SETTINGS = "advanced_model_settings"
+_SECTION_ADVANCED_OPTIONS = "advanced_options"
+_SECTION_EXTERNAL_TOOLS = "external_tools"
+_SECTION_LOGFIRE = "logfire"
+_SECTION_SKILLS = "skill_settings"
 _STRUCTURED_PROBE_OUTPUT_NAME = structured_output_name(
     "probe_response", "probe_response"
 )
@@ -257,6 +263,20 @@ def _format_http_headers(headers: object) -> str:
     return "\n".join(f"{name}: {headers[name]}" for name in sorted(headers))
 
 
+def _flatten_section_data(
+    data: Mapping[str, Any], section_keys: Iterable[str]
+) -> dict[str, Any]:
+    """Return form data with HA section namespaces flattened."""
+    flattened = dict(data)
+    for key in section_keys:
+        value = flattened.pop(key, None)
+        if isinstance(value, Mapping):
+            flattened.update(value)
+        elif value is not None:
+            flattened[key] = value
+    return flattened
+
+
 def _parse_provider_headers(value: object) -> dict[str, str]:
     """Return provider HTTP headers from form input."""
     try:
@@ -270,7 +290,9 @@ def _parse_provider_headers(value: object) -> dict[str, str]:
 
 def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     """Return the provider connection schema."""
-    data = user_input or {}
+    data = _flatten_section_data(
+        user_input or {}, (_SECTION_ADVANCED_OPTIONS, _SECTION_LOGFIRE)
+    )
     provider_mode = data.get(CONF_PROVIDER_MODE, PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS)
     schema: VolDictType = {
         vol.Required(CONF_NAME, default=DEFAULT_SERVICE_NAME): str,
@@ -286,21 +308,31 @@ def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
         ),
     }
     schema[vol.Optional(CONF_BASE_URL)] = str
-    schema[
-        vol.Optional(
-            CONF_PROVIDER_HEADERS,
-            default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
-        )
-    ] = TextSelector(TextSelectorConfig(multiline=True))
-    schema[vol.Optional(CONF_LOGFIRE_TOKEN)] = TextSelector(
-        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+    schema[vol.Optional(_SECTION_ADVANCED_OPTIONS, default={})] = section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_PROVIDER_HEADERS,
+                    default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
+                ): TextSelector(TextSelectorConfig(multiline=True))
+            }
+        ),
+        {"collapsed": True},
     )
-    schema[
-        vol.Optional(
-            CONF_LOGFIRE_INCLUDE_CONTENT,
-            default=bool(data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False)),
-        )
-    ] = BooleanSelector()
+    schema[vol.Optional(_SECTION_LOGFIRE, default={})] = section(
+        vol.Schema(
+            {
+                vol.Optional(CONF_LOGFIRE_TOKEN): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
+                vol.Optional(
+                    CONF_LOGFIRE_INCLUDE_CONTENT,
+                    default=bool(data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False)),
+                ): BooleanSelector(),
+            }
+        ),
+        {"collapsed": True},
+    )
     return vol.Schema(schema)
 
 
@@ -790,7 +822,9 @@ def _invalid_structured_output_message(output_mode: str) -> str:
 
 def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
     """Return normalized provider data for storage and validation."""
-    data = dict(user_input)
+    data = _flatten_section_data(
+        user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_LOGFIRE)
+    )
     data.pop(CONF_SKILLS_FOLDER, None)
     data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
     data.pop(CONF_ENABLE_SKILLS, None)
@@ -969,6 +1003,7 @@ def _normalise_skill_settings(data: dict[str, Any]) -> None:
 
 def _skill_source(data: Mapping[str, Any]) -> tuple[bool, str, bool]:
     """Return the fields that determine selectable skills for one agent."""
+    data = _flatten_section_data(data, (_SECTION_SKILLS,))
     return (
         bool(data.get(CONF_ENABLE_SKILLS, False)),
         _normalise_skills_folder(data.get(CONF_SKILLS_FOLDER)),
@@ -1099,6 +1134,7 @@ def _conversation_schema(
     schema[api_schema_key] = SelectSelector(
         SelectSelectorConfig(options=hass_apis, multiple=True)
     )
+    external_tools_schema: VolDictType = {}
     mcp_servers = _mcp_server_select_options(entry)
     if mcp_servers:
         mcp_schema_key = vol.Optional(CONF_MCP_SERVER_IDS)
@@ -1114,16 +1150,23 @@ def _conversation_schema(
                     if server_id in configured_servers
                 ],
             )
-        schema[mcp_schema_key] = SelectSelector(
+        external_tools_schema[mcp_schema_key] = SelectSelector(
             SelectSelectorConfig(options=mcp_servers, multiple=True)
         )
-    schema[
+    external_tools_schema[
         vol.Optional(
             CONF_WEB_FETCH_ENABLED,
             default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
         )
     ] = BooleanSelector()
-    _append_skill_schema_fields(schema, options, available_skills)
+    schema[vol.Optional(_SECTION_EXTERNAL_TOOLS, default={})] = section(
+        vol.Schema(external_tools_schema), {"collapsed": True}
+    )
+    skills_schema: VolDictType = {}
+    _append_skill_schema_fields(skills_schema, options, available_skills)
+    schema[vol.Optional(_SECTION_SKILLS, default={})] = section(
+        vol.Schema(skills_schema), {"collapsed": True}
+    )
     return vol.Schema(schema)
 
 
@@ -1162,9 +1205,7 @@ def _model_profile_schema(
             vol.Required(
                 CONF_NAME,
                 default=options.get(CONF_NAME, options.get(CONF_MODEL, "")),
-            ): TextSelector(
-                TextSelectorConfig()
-            ),
+            ): TextSelector(TextSelectorConfig()),
             vol.Optional(
                 _MODEL_SETTING_TEMPERATURE,
                 description={
@@ -1183,10 +1224,9 @@ def _model_profile_schema(
                     translation_key=_MODEL_SETTING_THINKING,
                 )
             ),
-            vol.Optional(
-                CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
-                default=False,
-            ): BooleanSelector(),
+            vol.Optional(_SECTION_ADVANCED_MODEL_SETTINGS, default={}): section(
+                _model_settings_schema(options), {"collapsed": True}
+            ),
         }
     )
 
@@ -1560,11 +1600,10 @@ def _conversation_data_from_user_input(
     available_skills: list[AvailableSkill] | None = None,
 ) -> dict[str, Any]:
     """Return conversation fields with model profile references."""
-    data = {
-        key: value
-        for key, value in user_input.items()
-        if key not in {CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS}
-    }
+    user_input = _flatten_section_data(
+        user_input, (_SECTION_EXTERNAL_TOOLS, _SECTION_SKILLS)
+    )
+    data = {key: value for key, value in user_input.items()}
     if not data.get(CONF_LLM_HASS_API):
         data.pop(CONF_LLM_HASS_API, None)
     if not data.get(CONF_MCP_SERVER_IDS):
@@ -1573,12 +1612,18 @@ def _conversation_data_from_user_input(
         data.pop(CONF_WEB_FETCH_ENABLED, None)
     if not data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS):
         data.pop(CONF_FALLBACK_MODEL_SUBENTRY_IDS, None)
-    if data.get(CONF_ENABLE_SKILLS) and CONF_SKILLS in user_input and available_skills:
+    if (
+        data.get(CONF_ENABLE_SKILLS)
+        and CONF_SKILLS in user_input
+        and available_skills is not None
+    ):
         data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
             user_input, options, available_skills
         )
-    elif data.get(CONF_ENABLE_SKILLS) and CONF_SKILLS not in user_input and options.get(
-        CONF_SKILLS
+    elif (
+        data.get(CONF_ENABLE_SKILLS)
+        and CONF_SKILLS not in user_input
+        and options.get(CONF_SKILLS)
     ):
         data[CONF_SKILLS] = options[CONF_SKILLS]
     if not data.get(CONF_SKILLS):
@@ -1619,10 +1664,7 @@ def _model_profile_data_from_user_input(
     return {
         key: value
         for key, value in user_input.items()
-        if key
-        not in _MAIN_MODEL_SETTING_KEYS
-        | _ADVANCED_MODEL_SETTING_KEYS
-        | {CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS}
+        if key not in _MAIN_MODEL_SETTING_KEYS | _ADVANCED_MODEL_SETTING_KEYS
     }
 
 
@@ -1670,6 +1712,7 @@ def _ai_task_data_schema(
                 translation_key=CONF_FALLBACK_MODEL_SUBENTRY_IDS,
             )
         )
+    external_tools_schema: VolDictType = {}
     mcp_servers = _mcp_server_select_options(entry)
     if mcp_servers:
         mcp_schema_key = vol.Optional(CONF_MCP_SERVER_IDS)
@@ -1685,10 +1728,10 @@ def _ai_task_data_schema(
                     if server_id in configured_servers
                 ],
             )
-        schema[mcp_schema_key] = SelectSelector(
+        external_tools_schema[mcp_schema_key] = SelectSelector(
             SelectSelectorConfig(options=mcp_servers, multiple=True)
         )
-    schema[
+    external_tools_schema[
         vol.Optional(
             CONF_WEB_FETCH_ENABLED,
             default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
@@ -1708,7 +1751,14 @@ def _ai_task_data_schema(
             translation_key=CONF_OUTPUT_MODE,
         )
     )
-    _append_skill_schema_fields(schema, options, available_skills)
+    schema[vol.Optional(_SECTION_EXTERNAL_TOOLS, default={})] = section(
+        vol.Schema(external_tools_schema), {"collapsed": True}
+    )
+    skills_schema: VolDictType = {}
+    _append_skill_schema_fields(skills_schema, options, available_skills)
+    schema[vol.Optional(_SECTION_SKILLS, default={})] = section(
+        vol.Schema(skills_schema), {"collapsed": True}
+    )
     return vol.Schema(schema)
 
 
@@ -1719,6 +1769,9 @@ def _ai_task_data_from_user_input(
     available_skills: list[AvailableSkill] | None = None,
 ) -> dict[str, Any]:
     """Return AI task subentry data with a selected structured output mode."""
+    user_input = _flatten_section_data(
+        user_input, (_SECTION_EXTERNAL_TOOLS, _SECTION_SKILLS)
+    )
     data = dict(user_input)
     data.setdefault(
         CONF_OUTPUT_MODE,
@@ -1730,12 +1783,18 @@ def _ai_task_data_from_user_input(
         data.pop(CONF_WEB_FETCH_ENABLED, None)
     if not data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS):
         data.pop(CONF_FALLBACK_MODEL_SUBENTRY_IDS, None)
-    if data.get(CONF_ENABLE_SKILLS) and CONF_SKILLS in user_input and available_skills:
+    if (
+        data.get(CONF_ENABLE_SKILLS)
+        and CONF_SKILLS in user_input
+        and available_skills is not None
+    ):
         data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
             user_input, options, available_skills
         )
-    elif data.get(CONF_ENABLE_SKILLS) and CONF_SKILLS not in user_input and options.get(
-        CONF_SKILLS
+    elif (
+        data.get(CONF_ENABLE_SKILLS)
+        and CONF_SKILLS not in user_input
+        and options.get(CONF_SKILLS)
     ):
         data[CONF_SKILLS] = options[CONF_SKILLS]
     if not data.get(CONF_SKILLS):
@@ -1746,7 +1805,7 @@ def _ai_task_data_from_user_input(
 
 def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
     """Return the remote MCP server subentry schema."""
-    options = dict(options or {})
+    options = _flatten_section_data(options or {}, (_SECTION_ADVANCED_MCP,))
     return vol.Schema(
         {
             vol.Required(CONF_NAME, default=options.get(CONF_NAME, "")): TextSelector(
@@ -1756,18 +1815,25 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
                 CONF_MCP_URL,
                 default=options.get(CONF_MCP_URL, ""),
             ): TextSelector(TextSelectorConfig()),
-            vol.Optional(
-                CONF_MCP_HEADERS,
-                default=_format_mcp_headers(options.get(CONF_MCP_HEADERS)),
-            ): TextSelector(TextSelectorConfig(multiline=True)),
-            vol.Optional(
-                CONF_MCP_INCLUDE_RETURN_SCHEMA,
-                default=options.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True),
-            ): BooleanSelector(),
-            vol.Optional(
-                CONF_MCP_DEFERRED_LOADING,
-                default=options.get(CONF_MCP_DEFERRED_LOADING, False),
-            ): BooleanSelector(),
+            vol.Optional(_SECTION_ADVANCED_MCP, default={}): section(
+                vol.Schema(
+                    {
+                        vol.Optional(
+                            CONF_MCP_HEADERS,
+                            default=_format_mcp_headers(options.get(CONF_MCP_HEADERS)),
+                        ): TextSelector(TextSelectorConfig(multiline=True)),
+                        vol.Optional(
+                            CONF_MCP_INCLUDE_RETURN_SCHEMA,
+                            default=options.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True),
+                        ): BooleanSelector(),
+                        vol.Optional(
+                            CONF_MCP_DEFERRED_LOADING,
+                            default=options.get(CONF_MCP_DEFERRED_LOADING, False),
+                        ): BooleanSelector(),
+                    }
+                ),
+                {"collapsed": True},
+            ),
         }
     )
 
@@ -1833,6 +1899,7 @@ def _mcp_tools_schema(
 
 def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
     """Return normalized remote MCP server subentry data."""
+    user_input = _flatten_section_data(user_input, (_SECTION_ADVANCED_MCP,))
     data: dict[str, Any] = {
         CONF_NAME: str(user_input[CONF_NAME]).strip(),
         CONF_MCP_URL: normalise_mcp_url(user_input[CONF_MCP_URL]),
@@ -1897,6 +1964,11 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
     MINOR_VERSION = 2
+
+    _pending_provider_data: dict[str, Any]
+    _pending_provider_entry: ConfigEntry
+    _pending_provider_progress_error: tuple[dict[str, str], dict[str, str]] | None
+    _pending_provider_progress_step: str
 
     def _async_update_provider_and_abort(
         self, entry: ConfigEntry, data: dict[str, Any]
@@ -1976,26 +2048,13 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                 continue
             if _provider_data_matches(current_entry.data, data):
                 return self.async_abort(reason="already_configured")
-        (
-            errors,
-            description_placeholders,
-        ) = await _validate_configured_models_for_provider_update(
-            self.hass,
+        return self._async_show_provider_validation_progress(
             entry,
             data,
-            "reauth",
+            form_step="reauth_confirm",
+            validation_step="reauth",
             skip_reconfigurable_model_errors=True,
         )
-        if errors:
-            return self.async_show_form(
-                step_id="reauth_confirm",
-                data_schema=self.add_suggested_values_to_schema(
-                    _base_schema(data), _provider_form_suggested_values(data)
-                ),
-                errors=errors,
-                description_placeholders=description_placeholders,
-            )
-        return self._async_update_provider_and_abort(entry, data)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -2032,27 +2091,74 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
             if _provider_data_matches(current_entry.data, data):
                 return self.async_abort(reason="already_configured")
 
-        (
-            errors,
-            description_placeholders,
-        ) = await _validate_configured_models_for_provider_update(
-            self.hass,
+        return self._async_show_provider_validation_progress(
             entry,
             data,
-            "provider reconfigure",
+            form_step="reconfigure",
+            validation_step="provider reconfigure",
             skip_reconfigurable_model_errors=False,
         )
-        if errors:
-            return self.async_show_form(
-                step_id="reconfigure",
-                data_schema=self.add_suggested_values_to_schema(
-                    _base_schema(data), _provider_form_suggested_values(data)
-                ),
-                errors=errors,
-                description_placeholders=description_placeholders,
-            )
 
-        return self._async_update_provider_and_abort(entry, data)
+    def _async_show_provider_validation_progress(
+        self,
+        entry: ConfigEntry,
+        data: dict[str, Any],
+        *,
+        form_step: str,
+        validation_step: str,
+        skip_reconfigurable_model_errors: bool,
+    ) -> ConfigFlowResult:
+        """Show progress while validating existing models against provider data."""
+        self._pending_provider_entry = entry
+        self._pending_provider_data = data
+        self._pending_provider_progress_step = form_step
+        self._pending_provider_progress_error = None
+        task = self.hass.async_create_task(
+            _validate_configured_models_for_provider_update(
+                self.hass,
+                entry,
+                data,
+                validation_step,
+                skip_reconfigurable_model_errors,
+            )
+        )
+        return self.async_show_progress(
+            step_id="provider_validation_progress",
+            progress_action="probe_models",
+            progress_task=task,
+        )
+
+    async def async_step_provider_validation_progress(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Finish provider validation progress."""
+        task = self.async_get_progress_task()
+        if task is not None and not task.done():
+            return self.async_show_progress(
+                step_id="provider_validation_progress",
+                progress_action="probe_models",
+                progress_task=task,
+            )
+        self._pending_provider_progress_error = None if task is None else task.result()
+        return self.async_show_progress_done(next_step_id="provider_validation_finish")
+
+    async def async_step_provider_validation_finish(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Update provider data or show validation errors."""
+        data = self._pending_provider_data
+        if self._pending_provider_progress_error is not None:
+            errors, description_placeholders = self._pending_provider_progress_error
+            if errors:
+                return self.async_show_form(
+                    step_id=self._pending_provider_progress_step,
+                    data_schema=self.add_suggested_values_to_schema(
+                        _base_schema(data), _provider_form_suggested_values(data)
+                    ),
+                    errors=errors,
+                    description_placeholders=description_placeholders,
+                )
+        return self._async_update_provider_and_abort(self._pending_provider_entry, data)
 
     @classmethod
     @callback
@@ -2075,6 +2181,7 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
     _model_names: list[str] | None
     _options: dict[str, Any]
     _pending_data: dict[str, Any]
+    _pending_error: tuple[str, dict[str, str]] | None
     _pending_model_settings: dict[str, Any]
 
     @property
@@ -2089,6 +2196,7 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
         self._model_discovery_failed = False
         self._model_names = None
         self._options = {}
+        self._pending_error = None
         return await self.async_step_init(user_input)
 
     async def async_step_reconfigure(
@@ -2098,6 +2206,7 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
         self._model_discovery_failed = False
         self._model_names = None
         self._options = self._get_reconfigure_subentry().data.copy()
+        self._pending_error = None
         return await self.async_step_init(user_input)
 
     async def _async_model_names(self) -> list[str] | None:
@@ -2156,10 +2265,15 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
             return self.async_abort(reason="entry_not_loaded")
 
         if user_input is not None:
-            main_settings, errors, cleared = _parse_model_settings(
-                self.hass, user_input, _MAIN_MODEL_SETTING_KEYS
+            flat_user_input = _flatten_section_data(
+                user_input, (_SECTION_ADVANCED_MODEL_SETTINGS,)
             )
-            data = _model_profile_data_from_user_input(user_input)
+            parsed_settings, errors, cleared = _parse_model_settings(
+                self.hass,
+                flat_user_input,
+                _MAIN_MODEL_SETTING_KEYS | _ADVANCED_MODEL_SETTING_KEYS,
+            )
+            data = _model_profile_data_from_user_input(flat_user_input)
             model_names = await self._async_model_names() if self._is_new else None
             if model_names:
                 default_model = sorted(set(model_names))[0]
@@ -2168,7 +2282,7 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
                     data[CONF_NAME] = data[CONF_MODEL]
             existing_settings = _model_settings_from_options(self._options)
             model_settings = _merge_model_settings(
-                existing_settings, main_settings, cleared
+                existing_settings, parsed_settings, cleared
             )
             if errors:
                 return await self._async_show_model_profile_form(
@@ -2177,15 +2291,6 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
                     | {CONF_MODEL_SETTINGS: model_settings},
                     errors=errors,
                 )
-            if user_input.get(CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS):
-                self._pending_data = data
-                self._pending_model_settings = model_settings
-                return self.async_show_form(
-                    step_id="model_settings",
-                    data_schema=_model_settings_schema(
-                        self._options | {CONF_MODEL_SETTINGS: model_settings}
-                    ),
-                )
             return await self._async_finish_model_profile(data, model_settings)
 
         return await self._async_show_model_profile_form(
@@ -2193,43 +2298,31 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
             show_model_discovery_error=True,
         )
 
-    async def async_step_model_settings(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Manage advanced model profile settings."""
-        if user_input is None:
-            return self.async_show_form(
-                step_id="model_settings",
-                data_schema=_model_settings_schema(
-                    self._options | {CONF_MODEL_SETTINGS: self._pending_model_settings}
-                ),
-            )
-        advanced_settings, errors, cleared = _parse_model_settings(
-            self.hass, user_input, _ADVANCED_MODEL_SETTING_KEYS
-        )
-        cleared.update(_ADVANCED_MODEL_SETTING_KEYS - user_input.keys())
-        model_settings = _merge_model_settings(
-            self._pending_model_settings, advanced_settings, cleared
-        )
-        if errors:
-            return self.async_show_form(
-                step_id="model_settings",
-                data_schema=_model_settings_schema(
-                    self._options | {CONF_MODEL_SETTINGS: model_settings}
-                ),
-                errors=errors,
-            )
-        return await self._async_finish_model_profile(
-            self._pending_data, model_settings, error_step="model_settings"
-        )
-
     async def _async_finish_model_profile(
         self,
         data: dict[str, Any],
         model_settings: Mapping[str, Any],
-        error_step: str = "init",
     ) -> SubentryFlowResult:
         """Probe the model profile, then create or update the subentry."""
+        self._pending_data = dict(data)
+        self._pending_model_settings = dict(model_settings)
+        self._pending_error = None
+        task = self.hass.async_create_task(
+            self._async_probe_model_profile(
+                self._pending_data, self._pending_model_settings
+            )
+        )
+        return self.async_show_progress(
+            step_id="model_profile_progress",
+            progress_action="probe_model",
+            description_placeholders={"model": data[CONF_MODEL]},
+            progress_task=task,
+        )
+
+    async def _async_probe_model_profile(
+        self, data: dict[str, Any], model_settings: Mapping[str, Any]
+    ) -> tuple[str, dict[str, str]] | None:
+        """Return a validation error for the pending model profile, if any."""
         entry = self._get_entry()
         _store_model_settings(data, model_settings)
         try:
@@ -2243,36 +2336,40 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
             _log_provider_validation_failure(
                 step="model profile subentry", model_name=data[CONF_MODEL], err=err
             )
-            if error_step != "model_settings":
-                return await self._async_show_model_profile_form(
-                    options=self._options | data,
-                    errors={"base": err.reason},
-                    description_placeholders=_provider_validation_placeholders(err),
-                )
-            schema = _model_settings_schema(
-                self._options | {CONF_MODEL_SETTINGS: model_settings}
-            )
-            return self.async_show_form(
-                step_id=error_step,
-                data_schema=schema,
-                errors={"base": err.reason},
-                description_placeholders=_provider_validation_placeholders(err),
-            )
+            return err.reason, _provider_validation_placeholders(err)
         except Exception:
             _LOGGER.exception("Unexpected exception validating model profile")
-            if error_step != "model_settings":
-                return await self._async_show_model_profile_form(
-                    options=self._options | data,
-                    errors={"base": "unknown"},
-                )
-            schema = _model_settings_schema(
-                self._options | {CONF_MODEL_SETTINGS: model_settings}
+            return "unknown", {}
+        return None
+
+    async def async_step_model_profile_progress(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Finish the model profile progress step."""
+        task = self.async_get_progress_task()
+        if task is not None and not task.done():
+            return self.async_show_progress(
+                step_id="model_profile_progress",
+                progress_action="probe_model",
+                description_placeholders={"model": self._pending_data[CONF_MODEL]},
+                progress_task=task,
             )
-            return self.async_show_form(
-                step_id=error_step,
-                data_schema=schema,
-                errors={"base": "unknown"},
+        self._pending_error = None if task is None else task.result()
+        return self.async_show_progress_done(next_step_id="model_profile_finish")
+
+    async def async_step_model_profile_finish(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Create/update the model profile or show the validation error."""
+        if self._pending_error is not None:
+            reason, placeholders = self._pending_error
+            return await self._async_show_model_profile_form(
+                options=self._options | self._pending_data,
+                errors={"base": reason},
+                description_placeholders=placeholders,
             )
+        entry = self._get_entry()
+        data = self._pending_data
         if self._is_new:
             return self.async_create_entry(title=data[CONF_NAME], data=data)
         return self.async_update_and_abort(
@@ -2320,25 +2417,28 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
         available_skills = await async_available_skills(self.hass, self._options)
 
         if user_input is not None:
+            flat_user_input = _flatten_section_data(
+                user_input, (_SECTION_EXTERNAL_TOOLS, _SECTION_SKILLS)
+            )
             try:
                 _validate_skills_folder(
                     self.hass,
-                    user_input.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
+                    flat_user_input.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
                 )
             except ProviderValidationError as err:
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_conversation_schema(
                         self.hass,
-                        self._options | user_input,
+                        self._options | flat_user_input,
                         entry,
                         available_skills,
                     ),
                     errors={"base": err.reason},
                     description_placeholders=_provider_validation_placeholders(err),
                 )
-            if _skill_source(user_input) != _skill_source(self._options):
-                refreshed_options = dict(user_input)
+            if _skill_source(flat_user_input) != _skill_source(self._options):
+                refreshed_options = dict(flat_user_input)
                 refreshed_options[CONF_SKILLS_FOLDER] = _normalise_skills_folder(
                     refreshed_options.get(CONF_SKILLS_FOLDER)
                 )
@@ -2357,9 +2457,9 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                     ),
                     errors={"base": "skills_refreshed"},
                 )
-            available_skills = await async_available_skills(self.hass, user_input)
+            available_skills = await async_available_skills(self.hass, flat_user_input)
             data = _conversation_data_from_user_input(
-                user_input,
+                flat_user_input,
                 self._options,
                 available_skills=available_skills,
             )
@@ -2417,6 +2517,8 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing AI task data subentries."""
 
     _options: dict[str, Any]
+    _pending_ai_task_data: dict[str, Any]
+    _pending_ai_task_error: tuple[str, str, dict[str, str]] | None
 
     @property
     def _is_new(self) -> bool:
@@ -2428,6 +2530,8 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Add an AI task data subentry."""
         self._options = {}
+        self._pending_ai_task_data = {}
+        self._pending_ai_task_error = None
         return await self.async_step_init(user_input)
 
     async def async_step_reconfigure(
@@ -2437,6 +2541,8 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
         subentry = self._get_reconfigure_subentry()
         self._options = subentry.data.copy()
         self._options.setdefault(CONF_AI_TASK_NAME, subentry.title)
+        self._pending_ai_task_data = {}
+        self._pending_ai_task_error = None
         return await self.async_step_init(user_input)
 
     async def async_step_init(
@@ -2451,22 +2557,25 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
         available_skills = await async_available_skills(self.hass, self._options)
 
         if user_input is not None:
+            flat_user_input = _flatten_section_data(
+                user_input, (_SECTION_EXTERNAL_TOOLS, _SECTION_SKILLS)
+            )
             try:
                 _validate_skills_folder(
                     self.hass,
-                    user_input.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
+                    flat_user_input.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
                 )
             except ProviderValidationError as err:
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_ai_task_data_schema(
-                        self._options | user_input, entry, available_skills
+                        self._options | flat_user_input, entry, available_skills
                     ),
                     errors={"base": err.reason},
                     description_placeholders=_provider_validation_placeholders(err),
                 )
-            if _skill_source(user_input) != _skill_source(self._options):
-                refreshed_options = dict(user_input)
+            if _skill_source(flat_user_input) != _skill_source(self._options):
+                refreshed_options = dict(flat_user_input)
                 refreshed_options[CONF_SKILLS_FOLDER] = _normalise_skills_folder(
                     refreshed_options.get(CONF_SKILLS_FOLDER)
                 )
@@ -2482,9 +2591,9 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                     ),
                     errors={"base": "skills_refreshed"},
                 )
-            available_skills = await async_available_skills(self.hass, user_input)
+            available_skills = await async_available_skills(self.hass, flat_user_input)
             data = _ai_task_data_from_user_input(
-                user_input,
+                flat_user_input,
                 self._options,
                 available_skills=available_skills,
             )
@@ -2526,6 +2635,20 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 ),
                 errors={CONF_MCP_SERVER_IDS: mcp_error},
             )
+        self._pending_ai_task_data = dict(data)
+        self._pending_ai_task_error = None
+        task = self.hass.async_create_task(self._async_probe_ai_task_options(data))
+        return self.async_show_progress(
+            step_id="ai_task_progress",
+            progress_action="probe_model",
+            progress_task=task,
+        )
+
+    async def _async_probe_ai_task_options(
+        self, data: dict[str, Any]
+    ) -> tuple[str, str, dict[str, str]] | None:
+        """Return an AI task model validation error, if any."""
+        entry = self._get_entry()
         current_model = ""
         try:
             for profile_id in _selected_model_profile_ids(data):
@@ -2543,22 +2666,42 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             _log_provider_validation_failure(
                 step="AI task subentry", model_name=current_model, err=err
             )
-            return self.async_show_form(
-                step_id="init",
-                data_schema=_ai_task_data_schema(
-                    self._options | data, entry, available_skills
-                ),
-                errors={"base": err.reason},
-                description_placeholders=_provider_validation_placeholders(err),
-            )
+            return "base", err.reason, _provider_validation_placeholders(err)
         except Exception:
             _LOGGER.exception("Unexpected exception validating AI task model")
+            return "base", "unknown", {}
+        return None
+
+    async def async_step_ai_task_progress(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Finish AI task validation progress."""
+        task = self.async_get_progress_task()
+        if task is not None and not task.done():
+            return self.async_show_progress(
+                step_id="ai_task_progress",
+                progress_action="probe_model",
+                progress_task=task,
+            )
+        self._pending_ai_task_error = None if task is None else task.result()
+        return self.async_show_progress_done(next_step_id="ai_task_finish")
+
+    async def async_step_ai_task_finish(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Create/update the AI task or show the validation error."""
+        entry = self._get_entry()
+        data = self._pending_ai_task_data
+        available_skills = await async_available_skills(self.hass, data)
+        if self._pending_ai_task_error is not None:
+            field, reason, placeholders = self._pending_ai_task_error
             return self.async_show_form(
                 step_id="init",
                 data_schema=_ai_task_data_schema(
                     self._options | data, entry, available_skills
                 ),
-                errors={"base": "unknown"},
+                errors={field: reason},
+                description_placeholders=placeholders,
             )
         if self._is_new:
             return self.async_create_entry(title=data[CONF_AI_TASK_NAME], data=data)
@@ -2575,6 +2718,8 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
 
     _options: dict[str, Any]
     _pending_data: dict[str, Any]
+    _pending_form_data: dict[str, Any]
+    _pending_mcp_error: tuple[str, str, dict[str, str]] | None
     _tool_options: list[SelectOptionDict]
 
     @property
@@ -2588,6 +2733,8 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         """Add an MCP server subentry."""
         self._options = {}
         self._pending_data = {}
+        self._pending_form_data = {}
+        self._pending_mcp_error = None
         self._tool_options = []
         return await self.async_step_init(user_input)
 
@@ -2597,6 +2744,8 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         """Reconfigure an MCP server subentry."""
         self._options = self._get_reconfigure_subentry().data.copy()
         self._pending_data = {}
+        self._pending_form_data = {}
+        self._pending_mcp_error = None
         self._tool_options = []
         return await self.async_step_init(user_input)
 
@@ -2614,73 +2763,41 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 data_schema=_mcp_server_schema(self._options),
             )
 
+        flat_user_input = _flatten_section_data(user_input, (_SECTION_ADVANCED_MCP,))
         errors: dict[str, str] = {}
         description_placeholders: dict[str, str] = {}
         try:
-            data = _mcp_server_data_from_user_input(user_input)
+            data = _mcp_server_data_from_user_input(flat_user_input)
         except MCPValidationError as err:
             errors[CONF_MCP_URL] = err.reason
             description_placeholders = _mcp_validation_placeholders(err)
-            data = dict(user_input)
+            data = dict(flat_user_input)
         except vol.Invalid as err:
             reason = str(err) or "invalid_mcp_headers"
             if reason == "invalid_mcp_tools":
                 errors[CONF_MCP_ALLOWED_TOOLS] = reason
             else:
                 errors[CONF_MCP_HEADERS] = "invalid_mcp_headers"
-            data = dict(user_input)
+            data = dict(flat_user_input)
         else:
             form_data = (
                 self._options
                 | data
-                | {CONF_MCP_HEADERS: user_input.get(CONF_MCP_HEADERS, "")}
+                | {CONF_MCP_HEADERS: flat_user_input.get(CONF_MCP_HEADERS, "")}
             )
-            try:
-                data[CONF_MCP_URL] = await async_validate_mcp_url(
-                    self.hass, data[CONF_MCP_URL]
-                )
-            except MCPValidationError as err:
-                errors[CONF_MCP_URL] = err.reason
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=_mcp_server_schema(form_data),
-                    errors=errors,
-                    description_placeholders=_mcp_validation_placeholders(err),
-                )
             current_subentry_id = None
             if not self._is_new:
                 current_subentry_id = self._get_reconfigure_subentry().subentry_id
-            if _mcp_url_already_configured(
-                entry, data[CONF_MCP_URL], current_subentry_id
-            ):
-                return self.async_abort(reason="already_configured")
-            try:
-                tools = await async_discover_mcp_tools_from_config(
-                    self.hass,
-                    data,
-                    server_id=current_subentry_id or data[CONF_NAME],
-                    apply_allowlist=False,
-                )
-                existing_allowed_tools = parse_allowed_tools(
-                    self._options.get(CONF_MCP_ALLOWED_TOOLS)
-                )
-                self._tool_options = _mcp_tool_options(tools, existing_allowed_tools)
-                if not self._tool_options:
-                    raise MCPValidationError(
-                        "no_mcp_tools",
-                        "The MCP server did not expose any tools.",
-                    )
-            except MCPValidationError as err:
-                target = CONF_MCP_URL if err.reason == "invalid_mcp_url" else "base"
-                errors[target] = err.reason
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=_mcp_server_schema(form_data),
-                    errors=errors,
-                    description_placeholders=_mcp_validation_placeholders(err),
-                )
-            self._pending_data = data
-            return await self.async_step_tools()
+            self._pending_form_data = form_data
+            self._pending_mcp_error = None
+            task = self.hass.async_create_task(
+                self._async_validate_mcp_server(data, current_subentry_id)
+            )
+            return self.async_show_progress(
+                step_id="mcp_validation_progress",
+                progress_action="validate_mcp",
+                progress_task=task,
+            )
 
         return self.async_show_form(
             step_id="init",
@@ -2688,6 +2805,78 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
             errors=errors,
             description_placeholders=description_placeholders,
         )
+
+    async def _async_validate_mcp_server(
+        self, data: dict[str, Any], current_subentry_id: str | None
+    ) -> tuple[
+        dict[str, Any] | None,
+        list[SelectOptionDict],
+        tuple[str, str, dict[str, str]] | None,
+    ]:
+        """Validate MCP connectivity and return discovered tool options."""
+        try:
+            data = dict(data)
+            data[CONF_MCP_URL] = await async_validate_mcp_url(
+                self.hass, data[CONF_MCP_URL]
+            )
+            tools = await async_discover_mcp_tools_from_config(
+                self.hass,
+                data,
+                server_id=current_subentry_id or data[CONF_NAME],
+                apply_allowlist=False,
+            )
+            existing_allowed_tools = parse_allowed_tools(
+                self._options.get(CONF_MCP_ALLOWED_TOOLS)
+            )
+            tool_options = _mcp_tool_options(tools, existing_allowed_tools)
+            if not tool_options:
+                raise MCPValidationError(
+                    "no_mcp_tools",
+                    "The MCP server did not expose any tools.",
+                )
+        except MCPValidationError as err:
+            target = CONF_MCP_URL if err.reason == "invalid_mcp_url" else "base"
+            return None, [], (target, err.reason, _mcp_validation_placeholders(err))
+        return data, tool_options, None
+
+    async def async_step_mcp_validation_progress(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Finish MCP validation progress."""
+        task = self.async_get_progress_task()
+        if task is not None and not task.done():
+            return self.async_show_progress(
+                step_id="mcp_validation_progress",
+                progress_action="validate_mcp",
+                progress_task=task,
+            )
+        data, tool_options, error = (None, [], None) if task is None else task.result()
+        self._pending_mcp_error = error
+        if data is not None:
+            self._pending_data = data
+            self._tool_options = tool_options
+        return self.async_show_progress_done(next_step_id="mcp_validation_finish")
+
+    async def async_step_mcp_validation_finish(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Advance to tool selection or show MCP validation errors."""
+        if self._pending_mcp_error is not None:
+            target, reason, placeholders = self._pending_mcp_error
+            return self.async_show_form(
+                step_id="init",
+                data_schema=_mcp_server_schema(self._pending_form_data),
+                errors={target: reason},
+                description_placeholders=placeholders,
+            )
+        current_subentry_id = None
+        if not self._is_new:
+            current_subentry_id = self._get_reconfigure_subentry().subentry_id
+        if _mcp_url_already_configured(
+            self._get_entry(), self._pending_data[CONF_MCP_URL], current_subentry_id
+        ):
+            return self.async_abort(reason="already_configured")
+        return await self.async_step_tools()
 
     async def async_step_tools(
         self, user_input: dict[str, Any] | None = None

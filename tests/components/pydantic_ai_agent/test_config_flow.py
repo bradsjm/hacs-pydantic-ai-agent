@@ -9,6 +9,7 @@ import socket
 import ssl
 import sys
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 from _pytest.logging import LogCaptureFixture
@@ -19,6 +20,7 @@ import pytest
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult, SubentryFlowResult
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -48,7 +50,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
-    CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS,
     CONF_ENABLE_SKILLS,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_LOGFIRE_INCLUDE_CONTENT,
@@ -89,6 +90,14 @@ from custom_components.pydantic_ai_agent.mcp import (
 )
 from custom_components.pydantic_ai_agent.skills import AvailableSkill
 from custom_components.pydantic_ai_agent.skills import async_available_skills
+
+
+_SECTION_ADVANCED_MCP = "advanced_mcp"
+_SECTION_ADVANCED_MODEL_SETTINGS = "advanced_model_settings"
+_SECTION_ADVANCED_OPTIONS = "advanced_options"
+_SECTION_EXTERNAL_TOOLS = "external_tools"
+_SECTION_LOGFIRE = "logfire"
+_SECTION_SKILLS = "skill_settings"
 
 
 @pytest.fixture(autouse=True)
@@ -225,6 +234,26 @@ def _model_profile_id(entry: MockConfigEntry) -> str:
         for subentry in entry.subentries.values()
         if subentry.subentry_type == SUBENTRY_TYPE_MODEL
     )
+
+
+async def _finish_progress(
+    hass: HomeAssistant,
+    flow_manager: Any,
+    result: ConfigFlowResult | SubentryFlowResult,
+) -> ConfigFlowResult | SubentryFlowResult:
+    """Return the flow result after a progress task completes."""
+    flow_id = result["flow_id"]
+    for _ in range(20):
+        if result["type"] is FlowResultType.SHOW_PROGRESS:
+            await hass.async_block_till_done()
+            result = await flow_manager.async_configure(flow_id)
+            continue
+        if result["type"] is FlowResultType.SHOW_PROGRESS_DONE:
+            result = await flow_manager.async_configure(flow_id)
+            continue
+        return result
+
+    raise AssertionError(f"Flow did not leave progress state: {result}")
 
 
 def test_http_error_formats_redacted_compact_metadata() -> None:
@@ -978,7 +1007,7 @@ def test_conversation_schema_filters_unavailable_skills(hass: HomeAssistant) -> 
         ],
     )({})
 
-    assert data[CONF_SKILLS] == ["kitchen-skill"]
+    assert data[_SECTION_SKILLS][CONF_SKILLS] == ["kitchen-skill"]
 
 
 def test_ai_task_schema_filters_unavailable_skills() -> None:
@@ -996,7 +1025,7 @@ def test_ai_task_schema_filters_unavailable_skills() -> None:
         ],
     )({})
 
-    assert data[CONF_SKILLS] == ["report-skill"]
+    assert data[_SECTION_SKILLS][CONF_SKILLS] == ["report-skill"]
 
 
 async def test_available_skills_hides_script_skills_until_enabled(
@@ -1065,8 +1094,10 @@ def test_subentry_data_clears_skills_when_field_rendered_empty() -> None:
         {
             CONF_AGENT_NAME: "Kitchen Agent",
             CONF_MODEL: "gpt-test",
-            CONF_ENABLE_SKILLS: True,
-            CONF_SKILLS: [],
+            _SECTION_SKILLS: {
+                CONF_ENABLE_SKILLS: True,
+                CONF_SKILLS: [],
+            },
         },
         {CONF_ENABLE_SKILLS: True, CONF_SKILLS: ["kitchen-skill"]},
         available_skills=[
@@ -1079,8 +1110,10 @@ def test_subentry_data_clears_skills_when_field_rendered_empty() -> None:
         {
             CONF_AI_TASK_NAME: "Report task",
             CONF_MODEL: "gpt-test",
-            CONF_ENABLE_SKILLS: True,
-            CONF_SKILLS: [],
+            _SECTION_SKILLS: {
+                CONF_ENABLE_SKILLS: True,
+                CONF_SKILLS: [],
+            },
         },
         {
             CONF_OUTPUT_MODE: OUTPUT_MODE_NATIVE,
@@ -1104,8 +1137,10 @@ def test_subentry_data_preserves_hidden_skills_with_rendered_field() -> None:
         {
             CONF_AGENT_NAME: "Kitchen Agent",
             CONF_MODEL: "gpt-test",
-            CONF_ENABLE_SKILLS: True,
-            CONF_SKILLS: ["visible-skill"],
+            _SECTION_SKILLS: {
+                CONF_ENABLE_SKILLS: True,
+                CONF_SKILLS: ["visible-skill"],
+            },
         },
         {CONF_ENABLE_SKILLS: True, CONF_SKILLS: ["hidden-skill", "visible-skill"]},
         available_skills=[
@@ -1124,8 +1159,10 @@ def test_subentry_data_clears_hidden_skills_with_empty_selection() -> None:
         {
             CONF_AI_TASK_NAME: "Report task",
             CONF_MODEL: "gpt-test",
-            CONF_ENABLE_SKILLS: True,
-            CONF_SKILLS: [],
+            _SECTION_SKILLS: {
+                CONF_ENABLE_SKILLS: True,
+                CONF_SKILLS: [],
+            },
         },
         {
             CONF_OUTPUT_MODE: OUTPUT_MODE_NATIVE,
@@ -1185,7 +1222,9 @@ def mock_list_provider_model_names() -> Generator[AsyncMock]:
                 CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "local-key",
                 CONF_BASE_URL: "http://localhost:11434/v1/",
-                CONF_PROVIDER_HEADERS: "X-Provider: enabled\nAuthorization: Bearer override",
+                "advanced_options": {
+                    CONF_PROVIDER_HEADERS: "X-Provider: enabled\nAuthorization: Bearer override"
+                },
             },
             {
                 CONF_NAME: "Local LLM",
@@ -1203,8 +1242,10 @@ def mock_list_provider_model_names() -> Generator[AsyncMock]:
                 CONF_NAME: "Hosted OpenAI",
                 CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
-                CONF_LOGFIRE_TOKEN: "   ",
-                CONF_LOGFIRE_INCLUDE_CONTENT: True,
+                "logfire": {
+                    CONF_LOGFIRE_TOKEN: "   ",
+                    CONF_LOGFIRE_INCLUDE_CONTENT: True,
+                },
             },
             {
                 CONF_NAME: "Hosted OpenAI",
@@ -1217,8 +1258,10 @@ def mock_list_provider_model_names() -> Generator[AsyncMock]:
                 CONF_NAME: "Hosted OpenAI",
                 CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
-                CONF_LOGFIRE_TOKEN: " lf-token ",
-                CONF_LOGFIRE_INCLUDE_CONTENT: True,
+                "logfire": {
+                    CONF_LOGFIRE_TOKEN: " lf-token ",
+                    CONF_LOGFIRE_INCLUDE_CONTENT: True,
+                },
             },
             {
                 CONF_NAME: "Hosted OpenAI",
@@ -1293,7 +1336,7 @@ async def test_config_flow_rejects_invalid_provider_headers(
             CONF_NAME: "Hosted OpenAI",
             CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test",
-            CONF_PROVIDER_HEADERS: "not a header",
+            "advanced_options": {CONF_PROVIDER_HEADERS: "not a header"},
         },
     )
 
@@ -1325,7 +1368,7 @@ async def test_conversation_subentry_rejects_skills_folder_outside_config(
         {
             CONF_AGENT_NAME: "Kitchen Agent",
             CONF_MODEL_SUBENTRY_ID: model_profile.subentry_id,
-            CONF_SKILLS_FOLDER: skills_folder,
+            _SECTION_SKILLS: {CONF_SKILLS_FOLDER: skills_folder},
         },
     )
 
@@ -1361,7 +1404,7 @@ async def test_conversation_subentry_rejects_symlinked_skills_folder_escape(
         {
             CONF_AGENT_NAME: "Kitchen Agent",
             CONF_MODEL_SUBENTRY_ID: model_profile.subentry_id,
-            CONF_SKILLS_FOLDER: "/config/skills/escape",
+            _SECTION_SKILLS: {CONF_SKILLS_FOLDER: "/config/skills/escape"},
         },
     )
 
@@ -1450,8 +1493,10 @@ async def test_create_conversation_subentry_with_skills(
             {
                 CONF_AGENT_NAME: "Kitchen Agent",
                 CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
-                CONF_ENABLE_SKILLS: True,
-                CONF_SKILLS: ["kitchen-skill"],
+                _SECTION_SKILLS: {
+                    CONF_ENABLE_SKILLS: True,
+                    CONF_SKILLS: ["kitchen-skill"],
+                },
             },
         )
         assert result["type"] is FlowResultType.FORM
@@ -1461,8 +1506,10 @@ async def test_create_conversation_subentry_with_skills(
             {
                 CONF_AGENT_NAME: "Kitchen Agent",
                 CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
-                CONF_ENABLE_SKILLS: True,
-                CONF_SKILLS: ["kitchen-skill"],
+                _SECTION_SKILLS: {
+                    CONF_ENABLE_SKILLS: True,
+                    CONF_SKILLS: ["kitchen-skill"],
+                },
             },
         )
 
@@ -1486,7 +1533,7 @@ async def test_create_conversation_subentry_with_web_fetch(
         {
             CONF_AGENT_NAME: "Kitchen Agent",
             CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
-            CONF_WEB_FETCH_ENABLED: True,
+            _SECTION_EXTERNAL_TOOLS: {CONF_WEB_FETCH_ENABLED: True},
         },
     )
 
@@ -1518,6 +1565,7 @@ async def test_create_model_profile_with_main_model_settings(
             "thinking": "high",
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_MODEL_SETTINGS] == {
@@ -1548,7 +1596,10 @@ async def test_model_profile_uses_discovered_model_dropdown(
     assert result["step_id"] == "init"
     data_schema = result["data_schema"]
     assert data_schema is not None
-    assert [str(key.schema) for key in data_schema.schema][:2] == [CONF_MODEL, CONF_NAME]
+    assert [str(key.schema) for key in data_schema.schema][:2] == [
+        CONF_MODEL,
+        CONF_NAME,
+    ]
     assert data_schema({})[CONF_NAME] == "gpt-other"
     assert (
         data_schema({CONF_NAME: "Fast GPT", CONF_MODEL: "gpt-test"})[CONF_MODEL]
@@ -1578,6 +1629,7 @@ async def test_model_profile_default_name_tracks_changed_default_model(
             CONF_NAME: "gpt-other",
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_MODEL] == "gpt-test"
@@ -1614,6 +1666,7 @@ async def test_model_profile_falls_back_to_text_when_model_discovery_fails(
             CONF_MODEL: "not-listed",
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_MODEL] == "not-listed"
@@ -1668,35 +1721,26 @@ async def test_create_model_profile_with_advanced_model_settings(
             CONF_MODEL: "gpt-test",
             "temperature": 0.4,
             "thinking": "true",
-            CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS: True,
+            _SECTION_ADVANCED_MODEL_SETTINGS: {
+                "max_tokens": 1024,
+                CONF_MAX_ITERATIONS: 25,
+                "top_p": 0.9,
+                "timeout": 30.0,
+                "parallel_tool_calls": True,
+                "seed": 42,
+                "presence_penalty": 0.2,
+                "frequency_penalty": 0.3,
+                "extra_body": 'reasoning: {"effort": "high"}\nservice_tier: "flex"\nnullable: null',
+                CONF_CHAT_TEMPLATE_KWARGS: [
+                    {
+                        CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
+                    }
+                ],
+            },
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "model_settings"
-    data_schema = result["data_schema"]
-    assert data_schema is not None
-    assert "extra_headers" not in {key.schema for key in data_schema.schema}
-
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {
-            "max_tokens": 1024,
-            CONF_MAX_ITERATIONS: 25,
-            "top_p": 0.9,
-            "timeout": 30.0,
-            "parallel_tool_calls": True,
-            "seed": 42,
-            "presence_penalty": 0.2,
-            "frequency_penalty": 0.3,
-            "extra_body": 'reasoning: {"effort": "high"}\nservice_tier: "flex"\nnullable: null',
-            CONF_CHAT_TEMPLATE_KWARGS: [
-                {
-                    CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
-                    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
-                }
-            ],
-        },
-    )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     expected_settings = {
         "temperature": 0.4,
@@ -1776,7 +1820,7 @@ async def test_model_profile_advanced_model_settings_validation_errors(
     advanced_input: dict[str, object],
     expected_errors: dict[str, str],
 ) -> None:
-    """Test invalid advanced model settings stay on the advanced step."""
+    """Test invalid advanced model settings stay on the model form."""
     entry = await _loaded_entry(hass, with_model_profile=True)
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_MODEL),
@@ -1787,16 +1831,12 @@ async def test_model_profile_advanced_model_settings_validation_errors(
         {
             CONF_NAME: "Fast GPT",
             CONF_MODEL: "gpt-test",
-            CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS: True,
+            _SECTION_ADVANCED_MODEL_SETTINGS: advanced_input,
         },
     )
 
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], advanced_input
-    )
-
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "model_settings"
+    assert result["step_id"] == "init"
     assert result["errors"] == expected_errors
 
 
@@ -1817,17 +1857,13 @@ async def test_model_profile_advanced_model_settings_probe_error_stays_on_step(
         {
             CONF_NAME: "Fast GPT",
             CONF_MODEL: "gpt-test",
-            CONF_CONFIGURE_ADVANCED_MODEL_SETTINGS: True,
+            _SECTION_ADVANCED_MODEL_SETTINGS: {"timeout": 30.0},
         },
     )
-
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {"timeout": 30.0},
-    )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "model_settings"
+    assert result["step_id"] == "init"
     assert result["errors"] == {"base": "rate_limited"}
     mock_probe_model.assert_awaited_once_with(
         hass, entry.data, "gpt-test", {"timeout": 30.0}
@@ -1854,6 +1890,7 @@ async def test_create_ai_task_data_subentry(
             CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Report task"
@@ -1895,8 +1932,10 @@ async def test_create_ai_task_data_subentry_with_skills(
             {
                 CONF_AI_TASK_NAME: "Report task",
                 CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
-                CONF_ENABLE_SKILLS: True,
-                CONF_SKILLS: ["report-skill"],
+                _SECTION_SKILLS: {
+                    CONF_ENABLE_SKILLS: True,
+                    CONF_SKILLS: ["report-skill"],
+                },
             },
         )
         assert result["type"] is FlowResultType.FORM
@@ -1906,10 +1945,13 @@ async def test_create_ai_task_data_subentry_with_skills(
             {
                 CONF_AI_TASK_NAME: "Report task",
                 CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
-                CONF_ENABLE_SKILLS: True,
-                CONF_SKILLS: ["report-skill"],
+                _SECTION_SKILLS: {
+                    CONF_ENABLE_SKILLS: True,
+                    CONF_SKILLS: ["report-skill"],
+                },
             },
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
@@ -1943,9 +1985,10 @@ async def test_create_ai_task_data_subentry_with_web_fetch(
         {
             CONF_AI_TASK_NAME: "Report task",
             CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
-            CONF_WEB_FETCH_ENABLED: True,
+            _SECTION_EXTERNAL_TOOLS: {CONF_WEB_FETCH_ENABLED: True},
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
@@ -1986,6 +2029,7 @@ async def test_create_ai_task_output_failure_rerenders_init_step(
             CONF_OUTPUT_MODE: OUTPUT_MODE_TOOL,
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
@@ -2032,9 +2076,12 @@ async def test_create_mcp_server_subentry(
             {
                 CONF_NAME: "Filesystem MCP",
                 CONF_MCP_URL: "https://8.8.8.8/mcp",
-                CONF_MCP_HEADERS: "Authorization: Bearer token",
+                _SECTION_ADVANCED_MCP: {
+                    CONF_MCP_HEADERS: "Authorization: Bearer token"
+                },
             },
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
         assert result["type"] is FlowResultType.FORM
         assert result["step_id"] == "tools"
         data_schema = result["data_schema"]
@@ -2100,9 +2147,10 @@ async def test_create_mcp_server_subentry_stores_deferred_loading(
             {
                 CONF_NAME: "Deferred MCP",
                 CONF_MCP_URL: "https://8.8.8.8/mcp",
-                CONF_MCP_DEFERRED_LOADING: True,
+                _SECTION_ADVANCED_MCP: {CONF_MCP_DEFERRED_LOADING: True},
             },
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
             {CONF_MCP_ALLOWED_TOOLS: ["read_file"]},
@@ -2175,6 +2223,7 @@ async def test_create_mcp_server_subentry_allows_local_http_url(
                 CONF_MCP_URL: "http://localhost:8080/mcp?token=plain",
             },
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
             {CONF_MCP_ALLOWED_TOOLS: ["local_tool"]},
@@ -2288,6 +2337,7 @@ async def test_create_mcp_server_subentry_validates_endpoint(
             result["flow_id"],
             {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
@@ -2313,6 +2363,7 @@ async def test_create_mcp_server_subentry_rejects_empty_tool_selection(
             result["flow_id"],
             {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
             {CONF_MCP_ALLOWED_TOOLS: []},
@@ -2342,6 +2393,7 @@ async def test_create_mcp_server_subentry_rejects_empty_discovery(
             result["flow_id"],
             {CONF_NAME: "Empty MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
@@ -2381,7 +2433,9 @@ async def test_reconfigure_mcp_server_subentry_drops_stale_tools(
     assert result["step_id"] == "init"
     data_schema = result["data_schema"]
     assert data_schema is not None
-    assert data_schema({})[CONF_MCP_INCLUDE_RETURN_SCHEMA] is False
+    assert (
+        data_schema({})[_SECTION_ADVANCED_MCP][CONF_MCP_INCLUDE_RETURN_SCHEMA] is False
+    )
 
     with patch(
         "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
@@ -2393,9 +2447,10 @@ async def test_reconfigure_mcp_server_subentry_drops_stale_tools(
             {
                 CONF_NAME: "Echo MCP",
                 CONF_MCP_URL: "https://mcp.example.com/mcp",
-                CONF_MCP_INCLUDE_RETURN_SCHEMA: False,
+                _SECTION_ADVANCED_MCP: {CONF_MCP_INCLUDE_RETURN_SCHEMA: False},
             },
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
         assert result["type"] is FlowResultType.FORM
         assert result["step_id"] == "tools"
 
@@ -2448,6 +2503,7 @@ async def test_reconfigure_mcp_server_subentry_defaults_to_existing_allowlist(
             result["flow_id"],
             {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
         assert result["type"] is FlowResultType.FORM
         assert result["step_id"] == "tools"
         data_schema = result["data_schema"]
@@ -2494,7 +2550,10 @@ async def test_reconfigure_mcp_server_subentry_clears_headers(
     )
     data_schema = result["data_schema"]
     assert data_schema is not None
-    assert data_schema({})[CONF_MCP_HEADERS] == "Authorization: Bearer token"
+    assert (
+        data_schema({})[_SECTION_ADVANCED_MCP][CONF_MCP_HEADERS]
+        == "Authorization: Bearer token"
+    )
 
     with patch(
         "custom_components.pydantic_ai_agent.config_flow.async_discover_mcp_tools_from_config",
@@ -2506,9 +2565,10 @@ async def test_reconfigure_mcp_server_subentry_clears_headers(
             {
                 CONF_NAME: "Echo MCP",
                 CONF_MCP_URL: "https://mcp.example.com/mcp",
-                CONF_MCP_HEADERS: "",
+                _SECTION_ADVANCED_MCP: {CONF_MCP_HEADERS: ""},
             },
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
             {CONF_MCP_ALLOWED_TOOLS: ["echo"]},
@@ -2564,7 +2624,7 @@ async def test_reconfigure_mcp_server_subentry_preserves_invalid_header_input(
         {
             CONF_NAME: "Echo MCP",
             CONF_MCP_URL: "https://mcp.example.com/mcp",
-            CONF_MCP_HEADERS: raw_headers,
+            _SECTION_ADVANCED_MCP: {CONF_MCP_HEADERS: raw_headers},
         },
     )
 
@@ -2572,7 +2632,7 @@ async def test_reconfigure_mcp_server_subentry_preserves_invalid_header_input(
     assert result["errors"] == {CONF_MCP_HEADERS: "invalid_mcp_headers"}
     data_schema = result["data_schema"]
     assert data_schema is not None
-    assert data_schema({})[CONF_MCP_HEADERS] == raw_headers
+    assert data_schema({})[_SECTION_ADVANCED_MCP][CONF_MCP_HEADERS] == raw_headers
 
 
 async def test_reconfigure_selected_mcp_server_subentry_reaches_tool_selection(
@@ -2623,6 +2683,7 @@ async def test_reconfigure_selected_mcp_server_subentry_reaches_tool_selection(
             result["flow_id"],
             {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "tools"
@@ -2650,6 +2711,7 @@ async def test_create_ai_task_data_subentry_with_output_mode(
             CONF_OUTPUT_MODE: output_mode,
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
@@ -2719,6 +2781,7 @@ async def test_config_flow_validation_error(
             CONF_MODEL: "gpt-test",
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
@@ -2751,6 +2814,7 @@ async def test_conversation_subentry_maps_real_probe_http_error(
                 CONF_MODEL: "gpt-test",
             },
         )
+        result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
@@ -2788,6 +2852,7 @@ async def test_config_flow_logs_rate_limit_validation_error(
             CONF_MODEL: "gpt-test",
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
@@ -2832,6 +2897,7 @@ async def test_config_flow_model_behavior_error_avoids_traceback(
             CONF_MODEL: "gpt-test",
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
@@ -2903,7 +2969,7 @@ async def test_reconfigure_provider_data_updates_entry(
                 CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                 CONF_API_KEY: "sk-test",
             }
-        )[CONF_PROVIDER_HEADERS]
+        )["advanced_options"][CONF_PROVIDER_HEADERS]
         == "X-Old: value"
     )
 
@@ -2914,9 +2980,10 @@ async def test_reconfigure_provider_data_updates_entry(
             CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "local-key",
             CONF_BASE_URL: "http://localhost:11434/v1/",
-            CONF_PROVIDER_HEADERS: "X-New: value",
+            "advanced_options": {CONF_PROVIDER_HEADERS: "X-New: value"},
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.flow, result)
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
@@ -3042,6 +3109,7 @@ async def test_reconfigure_provider_uses_update_listener_for_reload(
                 CONF_API_KEY: "local-key",
             },
         )
+        result = await _finish_progress(hass, hass.config_entries.flow, result)
         await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.ABORT
@@ -3078,6 +3146,7 @@ async def test_reauth_provider_without_update_listener_schedules_reload(
                 CONF_API_KEY: "new-key",
             },
         )
+        result = await _finish_progress(hass, hass.config_entries.flow, result)
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reauth_successful"
@@ -3104,10 +3173,13 @@ async def test_reconfigure_provider_blank_logfire_token_disables_logfire(
             CONF_NAME: "Hosted OpenAI",
             CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test-updated",
-            CONF_LOGFIRE_TOKEN: "",
-            CONF_LOGFIRE_INCLUDE_CONTENT: False,
+            "logfire": {
+                CONF_LOGFIRE_TOKEN: "",
+                CONF_LOGFIRE_INCLUDE_CONTENT: False,
+            },
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.flow, result)
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
@@ -3131,6 +3203,7 @@ async def test_reconfigure_provider_keeps_custom_base_url(
             CONF_BASE_URL: "http://localhost:11434/v1/",
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.flow, result)
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
@@ -3197,6 +3270,7 @@ async def test_reconfigure_provider_allows_default_base_url(
             CONF_API_KEY: "local-key",
         },
     )
+    result = await _finish_progress(hass, hass.config_entries.flow, result)
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
