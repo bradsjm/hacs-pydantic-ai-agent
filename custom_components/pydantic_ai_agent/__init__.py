@@ -92,6 +92,7 @@ class _ConfiguredModelProbe:
     model_settings: dict[str, Any]
     output_mode: str | None
 
+
 PLATFORMS: tuple[Platform, ...] = (
     Platform.CONVERSATION,
     Platform.AI_TASK,
@@ -211,13 +212,14 @@ async def async_migrate_entry(
     old_script_configured = CONF_ENABLE_SKILL_SCRIPT_EXECUTION in entry.data
 
     for subentry in entry.subentries.values():
-        if subentry.subentry_type not in {SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK}:
+        if subentry.subentry_type not in {
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        }:
             continue
         data = dict(subentry.data)
         enable_skills = (
-            bool(data.get(CONF_SKILLS))
-            or old_folder_configured
-            or old_script_execution
+            bool(data.get(CONF_SKILLS)) or old_folder_configured or old_script_execution
         )
         if enable_skills:
             data[CONF_ENABLE_SKILLS] = True
@@ -520,7 +522,12 @@ async def _async_validate_configured_models(
                 raise ConfigEntryAuthFailed(err.message) from err
             if err.reason in _RECONFIGURABLE_MODEL_FAILURE_REASONS:
                 async_create_model_validation_issue(
-                    hass, entry, probe.issue_profile_id, probe.model, repair_settings, err
+                    hass,
+                    entry,
+                    probe.issue_profile_id,
+                    probe.model,
+                    repair_settings,
+                    err,
                 )
                 continue
             raise ConfigEntryNotReady(err.message) from err

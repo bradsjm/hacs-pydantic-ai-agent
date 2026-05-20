@@ -129,7 +129,9 @@ def primary_model_profile(
 
 
 def model_profile_chain(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry, owner_subentry: ConfigSubentry
+    hass: HomeAssistant,
+    entry: PydanticAIAgentConfigEntry,
+    owner_subentry: ConfigSubentry,
 ) -> list[ModelProfile]:
     """Return primary profile followed by ordered fallback profiles."""
     primary = primary_model_profile(entry, owner_subentry)
@@ -193,7 +195,11 @@ def chat_model_for_profile(
 ) -> Any:
     """Build the configured Pydantic AI model for one profile."""
     entry = hass.config_entries.async_get_entry(profile.owner_entry_id)
-    if entry is None or entry.domain != DOMAIN or entry.state != ConfigEntryState.LOADED:
+    if (
+        entry is None
+        or entry.domain != DOMAIN
+        or entry.state != ConfigEntryState.LOADED
+    ):
         raise HomeAssistantError("Configured model profile provider was not found")
     runtime_data = entry.runtime_data
     kwargs = {

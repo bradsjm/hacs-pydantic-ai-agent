@@ -32,6 +32,7 @@ CONF_PROVIDER_HEADERS = "provider_headers"
 CONF_PROVIDER_MODE = "provider_mode"
 CONF_SKILLS = "skills"
 CONF_SKILLS_FOLDER = "skills_folder"
+CONF_TODO_LIST_ENTITY_ID = "todo_list_entity_id"
 CONF_WEB_FETCH_ENABLED = "web_fetch_enabled"
 
 PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS = "openai_compatible_completions"

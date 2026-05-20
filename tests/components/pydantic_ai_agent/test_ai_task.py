@@ -35,6 +35,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_OUTPUT_MODE,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
+    CONF_TODO_LIST_ENTITY_ID,
     CONF_WEB_FETCH_ENABLED,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
@@ -96,6 +97,7 @@ def _entry(
     legacy_task_name: bool = False,
     web_fetch_enabled: bool = False,
     model_settings: dict[str, object] | None = None,
+    todo_workspace_entity_id: str | None = None,
 ) -> MockConfigEntry:
     """Return a config entry with one AI task subentry."""
     subentry_data: dict[str, object] = {CONF_MODEL_SUBENTRY_ID: "task_model_profile"}
@@ -108,6 +110,8 @@ def _entry(
         subentry_data[CONF_SKILLS] = skills
     if web_fetch_enabled:
         subentry_data[CONF_WEB_FETCH_ENABLED] = True
+    if todo_workspace_entity_id is not None:
+        subentry_data[CONF_TODO_LIST_ENTITY_ID] = todo_workspace_entity_id
     model_subentry_data: dict[str, object] = {
         CONF_NAME: "Task Model",
         CONF_MODEL: "task-model",
@@ -160,6 +164,7 @@ async def _setup_ai_task_entity(
     *,
     web_fetch_enabled: bool = False,
     model_settings: dict[str, object] | None = None,
+    todo_workspace_entity_id: str | None = None,
 ) -> str:
     """Set up an AI task config entry and return its entity ID."""
     entry = _entry(
@@ -167,6 +172,7 @@ async def _setup_ai_task_entity(
         skills,
         web_fetch_enabled=web_fetch_enabled,
         model_settings=model_settings,
+        todo_workspace_entity_id=todo_workspace_entity_id,
     )
     entry.add_to_hass(hass)
 
@@ -413,6 +419,69 @@ async def test_plain_data_task_uses_thinking_capability(hass: HomeAssistant) -> 
     thinking = _thinking_capabilities(capabilities)
     assert len(thinking) == 1
     assert thinking[0].effort is False
+
+
+async def test_ai_task_runtime_adds_todo_workspace_tools(
+    hass: HomeAssistant,
+) -> None:
+    """Test configured todo workspace clears and adds tools/instructions."""
+    entity_id = await _setup_ai_task_entity(
+        hass, todo_workspace_entity_id="todo.ai_workspace"
+    )
+    fake_toolset = object()
+    calls: list[str] = []
+
+    class FakeTodoWorkspace:
+        """Minimal todo workspace test double."""
+
+        def __init__(self, hass: HomeAssistant, entity_id: str) -> None:
+            """Initialize fake workspace."""
+            self.hass = hass
+            self.entity_id = entity_id
+
+        async def prepare_run(self) -> str:
+            """Record preparation."""
+            calls.append("prepare")
+            return "cleared"
+
+        async def read_items(self) -> str:
+            """Return initial workspace state."""
+            calls.append("read")
+            return "Summary: 0 completed, 0 in progress, 0 pending"
+
+        def toolset(self) -> object:
+            """Return fake toolset."""
+            return fake_toolset
+
+        def instructions(self, initial_state: str) -> str:
+            """Return fake instructions."""
+            return f"todo instructions: {initial_state}"
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.ai_task.TodoWorkspace",
+            FakeTodoWorkspace,
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(stream_text="plain result"),
+        ) as agent_class,
+    ):
+        result = await ai_task.async_generate_data(
+            hass,
+            task_name="Plain task",
+            entity_id=entity_id,
+            instructions="Generate text",
+        )
+
+    assert result.data == "plain result"
+    assert calls == ["prepare", "read"]
+    assert agent_class.call_args.kwargs["toolsets"] == [fake_toolset]
+    assert agent_class.call_args.kwargs["instructions"].startswith("todo instructions")
 
 
 async def test_structured_data_task_fires_output_event(hass: HomeAssistant) -> None:

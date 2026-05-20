@@ -1,31 +1,38 @@
+# Custom Intents
+
 Home Assistant uses a multi-stage intent recognition system based on the `hassil` library, which matches user text against predefined sentence templates rather than simple keywords or regex patterns. The system progresses through several matching stages with increasing flexibility.
 
 ## Matching Stages
 
-The `DefaultAgent` class implements a four-stage matching process in the `_recognize` method [2](#0-1) :
+The `DefaultAgent` class implements a four-stage matching process in the `_recognize` method [2]:
 
-1. **EXPOSED_ENTITIES_ONLY** - Strict matching against only entities explicitly exposed to Assist [3](#0-2) 
-2. **FUZZY** - Uses `FuzzyNgramMatcher` to guess intents when exact match fails [4](#0-3) 
-3. **UNEXPOSED_ENTITIES** - Fallback to match against all entities including unexposed ones [5](#0-4) 
-4. **UNKNOWN_NAMES** - Captures names not known to Home Assistant for error messages [6](#0-5) 
+1. **EXPOSED_ENTITIES_ONLY** - Strict matching against only entities explicitly exposed to Assist [3]
+2. **FUZZY** - Uses `FuzzyNgramMatcher` to guess intents when exact match fails [4]
+3. **UNEXPOSED_ENTITIES** - Fallback to match against all entities including unexposed ones [5]
+4. **UNKNOWN_NAMES** - Captures names not known to Home Assistant for error messages [6]
 
 ## Matching Mechanisms
 
 ### Strict Matching
-Uses `recognize_best()` from hassil to find the best match against sentence templates with exact wording [7](#0-6) . This filters entities by input text before matching to improve performance [8](#0-7) .
+
+Uses `recognize_best()` from hassil to find the best match against sentence templates with exact wording [7]. This filters entities by input text before matching to improve performance [8].
 
 ### Fuzzy Matching
-Uses `FuzzyNgramMatcher` with n-gram models to handle variations in wording [9](#0-8) . This is loaded from the `home-assistant-intents` package which contains pre-built models [10](#0-9) .
+
+Uses `FuzzyNgramMatcher` with n-gram models to handle variations in wording [9]. This is loaded from the `home-assistant-intents` package which contains pre-built models [10].
 
 ### Sentence Templates
-Intents are defined as sentence templates in the `home-assistant-intents` package, not keywords or regex [11](#0-10) . Custom sentences can be added via YAML files in `<config>/custom_sentences/<language>/` [12](#0-11) .
+
+Intents are defined as sentence templates in the `home-assistant-intents` package, not keywords or regex [11]. Custom sentences can be added via YAML files in `<config>/custom_sentences/<language>/` [12].
 
 ## Sentence Triggers
-Separate from intents, sentence triggers allow automation-specific matching using the same hassil recognition system [13](#0-12) .
+
+Separate from intents, sentence triggers allow automation-specific matching using the same hassil recognition system [13].
 
 ### Citations
 
 **File:** homeassistant/components/assist_pipeline/pipeline.py (L1081-1126)
+
 ```python
     async def recognize_intent(
         self,
@@ -76,6 +83,7 @@ Separate from intents, sentence triggers allow automation-specific matching usin
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L37-47)
+
 ```python
 from home_assistant_intents import (
     ErrorKey,
@@ -91,18 +99,21 @@ from home_assistant_intents import (
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L135-136)
+
 ```python
     EXPOSED_ENTITIES_ONLY = auto()
     """Match against exposed entities only."""
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L141-142)
+
 ```python
     UNEXPOSED_ENTITIES = auto()
     """Match against unexposed entities in Home Assistant."""
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L356-362)
+
 ```python
         if self._exposed_names_trie is not None:
             # Filter by input string
@@ -114,6 +125,7 @@ from home_assistant_intents import (
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L655-817)
+
 ```python
     def _recognize(
         self,
@@ -281,6 +293,7 @@ from home_assistant_intents import (
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L819-867)
+
 ```python
     def _recognize_fuzzy(
         self, lang_intents: LanguageIntents, user_input: ConversationInput
@@ -334,6 +347,7 @@ from home_assistant_intents import (
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L869-947)
+
 ```python
     def _recognize_unknown_names(
         self,
@@ -417,6 +431,7 @@ from home_assistant_intents import (
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L1001-1018)
+
 ```python
     def _recognize_strict(
         self,
@@ -439,6 +454,7 @@ from home_assistant_intents import (
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L1154-1165)
+
 ```python
         lang_variant_intents = get_intents(language_variant, json_load=json_load)
 
@@ -455,6 +471,7 @@ from home_assistant_intents import (
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L1167-1208)
+
 ```python
         # Check for custom sentences in <config>/custom_sentences/<language>/
         custom_sentences_dir = Path(
@@ -501,6 +518,7 @@ from home_assistant_intents import (
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L1261-1291)
+
 ```python
         fuzzy_matcher = FuzzyNgramMatcher(
             intents=intents,
@@ -536,6 +554,7 @@ from home_assistant_intents import (
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L1502-1546)
+
 ```python
     async def async_recognize_sentence_trigger(
         self, user_input: ConversationInput
@@ -588,9 +607,9 @@ Here is a complete, self-contained example based on the patterns used in `assist
 
 ## How it works
 
-The key insight is that `Intents.from_dict()` accepts the same dict structure as the YAML files, so you can build it programmatically at runtime. The `_rebuild_trigger_intents` method in `DefaultAgent` is the canonical example of this pattern. [1](#4-0) 
+The key insight is that `Intents.from_dict()` accepts the same dict structure as the YAML files, so you can build it programmatically at runtime. The `_rebuild_trigger_intents` method in `DefaultAgent` is the canonical example of this pattern. [1]
 
-The `assist_satellite` entity does the same thing for question-answer matching: [2](#4-1) [3](#4-2) 
+The `assist_satellite` entity does the same thing for question-answer matching: [2] [3]
 
 ## Complete example
 
@@ -766,7 +785,7 @@ def _collect_list_references(expression: Expression, list_names: set[str]) -> No
         list_names.add(expression.slot_name)
 ```
 
-This helper is copied verbatim from `default_agent.py`: [4](#4-3) 
+This helper is copied verbatim from `default_agent.py`: [4]
 
 ## Usage in `async_setup_entry`
 
@@ -794,11 +813,12 @@ async def async_setup_entry(hass, entry):
 - `Intents.from_dict()` accepts the same structure as the YAML files, so the sentence template syntax is identical (optional words `[...]`, alternatives `(a|b)`, slots `{name}`).
 - Any `{slot_name}` in a template is automatically treated as a wildcard (captures any text) by the `_collect_list_references` + `WildcardSlotList` step. If you want a fixed list of values for a slot instead, add it to `compiled.slot_lists` as a `TextSlotList`.
 - `recognize_best` returns `None` on no match, so the fallthrough to the LLM is clean.
-- The matching runs in `async_add_executor_job` because hassil is synchronous and CPU-bound, consistent with how `DefaultAgent` handles it. [5](#4-4)
+- The matching runs in `async_add_executor_job` because hassil is synchronous and CPU-bound, consistent with how `DefaultAgent` handles it. [5]
 
 ### Citations
 
 **File:** homeassistant/components/conversation/default_agent.py (L366-374)
+
 ```python
         result = await self.hass.async_add_executor_job(
             self._recognize,
@@ -812,6 +832,7 @@ async def async_setup_entry(hass, entry):
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L1480-1498)
+
 ```python
     def _rebuild_trigger_intents(self) -> None:
         """Rebuild the HassIL intents object from the trigger intents dict."""
@@ -835,6 +856,7 @@ async def async_setup_entry(hass, entry):
 ```
 
 **File:** homeassistant/components/conversation/default_agent.py (L1858-1865)
+
 ```python
 def _collect_list_references(expression: Expression, list_names: set[str]) -> None:
     """Collect list reference names recursively."""
@@ -847,6 +869,7 @@ def _collect_list_references(expression: Expression, list_names: set[str]) -> No
 ```
 
 **File:** homeassistant/components/assist_satellite/entity.py (L13-15)
+
 ```python
 from hassil import Intents, recognize
 from hassil.expression import Expression, Group, ListReference
@@ -854,6 +877,7 @@ from hassil.intents import WildcardSlotList
 ```
 
 **File:** homeassistant/components/assist_satellite/entity.py (L394-422)
+
 ```python
         intents = Intents.from_dict(
             {

@@ -14,10 +14,12 @@ from . import PydanticAIAgentConfigEntry
 from .const import (
     CONF_AI_TASK_NAME,
     CONF_OUTPUT_MODE,
+    CONF_TODO_LIST_ENTITY_ID,
     CONF_WEB_FETCH_ENABLED,
     SUBENTRY_TYPE_AI_TASK,
 )
 from .entity import AgentRunOutcome, PydanticAIBaseLLMEntity
+from .ha_todo_tools import TodoWorkspace, todo_workspace_lock
 from .metrics import EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED, fire_integration_event
 from .model_profiles import model_display_names, model_profile_chain
 from .structured_output import structured_output_mode
@@ -76,6 +78,9 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
             "web_fetch_enabled": bool(
                 self.subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
             ),
+            "todo_workspace_enabled": bool(
+                self.subentry.data.get(CONF_TODO_LIST_ENTITY_ID)
+            ),
         }
 
     async def _async_generate_data(
@@ -84,13 +89,30 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
         chat_log: conversation.ChatLog,
     ) -> ai_task.GenDataTaskResult:
         """Generate task data and validate structured responses when requested."""
-        outcome = await self._async_handle_chat_log(
-            chat_log,
-            structure_name=task.name,
-            structure=task.structure,
-            max_iterations=30,
-            record_success=task.structure is None,
-        )
+        todo_entity_id = self.subentry.data.get(CONF_TODO_LIST_ENTITY_ID)
+        if isinstance(todo_entity_id, str) and todo_entity_id:
+            workspace = TodoWorkspace(self.hass, todo_entity_id)
+            lock = todo_workspace_lock(self.hass, todo_entity_id)
+            async with lock:
+                await workspace.prepare_run()
+                initial_state = await workspace.read_items()
+                outcome = await self._async_handle_chat_log(
+                    chat_log,
+                    structure_name=task.name,
+                    structure=task.structure,
+                    max_iterations=30,
+                    record_success=task.structure is None,
+                    extra_toolsets=(workspace.toolset(),),
+                    extra_instructions=workspace.instructions(initial_state),
+                )
+        else:
+            outcome = await self._async_handle_chat_log(
+                chat_log,
+                structure_name=task.name,
+                structure=task.structure,
+                max_iterations=30,
+                record_success=task.structure is None,
+            )
 
         # After all tool calls resolve, ChatLog's final assistant message carries
         # the model output that Home Assistant expects for the task result.

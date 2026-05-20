@@ -766,7 +766,9 @@ async def test_setup_entry_skips_foreign_fallback_validation_error(
     ]
     entry = _entry(
         (
-            _model_subentry("task_model_profile", name="Task Model", model="task-model"),
+            _model_subentry(
+                "task_model_profile", name="Task Model", model="task-model"
+            ),
             ai_task_subentry,
         )
     )

@@ -37,7 +37,7 @@ from pydantic_ai.messages import (
     ToolReturnPart,
 )
 from pydantic_ai.settings import ModelSettings
-from pydantic_ai.toolsets import DeferredLoadingToolset
+from pydantic_ai.toolsets import AbstractToolset, DeferredLoadingToolset
 from pydantic_ai.usage import UsageLimits
 import voluptuous as vol
 
@@ -148,6 +148,8 @@ class PydanticAIBaseLLMEntity:
         max_iterations: int = 10,
         record_success: bool = True,
         stream: bool = False,
+        extra_toolsets: Sequence[AbstractToolset[Any]] = (),
+        extra_instructions: str | None = None,
     ) -> object | None:
         """Run a Pydantic AI Agent and stream its response into ChatLog."""
         profiles = model_profile_chain(self.hass, self.entry, self.subentry)
@@ -197,10 +199,10 @@ class PydanticAIBaseLLMEntity:
                     self.entry,
                     self.subentry.data.get(CONF_MCP_SERVER_IDS),
                 )
+                toolsets = [*mcp_toolsets, *extra_toolsets]
                 run_capabilities = list(capabilities)
                 if any(
-                    isinstance(toolset, DeferredLoadingToolset)
-                    for toolset in mcp_toolsets
+                    isinstance(toolset, DeferredLoadingToolset) for toolset in toolsets
                 ):
                     run_capabilities = [
                         capability
@@ -213,11 +215,12 @@ class PydanticAIBaseLLMEntity:
                 agent = Agent(
                     chat_model_for_profile(self.hass, profile),
                     output_type=cast(Any, agent_output_type),
+                    instructions=extra_instructions,
                     model_settings=settings,
                     tool_retries=0,
                     output_retries=2,
                     tools=tools_from_llm_api(chat_log.llm_api),
-                    toolsets=mcp_toolsets,
+                    toolsets=toolsets,
                     max_concurrency=1,
                     capabilities=run_capabilities,
                 )

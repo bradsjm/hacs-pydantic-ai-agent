@@ -185,6 +185,8 @@
         "rate_limited": "{error_message}",
         "skills_refreshed": "Skill options were refreshed. Review selected skills and submit again.",
         "timeout": "{error_message}",
+        "todo_list_not_found": "Selected todo workspace list was not found.",
+        "todo_list_unsupported": "Selected todo workspace list must support creating, updating, deleting, and item descriptions.",
         "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details.",
         "unsupported_output_mode": "{error_message}"
       },
@@ -207,6 +209,7 @@
             "output_mode": "Structured output mode",
             "skills": "Skills",
             "skills_folder": "Skills folder",
+            "todo_list_entity_id": "Todo workspace list",
             "web_fetch_enabled": "Web fetch"
           },
           "data_description": {
@@ -217,6 +220,7 @@
             "output_mode": "Tool output is the default and works with providers that support tool calls. Native uses the provider's JSON schema support. Prompted asks for JSON in the prompt and validates the result.",
             "skills": "Optional local skills this AI task may load from its configured skills folder.",
             "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
+            "todo_list_entity_id": "Optional dedicated todo list for model planning. When set, this list is cleared before every AI Task run and the model can only manage items in this list.",
             "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs."
           },
           "description": "Name this AI task and choose its language model profile for Home Assistant data generation.",
@@ -224,10 +228,12 @@
             "external_tools": {
               "data": {
                 "mcp_server_ids": "MCP servers",
+                "todo_list_entity_id": "Todo workspace list",
                 "web_fetch_enabled": "Web fetch"
               },
               "data_description": {
                 "mcp_server_ids": "Optional MCP servers this AI task may use. Only enabled tools will be made available.",
+                "todo_list_entity_id": "Optional dedicated todo list for model planning. When set, this list is cleared before every AI Task run and the model can only manage items in this list.",
                 "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs."
               },
               "name": "External tools and data"

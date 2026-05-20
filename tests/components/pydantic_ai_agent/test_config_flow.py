@@ -20,6 +20,7 @@ import pytest
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.components.todo import TodoListEntityFeature
 from homeassistant.config_entries import ConfigFlowResult, SubentryFlowResult
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
@@ -70,6 +71,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_SKILLS_FOLDER,
+    CONF_TODO_LIST_ENTITY_ID,
     CONF_WEB_FETCH_ENABLED,
     DEFAULT_OUTPUT_MODE,
     DOMAIN,
@@ -2005,6 +2007,90 @@ async def test_create_ai_task_data_subentry_with_web_fetch(
         {},
         structured_output_mode=OUTPUT_MODE_TOOL,
     )
+
+
+async def test_create_ai_task_data_subentry_with_todo_workspace(
+    hass: HomeAssistant, mock_probe_model: AsyncMock
+) -> None:
+    """Test adding an AI task subentry with a todo workspace."""
+    entry = await _loaded_entry(hass, with_model_profile=True)
+    hass.states.async_set(
+        "todo.ai_workspace",
+        "0",
+        {
+            "supported_features": int(
+                TodoListEntityFeature.CREATE_TODO_ITEM
+                | TodoListEntityFeature.DELETE_TODO_ITEM
+                | TodoListEntityFeature.UPDATE_TODO_ITEM
+                | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
+            )
+        },
+    )
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_AI_TASK_NAME: "Report task",
+            CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+            _SECTION_EXTERNAL_TOOLS: {CONF_TODO_LIST_ENTITY_ID: "todo.ai_workspace"},
+        },
+    )
+    result = await _finish_progress(hass, hass.config_entries.subentries, result)
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_AI_TASK_NAME: "Report task",
+        CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+        CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+        CONF_TODO_LIST_ENTITY_ID: "todo.ai_workspace",
+    }
+    mock_probe_model.assert_awaited_once()
+
+
+def test_ai_task_data_prunes_blank_todo_workspace() -> None:
+    """Test blank todo workspace selections are not stored."""
+    data = _ai_task_data_from_user_input(
+        {
+            CONF_AI_TASK_NAME: "Report task",
+            CONF_MODEL_SUBENTRY_ID: "profile",
+            CONF_TODO_LIST_ENTITY_ID: "",
+        },
+        {},
+    )
+
+    assert CONF_TODO_LIST_ENTITY_ID not in data
+
+
+async def test_create_ai_task_data_subentry_rejects_unsupported_todo_workspace(
+    hass: HomeAssistant,
+) -> None:
+    """Test todo workspace validation rejects missing required features."""
+    entry = await _loaded_entry(hass, with_model_profile=True)
+    hass.states.async_set(
+        "todo.ai_workspace",
+        "0",
+        {"supported_features": int(TodoListEntityFeature.CREATE_TODO_ITEM)},
+    )
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_AI_TASK_NAME: "Report task",
+            CONF_MODEL_SUBENTRY_ID: _model_profile_id(entry),
+            _SECTION_EXTERNAL_TOOLS: {CONF_TODO_LIST_ENTITY_ID: "todo.ai_workspace"},
+        },
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_TODO_LIST_ENTITY_ID: "todo_list_unsupported"}
 
 
 async def test_create_ai_task_output_failure_rerenders_init_step(

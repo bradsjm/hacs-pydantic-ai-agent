@@ -2,4 +2,4 @@
 set -euo pipefail
 
 uv run ruff format custom_components/pydantic_ai_agent tests/components/pydantic_ai_agent
-npx -y prettier --write .
+npx --no-install prettier --write .

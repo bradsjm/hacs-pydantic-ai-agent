@@ -35,6 +35,7 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.settings import ModelSettings
 import voluptuous as vol
 
+from homeassistant.components.todo import DOMAIN as TODO_DOMAIN, TodoListEntityFeature
 from homeassistant.config_entries import (
     SOURCE_USER,
     ConfigEntry,
@@ -51,6 +52,8 @@ from homeassistant.exceptions import HomeAssistantError, TemplateError
 from homeassistant.helpers import llm
 from homeassistant.helpers.selector import (
     BooleanSelector,
+    EntitySelector,
+    EntitySelectorConfig,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -97,6 +100,7 @@ from .const import (
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_SKILLS_FOLDER,
+    CONF_TODO_LIST_ENTITY_ID,
     CONF_WEB_FETCH_ENABLED,
     DEFAULT_AGENT_NAME,
     DEFAULT_AI_TASK_NAME,
@@ -237,6 +241,12 @@ _SECTION_ADVANCED_OPTIONS = "advanced_options"
 _SECTION_EXTERNAL_TOOLS = "external_tools"
 _SECTION_LOGFIRE = "logfire"
 _SECTION_SKILLS = "skill_settings"
+_TODO_WORKSPACE_REQUIRED_FEATURES = (
+    TodoListEntityFeature.CREATE_TODO_ITEM
+    | TodoListEntityFeature.DELETE_TODO_ITEM
+    | TodoListEntityFeature.UPDATE_TODO_ITEM
+    | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
+)
 _STRUCTURED_PROBE_OUTPUT_NAME = structured_output_name(
     "probe_response", "probe_response"
 )
@@ -978,7 +988,10 @@ def _selected_model_profile_error(
     if not isinstance(primary_id, str) or not primary_id:
         return "model_profile_required"
     primary_subentry = entry.subentries.get(primary_id)
-    if primary_subentry is None or primary_subentry.subentry_type != SUBENTRY_TYPE_MODEL:
+    if (
+        primary_subentry is None
+        or primary_subentry.subentry_type != SUBENTRY_TYPE_MODEL
+    ):
         return "model_profile_not_found"
     primary_ref = model_profile_ref(entry.entry_id, primary_id)
     fallback_ids = _normalise_fallback_model_profile_refs(
@@ -1120,6 +1133,29 @@ def _selected_mcp_server_error(
             return "mcp_server_not_found"
         if not parse_allowed_tools(subentry.data.get(CONF_MCP_ALLOWED_TOOLS)):
             return "mcp_tools_not_allowlisted"
+    return None
+
+
+def _selected_todo_workspace_error(
+    hass: HomeAssistant, data: Mapping[str, Any]
+) -> str | None:
+    """Return a form error for an invalid todo workspace entity."""
+    entity_id = data.get(CONF_TODO_LIST_ENTITY_ID)
+    if not entity_id:
+        return None
+    if not isinstance(entity_id, str) or not entity_id.startswith(f"{TODO_DOMAIN}."):
+        return "todo_list_not_found"
+    state = hass.states.get(entity_id)
+    if state is None:
+        return "todo_list_not_found"
+    supported_features = state.attributes.get("supported_features", 0)
+    if not isinstance(supported_features, int):
+        return "todo_list_unsupported"
+    if (
+        supported_features & _TODO_WORKSPACE_REQUIRED_FEATURES
+        != _TODO_WORKSPACE_REQUIRED_FEATURES
+    ):
+        return "todo_list_unsupported"
     return None
 
 
@@ -1793,6 +1829,15 @@ def _ai_task_data_schema(
         external_tools_schema[mcp_schema_key] = SelectSelector(
             SelectSelectorConfig(options=mcp_servers, multiple=True)
         )
+    todo_schema_key = vol.Optional(CONF_TODO_LIST_ENTITY_ID)
+    if CONF_TODO_LIST_ENTITY_ID in options:
+        todo_schema_key = vol.Optional(
+            CONF_TODO_LIST_ENTITY_ID,
+            default=options[CONF_TODO_LIST_ENTITY_ID],
+        )
+    external_tools_schema[todo_schema_key] = EntitySelector(
+        EntitySelectorConfig(domain=TODO_DOMAIN)
+    )
     external_tools_schema[
         vol.Optional(
             CONF_WEB_FETCH_ENABLED,
@@ -1845,6 +1890,8 @@ def _ai_task_data_from_user_input(
         data.pop(CONF_WEB_FETCH_ENABLED, None)
     if not data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS):
         data.pop(CONF_FALLBACK_MODEL_SUBENTRY_IDS, None)
+    if not data.get(CONF_TODO_LIST_ENTITY_ID):
+        data.pop(CONF_TODO_LIST_ENTITY_ID, None)
     if (
         data.get(CONF_ENABLE_SKILLS)
         and CONF_SKILLS in user_input
@@ -2632,7 +2679,9 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                     step_id="init",
                     data_schema=_ai_task_data_schema(
                         self.hass,
-                        self._options | flat_user_input, entry, available_skills
+                        self._options | flat_user_input,
+                        entry,
+                        available_skills,
                     ),
                     errors={"base": err.reason},
                     description_placeholders=_provider_validation_placeholders(err),
@@ -2650,8 +2699,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_ai_task_data_schema(
-                        self.hass,
-                        refreshed_options, entry, refreshed_skills
+                        self.hass, refreshed_options, entry, refreshed_skills
                     ),
                     errors={"base": "skills_refreshed"},
                 )
@@ -2665,8 +2713,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_ai_task_data_schema(
-                        self.hass,
-                        self._options | data, entry, available_skills
+                        self.hass, self._options | data, entry, available_skills
                     ),
                     errors={CONF_MODEL_SUBENTRY_ID: model_error},
                 )
@@ -2674,10 +2721,17 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_ai_task_data_schema(
-                        self.hass,
-                        self._options | data, entry, available_skills
+                        self.hass, self._options | data, entry, available_skills
                     ),
                     errors={CONF_MCP_SERVER_IDS: mcp_error},
+                )
+            if todo_error := _selected_todo_workspace_error(self.hass, data):
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_ai_task_data_schema(
+                        self.hass, self._options | data, entry, available_skills
+                    ),
+                    errors={CONF_TODO_LIST_ENTITY_ID: todo_error},
                 )
             return await self._async_finish_ai_task_options(data)
 
@@ -2699,8 +2753,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             return self.async_show_form(
                 step_id="init",
                 data_schema=_ai_task_data_schema(
-                    self.hass,
-                    self._options | data, entry, available_skills
+                    self.hass, self._options | data, entry, available_skills
                 ),
                 errors={CONF_MCP_SERVER_IDS: mcp_error},
             )
@@ -2726,7 +2779,9 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             for fallback_ref in _normalise_fallback_model_profile_refs(
                 entry, data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
             ):
-                profiles.append(resolve_model_profile_ref(self.hass, entry, fallback_ref))
+                profiles.append(
+                    resolve_model_profile_ref(self.hass, entry, fallback_ref)
+                )
             for owner_entry, profile in profiles:
                 settings = profile.data.get(CONF_MODEL_SETTINGS)
                 current_model = profile.data[CONF_MODEL]
@@ -2773,8 +2828,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             return self.async_show_form(
                 step_id="init",
                 data_schema=_ai_task_data_schema(
-                    self.hass,
-                    self._options | data, entry, available_skills
+                    self.hass, self._options | data, entry, available_skills
                 ),
                 errors={field: reason},
                 description_placeholders=placeholders,

@@ -78,7 +78,9 @@ async def _loaded_model_entry(
         logfire_include_content=False,
     )
     entry.add_to_hass(hass)
-    with patch("custom_components.pydantic_ai_agent.async_setup_entry", return_value=True):
+    with patch(
+        "custom_components.pydantic_ai_agent.async_setup_entry", return_value=True
+    ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     return entry
@@ -150,10 +152,10 @@ async def test_model_profile_chain_includes_cross_provider_fallback(
     owner_subentry = SimpleNamespace(
         subentry_id="conversation-1",
         data={
-        CONF_MODEL_SUBENTRY_ID: "primary-model",
-        CONF_FALLBACK_MODEL_SUBENTRY_IDS: [
-            model_profile_ref(fallback_entry.entry_id, "fallback-model")
-        ],
+            CONF_MODEL_SUBENTRY_ID: "primary-model",
+            CONF_FALLBACK_MODEL_SUBENTRY_IDS: [
+                model_profile_ref(fallback_entry.entry_id, "fallback-model")
+            ],
         },
     )
 
