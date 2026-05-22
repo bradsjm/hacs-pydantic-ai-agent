@@ -18,9 +18,9 @@ from .const import (
     CONF_LOGFIRE_TOKEN,
     CONF_MCP_SERVER_IDS,
     CONF_OUTPUT_MODE,
-    CONF_PROVIDER_MODE,
     DOMAIN,
 )
+from .model_profiles import primary_model_profile
 from .repairs import (
     async_create_logfire_token_conflict_issue,
     async_delete_logfire_token_conflict_issue,
@@ -218,6 +218,10 @@ def _span_attributes(
     model_name: str,
 ) -> Mapping[str, Any]:
     """Return low-risk trace attributes for Home Assistant context."""
+    try:
+        provider_mode = primary_model_profile(entry, subentry).provider_mode
+    except Exception:
+        provider_mode = None
     llm_api_ids = subentry.data.get(CONF_LLM_HASS_API)
     mcp_server_ids = subentry.data.get(CONF_MCP_SERVER_IDS)
     if not isinstance(llm_api_ids, list):
@@ -234,7 +238,7 @@ def _span_attributes(
         "ha.subentry_type": subentry.subentry_type,
         "ha.entity_id": entity_id,
         "ha.conversation_id": conversation_id,
-        "ha.provider_mode": entry.data.get(CONF_PROVIDER_MODE),
+        "ha.provider_mode": provider_mode,
         "ha.model": model_name,
         "ha.structured_output_mode": structured_output_mode(
             subentry.data.get(CONF_OUTPUT_MODE)

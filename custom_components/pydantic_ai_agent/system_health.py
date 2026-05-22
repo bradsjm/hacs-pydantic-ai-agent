@@ -7,13 +7,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
+    CONF_MODEL_PROFILES,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_PROVIDER_MODE,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
-    SUBENTRY_TYPE_MODEL,
+    SUBENTRY_TYPE_PROVIDER,
 )
 from .logfire_support import logfire_enabled
 
@@ -34,7 +35,8 @@ async def system_health_info(hass: HomeAssistant) -> dict[str, Any]:
         "configured_entry_count": len(entries),
         "loaded_entry_count": len(loaded_entries),
         "provider_modes": _provider_mode_counts(entries),
-        "model_profile_count": _subentry_count(entries, SUBENTRY_TYPE_MODEL),
+        "provider_count": _subentry_count(entries, SUBENTRY_TYPE_PROVIDER),
+        "model_profile_count": _model_profile_count(entries),
         "conversation_count": _subentry_count(entries, SUBENTRY_TYPE_CONVERSATION),
         "ai_task_count": _subentry_count(entries, SUBENTRY_TYPE_AI_TASK),
         "mcp_server_count": _subentry_count(entries, SUBENTRY_TYPE_MCP_SERVER),
@@ -64,9 +66,12 @@ def _provider_mode_counts(entries: list[ConfigEntry]) -> dict[str, int]:
     """Return configured provider mode counts."""
     counts: dict[str, int] = {}
     for entry in entries:
-        mode = entry.data.get(CONF_PROVIDER_MODE)
-        if isinstance(mode, str):
-            counts[mode] = counts.get(mode, 0) + 1
+        for subentry in entry.subentries.values():
+            if subentry.subentry_type != SUBENTRY_TYPE_PROVIDER:
+                continue
+            mode = subentry.data.get(CONF_PROVIDER_MODE)
+            if isinstance(mode, str):
+                counts[mode] = counts.get(mode, 0) + 1
     return dict(sorted(counts.items()))
 
 
@@ -77,4 +82,15 @@ def _subentry_count(entries: list[ConfigEntry], subentry_type: str) -> int:
         for entry in entries
         for subentry in entry.subentries.values()
         if subentry.subentry_type == subentry_type
+    )
+
+
+def _model_profile_count(entries: list[ConfigEntry]) -> int:
+    """Return the number of configured provider-owned model profiles."""
+    return sum(
+        len(subentry.data.get(CONF_MODEL_PROFILES, {}))
+        for entry in entries
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER
+        and isinstance(subentry.data.get(CONF_MODEL_PROFILES), dict)
     )

@@ -6,37 +6,31 @@ import json
 import logging
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_NAME, Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
-from homeassistant.exceptions import (
-    ConfigEntryAuthFailed,
-    ConfigEntryNotReady,
-    HomeAssistantError,
-)
+from homeassistant.exceptions import HomeAssistantError
 import voluptuous as vol
 
 from .config_flow import ProviderValidationError, async_probe_model
 from .const import (
     CONF_BASE_URL,
-    CONF_ENABLE_SKILLS,
-    CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
-    CONF_FALLBACK_MODEL_SUBENTRY_IDS,
+    CONF_ENABLED,
+    CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_HEADERS,
+    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
-    CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
+    CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
-    CONF_SKILLS,
-    CONF_SKILLS_FOLDER,
-    DEFAULT_SKILLS_FOLDER,
     DOMAIN,
-    PROVIDER_MODES,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
-    SUBENTRY_TYPE_MODEL,
+    SUBENTRY_TYPE_PROVIDER,
 )
 from .logfire_support import (
     async_configure_logfire,
@@ -56,9 +50,13 @@ from .mcp import (
     mcp_subentries,
 )
 from .model_profiles import (
+    enabled_model_profile_refs,
     model_profile_ref,
     parse_model_profile_ref,
-    resolve_model_profile_ref,
+    provider_model_profiles,
+    provider_subentries,
+    resolve_model_profile,
+    ResolvedModelProfile,
 )
 from .repairs import (
     async_delete_logfire_token_conflict_issue,
@@ -72,13 +70,6 @@ from .structured_output import structured_output_mode
 
 _LOGGER = logging.getLogger(__name__)
 
-_AUTH_FAILURE_REASONS = {"invalid_auth"}
-_RECONFIGURABLE_MODEL_FAILURE_REASONS = {
-    "invalid_model",
-    "invalid_provider_config",
-    "model_does_not_support_streaming",
-    "permission_denied",
-}
 _MODEL_VALIDATION_OUTPUT_MODE_KEY = "_pydantic_ai_agent_output_mode"
 
 
@@ -86,7 +77,7 @@ _MODEL_VALIDATION_OUTPUT_MODE_KEY = "_pydantic_ai_agent_output_mode"
 class _ConfiguredModelProbe:
     """One setup-time model validation probe."""
 
-    owner_entry: ConfigEntry
+    provider_subentry: ConfigSubentry
     issue_profile_id: str
     model: str
     model_settings: dict[str, Any]
@@ -113,22 +104,47 @@ _MCP_SERVICE_SCHEMA = vol.Schema(
 
 
 @dataclass(frozen=True, kw_only=True)
-class PydanticAIAgentRuntimeData:
-    """Provider connection data shared by subentry-backed entities."""
+class ProviderRuntimeData:
+    """Provider runtime data owned by one workspace provider subentry."""
 
-    provider_mode: str
+    provider_subentry_id: str
     name: str
     api_key: str
+    provider_mode: str
     base_url: str | None
-    logfire_enabled: bool
-    logfire_include_content: bool
     provider_headers: dict[str, str] = field(default_factory=dict)
-    mcp_servers: list[dict[str, Any]] = field(default_factory=list)
+    client: Any | None = None
+    discovered_models: list[str] | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class MCPServerRuntimeData:
+    """MCP runtime data owned by one workspace MCP subentry."""
+
+    subentry_id: str
+    name: str
+    url: str
+    headers: dict[str, str] = field(default_factory=dict)
+    discovered_tools: list[dict[str, Any]] = field(default_factory=list)
+    allowed_tools: list[str] = field(default_factory=list)
+    client: Any | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class WorkspaceRuntimeData:
+    """Workspace data shared by subentry-backed entities."""
+
+    workspace_name: str
+    providers: dict[str, ProviderRuntimeData] = field(default_factory=dict)
+    mcp_servers: dict[str, MCPServerRuntimeData] = field(default_factory=dict)
+    model_profiles: dict[str, ResolvedModelProfile] = field(default_factory=dict)
     mcp_tool_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     metrics: MetricsStore = field(default_factory=MetricsStore)
+    logfire_enabled: bool = False
+    logfire_include_content: bool = False
 
 
-type PydanticAIAgentConfigEntry = ConfigEntry[PydanticAIAgentRuntimeData]
+type PydanticAIAgentConfigEntry = ConfigEntry[WorkspaceRuntimeData]
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -162,27 +178,20 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 async def async_setup_entry(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> bool:
-    """Validate configured subentries, then set up entity platforms."""
-    provider_mode = entry.data[CONF_PROVIDER_MODE]
-    if provider_mode not in PROVIDER_MODES:
-        raise ConfigEntryNotReady(f"Unsupported provider mode: {provider_mode!r}")
-    await _async_validate_configured_models(hass, entry)
-    await async_configure_logfire(hass, entry)
-
-    entry.runtime_data = PydanticAIAgentRuntimeData(
-        provider_mode=provider_mode,
-        name=entry.data[CONF_NAME],
-        api_key=entry.data[CONF_API_KEY],
-        base_url=entry.data.get(CONF_BASE_URL),
-        provider_headers=dict(entry.data.get(CONF_PROVIDER_HEADERS, {})),
+    """Build workspace runtime data, then set up entity platforms."""
+    provider_runtimes = _provider_runtimes(entry)
+    mcp_runtime = _mcp_server_runtimes(entry)
+    model_profiles = _resolved_model_profiles(entry, provider_runtimes)
+    entry.runtime_data = WorkspaceRuntimeData(
+        workspace_name=entry.data[CONF_NAME],
+        providers=provider_runtimes,
+        mcp_servers=mcp_runtime,
+        model_profiles=model_profiles,
         logfire_enabled=logfire_enabled(hass, entry),
         logfire_include_content=logfire_include_content(hass, entry),
-        mcp_servers=[
-            {CONF_NAME: subentry.title, **dict(subentry.data)}
-            for subentry in mcp_subentries(entry)
-        ],
     )
-
+    await async_configure_logfire(hass, entry)
+    await _async_validate_configured_models(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_update_entry))
     return True
@@ -201,45 +210,15 @@ async def async_unload_entry(
 async def async_migrate_entry(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> bool:
-    """Migrate provider-owned skill settings to subentry-owned settings."""
-    if entry.version != 1:
-        return False
-    old_folder = entry.data.get(CONF_SKILLS_FOLDER)
-    old_folder_configured = CONF_SKILLS_FOLDER in entry.data
-    old_script_execution = bool(
-        entry.data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
+    """Reject legacy config entries that predate the workspace schema."""
+    _LOGGER.error(
+        "Pydantic AI Agent config entry %s uses unsupported schema version %s.%s; "
+        "delete and recreate the workspace entry.",
+        entry.entry_id,
+        entry.version,
+        entry.minor_version,
     )
-    old_script_configured = CONF_ENABLE_SKILL_SCRIPT_EXECUTION in entry.data
-
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type not in {
-            SUBENTRY_TYPE_CONVERSATION,
-            SUBENTRY_TYPE_AI_TASK,
-        }:
-            continue
-        data = dict(subentry.data)
-        enable_skills = (
-            bool(data.get(CONF_SKILLS)) or old_folder_configured or old_script_execution
-        )
-        if enable_skills:
-            data[CONF_ENABLE_SKILLS] = True
-        if old_folder_configured and CONF_SKILLS_FOLDER not in data:
-            data[CONF_SKILLS_FOLDER] = old_folder
-        if old_script_configured and CONF_ENABLE_SKILL_SCRIPT_EXECUTION not in data:
-            data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION] = True
-        if data.get(CONF_SKILLS_FOLDER) == DEFAULT_SKILLS_FOLDER:
-            data.pop(CONF_SKILLS_FOLDER, None)
-        if not data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False):
-            data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
-        if not data.get(CONF_ENABLE_SKILLS, False):
-            data.pop(CONF_ENABLE_SKILLS, None)
-        hass.config_entries.async_update_subentry(entry, subentry, data=data)
-
-    data = dict(entry.data)
-    data.pop(CONF_SKILLS_FOLDER, None)
-    data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
-    hass.config_entries.async_update_entry(entry, data=data, minor_version=2)
-    return True
+    return False
 
 
 async def async_remove_entry(
@@ -357,35 +336,97 @@ def _normalise_model_settings(settings: Mapping[str, Any]) -> str:
     return json.dumps(provider_settings, sort_keys=True, separators=(",", ":"))
 
 
+def _provider_runtimes(
+    entry: PydanticAIAgentConfigEntry,
+) -> dict[str, ProviderRuntimeData]:
+    """Return runtime provider data for structurally valid provider subentries."""
+    runtimes: dict[str, ProviderRuntimeData] = {}
+    for subentry in provider_subentries(entry):
+        api_key = subentry.data.get(CONF_API_KEY)
+        provider_mode = subentry.data.get(CONF_PROVIDER_MODE)
+        if not isinstance(api_key, str) or not api_key:
+            _LOGGER.warning(
+                "Skipping provider subentry %s without an API key",
+                subentry.subentry_id,
+            )
+            continue
+        if not isinstance(provider_mode, str) or not provider_mode:
+            _LOGGER.warning(
+                "Skipping provider subentry %s without a provider mode",
+                subentry.subentry_id,
+            )
+            continue
+        headers = subentry.data.get(CONF_PROVIDER_HEADERS)
+        runtimes[subentry.subentry_id] = ProviderRuntimeData(
+            provider_subentry_id=subentry.subentry_id,
+            name=subentry.title,
+            api_key=api_key,
+            provider_mode=provider_mode,
+            base_url=subentry.data.get(CONF_BASE_URL),
+            provider_headers=dict(headers) if isinstance(headers, Mapping) else {},
+        )
+    return runtimes
+
+
+def _mcp_server_runtimes(
+    entry: PydanticAIAgentConfigEntry,
+) -> dict[str, MCPServerRuntimeData]:
+    """Return runtime MCP server data for configured MCP subentries."""
+    runtimes: dict[str, MCPServerRuntimeData] = {}
+    for subentry in mcp_subentries(entry):
+        headers = subentry.data.get(CONF_MCP_HEADERS)
+        allowed_tools = subentry.data.get(CONF_MCP_ALLOWED_TOOLS)
+        runtimes[subentry.subentry_id] = MCPServerRuntimeData(
+            subentry_id=subentry.subentry_id,
+            name=subentry.title,
+            url=str(subentry.data.get(CONF_MCP_URL, "")),
+            headers=dict(headers) if isinstance(headers, Mapping) else {},
+            allowed_tools=list(allowed_tools)
+            if isinstance(allowed_tools, list)
+            else [],
+        )
+    return runtimes
+
+
+def _resolved_model_profiles(
+    entry: PydanticAIAgentConfigEntry,
+    provider_runtimes: Mapping[str, ProviderRuntimeData],
+) -> dict[str, ResolvedModelProfile]:
+    """Return enabled model profiles for providers that loaded successfully."""
+    profiles: dict[str, ResolvedModelProfile] = {}
+    for ref in enabled_model_profile_refs(entry):
+        provider_subentry_id, _profile_id = parse_model_profile_ref(ref)
+        if provider_subentry_id not in provider_runtimes:
+            continue
+        profiles[ref] = resolve_model_profile(entry, ref)
+    return profiles
+
+
 def _configured_subentry_models(
-    hass: HomeAssistant,
     entry: PydanticAIAgentConfigEntry,
 ) -> list[_ConfiguredModelProbe]:
     """Return unique model probes needed before the entry can load."""
-    model_profiles = {
-        subentry.subentry_id: subentry
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == SUBENTRY_TYPE_MODEL
-    }
     models: list[_ConfiguredModelProbe] = []
     seen: set[tuple[str, str, str, str | None]] = set()
 
     def add_model(
-        owner_entry: ConfigEntry,
-        profile_id: str,
-        issue_profile_id: str,
+        provider_subentry: ConfigSubentry,
+        profile_ref: str,
         output_mode: str | None,
     ) -> None:
-        profile = owner_entry.subentries.get(profile_id)
-        if profile is None:
+        provider_subentry_id, profile_id = parse_model_profile_ref(profile_ref)
+        if provider_subentry.subentry_id != provider_subentry_id:
             return
-        model = profile.data.get(CONF_MODEL)
+        profile = provider_model_profiles(provider_subentry).get(profile_id)
+        if profile is None or not bool(profile.get(CONF_ENABLED, True)):
+            return
+        model = profile.get(CONF_MODEL)
         if not isinstance(model, str) or not model:
             return
-        settings = profile.data.get(CONF_MODEL_SETTINGS)
+        settings = profile.get(CONF_MODEL_SETTINGS)
         model_settings = dict(settings) if isinstance(settings, Mapping) else {}
         dedupe_key = (
-            owner_entry.entry_id,
+            provider_subentry.subentry_id,
             model,
             _normalise_model_settings(model_settings),
             output_mode,
@@ -397,16 +438,21 @@ def _configured_subentry_models(
         seen.add(dedupe_key)
         models.append(
             _ConfiguredModelProbe(
-                owner_entry=owner_entry,
-                issue_profile_id=issue_profile_id,
+                provider_subentry=provider_subentry,
+                issue_profile_id=profile_ref,
                 model=model,
                 model_settings=model_settings,
                 output_mode=output_mode,
             )
         )
 
-    for profile_id in model_profiles:
-        add_model(entry, profile_id, profile_id, None)
+    for provider_subentry in provider_subentries(entry):
+        for profile_id in provider_model_profiles(provider_subentry):
+            add_model(
+                provider_subentry,
+                model_profile_ref(provider_subentry.subentry_id, profile_id),
+                None,
+            )
 
     for subentry in entry.subentries.values():
         if subentry.subentry_type not in (
@@ -414,56 +460,45 @@ def _configured_subentry_models(
             SUBENTRY_TYPE_AI_TASK,
         ):
             continue
-        primary_id = subentry.data.get(CONF_MODEL_SUBENTRY_ID)
-        if not isinstance(primary_id, str) or not primary_id:
+        primary_ref = subentry.data.get(CONF_PRIMARY_MODEL_REF)
+        if not isinstance(primary_ref, str) or not primary_ref:
             _LOGGER.warning(
                 "Skipping legacy %s subentry without model profile: %s",
                 subentry.subentry_type,
                 subentry.subentry_id,
             )
             continue
-        fallback_ids = subentry.data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
-        if isinstance(fallback_ids, str) or not isinstance(fallback_ids, list):
-            fallback_ids = []
+        fallback_refs = subentry.data.get(CONF_FALLBACK_MODEL_REFS, [])
+        if isinstance(fallback_refs, str) or not isinstance(fallback_refs, list):
+            fallback_refs = []
         output_mode = (
             structured_output_mode(subentry.data.get(CONF_OUTPUT_MODE))
             if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
             else None
         )
-        add_model(entry, primary_id, primary_id, output_mode)
-        for fallback_id in fallback_ids:
-            if not isinstance(fallback_id, str):
-                continue
-            owner_entry_id, profile_id = parse_model_profile_ref(entry, fallback_id)
-            if owner_entry_id == entry.entry_id:
-                if profile_id not in model_profiles:
-                    _LOGGER.warning(
-                        "Skipping stale model profile reference %s for subentry %s",
-                        fallback_id,
-                        subentry.subentry_id,
-                    )
-                    continue
-                add_model(entry, profile_id, profile_id, output_mode)
-                continue
-            if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
-                continue
+        refs = [primary_ref, *[ref for ref in fallback_refs if isinstance(ref, str)]]
+        for ref in refs:
             try:
-                owner_entry, model_subentry = resolve_model_profile_ref(
-                    hass, entry, fallback_id
-                )
+                provider_subentry_id, _profile_id = parse_model_profile_ref(ref)
             except HomeAssistantError:
                 _LOGGER.warning(
-                    "Skipping stale model profile reference %s for subentry %s",
-                    fallback_id,
+                    "Skipping malformed model profile reference %s for subentry %s",
+                    ref,
                     subentry.subentry_id,
                 )
                 continue
-            add_model(
-                owner_entry,
-                model_subentry.subentry_id,
-                model_profile_ref(owner_entry.entry_id, model_subentry.subentry_id),
-                output_mode,
-            )
+            provider_subentry = entry.subentries.get(provider_subentry_id)
+            if (
+                provider_subentry is None
+                or provider_subentry.subentry_type != SUBENTRY_TYPE_PROVIDER
+            ):
+                _LOGGER.warning(
+                    "Skipping stale model profile reference %s for subentry %s",
+                    ref,
+                    subentry.subentry_id,
+                )
+                continue
+            add_model(provider_subentry, ref, output_mode)
     return models
 
 
@@ -484,9 +519,9 @@ def _repair_issue_model_settings(
 async def _async_validate_configured_models(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> None:
-    """Probe configured models and surface user-fixable failures as repairs."""
+    """Probe configured models and surface provider/profile repairs."""
     current_issue_ids: set[str] = set()
-    for probe in _configured_subentry_models(hass, entry):
+    for probe in _configured_subentry_models(entry):
         repair_settings = _repair_issue_model_settings(
             probe.model_settings, probe.output_mode
         )
@@ -496,12 +531,15 @@ async def _async_validate_configured_models(
         try:
             if probe.output_mode is None:
                 await async_probe_model(
-                    hass, probe.owner_entry.data, probe.model, probe.model_settings
+                    hass,
+                    probe.provider_subentry.data,
+                    probe.model,
+                    probe.model_settings,
                 )
             else:
                 await async_probe_model(
                     hass,
-                    probe.owner_entry.data,
+                    probe.provider_subentry.data,
                     probe.model,
                     probe.model_settings,
                     structured_output_mode=probe.output_mode,
@@ -514,23 +552,15 @@ async def _async_validate_configured_models(
                 err.reason,
                 err.status_code,
             )
-            if probe.owner_entry.entry_id != entry.entry_id:
-                continue
-            # Auth failures require reauth, model/configuration failures can be
-            # repaired after load, and transient provider failures should retry.
-            if err.reason in _AUTH_FAILURE_REASONS:
-                raise ConfigEntryAuthFailed(err.message) from err
-            if err.reason in _RECONFIGURABLE_MODEL_FAILURE_REASONS:
-                async_create_model_validation_issue(
-                    hass,
-                    entry,
-                    probe.issue_profile_id,
-                    probe.model,
-                    repair_settings,
-                    err,
-                )
-                continue
-            raise ConfigEntryNotReady(err.message) from err
+            async_create_model_validation_issue(
+                hass,
+                entry,
+                probe.issue_profile_id,
+                probe.model,
+                repair_settings,
+                err,
+            )
+            continue
         async_delete_model_validation_issue(
             hass, entry, probe.issue_profile_id, probe.model, repair_settings
         )

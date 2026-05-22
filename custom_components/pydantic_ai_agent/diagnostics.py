@@ -11,17 +11,18 @@ from homeassistant.helpers import device_registry as dr
 
 from ._redaction import redact_data
 from .const import (
-    CONF_BASE_URL,
     CONF_CHAT_TEMPLATE_KWARGS,
+    CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_LOGFIRE_TOKEN,
     CONF_MCP_HEADERS,
     CONF_MCP_URL,
     CONF_MODEL,
+    CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_PROMPT,
     CONF_PROVIDER_HEADERS,
     DOMAIN,
-    SUBENTRY_TYPE_MODEL,
+    SUBENTRY_TYPE_PROVIDER,
 )
 from .logfire_support import (
     logfire_active_for_entry,
@@ -60,12 +61,18 @@ def _redact(data: dict[str, Any]) -> dict[str, Any]:
 
 def _redact_subentry_data(subentry_type: str, data: dict[str, Any]) -> dict[str, Any]:
     """Return redacted subentry data."""
-    sensitive_keys = (
-        _MODEL_PROFILE_SENSITIVE_KEYS
-        if subentry_type == SUBENTRY_TYPE_MODEL
-        else _SENSITIVE_KEYS
-    )
-    return redact_data(data, sensitive_keys)
+    if subentry_type != SUBENTRY_TYPE_PROVIDER:
+        return redact_data(data, _SENSITIVE_KEYS)
+    redacted = dict(data)
+    raw_profiles = redacted.pop(CONF_MODEL_PROFILES, None)
+    redacted = redact_data(redacted, _SENSITIVE_KEYS)
+    if isinstance(raw_profiles, Mapping):
+        redacted[CONF_MODEL_PROFILES] = {
+            profile_id: redact_data(dict(profile), _MODEL_PROFILE_SENSITIVE_KEYS)
+            for profile_id, profile in raw_profiles.items()
+            if isinstance(profile_id, str) and isinstance(profile, Mapping)
+        }
+    return redacted
 
 
 async def async_get_config_entry_diagnostics(
@@ -75,6 +82,7 @@ async def async_get_config_entry_diagnostics(
     subentries = []
     for subentry in entry.subentries.values():
         model_settings = subentry.data.get(CONF_MODEL_SETTINGS)
+        model_profiles = subentry.data.get(CONF_MODEL_PROFILES)
         subentries.append(
             {
                 "subentry_id": subentry.subentry_id,
@@ -84,6 +92,12 @@ async def async_get_config_entry_diagnostics(
                     subentry.subentry_type, dict(subentry.data)
                 ),
                 "model": subentry.data.get(CONF_MODEL),
+                "default_model_profile_id": subentry.data.get(
+                    CONF_DEFAULT_MODEL_PROFILE_ID
+                ),
+                "model_profile_count": len(model_profiles)
+                if isinstance(model_profiles, Mapping)
+                else 0,
                 "ha_tools_enabled": bool(subentry.data.get(CONF_LLM_HASS_API)),
                 "model_settings_keys": sorted(model_settings)
                 if isinstance(model_settings, Mapping)
@@ -97,7 +111,6 @@ async def async_get_config_entry_diagnostics(
             "title": entry.title,
             "state": entry.state.value,
             "data": dict(entry.data),
-            "base_url_configured": bool(entry.data.get(CONF_BASE_URL)),
             "logfire_enabled": logfire_enabled(hass, entry),
             "logfire_active": logfire_active_for_entry(hass, entry),
             "logfire_include_content": logfire_include_content(hass, entry),
@@ -122,6 +135,7 @@ async def async_get_device_diagnostics(
         subentry = entry.subentries.get(subentry_id)
         if subentry is not None:
             model_settings = subentry.data.get(CONF_MODEL_SETTINGS)
+            model_profiles = subentry.data.get(CONF_MODEL_PROFILES)
             subentries.append(
                 {
                     "subentry_id": subentry.subentry_id,
@@ -131,6 +145,12 @@ async def async_get_device_diagnostics(
                         subentry.subentry_type, dict(subentry.data)
                     ),
                     "model": subentry.data.get(CONF_MODEL),
+                    "default_model_profile_id": subentry.data.get(
+                        CONF_DEFAULT_MODEL_PROFILE_ID
+                    ),
+                    "model_profile_count": len(model_profiles)
+                    if isinstance(model_profiles, Mapping)
+                    else 0,
                     "ha_tools_enabled": bool(subentry.data.get(CONF_LLM_HASS_API)),
                     "model_settings_keys": sorted(model_settings)
                     if isinstance(model_settings, Mapping)
@@ -184,5 +204,9 @@ def _device_subentry_id(device: dr.DeviceEntry) -> str | None:
     """Return the integration subentry id represented by a device."""
     for domain, identifier in device.identifiers:
         if domain == DOMAIN:
-            return identifier
+            parts = identifier.split(":", 2)
+            if len(parts) != 3:
+                return None
+            subentry_id = parts[2]
+            return subentry_id
     return None

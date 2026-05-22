@@ -7,15 +7,16 @@ Assistant custom integration in this repository. It also records implementation
 direction, so current source, executable config, manifests, and tests remain the
 authority when this document describes planned behavior.
 
-Current implementation status: the repository contains the provider/configuration
-foundation, parent config flow, conversation, AI task, and MCP server subentry
-flows, conversation and AI task entity registration, diagnostics, setup-time
-provider validation, repair issues for reconfigurable model validation failures,
-Pydantic AI `Agent` runtime execution, Home Assistant LLM tool conversion,
-remote Streamable HTTP MCP toolsets, per-agent/per-task WebFetch capability,
-local `pydantic-ai-skills` capabilities, ChatLog history conversion, in-repo
-OpenAI-compatible Chat Completions and Responses adapters, and native Anthropic
-and Google Gemini model construction through Pydantic AI provider/model classes.
+Current implementation status: the repository contains the workspace-first
+configuration foundation, workspace config flow, provider/conversation/AI
+task/MCP server subentry flows, conversation and AI task entity registration,
+diagnostics, setup-time provider-profile validation, repair issues for
+reconfigurable model validation failures, Pydantic AI `Agent` runtime
+execution, Home Assistant LLM tool conversion, remote Streamable HTTP MCP
+toolsets, per-agent/per-task WebFetch capability, local `pydantic-ai-skills`
+capabilities, ChatLog history conversion, in-repo OpenAI-compatible Chat
+Completions and Responses adapters, and native Anthropic and Google Gemini
+model construction through Pydantic AI provider/model classes.
 
 Known remaining gaps include runtime capability detection beyond validation
 probes, translation coverage tests, cleanup/cancellation lifecycle tests, and
@@ -39,10 +40,9 @@ new source paths, entity names, constants, documentation, or tests.
 
 `Pydantic AI Agent` provides Home Assistant Assist conversation agents and AI
 task data-generation entities backed by Pydantic AI. It allows Home Assistant
-users to create one or more provider connections, each with provider credentials
-and mode on the parent config entry, and one or more independent Assist agents
-with model, prompt, Home Assistant tool access, MCP toolsets, optional WebFetch,
-selected skills, and model behavior settings on `conversation` config subentries.
+users to create one or more workspace config entries, add provider subentries
+with provider credentials and mode, and then add independent Assist agents and
+AI tasks that reference provider-owned model profiles with workspace-local refs.
 
 The integration bridges three systems:
 
@@ -188,25 +188,25 @@ Implementation checklist before coding each feature:
 ## User-Facing Behavior
 
 Users can add `Pydantic AI Agent` from the Home Assistant Integrations UI as a
-provider connection. Each provider connection owns one or more
-conversation subentries, and each conversation subentry creates one selectable
-Assist conversation agent. The initial setup flow creates only the provider
-connection entry; users add conversation agents and AI task configurations from
-the integration subentry actions.
+workspace. Each workspace owns provider, conversation, AI task, and MCP server
+subentries. Each conversation subentry creates one selectable Assist
+conversation agent. The initial setup flow creates only the workspace entry;
+users add provider, conversation, AI task, and MCP server subentries from the
+integration subentry actions.
 
 Example instances:
 
-| Provider connection title | Provider mode                 | Example model       | HA tools |
-| ------------------------- | ----------------------------- | ------------------- | -------- |
-| `OpenAI Home`             | OpenAI-compatible Completions | `gpt-5.1`           | Enabled  |
-| `Local LLM`               | OpenAI-compatible Completions | `llama-3.3-70b`     | Disabled |
-| `Admin Provider`          | OpenAI-compatible Responses   | `gpt-5.1`           | Enabled  |
-| `Anthropic Home`          | Anthropic                     | `claude-sonnet-4-5` | Enabled  |
-| `Gemini Home`             | Google Gemini                 | `gemini-2.5-pro`    | Enabled  |
+| Workspace | Provider title      | Provider mode                 | Example model       | HA tools |
+| --------- | ------------------- | ----------------------------- | ------------------- | -------- |
+| `Home`    | `OpenAI Home`       | OpenAI-compatible Completions | `gpt-5.1`           | Enabled  |
+| `Home`    | `Local LLM`         | OpenAI-compatible Completions | `llama-3.3-70b`     | Disabled |
+| `Admin`   | `Admin Provider`    | OpenAI-compatible Responses   | `gpt-5.1`           | Enabled  |
+| `Home`    | `Anthropic Home`    | Anthropic                     | `claude-sonnet-4-5` | Enabled  |
+| `Home`    | `Gemini Home`       | Google Gemini                 | `gemini-2.5-pro`    | Enabled  |
 
 Each conversation subentry appears as a separate selectable conversation agent in
 Home Assistant Assist configuration. Changing one conversation subentry must not
-affect other subentries or provider/service entries.
+affect other subentries or unrelated providers in the same workspace.
 
 ## Multi-Instance Model
 
@@ -242,11 +242,13 @@ remote Streamable HTTP MCP servers.
   credentials, or endpoint differ.
 - The integration should abort duplicate parent entries when the same provider
   mode, credential, and endpoint are already configured.
-- Each parent config entry must have a user-visible service title.
-- Each parent config entry must store its own credentials and provider settings.
-- The parent config flow must collect provider credentials and endpoint settings.
-  Model validation happens when creating or reconfiguring conversation and AI
-  task subentries, then again during setup-time stored model validation.
+- Each workspace config entry must have a user-visible title.
+- Each workspace config entry must store workspace-level settings such as
+  Logfire configuration and default skills-folder policy.
+- Provider credentials and endpoint settings must be collected on `provider`
+  subentries. Model validation happens when creating or reconfiguring provider,
+  conversation, and AI task subentries, then again during setup-time stored
+  model validation.
 - Invalid or expired credentials after setup must trigger reauthentication or a
   repair issue rather than only setting an entity attribute.
 - User-facing config, options, abort, progress, warning, info, and error text
@@ -347,7 +349,7 @@ independent instance.
 
 | Field                    | Required | Stored in                        | Notes                                                    |
 | ------------------------ | -------- | -------------------------------- | -------------------------------------------------------- |
-| Provider connection name | Yes      | Config entry title/data          | User-facing name for the provider connection.            |
+| Workspace name           | Yes      | Config entry title/data          | User-facing name for the workspace.                      |
 | Provider mode            | Yes      | Data                             | One implemented provider mode.                           |
 | API key                  | Yes      | Data                             | Credential used for provider validation and requests.    |
 | Base URL                 | No       | Data                             | Optional provider endpoint override.                     |
@@ -875,11 +877,12 @@ Requirements:
   and base URL.
 
 Current implementation note: capability detection is not generally implemented.
-Conversation entities advertise streaming support. Home Assistant control is
-advertised when an LLM API is configured, and structured-output support is
-validated for AI task models through the configured Pydantic AI output mode.
-The provider validation probe and conversation runtime both use Pydantic AI's
-streaming request path.
+Plain conversation entities advertise streaming support. Conversations that can
+call HA LLM tools, MCP tools, Web fetch, or skills do not advertise streaming
+and use non-streamed requests for provider-compatible tool-result follow-up
+handling. Home Assistant control is advertised when an LLM API is configured,
+and structured-output support is validated for AI task models through the
+configured Pydantic AI output mode.
 
 Examples:
 

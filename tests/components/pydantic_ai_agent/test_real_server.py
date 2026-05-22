@@ -43,13 +43,17 @@ from custom_components.pydantic_ai_agent import entity as agent_entity_module
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
+    CONF_DEFAULT_MODEL_PROFILE_ID,
+    CONF_DISCOVERED,
+    CONF_ENABLED,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
     CONF_MODEL,
+    CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
+    CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
@@ -59,13 +63,17 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
-    SUBENTRY_TYPE_MODEL,
+    SUBENTRY_TYPE_PROVIDER,
 )
 from custom_components.pydantic_ai_agent.provider import (
     openai_compatible_completions_model_from_config,
 )
 
 pytestmark = [pytest.mark.real_server, pytest.mark.usefixtures("socket_enabled")]
+
+_REAL_PROVIDER_ID = "real_provider"
+_REAL_MODEL_PROFILE_ID = "real_model_profile"
+_REAL_MODEL_REF = f"{_REAL_PROVIDER_ID}:{_REAL_MODEL_PROFILE_ID}"
 
 _REPO_ROOT = Path(__file__).parents[3]
 _ENV_FILE = _REPO_ROOT / ".env"
@@ -463,7 +471,7 @@ def _conversation_subentry(
     """Return a real-server conversation subentry."""
     data: dict[str, object] = {
         CONF_AGENT_NAME: "Real Conversation Agent",
-        CONF_MODEL_SUBENTRY_ID: "real_model_profile",
+        CONF_PRIMARY_MODEL_REF: _REAL_MODEL_REF,
     }
     if llm_hass_api is not None:
         data[CONF_LLM_HASS_API] = llm_hass_api
@@ -483,7 +491,7 @@ def _ai_task_subentry(
 ) -> dict[str, object]:
     """Return a real-server AI task subentry."""
     del real_server
-    data: dict[str, object] = {CONF_MODEL_SUBENTRY_ID: "real_model_profile"}
+    data: dict[str, object] = {CONF_PRIMARY_MODEL_REF: _REAL_MODEL_REF}
     if output_mode is not None:
         data[CONF_OUTPUT_MODE] = output_mode
     return {
@@ -500,7 +508,7 @@ def _mcp_ai_task_subentry(
     """Return a real-server AI task subentry with MCP echo access."""
     del real_server
     data: dict[str, object] = {
-        CONF_MODEL_SUBENTRY_ID: "real_model_profile",
+        CONF_PRIMARY_MODEL_REF: _REAL_MODEL_REF,
         CONF_MCP_SERVER_IDS: [_MCP_ECHO_SERVER_ID],
     }
     if output_mode is not None:
@@ -527,17 +535,29 @@ def _mcp_echo_subentry(mcp_echo_url: str) -> dict[str, object]:
     }
 
 
-def _model_subentry(real_server: RealServerConfig) -> dict[str, object]:
-    """Return a real-server model profile subentry."""
+def _provider_subentry(real_server: RealServerConfig) -> dict[str, object]:
+    """Return a real-server provider subentry with one model profile."""
     return {
-        "subentry_id": "real_model_profile",
+        "subentry_id": _REAL_PROVIDER_ID,
         "data": {
             CONF_NAME: "Real Model Profile",
-            CONF_MODEL: real_server.model,
-            CONF_MODEL_SETTINGS: {"timeout": _REAL_SERVER_TIMEOUT},
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            CONF_API_KEY: real_server.api_key,
+            CONF_BASE_URL: real_server.base_url,
+            CONF_DEFAULT_MODEL_PROFILE_ID: _REAL_MODEL_PROFILE_ID,
+            CONF_MODEL_PROFILES: {
+                _REAL_MODEL_PROFILE_ID: {
+                    "id": _REAL_MODEL_PROFILE_ID,
+                    CONF_NAME: "Real Model Profile",
+                    CONF_MODEL: real_server.model,
+                    CONF_MODEL_SETTINGS: {"timeout": _REAL_SERVER_TIMEOUT},
+                    CONF_ENABLED: True,
+                    CONF_DISCOVERED: False,
+                }
+            },
         },
-        "subentry_type": SUBENTRY_TYPE_MODEL,
-        "title": "Real Model Profile",
+        "subentry_type": SUBENTRY_TYPE_PROVIDER,
+        "title": "Real OpenAI-compatible Provider",
         "unique_id": None,
     }
 
@@ -547,11 +567,13 @@ def _entry(
 ) -> MockConfigEntry:
     """Return a config entry for real-server subentries."""
     return MockConfigEntry(
+        version=2,
+        minor_version=0,
         domain=DOMAIN,
-        title="Real OpenAI-compatible Provider",
-        data=real_server.provider_data,
+        title="Real E2E Workspace",
+        data={CONF_NAME: "Real E2E Workspace"},
         source=config_entries.SOURCE_USER,
-        subentries_data=(_model_subentry(real_server), *subentries),
+        subentries_data=(_provider_subentry(real_server), *subentries),
         options={},
         unique_id=None,
     )

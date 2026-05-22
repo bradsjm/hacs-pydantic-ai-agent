@@ -152,7 +152,7 @@ class PydanticAIBaseLLMEntity:
         extra_instructions: str | None = None,
     ) -> object | None:
         """Run a Pydantic AI Agent and stream its response into ChatLog."""
-        profiles = model_profile_chain(self.hass, self.entry, self.subentry)
+        profiles = model_profile_chain(self.entry, self.subentry)
         # ChatLog needs a stable agent id for deltas, but entity_id can be absent
         # before Home Assistant has fully registered the entity.
         agent_id = getattr(self, "entity_id", None) or getattr(self, "unique_id", None)
@@ -213,7 +213,7 @@ class PydanticAIBaseLLMEntity:
                 if thinking := thinking_capability(profile):
                     run_capabilities.append(thinking)
                 agent = Agent(
-                    chat_model_for_profile(self.hass, profile),
+                    chat_model_for_profile(self.hass, self.entry, profile),
                     output_type=cast(Any, agent_output_type),
                     instructions=extra_instructions,
                     model_settings=settings,

@@ -11,6 +11,8 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import PydanticAIAgentConfigEntry
 from .const import (
     CONF_AGENT_NAME,
+    CONF_ENABLE_SKILLS,
+    CONF_MCP_SERVER_IDS,
     CONF_PROMPT,
     CONF_WEB_FETCH_ENABLED,
     DOMAIN,
@@ -30,7 +32,7 @@ async def async_setup_entry(
         if subentry.subentry_type != SUBENTRY_TYPE_CONVERSATION:
             continue
         try:
-            model_profile_chain(hass, config_entry, subentry)
+            model_profile_chain(config_entry, subentry)
         except Exception:
             continue
         async_add_entities(
@@ -47,13 +49,13 @@ class PydanticAIConversationEntity(
     _attr_has_entity_name = True
     _attr_icon = "mdi:message-processing-outline"
     _attr_name = None
-    _attr_supports_streaming = True
 
     def __init__(
         self, entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
     ) -> None:
         """Initialize the conversation entity."""
         super().__init__(entry, subentry, name=subentry.data[CONF_AGENT_NAME])
+        self._attr_supports_streaming = not _conversation_can_use_tools(subentry)
         if subentry.data.get(CONF_LLM_HASS_API):
             # CONTROL means the agent can call HA tools/services, which is only
             # true when an HA LLM API is attached to this subentry.
@@ -69,9 +71,9 @@ class PydanticAIConversationEntity(
     @property
     def extra_state_attributes(self) -> dict[str, str | bool | list[str] | None]:
         """Return observability attributes."""
-        profiles = model_profile_chain(self.hass, self.entry, self.subentry)
+        profiles = model_profile_chain(self.entry, self.subentry)
         return {
-            "provider_mode": self.entry.runtime_data.provider_mode,
+            "provider_mode": profiles[0].provider_mode,
             "model": profiles[0].model_name,
             "model_profile": profiles[0].title,
             "fallback_model_profiles": model_display_names(profiles[1:]),
@@ -98,5 +100,18 @@ class PydanticAIConversationEntity(
         except conversation.ConverseError as err:
             return err.as_conversation_result()
 
-        await self._async_handle_chat_log(chat_log, stream=True)
+        await self._async_handle_chat_log(
+            chat_log,
+            stream=not _conversation_can_use_tools(self.subentry),
+        )
         return conversation.async_get_result_from_chat_log(user_input, chat_log)
+
+
+def _conversation_can_use_tools(subentry: ConfigSubentry) -> bool:
+    """Return if a conversation subentry can trigger tool follow-up requests."""
+    return bool(
+        subentry.data.get(CONF_LLM_HASS_API)
+        or subentry.data.get(CONF_MCP_SERVER_IDS)
+        or subentry.data.get(CONF_WEB_FETCH_ENABLED)
+        or subentry.data.get(CONF_ENABLE_SKILLS)
+    )

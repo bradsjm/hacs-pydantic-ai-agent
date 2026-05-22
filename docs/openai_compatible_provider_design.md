@@ -219,9 +219,11 @@ Streaming implementation details:
 - stream entry and iteration errors are mapped through `_map_api_errors()`;
 - `ChatCompletionStream.close()` and `ResponseStream.close()` close the SSE line
   iterator and response context;
-- Home Assistant conversation runtime consumes Pydantic AI
+- Home Assistant plain-conversation runtime consumes Pydantic AI
   `run_stream_events(...)` so visible assistant deltas are emitted live while the
   final `AgentRunResultEvent` is used only for usage and health metrics;
+- conversations that can call HA LLM tools, MCP tools, Web fetch, or skills use
+  non-streamed requests for provider-compatible tool-result follow-up handling;
 - streamed conversation handling does not append final `new_messages()` after
   live deltas, preventing duplicate final assistant text;
 - the real-server probe test drains the event loop after validation to avoid
@@ -247,7 +249,7 @@ Home Assistant form/repair behavior.
 
 ## Home Assistant Runtime Integration
 
-Provider credentials and connection settings live on the parent config entry.
+Provider credentials and connection settings live on `provider` subentries inside a workspace config entry.
 Conversation and AI task subentries store per-agent/task settings such as model,
 prompt, Home Assistant LLM API selection, MCP server selection, WebFetch,
 selected skills, model settings, and structured output mode.
@@ -316,7 +318,8 @@ Current real-server coverage includes:
 
 - provider probing;
 - streamed text events;
-- non-streamed Home Assistant conversation responses;
+- streamed plain Home Assistant conversation responses;
+- non-streamed tool-capable Home Assistant conversation responses;
 - Home Assistant LLM tool calls and tool-result follow-up requests;
 - hosted MCP echo tool calls and tool-result follow-up requests;
 - plain AI task generation;

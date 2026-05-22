@@ -8,6 +8,7 @@ import errno
 import json
 import logging
 from pathlib import PurePosixPath
+from uuid import uuid4
 import socket
 import ssl
 from typing import Any
@@ -42,6 +43,7 @@ from homeassistant.config_entries import (
     ConfigEntryState,
     ConfigFlow,
     ConfigFlowResult,
+    ConfigSubentry,
     ConfigSubentryFlow,
     SubentryFlowResult,
 )
@@ -70,6 +72,7 @@ from homeassistant.helpers.selector import (
 )
 from homeassistant.helpers.template import Template
 from homeassistant.helpers.typing import VolDictType
+from homeassistant.util import dt as dt_util
 
 from ._redaction import redact_data
 from .const import (
@@ -79,9 +82,14 @@ from .const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
+    CONF_DEFAULT_MODEL_PROFILE_ID,
+    CONF_DEFAULT_SKILLS_FOLDER,
+    CONF_DISCOVERED,
+    CONF_DISCOVERED_MODELS_AT,
     CONF_ENABLE_SKILLS,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
-    CONF_FALLBACK_MODEL_SUBENTRY_IDS,
+    CONF_ENABLED,
+    CONF_FALLBACK_MODEL_REFS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
@@ -92,9 +100,10 @@ from .const import (
     CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
     CONF_MODEL,
+    CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_MODEL_SUBENTRY_ID,
     CONF_OUTPUT_MODE,
+    CONF_PRIMARY_MODEL_REF,
     CONF_PROMPT,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
@@ -108,6 +117,7 @@ from .const import (
     DEFAULT_SERVICE_NAME,
     DEFAULT_SKILLS_FOLDER,
     DEFAULT_TIMEOUT,
+    DEFAULT_WORKSPACE_NAME,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
@@ -121,7 +131,7 @@ from .const import (
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
-    SUBENTRY_TYPE_MODEL,
+    SUBENTRY_TYPE_PROVIDER,
     default_conversation_options,
 )
 from .chat_template_kwargs import (
@@ -137,9 +147,11 @@ from .mcp import (
     parse_mcp_headers,
 )
 from .model_profiles import (
+    configured_model_profile_exists,
     model_profile_ref,
     parse_model_profile_ref,
-    resolve_model_profile_ref,
+    provider_model_profiles,
+    provider_subentries,
 )
 from .provider import (
     anthropic_model,
@@ -235,11 +247,15 @@ _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "x
 _OUTPUT_MODE_OPTIONS = tuple(
     SelectOptionDict(value=value, label=value) for value in STRUCTURED_OUTPUT_MODES
 )
+_CONF_ENABLED_MODELS = "enabled_models"
+_CONF_MANUAL_MODELS = "manual_models"
+_CONF_MODEL_PROFILE_ID = "model_profile_id"
 _SECTION_ADVANCED_MCP = "advanced_mcp"
 _SECTION_ADVANCED_MODEL_SETTINGS = "advanced_model_settings"
 _SECTION_ADVANCED_OPTIONS = "advanced_options"
 _SECTION_EXTERNAL_TOOLS = "external_tools"
 _SECTION_LOGFIRE = "logfire"
+_SECTION_MODEL_SELECTION = "model_selection"
 _SECTION_SKILLS = "skill_settings"
 _TODO_WORKSPACE_REQUIRED_FEATURES = (
     TodoListEntityFeature.CREATE_TODO_ITEM
@@ -304,36 +320,14 @@ def _parse_provider_headers(value: object) -> dict[str, str]:
 
 
 def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
-    """Return the provider connection schema."""
-    data = _flatten_section_data(
-        user_input or {}, (_SECTION_ADVANCED_OPTIONS, _SECTION_LOGFIRE)
-    )
-    provider_mode = data.get(CONF_PROVIDER_MODE, PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS)
+    """Return the workspace schema."""
+    data = _flatten_section_data(user_input or {}, (_SECTION_LOGFIRE,))
     schema: VolDictType = {
-        vol.Required(CONF_NAME, default=DEFAULT_SERVICE_NAME): str,
-        vol.Required(CONF_PROVIDER_MODE, default=provider_mode): SelectSelector(
-            SelectSelectorConfig(
-                options=list(PROVIDER_MODES),
-                mode=SelectSelectorMode.DROPDOWN,
-                translation_key=CONF_PROVIDER_MODE,
-            )
-        ),
-        vol.Required(CONF_API_KEY): TextSelector(
-            TextSelectorConfig(type=TextSelectorType.PASSWORD)
-        ),
+        vol.Required(
+            CONF_NAME,
+            default=data.get(CONF_NAME, DEFAULT_WORKSPACE_NAME),
+        ): TextSelector(TextSelectorConfig()),
     }
-    schema[vol.Optional(CONF_BASE_URL)] = str
-    schema[vol.Optional(_SECTION_ADVANCED_OPTIONS, default={})] = section(
-        vol.Schema(
-            {
-                vol.Optional(
-                    CONF_PROVIDER_HEADERS,
-                    default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
-                ): TextSelector(TextSelectorConfig(multiline=True))
-            }
-        ),
-        {"collapsed": True},
-    )
     schema[vol.Optional(_SECTION_LOGFIRE, default={})] = section(
         vol.Schema(
             {
@@ -352,13 +346,220 @@ def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
 
 
 def _provider_form_suggested_values(data: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Return provider form suggested values with text-only header fields."""
-    values = dict(data or {})
-    if CONF_PROVIDER_HEADERS in values:
-        values[CONF_PROVIDER_HEADERS] = _format_http_headers(
-            values[CONF_PROVIDER_HEADERS]
+    """Return workspace form suggested values."""
+    return dict(data or {})
+
+
+def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
+    """Return the provider connection form schema."""
+    data = _flatten_section_data(options or {}, (_SECTION_ADVANCED_OPTIONS,))
+    provider_mode = data.get(CONF_PROVIDER_MODE, PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS)
+    schema: VolDictType = {
+        vol.Required(
+            CONF_NAME,
+            default=data.get(CONF_NAME, DEFAULT_SERVICE_NAME),
+        ): TextSelector(TextSelectorConfig()),
+        vol.Required(CONF_PROVIDER_MODE, default=provider_mode): SelectSelector(
+            SelectSelectorConfig(
+                options=list(PROVIDER_MODES),
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key=CONF_PROVIDER_MODE,
+            )
+        ),
+        vol.Required(
+            CONF_API_KEY,
+            default=data.get(CONF_API_KEY, ""),
+        ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+        vol.Optional(
+            CONF_BASE_URL,
+            default=data.get(CONF_BASE_URL, ""),
+        ): TextSelector(TextSelectorConfig()),
+    }
+    schema[vol.Optional(_SECTION_ADVANCED_OPTIONS, default={})] = section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_PROVIDER_HEADERS,
+                    default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
+                ): TextSelector(TextSelectorConfig(multiline=True))
+            }
+        ),
+        {"collapsed": True},
+    )
+    return vol.Schema(schema)
+
+
+def _provider_manual_models(options: Mapping[str, Any]) -> list[str]:
+    """Return configured manual model names for one provider form state."""
+    manual_models = options.get(_CONF_MANUAL_MODELS)
+    if isinstance(manual_models, str):
+        return _parse_manual_models(manual_models)
+    profiles = options.get(CONF_MODEL_PROFILES)
+    if not isinstance(profiles, Mapping):
+        return []
+    return [
+        str(profile.get(CONF_MODEL)).strip()
+        for profile in profiles.values()
+        if isinstance(profile, Mapping)
+        and not bool(profile.get(CONF_DISCOVERED, False))
+        and isinstance(profile.get(CONF_MODEL), str)
+        and str(profile.get(CONF_MODEL)).strip()
+    ]
+
+
+def _format_manual_models(options: Mapping[str, Any]) -> str:
+    """Return manual model names as multiline text for the form."""
+    return "\n".join(_provider_manual_models(options))
+
+
+def _parse_manual_models(value: object) -> list[str]:
+    """Return deduplicated manual model names from multiline form input."""
+    if not isinstance(value, str):
+        return []
+    seen: set[str] = set()
+    models: list[str] = []
+    for line in value.splitlines():
+        model_name = line.strip()
+        if not model_name or model_name in seen:
+            continue
+        seen.add(model_name)
+        models.append(model_name)
+    return models
+
+
+def _provider_selected_model_names(options: Mapping[str, Any]) -> list[str]:
+    """Return selected provider model names in stable order."""
+    selected: list[str] = []
+    seen: set[str] = set()
+    enabled_models = options.get(_CONF_ENABLED_MODELS)
+    if isinstance(enabled_models, list):
+        for model_name in enabled_models:
+            if isinstance(model_name, str) and model_name and model_name not in seen:
+                seen.add(model_name)
+                selected.append(model_name)
+    for model_name in _provider_manual_models(options):
+        if model_name not in seen:
+            seen.add(model_name)
+            selected.append(model_name)
+    if selected:
+        return selected
+    profiles = options.get(CONF_MODEL_PROFILES)
+    if not isinstance(profiles, Mapping):
+        return []
+    for profile in profiles.values():
+        if not isinstance(profile, Mapping):
+            continue
+        model_name = profile.get(CONF_MODEL)
+        if not isinstance(model_name, str) or not model_name.strip():
+            continue
+        if model_name in seen:
+            continue
+        seen.add(model_name)
+        selected.append(model_name)
+    return selected
+
+
+def _provider_default_model_value(options: Mapping[str, Any]) -> str:
+    """Return the current default model selector value for the form."""
+    selected_models = _provider_selected_model_names(options)
+    profiles = options.get(CONF_MODEL_PROFILES)
+    if isinstance(profiles, Mapping):
+        default_profile_id = options.get(CONF_DEFAULT_MODEL_PROFILE_ID)
+        if isinstance(default_profile_id, str):
+            profile = profiles.get(default_profile_id)
+            model_name = (
+                profile.get(CONF_MODEL) if isinstance(profile, Mapping) else None
+            )
+            if isinstance(model_name, str) and model_name in selected_models:
+                return model_name
+    default_value = options.get(CONF_DEFAULT_MODEL_PROFILE_ID)
+    if isinstance(default_value, str) and default_value in selected_models:
+        return default_value
+    return selected_models[0] if selected_models else ""
+
+
+def _provider_default_model_options(
+    options: Mapping[str, Any],
+) -> list[SelectOptionDict]:
+    """Return default-model dropdown options for selected models."""
+    profiles = options.get(CONF_MODEL_PROFILES)
+    existing_labels: dict[str, str] = {}
+    if isinstance(profiles, Mapping):
+        for profile in profiles.values():
+            if not isinstance(profile, Mapping):
+                continue
+            model_name = profile.get(CONF_MODEL)
+            if not isinstance(model_name, str) or not model_name.strip():
+                continue
+            profile_name = profile.get(CONF_NAME)
+            if isinstance(profile_name, str) and profile_name.strip():
+                existing_labels[model_name] = profile_name
+    return [
+        SelectOptionDict(
+            label=existing_labels.get(model_name, model_name),
+            value=model_name,
         )
-    return values
+        for model_name in _provider_selected_model_names(options)
+    ]
+
+
+def _provider_schema(
+    options: Mapping[str, Any] | None = None,
+    discovered_model_names: Iterable[str] | None = None,
+) -> vol.Schema:
+    """Return the provider subentry schema."""
+    options = dict(options or {})
+    schema_dict: VolDictType = dict(_provider_connection_schema(options).schema)
+    schema_dict[vol.Optional(_SECTION_MODEL_SELECTION, default={})] = section(
+        _provider_model_selection_schema(options, discovered_model_names),
+        {"collapsed": False},
+    )
+    return vol.Schema(schema_dict)
+
+
+def _provider_model_selection_schema(
+    options: Mapping[str, Any] | None = None,
+    discovered_model_names: Iterable[str] | None = None,
+) -> vol.Schema:
+    """Return the provider model-selection schema."""
+    options = dict(options or {})
+    model_selection_schema: VolDictType = {}
+    if discovered_model_names:
+        model_selection_schema[
+            vol.Optional(
+                _CONF_ENABLED_MODELS,
+                default=[
+                    model_name
+                    for model_name in options.get(_CONF_ENABLED_MODELS, [])
+                    if isinstance(model_name, str)
+                ],
+            )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=sorted(set(discovered_model_names)),
+                multiple=True,
+            )
+        )
+    model_selection_schema[
+        vol.Optional(
+            _CONF_MANUAL_MODELS,
+            default=_format_manual_models(options),
+        )
+    ] = TextSelector(TextSelectorConfig(multiline=True))
+    default_model_options = _provider_default_model_options(options)
+    if default_model_options:
+        model_selection_schema[
+            vol.Required(
+                CONF_DEFAULT_MODEL_PROFILE_ID,
+                default=_provider_default_model_value(options),
+            )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=default_model_options,
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        )
+    return vol.Schema(model_selection_schema)
 
 
 def _normalise_base_url(data: Mapping[str, Any]) -> str | None:
@@ -382,12 +583,15 @@ def _dedupe_data(data: Mapping[str, Any]) -> dict[str, Any]:
 async def _validate_configured_models_for_provider_update(
     hass: HomeAssistant,
     entry: ConfigEntry,
+    provider_subentry_id: str,
     data: Mapping[str, Any],
     step: str,
     skip_reconfigurable_model_errors: bool,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Probe existing subentry models against new provider settings."""
-    for model, model_settings, output_mode in _configured_model_probes(entry):
+    for model, model_settings, output_mode in _configured_model_probes(
+        entry, provider_subentry_id
+    ):
         try:
             if output_mode is None:
                 await async_probe_model(hass, data, model, model_settings)
@@ -415,24 +619,30 @@ async def _validate_configured_models_for_provider_update(
 
 def _configured_model_probes(
     entry: ConfigEntry,
+    provider_subentry_id: str,
 ) -> list[tuple[str, dict[str, Any], str | None]]:
     """Return unique model profile probes required by configured subentries."""
-    model_profiles = {
-        subentry.subentry_id: subentry
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == SUBENTRY_TYPE_MODEL
-    }
+    provider_subentry = entry.subentries.get(provider_subentry_id)
+    if (
+        provider_subentry is None
+        or provider_subentry.subentry_type != SUBENTRY_TYPE_PROVIDER
+    ):
+        return []
+    model_profiles = provider_model_profiles(provider_subentry)
     probes: list[tuple[str, dict[str, Any], str | None]] = []
     seen: set[tuple[str, str, str | None]] = set()
 
-    def add_probe(profile_id: str, output_mode: str | None) -> None:
-        profile = model_profiles.get(profile_id)
-        if profile is None:
+    def add_probe(profile_ref: str, output_mode: str | None) -> None:
+        ref_provider_subentry_id, profile_id = parse_model_profile_ref(profile_ref)
+        if ref_provider_subentry_id != provider_subentry_id:
             return
-        model = profile.data.get(CONF_MODEL)
+        profile = model_profiles.get(profile_id)
+        if profile is None or not bool(profile.get(CONF_ENABLED, True)):
+            return
+        model = profile.get(CONF_MODEL)
         if not isinstance(model, str) or not model:
             return
-        settings = profile.data.get(CONF_MODEL_SETTINGS)
+        settings = profile.get(CONF_MODEL_SETTINGS)
         model_settings = dict(settings) if isinstance(settings, Mapping) else {}
         provider_settings = dict(model_settings)
         provider_settings.pop(_MODEL_SETTING_MAX_ITERATIONS, None)
@@ -447,7 +657,7 @@ def _configured_model_probes(
         probes.append((model, model_settings, output_mode))
 
     for profile_id in model_profiles:
-        add_probe(profile_id, None)
+        add_probe(model_profile_ref(provider_subentry_id, profile_id), None)
 
     for subentry in entry.subentries.values():
         if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
@@ -455,20 +665,15 @@ def _configured_model_probes(
         output_mode = normalise_structured_output_mode(
             subentry.data.get(CONF_OUTPUT_MODE)
         )
-        profile_ids = [
-            subentry_id
-            for raw_ref in _selected_model_profile_ids(subentry.data)
-            for entry_id, subentry_id in [parse_model_profile_ref(entry, raw_ref)]
-            if entry_id == entry.entry_id
-        ]
-        if not profile_ids:
+        profile_refs = _selected_model_profile_refs(subentry.data)
+        if not profile_refs:
             _LOGGER.warning(
                 "Skipping legacy AI task subentry without model profile during provider validation: %s",
                 subentry.subentry_id,
             )
             continue
-        for profile_id in profile_ids:
-            add_probe(profile_id, output_mode)
+        for profile_ref in profile_refs:
+            add_probe(profile_ref, output_mode)
     return probes
 
 
@@ -840,23 +1045,18 @@ def _invalid_structured_output_message(output_mode: str) -> str:
     return "The provider did not return valid tool structured output."
 
 
-def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
-    """Return normalized provider data for storage and validation."""
-    data = _flatten_section_data(
-        user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_LOGFIRE)
-    )
-    data.pop(CONF_SKILLS_FOLDER, None)
-    data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
-    data.pop(CONF_ENABLE_SKILLS, None)
-    data.pop(CONF_SKILLS, None)
-    data[CONF_BASE_URL] = _normalise_base_url(data)
-    headers = _parse_provider_headers(data.get(CONF_PROVIDER_HEADERS))
-    if headers:
-        data[CONF_PROVIDER_HEADERS] = headers
-    else:
-        data.pop(CONF_PROVIDER_HEADERS, None)
-    if not data[CONF_BASE_URL]:
-        data.pop(CONF_BASE_URL, None)
+def _normalise_skills_folder(folder: object) -> str:
+    """Return a canonical skills folder path for storage."""
+    configured = str(folder or DEFAULT_SKILLS_FOLDER).strip() or DEFAULT_SKILLS_FOLDER
+    path = PurePosixPath(configured)
+    if not path.is_absolute() and path.parts and path.parts[0] == "skills":
+        return f"/config/{path.as_posix()}".rstrip("/")
+    return configured.rstrip("/")
+
+
+def _normalise_workspace_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
+    """Return normalized workspace data for storage."""
+    data = _flatten_section_data(user_input, (_SECTION_LOGFIRE,))
     token = data.get(CONF_LOGFIRE_TOKEN)
     if isinstance(token, str):
         token = token.strip()
@@ -868,16 +1068,230 @@ def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
     else:
         data.pop(CONF_LOGFIRE_TOKEN, None)
         data.pop(CONF_LOGFIRE_INCLUDE_CONTENT, None)
+    data[CONF_DEFAULT_SKILLS_FOLDER] = DEFAULT_SKILLS_FOLDER
     return data
 
 
-def _normalise_skills_folder(folder: object) -> str:
-    """Return a canonical skills folder path for storage."""
-    configured = str(folder or DEFAULT_SKILLS_FOLDER).strip() or DEFAULT_SKILLS_FOLDER
-    path = PurePosixPath(configured)
-    if not path.is_absolute() and path.parts and path.parts[0] == "skills":
-        return f"/config/{path.as_posix()}".rstrip("/")
-    return configured.rstrip("/")
+def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
+    """Return normalized provider data for storage and validation."""
+    data = _flatten_section_data(
+        user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_MODEL_SELECTION)
+    )
+    data[CONF_NAME] = str(data[CONF_NAME]).strip() or DEFAULT_SERVICE_NAME
+    data[CONF_BASE_URL] = _normalise_base_url(data)
+    headers = _parse_provider_headers(data.get(CONF_PROVIDER_HEADERS))
+    if headers:
+        data[CONF_PROVIDER_HEADERS] = headers
+    else:
+        data.pop(CONF_PROVIDER_HEADERS, None)
+    if not data[CONF_BASE_URL]:
+        data.pop(CONF_BASE_URL, None)
+    api_key = data.get(CONF_API_KEY)
+    data[CONF_API_KEY] = str(api_key or "").strip()
+    enabled_models = data.get(_CONF_ENABLED_MODELS)
+    if isinstance(enabled_models, str):
+        data[_CONF_ENABLED_MODELS] = [enabled_models]
+    elif isinstance(enabled_models, list):
+        data[_CONF_ENABLED_MODELS] = [
+            model_name
+            for model_name in enabled_models
+            if isinstance(model_name, str) and model_name
+        ]
+    else:
+        data[_CONF_ENABLED_MODELS] = []
+    data[_CONF_MANUAL_MODELS] = _parse_manual_models(data.get(_CONF_MANUAL_MODELS, ""))
+    return data
+
+
+def _provider_selected_models_error(data: Mapping[str, Any]) -> tuple[str, str] | None:
+    """Return a field/error pair for provider model selection errors."""
+    selected_models = _provider_selected_model_names(data)
+    if not selected_models:
+        return _CONF_ENABLED_MODELS, "enabled_models_required"
+    default_value = data.get(CONF_DEFAULT_MODEL_PROFILE_ID)
+    if not default_value:
+        return None
+    if not isinstance(default_value, str) or default_value not in selected_models:
+        return CONF_DEFAULT_MODEL_PROFILE_ID, "default_model_profile_not_enabled"
+    return None
+
+
+def _default_model_name(data: Mapping[str, Any]) -> str:
+    """Return the selected default model name for a provider form state."""
+    selected_models = _provider_selected_model_names(data)
+    default_value = data.get(CONF_DEFAULT_MODEL_PROFILE_ID)
+    if isinstance(default_value, str) and default_value in selected_models:
+        return default_value
+    if not selected_models:
+        raise ProviderValidationError(
+            "enabled_models_required",
+            "At least one provider model must be enabled.",
+        )
+    return selected_models[0]
+
+
+def _normalise_provider_model_profiles(
+    existing_profiles: Mapping[str, Any],
+    selected_models: list[str],
+    discovered_model_names: Iterable[str],
+    default_model_name: str,
+) -> tuple[dict[str, dict[str, Any]], str]:
+    """Return provider-owned profile storage and the resolved default profile id."""
+    discovered_set = set(discovered_model_names)
+    existing_by_model: dict[str, tuple[str, dict[str, Any]]] = {}
+    for profile_id, profile in existing_profiles.items():
+        if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+            continue
+        model_name = profile.get(CONF_MODEL)
+        if not isinstance(model_name, str) or not model_name.strip():
+            continue
+        existing_by_model.setdefault(model_name, (profile_id, dict(profile)))
+
+    profiles: dict[str, dict[str, Any]] = {}
+    default_profile_id = ""
+    for model_name in selected_models:
+        existing_profile = existing_by_model.get(model_name)
+        if existing_profile is None:
+            profile_id = uuid4().hex
+            profile = {
+                "id": profile_id,
+                CONF_NAME: model_name,
+                CONF_MODEL: model_name,
+                CONF_ENABLED: True,
+                CONF_DISCOVERED: model_name in discovered_set,
+            }
+        else:
+            profile_id, profile = existing_profile
+            profile = dict(profile)
+        profile["id"] = profile_id
+        profile[CONF_NAME] = str(profile.get(CONF_NAME) or model_name)
+        profile[CONF_MODEL] = model_name
+        profile[CONF_ENABLED] = True
+        profile[CONF_DISCOVERED] = model_name in discovered_set
+        if not isinstance(profile.get(CONF_MODEL_SETTINGS), Mapping):
+            profile.pop(CONF_MODEL_SETTINGS, None)
+        profiles[profile_id] = profile
+        if model_name == default_model_name:
+            default_profile_id = profile_id
+
+    if not default_profile_id and profiles:
+        default_profile_id = next(iter(profiles))
+    return profiles, default_profile_id
+
+
+def _provider_profile_options(
+    provider_subentry: ConfigSubentry,
+) -> list[SelectOptionDict]:
+    """Return all provider model profiles as select options."""
+    options: list[SelectOptionDict] = []
+    for profile_id, profile in provider_model_profiles(provider_subentry).items():
+        model_name = profile.get(CONF_MODEL)
+        if not isinstance(model_name, str) or not model_name.strip():
+            continue
+        profile_name = profile.get(CONF_NAME)
+        label = (
+            str(profile_name)
+            if isinstance(profile_name, str) and profile_name.strip()
+            else model_name
+        )
+        if not bool(profile.get(CONF_ENABLED, True)):
+            label = f"{label} (disabled)"
+        options.append(SelectOptionDict(label=label, value=profile_id))
+    return options
+
+
+def _provider_profile_dependents(entry: ConfigEntry, profile_ref: str) -> list[str]:
+    """Return conversation and AI task titles that reference one profile."""
+    dependents: list[str] = []
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type not in {
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        }:
+            continue
+        refs = _selected_model_profile_refs(subentry.data)
+        if profile_ref in refs:
+            dependents.append(subentry.title)
+    return dependents
+
+
+def _provider_profile_selector_schema(provider_subentry: ConfigSubentry) -> vol.Schema:
+    """Return a selector schema for existing provider-owned profiles."""
+    return vol.Schema(
+        {
+            vol.Required(_CONF_MODEL_PROFILE_ID): SelectSelector(
+                SelectSelectorConfig(
+                    options=_provider_profile_options(provider_subentry),
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            )
+        }
+    )
+
+
+def _model_profile_edit_schema(
+    profile: Mapping[str, Any],
+) -> vol.Schema:
+    """Return the provider-owned model profile edit schema."""
+    options: dict[str, Any] = {
+        CONF_NAME: profile.get(CONF_NAME, profile.get(CONF_MODEL, "")),
+        CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {}),
+        CONF_ENABLED: bool(profile.get(CONF_ENABLED, True)),
+    }
+    schema: VolDictType = {
+        vol.Required(CONF_NAME, default=options[CONF_NAME]): TextSelector(
+            TextSelectorConfig()
+        ),
+        vol.Optional(CONF_ENABLED, default=options[CONF_ENABLED]): BooleanSelector(),
+    }
+    if not bool(profile.get(CONF_DISCOVERED, False)):
+        schema[vol.Required(CONF_MODEL, default=profile.get(CONF_MODEL, ""))] = (
+            TextSelector(TextSelectorConfig())
+        )
+    else:
+        schema[vol.Required(CONF_MODEL, default=profile.get(CONF_MODEL, ""))] = (
+            SelectSelector(
+                SelectSelectorConfig(
+                    options=[str(profile.get(CONF_MODEL, ""))],
+                    mode=SelectSelectorMode.DROPDOWN,
+                    translation_key=CONF_MODEL,
+                )
+            )
+        )
+    schema[
+        vol.Optional(
+            _MODEL_SETTING_TEMPERATURE,
+            description={
+                "suggested_value": options[CONF_MODEL_SETTINGS].get(
+                    _MODEL_SETTING_TEMPERATURE
+                )
+                if isinstance(options[CONF_MODEL_SETTINGS], Mapping)
+                else None
+            },
+        )
+    ] = NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1))
+    schema[
+        vol.Optional(
+            _MODEL_SETTING_THINKING,
+            description={
+                "suggested_value": _format_thinking_value(
+                    options[CONF_MODEL_SETTINGS]
+                    if isinstance(options[CONF_MODEL_SETTINGS], Mapping)
+                    else {}
+                )
+            },
+        )
+    ] = SelectSelector(
+        SelectSelectorConfig(
+            options=list(_THINKING_OPTIONS),
+            mode=SelectSelectorMode.DROPDOWN,
+            translation_key=_MODEL_SETTING_THINKING,
+        )
+    )
+    schema[vol.Optional(_SECTION_ADVANCED_MODEL_SETTINGS, default={})] = section(
+        _model_settings_schema(options), {"collapsed": True}
+    )
+    return vol.Schema(schema)
 
 
 def _validate_provider_data(hass: HomeAssistant, data: Mapping[str, Any]) -> None:
@@ -917,94 +1331,93 @@ def _mcp_server_select_options(entry: ConfigEntry | None) -> list[SelectOptionDi
 
 
 def _model_profile_select_options(entry: ConfigEntry | None) -> list[SelectOptionDict]:
-    """Return configured model profiles as select options."""
+    """Return enabled workspace model profiles as select options."""
     if entry is None:
         return []
-    return [
-        SelectOptionDict(label=subentry.title, value=subentry.subentry_id)
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == SUBENTRY_TYPE_MODEL
-    ]
+    options: list[SelectOptionDict] = []
+    for provider_subentry in provider_subentries(entry):
+        for profile_id, profile in provider_model_profiles(provider_subentry).items():
+            if not bool(profile.get(CONF_ENABLED, True)):
+                continue
+            model_name = profile.get(CONF_MODEL)
+            if not isinstance(model_name, str) or not model_name.strip():
+                continue
+            profile_name = profile.get(CONF_NAME)
+            label = (
+                str(profile_name)
+                if isinstance(profile_name, str) and profile_name.strip()
+                else model_name
+            )
+            options.append(
+                SelectOptionDict(
+                    label=f"{provider_subentry.title} / {label}",
+                    value=model_profile_ref(provider_subentry.subentry_id, profile_id),
+                )
+            )
+    return options
 
 
-def _normalise_fallback_model_profile_refs(
-    entry: ConfigEntry, raw_refs: object
+def _normalise_fallback_model_refs(
+    raw_refs: object,
 ) -> list[str]:
-    """Return canonical fallback refs, preserving order."""
+    """Return canonical workspace-local fallback refs, preserving order."""
     if isinstance(raw_refs, str) or not isinstance(raw_refs, list):
         return []
     refs: list[str] = []
     for raw_ref in raw_refs:
         if not isinstance(raw_ref, str) or not raw_ref:
             continue
-        entry_id, subentry_id = parse_model_profile_ref(entry, raw_ref)
-        refs.append(model_profile_ref(entry_id, subentry_id))
+        try:
+            provider_subentry_id, profile_id = parse_model_profile_ref(raw_ref)
+        except HomeAssistantError:
+            continue
+        refs.append(model_profile_ref(provider_subentry_id, profile_id))
     return refs
 
 
 def _fallback_model_profile_select_options(
     hass: HomeAssistant, entry: ConfigEntry | None, selected_refs: object = None
 ) -> list[SelectOptionDict]:
-    """Return model profiles across loaded provider entries as fallback options."""
-    options: list[SelectOptionDict] = []
-    configured_refs: set[str] = set()
-    for provider_entry in hass.config_entries.async_entries(DOMAIN):
-        if provider_entry.state != ConfigEntryState.LOADED:
-            continue
-        for subentry in provider_entry.subentries.values():
-            if subentry.subentry_type != SUBENTRY_TYPE_MODEL:
-                continue
-            ref = model_profile_ref(provider_entry.entry_id, subentry.subentry_id)
-            configured_refs.add(ref)
-            options.append(
-                SelectOptionDict(
-                    label=f"{provider_entry.title} / {subentry.title}", value=ref
-                )
-            )
-    if entry is None:
-        return options
-    for ref in _normalise_fallback_model_profile_refs(entry, selected_refs):
+    """Return workspace-local fallback profile options."""
+    del hass
+    options = _model_profile_select_options(entry)
+    configured_refs = {str(option["value"]) for option in options if "value" in option}
+    for ref in _normalise_fallback_model_refs(selected_refs):
         if ref not in configured_refs:
             options.append(SelectOptionDict(label=f"Unavailable / {ref}", value=ref))
     return options
 
 
-def _selected_model_profile_ids(data: Mapping[str, Any]) -> list[str]:
-    """Return selected primary plus ordered fallback profile IDs."""
-    primary_id = data.get(CONF_MODEL_SUBENTRY_ID)
-    if not isinstance(primary_id, str) or not primary_id:
+def _selected_model_profile_refs(data: Mapping[str, Any]) -> list[str]:
+    """Return selected primary plus ordered fallback profile refs."""
+    primary_ref = data.get(CONF_PRIMARY_MODEL_REF)
+    if not isinstance(primary_ref, str) or not primary_ref:
         return []
-    fallback_ids = data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
-    if isinstance(fallback_ids, str) or not isinstance(fallback_ids, list):
-        fallback_ids = []
-    return [primary_id, *[item for item in fallback_ids if isinstance(item, str)]]
+    fallback_refs = data.get(CONF_FALLBACK_MODEL_REFS, [])
+    if isinstance(fallback_refs, str) or not isinstance(fallback_refs, list):
+        fallback_refs = []
+    return [primary_ref, *[item for item in fallback_refs if isinstance(item, str)]]
 
 
 def _selected_model_profile_error(
     hass: HomeAssistant, entry: ConfigEntry, data: Mapping[str, Any]
 ) -> str | None:
     """Return a form error for missing or invalid model profile selections."""
-    primary_id = data.get(CONF_MODEL_SUBENTRY_ID)
-    if not isinstance(primary_id, str) or not primary_id:
+    del hass
+    primary_ref = data.get(CONF_PRIMARY_MODEL_REF)
+    if not isinstance(primary_ref, str) or not primary_ref:
         return "model_profile_required"
-    primary_subentry = entry.subentries.get(primary_id)
-    if (
-        primary_subentry is None
-        or primary_subentry.subentry_type != SUBENTRY_TYPE_MODEL
-    ):
+    if not configured_model_profile_exists(entry, primary_ref):
         return "model_profile_not_found"
-    primary_ref = model_profile_ref(entry.entry_id, primary_id)
-    fallback_ids = _normalise_fallback_model_profile_refs(
-        entry, data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+    fallback_refs = _normalise_fallback_model_refs(
+        data.get(CONF_FALLBACK_MODEL_REFS, [])
     )
-    if primary_ref in fallback_ids:
+    if primary_ref in fallback_refs:
         return "primary_model_in_fallbacks"
-    if len(fallback_ids) != len(set(fallback_ids)):
+    if len(fallback_refs) != len(set(fallback_refs)):
         return "duplicate_fallback_model"
-    for profile_id in fallback_ids:
-        try:
-            resolve_model_profile_ref(hass, entry, profile_id)
-        except HomeAssistantError:
+    for profile_ref in fallback_refs:
+        if not configured_model_profile_exists(entry, profile_ref):
             return "model_profile_not_found"
     return None
 
@@ -1169,7 +1582,7 @@ def _conversation_schema(
     options = dict(options or {})
     model_options = _model_profile_select_options(entry)
     fallback_model_options = _fallback_model_profile_select_options(
-        hass, entry, options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+        hass, entry, options.get(CONF_FALLBACK_MODEL_REFS, [])
     )
     hass_apis: list[SelectOptionDict] = []
     valid_api_ids: set[str] = set()
@@ -1194,30 +1607,28 @@ def _conversation_schema(
     if model_options:
         schema[
             vol.Required(
-                CONF_MODEL_SUBENTRY_ID,
-                default=options.get(CONF_MODEL_SUBENTRY_ID, ""),
+                CONF_PRIMARY_MODEL_REF,
+                default=options.get(CONF_PRIMARY_MODEL_REF, ""),
             )
         ] = SelectSelector(
             SelectSelectorConfig(
                 options=model_options,
                 mode=SelectSelectorMode.DROPDOWN,
-                translation_key=CONF_MODEL_SUBENTRY_ID,
+                translation_key=CONF_PRIMARY_MODEL_REF,
             )
         )
         schema[
             vol.Optional(
-                CONF_FALLBACK_MODEL_SUBENTRY_IDS,
-                default=_normalise_fallback_model_profile_refs(
-                    entry, options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
-                )
-                if entry is not None
-                else [],
+                CONF_FALLBACK_MODEL_REFS,
+                default=_normalise_fallback_model_refs(
+                    options.get(CONF_FALLBACK_MODEL_REFS, [])
+                ),
             )
         ] = SelectSelector(
             SelectSelectorConfig(
                 options=fallback_model_options,
                 multiple=True,
-                translation_key=CONF_FALLBACK_MODEL_SUBENTRY_IDS,
+                translation_key=CONF_FALLBACK_MODEL_REFS,
             )
         )
     api_schema_key = vol.Optional(CONF_LLM_HASS_API)
@@ -1705,8 +2116,8 @@ def _conversation_data_from_user_input(
         data.pop(CONF_MCP_SERVER_IDS, None)
     if not data.get(CONF_WEB_FETCH_ENABLED):
         data.pop(CONF_WEB_FETCH_ENABLED, None)
-    if not data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS):
-        data.pop(CONF_FALLBACK_MODEL_SUBENTRY_IDS, None)
+    if not data.get(CONF_FALLBACK_MODEL_REFS):
+        data.pop(CONF_FALLBACK_MODEL_REFS, None)
     if (
         data.get(CONF_ENABLE_SKILLS)
         and CONF_SKILLS in user_input
@@ -1773,7 +2184,7 @@ def _ai_task_data_schema(
     options = dict(options or {})
     model_options = _model_profile_select_options(entry)
     fallback_model_options = _fallback_model_profile_select_options(
-        hass, entry, options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
+        hass, entry, options.get(CONF_FALLBACK_MODEL_REFS, [])
     )
     schema: VolDictType = {
         vol.Required(
@@ -1784,30 +2195,28 @@ def _ai_task_data_schema(
     if model_options:
         schema[
             vol.Required(
-                CONF_MODEL_SUBENTRY_ID,
-                default=options.get(CONF_MODEL_SUBENTRY_ID, ""),
+                CONF_PRIMARY_MODEL_REF,
+                default=options.get(CONF_PRIMARY_MODEL_REF, ""),
             )
         ] = SelectSelector(
             SelectSelectorConfig(
                 options=model_options,
                 mode=SelectSelectorMode.DROPDOWN,
-                translation_key=CONF_MODEL_SUBENTRY_ID,
+                translation_key=CONF_PRIMARY_MODEL_REF,
             )
         )
         schema[
             vol.Optional(
-                CONF_FALLBACK_MODEL_SUBENTRY_IDS,
-                default=_normalise_fallback_model_profile_refs(
-                    entry, options.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
-                )
-                if entry is not None
-                else [],
+                CONF_FALLBACK_MODEL_REFS,
+                default=_normalise_fallback_model_refs(
+                    options.get(CONF_FALLBACK_MODEL_REFS, [])
+                ),
             )
         ] = SelectSelector(
             SelectSelectorConfig(
                 options=fallback_model_options,
                 multiple=True,
-                translation_key=CONF_FALLBACK_MODEL_SUBENTRY_IDS,
+                translation_key=CONF_FALLBACK_MODEL_REFS,
             )
         )
     external_tools_schema: VolDictType = {}
@@ -1888,8 +2297,8 @@ def _ai_task_data_from_user_input(
         data.pop(CONF_MCP_SERVER_IDS, None)
     if not data.get(CONF_WEB_FETCH_ENABLED):
         data.pop(CONF_WEB_FETCH_ENABLED, None)
-    if not data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS):
-        data.pop(CONF_FALLBACK_MODEL_SUBENTRY_IDS, None)
+    if not data.get(CONF_FALLBACK_MODEL_REFS):
+        data.pop(CONF_FALLBACK_MODEL_REFS, None)
     if not data.get(CONF_TODO_LIST_ENTITY_ID):
         data.pop(CONF_TODO_LIST_ENTITY_ID, None)
     if (
@@ -2071,43 +2480,26 @@ def _mcp_url_identity(
 class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Pydantic AI Agent."""
 
-    VERSION = 1
-    MINOR_VERSION = 2
+    VERSION = 2
+    MINOR_VERSION = 0
 
-    _pending_provider_data: dict[str, Any]
-    _pending_provider_entry: ConfigEntry
-    _pending_provider_progress_error: tuple[dict[str, str], dict[str, str]] | None
-    _pending_provider_progress_step: str
-
-    def _async_update_provider_and_abort(
+    def _async_update_workspace_and_abort(
         self, entry: ConfigEntry, data: dict[str, Any]
     ) -> ConfigFlowResult:
-        """Update a provider entry using the active reload mechanism."""
+        """Update a workspace entry using the active reload mechanism."""
         if entry.update_listeners:
             return self.async_update_and_abort(entry, data=data)
-        # Auth-failed entries may not have completed setup far enough to register
-        # the reload listener, so explicitly schedule setup after updating them.
         return self.async_update_reload_and_abort(entry, data=data)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Store provider credentials; model access is validated by subentries."""
+        """Create a new workspace config entry."""
         errors: dict[str, str] = {}
-        description_placeholders: dict[str, str] = {}
 
         if user_input is not None:
-            try:
-                data = _normalise_provider_data(user_input)
-                _validate_provider_data(self.hass, data)
-            except ProviderValidationError as err:
-                errors["base"] = err.reason
-                description_placeholders = _provider_validation_placeholders(err)
-            else:
-                for current_entry in self._async_current_entries():
-                    if _provider_data_matches(current_entry.data, data):
-                        return self.async_abort(reason="already_configured")
-                return self.async_create_entry(title=data[CONF_NAME], data=data)
+            data = _normalise_workspace_data(user_input)
+            return self.async_create_entry(title=data[CONF_NAME], data=data)
 
         return self.async_show_form(
             step_id="user",
@@ -2115,60 +2507,12 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                 _base_schema(user_input), _provider_form_suggested_values(user_input)
             ),
             errors=errors,
-            description_placeholders=description_placeholders,
-        )
-
-    async def async_step_reauth(
-        self, entry_data: Mapping[str, Any]
-    ) -> ConfigFlowResult:
-        """Perform reauth after an authentication error."""
-        return await self.async_step_reauth_confirm()
-
-    async def async_step_reauth_confirm(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Confirm reauth and collect provider credentials."""
-        if user_input is None:
-            entry_data = dict(self._get_reauth_entry().data)
-            return self.async_show_form(
-                step_id="reauth_confirm",
-                data_schema=self.add_suggested_values_to_schema(
-                    _base_schema(entry_data),
-                    _provider_form_suggested_values(entry_data),
-                ),
-            )
-        entry = self._get_reauth_entry()
-        try:
-            data = _normalise_provider_data(user_input)
-            _validate_provider_data(self.hass, data)
-        except ProviderValidationError as err:
-            return self.async_show_form(
-                step_id="reauth_confirm",
-                data_schema=self.add_suggested_values_to_schema(
-                    _base_schema(user_input),
-                    _provider_form_suggested_values(user_input),
-                ),
-                errors={"base": err.reason},
-                description_placeholders=_provider_validation_placeholders(err),
-            )
-
-        for current_entry in self._async_current_entries():
-            if current_entry.entry_id == entry.entry_id:
-                continue
-            if _provider_data_matches(current_entry.data, data):
-                return self.async_abort(reason="already_configured")
-        return self._async_show_provider_validation_progress(
-            entry,
-            data,
-            form_step="reauth_confirm",
-            validation_step="reauth",
-            skip_reconfigurable_model_errors=True,
         )
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Reconfigure provider credentials and connection settings."""
+        """Reconfigure workspace metadata and Logfire settings."""
         entry = self._get_reconfigure_entry()
         if user_input is None:
             entry_data = dict(entry.data)
@@ -2180,94 +2524,8 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                 ),
             )
 
-        try:
-            data = _normalise_provider_data(user_input)
-            _validate_provider_data(self.hass, data)
-        except ProviderValidationError as err:
-            return self.async_show_form(
-                step_id="reconfigure",
-                data_schema=self.add_suggested_values_to_schema(
-                    _base_schema(user_input),
-                    _provider_form_suggested_values(user_input),
-                ),
-                errors={"base": err.reason},
-                description_placeholders=_provider_validation_placeholders(err),
-            )
-
-        for current_entry in self._async_current_entries():
-            if current_entry.entry_id == entry.entry_id:
-                continue
-            if _provider_data_matches(current_entry.data, data):
-                return self.async_abort(reason="already_configured")
-
-        return self._async_show_provider_validation_progress(
-            entry,
-            data,
-            form_step="reconfigure",
-            validation_step="provider reconfigure",
-            skip_reconfigurable_model_errors=False,
-        )
-
-    def _async_show_provider_validation_progress(
-        self,
-        entry: ConfigEntry,
-        data: dict[str, Any],
-        *,
-        form_step: str,
-        validation_step: str,
-        skip_reconfigurable_model_errors: bool,
-    ) -> ConfigFlowResult:
-        """Show progress while validating existing models against provider data."""
-        self._pending_provider_entry = entry
-        self._pending_provider_data = data
-        self._pending_provider_progress_step = form_step
-        self._pending_provider_progress_error = None
-        task = self.hass.async_create_task(
-            _validate_configured_models_for_provider_update(
-                self.hass,
-                entry,
-                data,
-                validation_step,
-                skip_reconfigurable_model_errors,
-            )
-        )
-        return self.async_show_progress(
-            step_id="provider_validation_progress",
-            progress_action="probe_models",
-            progress_task=task,
-        )
-
-    async def async_step_provider_validation_progress(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Finish provider validation progress."""
-        task = self.async_get_progress_task()
-        if task is not None and not task.done():
-            return self.async_show_progress(
-                step_id="provider_validation_progress",
-                progress_action="probe_models",
-                progress_task=task,
-            )
-        self._pending_provider_progress_error = None if task is None else task.result()
-        return self.async_show_progress_done(next_step_id="provider_validation_finish")
-
-    async def async_step_provider_validation_finish(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Update provider data or show validation errors."""
-        data = self._pending_provider_data
-        if self._pending_provider_progress_error is not None:
-            errors, description_placeholders = self._pending_provider_progress_error
-            if errors:
-                return self.async_show_form(
-                    step_id=self._pending_provider_progress_step,
-                    data_schema=self.add_suggested_values_to_schema(
-                        _base_schema(data), _provider_form_suggested_values(data)
-                    ),
-                    errors=errors,
-                    description_placeholders=description_placeholders,
-                )
-        return self._async_update_provider_and_abort(self._pending_provider_entry, data)
+        data = _normalise_workspace_data(user_input)
+        return self._async_update_workspace_and_abort(entry, data)
 
     @classmethod
     @callback
@@ -2276,22 +2534,28 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> dict[str, type[ConfigSubentryFlow]]:
         """Return subentries supported by this integration."""
         return {
-            SUBENTRY_TYPE_MODEL: ModelSubentryFlowHandler,
+            SUBENTRY_TYPE_PROVIDER: ProviderSubentryFlowHandler,
             SUBENTRY_TYPE_CONVERSATION: ConversationSubentryFlowHandler,
             SUBENTRY_TYPE_AI_TASK: AITaskDataSubentryFlowHandler,
             SUBENTRY_TYPE_MCP_SERVER: MCPServerSubentryFlowHandler,
         }
 
 
-class ModelSubentryFlowHandler(ConfigSubentryFlow):
-    """Flow for managing provider-owned model profiles."""
+class ProviderSubentryFlowHandler(ConfigSubentryFlow):
+    """Flow for managing workspace-owned provider subentries."""
 
-    _model_discovery_failed: bool
     _model_names: list[str] | None
+    _model_names_cache_key: str | None
     _options: dict[str, Any]
     _pending_data: dict[str, Any]
-    _pending_error: tuple[str, dict[str, str]] | None
+    _pending_error: tuple[str, str, dict[str, str]] | None
+    _pending_storage_data: dict[str, Any]
+    _pending_step_id: str
+    _selected_profile_action: str | None
+    _selected_profile_id: str | None
     _pending_model_settings: dict[str, Any]
+    _pending_profile_data: dict[str, Any]
+    _pending_profile_error: tuple[str, dict[str, str]] | None
 
     @property
     def _is_new(self) -> bool:
@@ -2301,78 +2565,379 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Add a model profile subentry."""
-        self._model_discovery_failed = False
+        """Add a provider subentry."""
         self._model_names = None
+        self._model_names_cache_key = None
         self._options = {}
         self._pending_error = None
+        self._pending_storage_data = {}
+        self._pending_step_id = "init"
+        self._selected_profile_action = None
+        self._selected_profile_id = None
         return await self.async_step_init(user_input)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Reconfigure a model profile subentry."""
-        self._model_discovery_failed = False
-        self._model_names = None
-        self._options = self._get_reconfigure_subentry().data.copy()
+        """Reconfigure a provider subentry."""
+        self._options = self._provider_form_options(self._get_reconfigure_subentry())
+        self._model_names = (
+            sorted(
+                {
+                    str(profile.get(CONF_MODEL)).strip()
+                    for profile in provider_model_profiles(
+                        self._get_reconfigure_subentry()
+                    ).values()
+                    if isinstance(profile.get(CONF_MODEL), str)
+                    and str(profile.get(CONF_MODEL)).strip()
+                    and bool(profile.get(CONF_DISCOVERED, False))
+                }
+            )
+            or None
+        )
+        self._model_names_cache_key = None
         self._pending_error = None
-        return await self.async_step_init(user_input)
+        self._pending_storage_data = {}
+        self._pending_step_id = "enable_models"
+        self._selected_profile_action = None
+        self._selected_profile_id = None
+        return await self.async_step_reconfigure_menu()
 
-    async def _async_model_names(self) -> list[str] | None:
+    def _provider_form_options(self, subentry: ConfigSubentry) -> dict[str, Any]:
+        """Return provider data expanded with form-only model-selection fields."""
+        options = dict(subentry.data)
+        options[_CONF_ENABLED_MODELS] = [
+            str(profile.get(CONF_MODEL)).strip()
+            for profile in provider_model_profiles(subentry).values()
+            if isinstance(profile.get(CONF_MODEL), str)
+            and str(profile.get(CONF_MODEL)).strip()
+            and bool(profile.get(CONF_DISCOVERED, False))
+            and bool(profile.get(CONF_ENABLED, True))
+        ]
+        options[_CONF_MANUAL_MODELS] = "\n".join(
+            str(profile.get(CONF_MODEL)).strip()
+            for profile in provider_model_profiles(subentry).values()
+            if isinstance(profile.get(CONF_MODEL), str)
+            and str(profile.get(CONF_MODEL)).strip()
+            and not bool(profile.get(CONF_DISCOVERED, False))
+            and bool(profile.get(CONF_ENABLED, True))
+        )
+        options[CONF_DEFAULT_MODEL_PROFILE_ID] = _provider_default_model_value(options)
+        return options
+
+    def _provider_already_configured(self, data: Mapping[str, Any]) -> bool:
+        """Return if another provider subentry already uses this connection."""
+        current_subentry_id = (
+            None if self._is_new else self._get_reconfigure_subentry().subentry_id
+        )
+        for provider_subentry in provider_subentries(self._get_entry()):
+            if provider_subentry.subentry_id == current_subentry_id:
+                continue
+            if _provider_data_matches(provider_subentry.data, data):
+                return True
+        return False
+
+    async def _async_model_names(self, data: Mapping[str, Any]) -> list[str] | None:
         """Return discovered provider model names for this flow."""
-        if self._model_names is not None or self._model_discovery_failed:
+        cache_key = json.dumps(_dedupe_data(data), sort_keys=True)
+        if self._model_names is not None and self._model_names_cache_key == cache_key:
             return self._model_names
         try:
-            model_names = await async_list_provider_model_names(
-                self.hass, self._get_entry().data
-            )
+            self._model_names = await async_list_provider_model_names(self.hass, data)
+            self._model_names_cache_key = cache_key
         except Exception:
-            _LOGGER.warning("Unable to list provider models for model profile form")
-            self._model_discovery_failed = True
+            _LOGGER.warning("Unable to list provider models for provider form")
             return None
-        if not model_names:
-            self._model_discovery_failed = True
-            return None
-        self._model_names = model_names
         return self._model_names
 
-    async def _async_show_model_profile_form(
+    async def _async_show_provider_form(
         self,
+        step_id: str,
         *,
         options: Mapping[str, Any],
         errors: dict[str, str] | None = None,
         description_placeholders: dict[str, str] | None = None,
-        show_model_discovery_error: bool = False,
     ) -> SubentryFlowResult:
-        """Show the model profile form with discovered model options when available."""
-        model_names = await self._async_model_names()
-        form_options = dict(options)
-        if self._is_new and model_names and not form_options.get(CONF_MODEL):
-            default_model = sorted(set(model_names))[0]
-            form_options[CONF_MODEL] = default_model
-            form_options.setdefault(CONF_NAME, default_model)
-        form_errors = dict(errors or {})
-        if (
-            show_model_discovery_error
-            and self._model_discovery_failed
-            and not form_errors
-        ):
-            form_errors["base"] = "model_list_unavailable"
+        """Show a provider form."""
         return self.async_show_form(
-            step_id="init",
-            data_schema=_model_profile_schema(form_options, model_names),
-            errors=form_errors,
+            step_id=step_id,
+            data_schema=_provider_schema(options, self._model_names),
+            errors=dict(errors or {}),
             description_placeholders=description_placeholders,
+        )
+
+    async def async_step_reconfigure_menu(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Show the shallow provider-management menu."""
+        del user_input
+        return self.async_show_menu(
+            step_id="reconfigure_menu",
+            menu_options=[
+                "edit_connection",
+                "enable_models",
+                "customize_model_profile",
+                "remove_model_profile",
+                "rediscover_models",
+            ],
         )
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Manage model profile options."""
+        """Create a provider subentry."""
+        return await self._async_provider_form_step("init", user_input)
+
+    async def async_step_edit_connection(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Edit provider connection settings."""
+        return await self._async_provider_form_step("edit_connection", user_input)
+
+    async def async_step_enable_models(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Enable, disable, or manually add provider models."""
+        return await self._async_provider_form_step("enable_models", user_input)
+
+    async def async_step_rediscover_models(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Refresh discovered model names before editing model selection."""
+        del user_input
+        self._model_names = None
+        provider_data = _normalise_provider_data(
+            self._provider_form_options(self._get_reconfigure_subentry())
+        )
+        await self._async_model_names(provider_data)
+        return await self._async_show_provider_form(
+            "enable_models",
+            options=self._provider_form_options(self._get_reconfigure_subentry()),
+            errors={"base": "models_refreshed"},
+        )
+
+    async def _async_provider_form_step(
+        self, step_id: str, user_input: dict[str, Any] | None
+    ) -> SubentryFlowResult:
+        """Handle the provider create/edit form."""
         entry = self._get_entry()
         if entry.state != ConfigEntryState.LOADED:
             return self.async_abort(reason="entry_not_loaded")
 
+        if user_input is not None:
+            try:
+                data = _normalise_provider_data(user_input)
+                _validate_provider_data(self.hass, data)
+            except ProviderValidationError as err:
+                return await self._async_show_provider_form(
+                    step_id,
+                    options=user_input,
+                    errors={"base": err.reason},
+                    description_placeholders=_provider_validation_placeholders(err),
+                )
+            if self._provider_already_configured(data):
+                return self.async_abort(reason="already_configured")
+            self._options = dict(data)
+            self._pending_data = dict(data)
+            self._pending_storage_data = {}
+            self._pending_step_id = step_id
+            self._pending_error = None
+            task = self.hass.async_create_task(self._async_validate_provider_form(data))
+            return self.async_show_progress(
+                step_id="provider_validation_progress",
+                progress_action="probe_models",
+                progress_task=task,
+            )
+
+        if not self._options and not self._is_new:
+            self._options = self._provider_form_options(
+                self._get_reconfigure_subentry()
+            )
+        return await self._async_show_provider_form(step_id, options=self._options)
+
+    async def _async_validate_provider_form(
+        self, data: dict[str, Any]
+    ) -> tuple[str, str, dict[str, str]] | None:
+        """Validate one provider form submission."""
+        discovered_model_names = await self._async_model_names(data)
+        if discovered_model_names:
+            if not self._pending_data.get(_CONF_ENABLED_MODELS):
+                self._pending_data[_CONF_ENABLED_MODELS] = discovered_model_names
+            if not self._pending_data.get(CONF_DEFAULT_MODEL_PROFILE_ID):
+                self._pending_data[CONF_DEFAULT_MODEL_PROFILE_ID] = (
+                    discovered_model_names[0]
+                )
+        if selection_error := _provider_selected_models_error(self._pending_data):
+            field, reason = selection_error
+            return field, reason, {}
+        selected_models = _provider_selected_model_names(self._pending_data)
+        if not selected_models:
+            return "base", "model_list_unavailable", {}
+        try:
+            default_model_name = _default_model_name(self._pending_data)
+        except ProviderValidationError as err:
+            return "base", err.reason, _provider_validation_placeholders(err)
+
+        existing_profiles: Mapping[str, Any] = {}
+        if not self._is_new:
+            existing_profiles = self._get_reconfigure_subentry().data.get(
+                CONF_MODEL_PROFILES, {}
+            )
+        model_profiles, default_profile_id = _normalise_provider_model_profiles(
+            existing_profiles,
+            selected_models,
+            discovered_model_names or [],
+            default_model_name,
+        )
+        storage_data: dict[str, Any] = {
+            CONF_NAME: self._pending_data[CONF_NAME],
+            CONF_PROVIDER_MODE: self._pending_data[CONF_PROVIDER_MODE],
+            CONF_API_KEY: self._pending_data[CONF_API_KEY],
+            CONF_MODEL_PROFILES: model_profiles,
+            CONF_DEFAULT_MODEL_PROFILE_ID: default_profile_id,
+        }
+        if base_url := self._pending_data.get(CONF_BASE_URL):
+            storage_data[CONF_BASE_URL] = base_url
+        if provider_headers := self._pending_data.get(CONF_PROVIDER_HEADERS):
+            storage_data[CONF_PROVIDER_HEADERS] = provider_headers
+        if discovered_model_names:
+            storage_data[CONF_DISCOVERED_MODELS_AT] = dt_util.utcnow().isoformat()
+        for profile in model_profiles.values():
+            try:
+                await async_probe_model(
+                    self.hass,
+                    storage_data,
+                    str(profile[CONF_MODEL]),
+                    dict(profile.get(CONF_MODEL_SETTINGS, {})),
+                )
+            except ProviderValidationError as err:
+                _log_provider_validation_failure(
+                    step="provider subentry",
+                    model_name=str(profile[CONF_MODEL]),
+                    err=err,
+                )
+                return "base", err.reason, _provider_validation_placeholders(err)
+            except Exception:
+                _LOGGER.exception("Unexpected exception validating provider model")
+                return "base", "unknown", {}
+        self._pending_storage_data = storage_data
+        return None
+
+    async def async_step_provider_validation_progress(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Finish provider validation progress."""
+        task = self.async_get_progress_task()
+        if task is not None and not task.done():
+            return self.async_show_progress(
+                step_id="provider_validation_progress",
+                progress_action="probe_models",
+                progress_task=task,
+            )
+        self._pending_error = None if task is None else task.result()
+        return self.async_show_progress_done(next_step_id="provider_validation_finish")
+
+    async def async_step_provider_validation_finish(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Create or update the provider subentry after validation."""
+        del user_input
+        if self._pending_error is not None:
+            field, reason, placeholders = self._pending_error
+            return await self._async_show_provider_form(
+                self._pending_step_id,
+                options=self._pending_data,
+                errors={field: reason},
+                description_placeholders=placeholders,
+            )
+        data = self._pending_storage_data
+        if self._is_new:
+            return self.async_create_entry(title=data[CONF_NAME], data=data)
+        return self.async_update_and_abort(
+            self._get_entry(),
+            self._get_reconfigure_subentry(),
+            title=data[CONF_NAME],
+            data=data,
+        )
+
+    async def async_step_customize_model_profile(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Choose a provider-owned profile to edit."""
+        del user_input
+        self._selected_profile_action = "edit"
+        return await self.async_step_pick_model_profile()
+
+    async def async_step_remove_model_profile(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Choose a provider-owned profile to remove."""
+        del user_input
+        self._selected_profile_action = "remove"
+        return await self.async_step_pick_model_profile()
+
+    async def async_step_pick_model_profile(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Pick one existing provider-owned model profile."""
+        provider_subentry = self._get_reconfigure_subentry()
+        if user_input is None:
+            return self.async_show_form(
+                step_id="pick_model_profile",
+                data_schema=_provider_profile_selector_schema(provider_subentry),
+            )
+        self._selected_profile_id = str(user_input[_CONF_MODEL_PROFILE_ID])
+        if self._selected_profile_action == "remove":
+            return await self.async_step_confirm_remove_model_profile()
+        return await self.async_step_edit_model_profile()
+
+    async def async_step_confirm_remove_model_profile(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Remove one provider-owned model profile after dependency checks."""
+        del user_input
+        provider_subentry = self._get_reconfigure_subentry()
+        profile_id = self._selected_profile_id
+        if profile_id is None:
+            return await self.async_step_pick_model_profile()
+        profile_ref = model_profile_ref(provider_subentry.subentry_id, profile_id)
+        dependents = _provider_profile_dependents(self._get_entry(), profile_ref)
+        if dependents:
+            return self.async_show_form(
+                step_id="pick_model_profile",
+                data_schema=_provider_profile_selector_schema(provider_subentry),
+                errors={"base": "model_profile_in_use"},
+                description_placeholders={"dependents": ", ".join(sorted(dependents))},
+            )
+        data = dict(provider_subentry.data)
+        profiles = provider_model_profiles(provider_subentry)
+        profiles.pop(profile_id, None)
+        data[CONF_MODEL_PROFILES] = profiles
+        enabled_profile_ids = [
+            current_profile_id
+            for current_profile_id, profile in profiles.items()
+            if bool(profile.get(CONF_ENABLED, True))
+        ]
+        if data.get(CONF_DEFAULT_MODEL_PROFILE_ID) not in enabled_profile_ids:
+            if enabled_profile_ids:
+                data[CONF_DEFAULT_MODEL_PROFILE_ID] = enabled_profile_ids[0]
+            else:
+                data.pop(CONF_DEFAULT_MODEL_PROFILE_ID, None)
+        return self.async_update_and_abort(
+            self._get_entry(), provider_subentry, title=data[CONF_NAME], data=data
+        )
+
+    async def async_step_edit_model_profile(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Edit one provider-owned model profile."""
+        provider_subentry = self._get_reconfigure_subentry()
+        profile_id = self._selected_profile_id
+        if profile_id is None:
+            return await self.async_step_pick_model_profile()
+        profile = provider_model_profiles(provider_subentry).get(profile_id)
+        if profile is None:
+            return self.async_abort(reason="model_profile_not_found")
         if user_input is not None:
             flat_user_input = _flatten_section_data(
                 user_input, (_SECTION_ADVANCED_MODEL_SETTINGS,)
@@ -2383,109 +2948,113 @@ class ModelSubentryFlowHandler(ConfigSubentryFlow):
                 _MAIN_MODEL_SETTING_KEYS | _ADVANCED_MODEL_SETTING_KEYS,
             )
             data = _model_profile_data_from_user_input(flat_user_input)
-            model_names = await self._async_model_names() if self._is_new else None
-            if model_names:
-                default_model = sorted(set(model_names))[0]
-                name = str(data.get(CONF_NAME, "")).strip()
-                if not name or name == default_model:
-                    data[CONF_NAME] = data[CONF_MODEL]
-            existing_settings = _model_settings_from_options(self._options)
+            existing_settings = _model_settings_from_options(
+                {CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {})}
+            )
             model_settings = _merge_model_settings(
                 existing_settings, parsed_settings, cleared
             )
             if errors:
-                return await self._async_show_model_profile_form(
-                    options=self._options
-                    | data
-                    | {CONF_MODEL_SETTINGS: model_settings},
+                return self.async_show_form(
+                    step_id="edit_model_profile",
+                    data_schema=_model_profile_edit_schema(
+                        profile | data | {CONF_MODEL_SETTINGS: model_settings}
+                    ),
                     errors=errors,
                 )
-            return await self._async_finish_model_profile(data, model_settings)
-
-        return await self._async_show_model_profile_form(
-            options=self._options,
-            show_model_discovery_error=True,
-        )
-
-    async def _async_finish_model_profile(
-        self,
-        data: dict[str, Any],
-        model_settings: Mapping[str, Any],
-    ) -> SubentryFlowResult:
-        """Probe the model profile, then create or update the subentry."""
-        self._pending_data = dict(data)
-        self._pending_model_settings = dict(model_settings)
-        self._pending_error = None
-        task = self.hass.async_create_task(
-            self._async_probe_model_profile(
-                self._pending_data, self._pending_model_settings
+            self._pending_profile_data = dict(profile) | data
+            self._pending_model_settings = dict(model_settings)
+            self._pending_profile_error = None
+            task = self.hass.async_create_task(self._async_probe_model_profile())
+            return self.async_show_progress(
+                step_id="model_profile_progress",
+                progress_action="probe_model",
+                description_placeholders={
+                    "model": str(self._pending_profile_data[CONF_MODEL])
+                },
+                progress_task=task,
             )
-        )
-        return self.async_show_progress(
-            step_id="model_profile_progress",
-            progress_action="probe_model",
-            description_placeholders={"model": data[CONF_MODEL]},
-            progress_task=task,
+        return self.async_show_form(
+            step_id="edit_model_profile",
+            data_schema=_model_profile_edit_schema(profile),
         )
 
-    async def _async_probe_model_profile(
-        self, data: dict[str, Any], model_settings: Mapping[str, Any]
-    ) -> tuple[str, dict[str, str]] | None:
-        """Return a validation error for the pending model profile, if any."""
-        entry = self._get_entry()
-        _store_model_settings(data, model_settings)
+    async def _async_probe_model_profile(self) -> tuple[str, dict[str, str]] | None:
+        """Validate the pending provider-owned model profile edit."""
+        provider_subentry = self._get_reconfigure_subentry()
+        _store_model_settings(self._pending_profile_data, self._pending_model_settings)
         try:
             await async_probe_model(
                 self.hass,
-                entry.data,
-                data[CONF_MODEL],
-                data.get(CONF_MODEL_SETTINGS, {}),
+                provider_subentry.data,
+                str(self._pending_profile_data[CONF_MODEL]),
+                self._pending_profile_data.get(CONF_MODEL_SETTINGS, {}),
             )
         except ProviderValidationError as err:
             _log_provider_validation_failure(
-                step="model profile subentry", model_name=data[CONF_MODEL], err=err
+                step="provider model profile edit",
+                model_name=str(self._pending_profile_data[CONF_MODEL]),
+                err=err,
             )
             return err.reason, _provider_validation_placeholders(err)
         except Exception:
-            _LOGGER.exception("Unexpected exception validating model profile")
+            _LOGGER.exception("Unexpected exception validating provider model profile")
             return "unknown", {}
         return None
 
     async def async_step_model_profile_progress(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Finish the model profile progress step."""
+        """Finish provider-owned model profile validation progress."""
+        del user_input
         task = self.async_get_progress_task()
         if task is not None and not task.done():
             return self.async_show_progress(
                 step_id="model_profile_progress",
                 progress_action="probe_model",
-                description_placeholders={"model": self._pending_data[CONF_MODEL]},
+                description_placeholders={
+                    "model": str(self._pending_profile_data[CONF_MODEL])
+                },
                 progress_task=task,
             )
-        self._pending_error = None if task is None else task.result()
+        self._pending_profile_error = None if task is None else task.result()
         return self.async_show_progress_done(next_step_id="model_profile_finish")
 
     async def async_step_model_profile_finish(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Create/update the model profile or show the validation error."""
-        if self._pending_error is not None:
-            reason, placeholders = self._pending_error
-            return await self._async_show_model_profile_form(
-                options=self._options | self._pending_data,
+        """Persist a provider-owned model profile edit or replay validation errors."""
+        del user_input
+        provider_subentry = self._get_reconfigure_subentry()
+        profile_id = self._selected_profile_id
+        if profile_id is None:
+            return await self.async_step_pick_model_profile()
+        if self._pending_profile_error is not None:
+            reason, placeholders = self._pending_profile_error
+            return self.async_show_form(
+                step_id="edit_model_profile",
+                data_schema=_model_profile_edit_schema(self._pending_profile_data),
                 errors={"base": reason},
                 description_placeholders=placeholders,
             )
-        entry = self._get_entry()
-        data = self._pending_data
-        if self._is_new:
-            return self.async_create_entry(title=data[CONF_NAME], data=data)
+        data = dict(provider_subentry.data)
+        profiles = provider_model_profiles(provider_subentry)
+        profile = dict(self._pending_profile_data)
+        profile["id"] = profile_id
+        profiles[profile_id] = profile
+        enabled_profile_ids = [
+            current_profile_id
+            for current_profile_id, current_profile in profiles.items()
+            if bool(current_profile.get(CONF_ENABLED, True))
+        ]
+        if enabled_profile_ids:
+            if data.get(CONF_DEFAULT_MODEL_PROFILE_ID) not in enabled_profile_ids:
+                data[CONF_DEFAULT_MODEL_PROFILE_ID] = enabled_profile_ids[0]
+        else:
+            data.pop(CONF_DEFAULT_MODEL_PROFILE_ID, None)
+        data[CONF_MODEL_PROFILES] = profiles
         return self.async_update_and_abort(
-            entry,
-            self._get_reconfigure_subentry(),
-            title=data[CONF_NAME],
-            data=data,
+            self._get_entry(), provider_subentry, title=data[CONF_NAME], data=data
         )
 
 
@@ -2581,7 +3150,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                         entry,
                         available_skills,
                     ),
-                    errors={CONF_MODEL_SUBENTRY_ID: model_error},
+                    errors={CONF_PRIMARY_MODEL_REF: model_error},
                 )
             if mcp_error := _selected_mcp_server_error(entry, data):
                 return self.async_show_form(
@@ -2715,7 +3284,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                     data_schema=_ai_task_data_schema(
                         self.hass, self._options | data, entry, available_skills
                     ),
-                    errors={CONF_MODEL_SUBENTRY_ID: model_error},
+                    errors={CONF_PRIMARY_MODEL_REF: model_error},
                 )
             if mcp_error := _selected_mcp_server_error(entry, data):
                 return self.async_show_form(
@@ -2773,21 +3342,26 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
         entry = self._get_entry()
         current_model = ""
         try:
-            primary_id = data[CONF_MODEL_SUBENTRY_ID]
-            primary_profile = entry.subentries[primary_id]
-            profiles = [(entry, primary_profile)]
-            for fallback_ref in _normalise_fallback_model_profile_refs(
-                entry, data.get(CONF_FALLBACK_MODEL_SUBENTRY_IDS, [])
-            ):
-                profiles.append(
-                    resolve_model_profile_ref(self.hass, entry, fallback_ref)
-                )
-            for owner_entry, profile in profiles:
-                settings = profile.data.get(CONF_MODEL_SETTINGS)
-                current_model = profile.data[CONF_MODEL]
+            profile_refs = [
+                data[CONF_PRIMARY_MODEL_REF],
+                *_normalise_fallback_model_refs(data.get(CONF_FALLBACK_MODEL_REFS, [])),
+            ]
+            for profile_ref in profile_refs:
+                provider_subentry_id, profile_id = parse_model_profile_ref(profile_ref)
+                provider_subentry = entry.subentries.get(provider_subentry_id)
+                if (
+                    provider_subentry is None
+                    or provider_subentry.subentry_type != SUBENTRY_TYPE_PROVIDER
+                ):
+                    return "base", "model_profile_not_found", {}
+                profile = provider_model_profiles(provider_subentry).get(profile_id)
+                if not isinstance(profile, Mapping):
+                    return "base", "model_profile_not_found", {}
+                settings = profile.get(CONF_MODEL_SETTINGS)
+                current_model = str(profile[CONF_MODEL])
                 await async_probe_model(
                     self.hass,
-                    owner_entry.data,
+                    provider_subentry.data,
                     current_model,
                     dict(settings) if isinstance(settings, Mapping) else {},
                     structured_output_mode=data[CONF_OUTPUT_MODE],
