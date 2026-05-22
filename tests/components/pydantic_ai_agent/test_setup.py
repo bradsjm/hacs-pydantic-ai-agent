@@ -17,7 +17,6 @@ from custom_components.pydantic_ai_agent import (
     async_setup_entry,
     async_unload_entry,
 )
-from custom_components.pydantic_ai_agent.config_flow import ProviderValidationError
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_DEFAULT_MODEL_PROFILE_ID,
@@ -40,6 +39,7 @@ from custom_components.pydantic_ai_agent.const import (
 )
 from custom_components.pydantic_ai_agent.metrics import EVENT_MCP_TOOL_REFRESH_COMPLETED
 from custom_components.pydantic_ai_agent.model_profiles import model_profile_ref
+from custom_components.pydantic_ai_agent.provider_validation import ProviderValidationError
 from custom_components.pydantic_ai_agent.repairs import model_validation_issue_id
 
 

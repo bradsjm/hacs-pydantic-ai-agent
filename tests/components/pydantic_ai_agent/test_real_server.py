@@ -35,7 +35,7 @@ from homeassistant.helpers import llm
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component import plugins as ha_pytest_plugins
 
-from custom_components.pydantic_ai_agent.config_flow import (
+from custom_components.pydantic_ai_agent.provider_validation import (
     ProviderValidationError,
     async_probe_model,
 )

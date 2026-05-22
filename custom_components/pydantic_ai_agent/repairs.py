@@ -9,8 +9,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 
-from .config_flow import ProviderValidationError
 from .const import DOMAIN
+from .provider_validation import ProviderValidationError
 
 MODEL_VALIDATION_ISSUE_PREFIX = "model_validation"
 LOGFIRE_TOKEN_CONFLICT_ISSUE_ID = "logfire_token_conflict"

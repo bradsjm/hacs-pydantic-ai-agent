@@ -13,11 +13,8 @@ from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pydantic_ai_agent.config_flow import (
-    ProviderValidationError,
-    _format_api_error,
+from custom_components.pydantic_ai_agent.config_flows.common import (
     _format_mcp_headers,
-    _map_http_error,
     _mcp_tool_options,
     _mcp_url_already_configured,
     _mcp_url_identity,
@@ -28,6 +25,11 @@ from custom_components.pydantic_ai_agent.config_flow import (
     _provider_data_matches,
     _provider_model_profiles_for_discovery_mode,
     _validate_provider_data,
+)
+from custom_components.pydantic_ai_agent.provider_validation import (
+    ProviderValidationError,
+    _format_api_error,
+    _map_http_error,
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,

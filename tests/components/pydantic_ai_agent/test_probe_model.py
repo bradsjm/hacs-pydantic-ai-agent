@@ -13,7 +13,7 @@ import pytest
 from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
 
-from custom_components.pydantic_ai_agent.config_flow import (
+from custom_components.pydantic_ai_agent.provider_validation import (
     ProviderValidationError,
     async_probe_model,
 )
@@ -171,11 +171,11 @@ async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model",
+            "custom_components.pydantic_ai_agent.provider_validation._openai_compatible_model",
             return_value=model,
         ),
         patch(
-            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
             side_effect=stream,
         ) as model_request_stream,
     ):
@@ -193,10 +193,10 @@ async def test_probe_model_streaming_not_supported_reported(
     """Test non-streaming models are reported explicitly."""
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
+            "custom_components.pydantic_ai_agent.provider_validation._openai_compatible_model"
         ),
         patch(
-            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
             return_value=_FailingStreamContext(),
         ),
         pytest.raises(ProviderValidationError) as exc_info,
@@ -211,10 +211,10 @@ async def test_probe_model_maps_raw_httpx_timeout(hass: HomeAssistant) -> None:
     """Test raw SDK/httpx timeouts are reported as validation timeouts."""
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
+            "custom_components.pydantic_ai_agent.provider_validation._openai_compatible_model"
         ),
         patch(
-            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
             side_effect=httpx.ReadTimeout("timeout"),
         ),
         pytest.raises(ProviderValidationError) as exc_info,
@@ -253,10 +253,10 @@ async def test_probe_model_can_require_structured_output(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
+            "custom_components.pydantic_ai_agent.provider_validation._openai_compatible_model"
         ),
         patch(
-            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
             side_effect=stream,
         ) as model_request_stream,
     ):
@@ -292,10 +292,10 @@ async def test_probe_model_rejects_invalid_native_structured_output(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
+            "custom_components.pydantic_ai_agent.provider_validation._openai_compatible_model"
         ),
         patch(
-            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
             side_effect=stream,
         ),
         pytest.raises(ProviderValidationError) as exc_info,
@@ -320,10 +320,10 @@ async def test_probe_model_maps_structured_http_400_to_output_mode_error(
     """Test structured-output HTTP 400 is not reported as an invalid model."""
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
+            "custom_components.pydantic_ai_agent.provider_validation._openai_compatible_model"
         ),
         patch(
-            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
             return_value=_HTTPErrorStreamContext(status_code=400),
         ),
         pytest.raises(ProviderValidationError) as exc_info,
@@ -352,10 +352,10 @@ async def test_probe_model_merges_configured_model_settings(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
+            "custom_components.pydantic_ai_agent.provider_validation._openai_compatible_model"
         ),
         patch(
-            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
             side_effect=stream,
         ) as model_request_stream,
     ):
@@ -382,10 +382,10 @@ async def test_probe_model_renders_chat_template_kwargs(hass: HomeAssistant) -> 
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model"
+            "custom_components.pydantic_ai_agent.provider_validation._openai_compatible_model"
         ),
         patch(
-            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
             side_effect=stream,
         ) as model_request_stream,
     ):
@@ -425,11 +425,11 @@ async def test_probe_model_responses_uses_streamed_request(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.config_flow._openai_compatible_model",
+            "custom_components.pydantic_ai_agent.provider_validation._openai_compatible_model",
             return_value=model,
         ),
         patch(
-            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
             side_effect=stream,
         ) as model_request_stream,
     ):
@@ -467,7 +467,7 @@ async def test_probe_model_openai_compatible_uses_normalized_base_url(
             return_value=model,
         ) as compatible_chat_model,
         patch(
-            "custom_components.pydantic_ai_agent.config_flow.model_request_stream",
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
             side_effect=stream,
         ) as model_request_stream,
     ):

@@ -1,0 +1,2115 @@
+"""Shared config-flow helpers for Pydantic AI Agent."""
+
+# ruff: noqa: F401
+
+from __future__ import annotations
+
+import errno
+import json
+import logging
+import socket
+import ssl
+from collections.abc import AsyncIterable, Iterable, Mapping
+from dataclasses import dataclass
+from datetime import timedelta
+from hashlib import sha256
+from pathlib import PurePosixPath
+from typing import Any
+from urllib.parse import parse_qsl, urlparse
+from uuid import uuid4
+
+import httpx
+import voluptuous as vol
+from homeassistant.components.todo import DOMAIN as TODO_DOMAIN
+from homeassistant.components.todo import TodoListEntityFeature
+from homeassistant.config_entries import (
+    SOURCE_USER,
+    ConfigEntry,
+    ConfigEntryState,
+    ConfigFlow,
+    ConfigFlowResult,
+    ConfigSubentry,
+    ConfigSubentryFlow,
+    SubentryFlowResult,
+)
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import section
+from homeassistant.exceptions import HomeAssistantError, TemplateError
+from homeassistant.helpers import llm
+from homeassistant.helpers.selector import (
+    BooleanSelector,
+    EntitySelector,
+    EntitySelectorConfig,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+    ObjectSelector,
+    ObjectSelectorConfig,
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TemplateSelector,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
+from homeassistant.helpers.template import Template
+from homeassistant.helpers.typing import VolDictType
+from homeassistant.util import dt as dt_util
+from pydantic_ai import (
+    ModelRequest,
+    PartDeltaEvent,
+    PartEndEvent,
+    PartStartEvent,
+    TextPart,
+    TextPartDelta,
+    ToolCallPart,
+)
+from pydantic_ai.direct import model_request_stream
+from pydantic_ai.exceptions import (
+    ModelAPIError,
+    ModelHTTPError,
+    UnexpectedModelBehavior,
+    UserError,
+)
+from pydantic_ai.messages import ModelResponseStreamEvent
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.settings import ModelSettings
+
+from .._redaction import redact_data
+from ..chat_template_kwargs import (
+    reject_chat_template_kwargs_in_extra_body,
+    render_chat_template_kwargs,
+)
+from ..const import (
+    CONF_AGENT_NAME,
+    CONF_AI_TASK_NAME,
+    CONF_BASE_URL,
+    CONF_CHAT_TEMPLATE_KWARG_KEY,
+    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_CHAT_TEMPLATE_KWARGS,
+    CONF_CUSTOM_MODEL_NAMES,
+    CONF_DEFAULT_SKILLS_FOLDER,
+    CONF_DISCOVERED,
+    CONF_DISCOVERED_MODELS,
+    CONF_DISCOVERED_MODELS_AT,
+    CONF_DISCOVERED_MODELS_CACHE_KEY,
+    CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
+    CONF_ENABLE_SKILLS,
+    CONF_ENABLED,
+    CONF_FALLBACK_MODEL_REFS,
+    CONF_LOGFIRE_INCLUDE_CONTENT,
+    CONF_LOGFIRE_TOKEN,
+    CONF_MAX_ITERATIONS,
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_DEFERRED_LOADING,
+    CONF_MCP_HEADERS,
+    CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_SERVER_IDS,
+    CONF_MCP_URL,
+    CONF_MODEL,
+    CONF_MODEL_PROFILES,
+    CONF_MODEL_SETTINGS,
+    CONF_OUTPUT_MODE,
+    CONF_PRIMARY_MODEL_REF,
+    CONF_PROMPT,
+    CONF_PROVIDER_EXTRA_BODY,
+    CONF_PROVIDER_HEADERS,
+    CONF_PROVIDER_MODE,
+    CONF_SKILLS,
+    CONF_SKILLS_FOLDER,
+    CONF_TODO_LIST_ENTITY_ID,
+    CONF_WEB_FETCH_ENABLED,
+    DEFAULT_AGENT_NAME,
+    DEFAULT_AI_TASK_NAME,
+    DEFAULT_OUTPUT_MODE,
+    DEFAULT_SERVICE_NAME,
+    DEFAULT_SKILLS_FOLDER,
+    DEFAULT_TIMEOUT,
+    DEFAULT_WORKSPACE_NAME,
+    DOMAIN,
+    OUTPUT_MODE_NATIVE,
+    OUTPUT_MODE_PROMPTED,
+    OUTPUT_MODE_TOOL,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_GOOGLE_GEMINI,
+    PROVIDER_MODES,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+    STRUCTURED_OUTPUT_MODES,
+    SUBENTRY_TYPE_AI_TASK,
+    SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
+    SUBENTRY_TYPE_PROVIDER,
+    default_conversation_options,
+)
+from ..mcp import (
+    MCPValidationError,
+    async_discover_mcp_tools_from_config,
+    async_validate_mcp_url,
+    normalise_mcp_url,
+    parse_allowed_tools,
+    parse_mcp_headers,
+)
+from ..model_profiles import (
+    configured_model_profile_exists,
+    model_profile_ref,
+    parse_model_profile_ref,
+    provider_model_profiles,
+    provider_subentries,
+)
+from ..provider import (
+    anthropic_model,
+    google_gemini_model,
+    list_anthropic_model_names,
+    list_google_gemini_model_names,
+    normalise_base_url,
+    openai_compatible_client_from_config,
+    openai_compatible_completions_model_from_config,
+    openai_compatible_responses_model_from_config,
+)
+from ..provider_validation import (
+    ProviderValidationError,
+    _format_api_error,
+    _map_http_error,
+    async_list_provider_model_names,
+    async_probe_model,
+)
+from ..skills import (
+    AvailableSkill,
+    async_available_skills,
+    selected_available_skill_names,
+    skills_folder_path,
+)
+from ..structured_output import (
+    structured_model_request_parameters,
+    structured_output_name,
+)
+from ..structured_output import (
+    structured_output_mode as normalise_structured_output_mode,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+_MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH = 80
+
+_HTTP_STATUS_LABELS = {
+    400: "invalid request",
+    401: "authentication issue",
+    402: "payment issue",
+    403: "permission issue",
+    404: "model not found",
+    408: "timeout",
+    409: "conflict",
+    422: "validation issue",
+    429: "rate limit",
+    504: "timeout",
+}
+
+_MODEL_SETTING_MAX_TOKENS = "max_tokens"
+_MODEL_SETTING_MAX_ITERATIONS = CONF_MAX_ITERATIONS
+_MODEL_SETTING_TEMPERATURE = "temperature"
+_MODEL_SETTING_TOP_P = "top_p"
+_MODEL_SETTING_TIMEOUT = "timeout"
+_MODEL_SETTING_PARALLEL_TOOL_CALLS = "parallel_tool_calls"
+_MODEL_SETTING_SEED = "seed"
+_MODEL_SETTING_PRESENCE_PENALTY = "presence_penalty"
+_MODEL_SETTING_FREQUENCY_PENALTY = "frequency_penalty"
+_MODEL_SETTING_THINKING = "thinking"
+_MODEL_SETTING_EXTRA_BODY = "extra_body"
+_MODEL_SETTING_CHAT_TEMPLATE_KWARGS = CONF_CHAT_TEMPLATE_KWARGS
+_MODEL_LIST_CACHE_TTL = timedelta(minutes=10)
+_BASE_URL_ENDPOINT_SUFFIXES = {
+    ("audio", "speech"),
+    ("audio", "transcriptions"),
+    ("audio", "translations"),
+    ("batches",),
+    ("chat", "completions"),
+    ("completions",),
+    ("embeddings",),
+    ("files",),
+    ("fine_tuning", "jobs"),
+    ("images", "edits"),
+    ("images", "generations"),
+    ("images", "variations"),
+    ("messages",),
+    ("models",),
+    ("moderations",),
+    ("responses",),
+    ("threads",),
+}
+_BASE_URL_ENDPOINT_PATH_ENDINGS = (":generatecontent", ":streamgeneratecontent")
+_PROVIDER_EXTRA_BODY_MODES = {
+    PROVIDER_ANTHROPIC,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+}
+_MAX_METADATA_REPR_LENGTH = 1000
+_SENSITIVE_METADATA_KEYS = {
+    "access_token",
+    "api_key",
+    "authorization",
+    "cookie",
+    "headers",
+    "password",
+    "request_headers",
+    "response_headers",
+    "secret",
+    "token",
+    "x-api-key",
+}
+
+_MAIN_MODEL_SETTING_KEYS = {
+    _MODEL_SETTING_TEMPERATURE,
+    _MODEL_SETTING_THINKING,
+}
+_ADVANCED_MODEL_SETTING_KEYS = {
+    _MODEL_SETTING_MAX_TOKENS,
+    _MODEL_SETTING_MAX_ITERATIONS,
+    _MODEL_SETTING_TOP_P,
+    _MODEL_SETTING_TIMEOUT,
+    _MODEL_SETTING_PARALLEL_TOOL_CALLS,
+    _MODEL_SETTING_SEED,
+    _MODEL_SETTING_PRESENCE_PENALTY,
+    _MODEL_SETTING_FREQUENCY_PENALTY,
+    _MODEL_SETTING_CHAT_TEMPLATE_KWARGS,
+}
+_REMOVED_MODEL_SETTING_KEYS = {"extra_headers", _MODEL_SETTING_EXTRA_BODY}
+_THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "xhigh")
+_OUTPUT_MODE_OPTIONS = tuple(
+    SelectOptionDict(value=value, label=value) for value in STRUCTURED_OUTPUT_MODES
+)
+_CONF_MODEL_PROFILE_ID = "model_profile_id"
+_SECTION_ADVANCED_MCP = "advanced_mcp"
+_SECTION_ADVANCED_MODEL_SETTINGS = "advanced_model_settings"
+_SECTION_ADVANCED_OPTIONS = "advanced_options"
+_SECTION_EXTERNAL_TOOLS = "external_tools"
+_SECTION_LOGFIRE = "logfire"
+_SECTION_CUSTOMIZE_MODEL_LIST = "customize_model_list"
+_SECTION_SKILLS = "skill_settings"
+_TODO_WORKSPACE_REQUIRED_FEATURES = (
+    TodoListEntityFeature.CREATE_TODO_ITEM
+    | TodoListEntityFeature.DELETE_TODO_ITEM
+    | TodoListEntityFeature.UPDATE_TODO_ITEM
+    | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
+)
+_STRUCTURED_PROBE_OUTPUT_NAME = structured_output_name(
+    "probe_response", "probe_response"
+)
+_STRUCTURED_PROBE_SCHEMA = {
+    "type": "object",
+    "properties": {"ok": {"type": "boolean"}},
+    "required": ["ok"],
+    "additionalProperties": False,
+}
+
+
+
+def _format_http_headers(headers: object) -> str:
+    """Return HTTP headers as one ``Header-Name: value`` line each."""
+    if headers is None:
+        return ""
+    if isinstance(headers, str):
+        return headers
+    if not isinstance(headers, Mapping):
+        return ""
+    return "\n".join(f"{name}: {headers[name]}" for name in sorted(headers))
+
+
+def _flatten_section_data(
+    data: Mapping[str, Any], section_keys: Iterable[str]
+) -> dict[str, Any]:
+    """Return form data with HA section namespaces flattened."""
+    flattened = dict(data)
+    for key in section_keys:
+        value = flattened.pop(key, None)
+        if isinstance(value, Mapping):
+            flattened.update(value)
+        elif value is not None:
+            flattened[key] = value
+    return flattened
+
+
+def _parse_provider_headers(value: object) -> dict[str, str]:
+    """Return provider HTTP headers from form input."""
+    try:
+        return parse_mcp_headers(value)
+    except vol.Invalid as err:
+        raise ProviderValidationError(
+            "invalid_provider_headers",
+            "Enter HTTP headers one per line using 'Header-Name: value'.",
+        ) from err
+
+
+def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
+    """Return the workspace schema."""
+    data = _flatten_section_data(user_input or {}, (_SECTION_LOGFIRE,))
+    schema: VolDictType = {
+        vol.Required(
+            CONF_NAME,
+            default=data.get(CONF_NAME, DEFAULT_WORKSPACE_NAME),
+        ): TextSelector(TextSelectorConfig()),
+    }
+    schema[vol.Optional(_SECTION_LOGFIRE, default={})] = section(
+        vol.Schema(
+            {
+                vol.Optional(CONF_LOGFIRE_TOKEN): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
+                vol.Optional(
+                    CONF_LOGFIRE_INCLUDE_CONTENT,
+                    default=bool(data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False)),
+                ): BooleanSelector(),
+            }
+        ),
+        {"collapsed": True},
+    )
+    return vol.Schema(schema)
+
+
+def _provider_form_suggested_values(data: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Return workspace form suggested values."""
+    return dict(data or {})
+
+
+def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
+    """Return the provider connection form schema."""
+    data = _flatten_section_data(options or {}, (_SECTION_ADVANCED_OPTIONS,))
+    provider_mode = data.get(CONF_PROVIDER_MODE, PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS)
+    schema: VolDictType = {
+        vol.Required(
+            CONF_NAME,
+            default=data.get(CONF_NAME, DEFAULT_SERVICE_NAME),
+        ): TextSelector(TextSelectorConfig()),
+        vol.Required(CONF_PROVIDER_MODE, default=provider_mode): SelectSelector(
+            SelectSelectorConfig(
+                options=list(PROVIDER_MODES),
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key=CONF_PROVIDER_MODE,
+            )
+        ),
+        vol.Required(
+            CONF_API_KEY,
+            default=data.get(CONF_API_KEY, ""),
+        ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+        vol.Optional(
+            CONF_BASE_URL,
+            default=data.get(CONF_BASE_URL, ""),
+        ): TextSelector(TextSelectorConfig()),
+    }
+    schema[vol.Optional(_SECTION_ADVANCED_OPTIONS, default={})] = section(
+        vol.Schema(
+            {
+                vol.Optional(
+                    CONF_PROVIDER_HEADERS,
+                    default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
+                ): TextSelector(TextSelectorConfig(multiline=True)),
+                vol.Optional(
+                    CONF_PROVIDER_EXTRA_BODY,
+                    default=_format_key_value_json_setting(
+                        data.get(CONF_PROVIDER_EXTRA_BODY)
+                    ),
+                ): TextSelector(TextSelectorConfig(multiline=True)),
+            }
+        ),
+        {"collapsed": True},
+    )
+    return vol.Schema(schema)
+
+
+def _provider_custom_model_names(options: Mapping[str, Any]) -> list[str]:
+    """Return configured custom model names for one provider form state."""
+    custom_model_names = options.get(CONF_CUSTOM_MODEL_NAMES)
+    if isinstance(custom_model_names, str):
+        return _parse_custom_model_names(custom_model_names)
+    if not isinstance(custom_model_names, list):
+        return []
+    seen: set[str] = set()
+    names: list[str] = []
+    for model_name in custom_model_names:
+        if not isinstance(model_name, str):
+            continue
+        model_name = model_name.strip()
+        if not model_name or model_name in seen:
+            continue
+        seen.add(model_name)
+        names.append(model_name)
+    return names
+
+
+def _format_custom_model_names(options: Mapping[str, Any]) -> str:
+    """Return custom model names as multiline text for the form."""
+    return "\n".join(_provider_custom_model_names(options))
+
+
+def _parse_custom_model_names(value: object) -> list[str]:
+    """Return deduplicated custom model names from multiline form input."""
+    if not isinstance(value, str):
+        return []
+    seen: set[str] = set()
+    models: list[str] = []
+    for line in value.splitlines():
+        model_name = line.strip()
+        if not model_name or model_name in seen:
+            continue
+        seen.add(model_name)
+        models.append(model_name)
+    return models
+
+
+def _provider_schema(
+    options: Mapping[str, Any] | None = None,
+) -> vol.Schema:
+    """Return the provider subentry schema."""
+    options = dict(options or {})
+    schema_dict: VolDictType = dict(_provider_connection_schema(options).schema)
+    schema_dict[vol.Optional(_SECTION_CUSTOMIZE_MODEL_LIST, default={})] = section(
+        _provider_model_selection_schema(options),
+        {"collapsed": True},
+    )
+    return vol.Schema(schema_dict)
+
+
+def _provider_model_selection_schema(
+    options: Mapping[str, Any] | None = None,
+) -> vol.Schema:
+    """Return the provider model-selection schema."""
+    options = dict(options or {})
+    return vol.Schema(
+        {
+            vol.Optional(
+                CONF_CUSTOM_MODEL_NAMES,
+                default=_format_custom_model_names(options),
+            ): TextSelector(TextSelectorConfig(multiline=True))
+        }
+    )
+
+
+def _normalise_base_url(data: Mapping[str, Any]) -> str | None:
+    """Return a normalized base URL if one is configured."""
+    return normalise_base_url(data.get(CONF_BASE_URL))
+
+
+def _base_url_endpoint_suffix(base_url: str | None) -> str | None:
+    """Return a forbidden endpoint suffix if the base URL points at one."""
+    if base_url is None:
+        return None
+    parsed = urlparse(base_url)
+    path = parsed.path.rstrip("/").lower()
+    for ending in _BASE_URL_ENDPOINT_PATH_ENDINGS:
+        if path.endswith(ending):
+            return ending.lstrip(":")
+    segments = tuple(segment for segment in parsed.path.split("/") if segment)
+    lowered = tuple(segment.lower() for segment in segments)
+    for suffix in _BASE_URL_ENDPOINT_SUFFIXES:
+        if len(lowered) >= len(suffix) and lowered[-len(suffix) :] == suffix:
+            return "/".join(suffix)
+    return None
+
+
+def _validate_base_url(data: Mapping[str, Any]) -> None:
+    """Reject endpoint URLs that the client appends itself."""
+    if suffix := _base_url_endpoint_suffix(data.get(CONF_BASE_URL)):
+        raise ProviderValidationError(
+            "invalid_base_url_endpoint",
+            (
+                "Enter the provider API base URL, not an endpoint URL. "
+                f"Remove the trailing /{suffix}."
+            ),
+        )
+
+
+def _provider_extra_body_supported(data: Mapping[str, Any]) -> bool:
+    """Return if the provider mode consumes provider-level extra body."""
+    return data.get(CONF_PROVIDER_MODE) in _PROVIDER_EXTRA_BODY_MODES
+
+
+def _dedupe_data(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the provider fields that identify one connection."""
+    dedupe = {
+        CONF_PROVIDER_MODE: data[CONF_PROVIDER_MODE],
+        CONF_API_KEY: data[CONF_API_KEY],
+    }
+    if base_url := data.get(CONF_BASE_URL):
+        dedupe[CONF_BASE_URL] = base_url
+    if headers := data.get(CONF_PROVIDER_HEADERS):
+        dedupe[CONF_PROVIDER_HEADERS] = headers
+    if provider_extra_body := data.get(CONF_PROVIDER_EXTRA_BODY):
+        dedupe[CONF_PROVIDER_EXTRA_BODY] = provider_extra_body
+    return dedupe
+
+
+def _provider_model_cache_key(data: Mapping[str, Any]) -> str:
+    """Return a stable cache key for provider model discovery."""
+    api_key = data.get(CONF_API_KEY)
+    headers = data.get(CONF_PROVIDER_HEADERS)
+    return json.dumps(
+        {
+            CONF_PROVIDER_MODE: data.get(CONF_PROVIDER_MODE),
+            CONF_API_KEY: sha256(str(api_key or "").encode()).hexdigest(),
+            CONF_BASE_URL: data.get(CONF_BASE_URL),
+            CONF_PROVIDER_HEADERS: dict(headers)
+            if isinstance(headers, Mapping)
+            else {},
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _cached_provider_model_names(data: Mapping[str, Any]) -> list[str] | None:
+    """Return cached provider model names when the persisted cache is fresh."""
+    if data.get(CONF_DISCOVERED_MODELS_CACHE_KEY) != _provider_model_cache_key(data):
+        return None
+    discovered_at = data.get(CONF_DISCOVERED_MODELS_AT)
+    if not isinstance(discovered_at, str):
+        return None
+    parsed_at = dt_util.parse_datetime(discovered_at)
+    if parsed_at is None or dt_util.utcnow() - parsed_at > _MODEL_LIST_CACHE_TTL:
+        return None
+    model_names = data.get(CONF_DISCOVERED_MODELS)
+    if not isinstance(model_names, list):
+        return None
+    parsed_names = [name for name in model_names if isinstance(name, str) and name]
+    return parsed_names or None
+
+
+def _store_provider_model_cache(data: dict[str, Any], model_names: list[str]) -> None:
+    """Store a successful provider model discovery response on provider data."""
+    if not model_names:
+        return
+    data[CONF_DISCOVERED_MODELS] = sorted(set(model_names))
+    data[CONF_DISCOVERED_MODELS_AT] = dt_util.utcnow().isoformat()
+    data[CONF_DISCOVERED_MODELS_CACHE_KEY] = _provider_model_cache_key(data)
+
+
+def _clear_provider_model_cache(data: dict[str, Any]) -> None:
+    """Remove provider model discovery cache fields."""
+    data.pop(CONF_DISCOVERED_MODELS, None)
+    data.pop(CONF_DISCOVERED_MODELS_AT, None)
+    data.pop(CONF_DISCOVERED_MODELS_CACHE_KEY, None)
+
+
+def _referenced_provider_profile_ids(
+    entry: ConfigEntry, provider_subentry_id: str
+) -> set[str]:
+    """Return model profile IDs referenced by conversation or AI task subentries."""
+    referenced: set[str] = set()
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type not in {
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        }:
+            continue
+        for profile_ref in _selected_model_profile_refs(subentry.data):
+            try:
+                ref_provider_subentry_id, profile_id = parse_model_profile_ref(
+                    profile_ref
+                )
+            except HomeAssistantError:
+                continue
+            if ref_provider_subentry_id == provider_subentry_id:
+                referenced.add(profile_id)
+    return referenced
+
+
+def _provider_validation_placeholders(
+    err: ProviderValidationError,
+) -> dict[str, str]:
+    """Return translation placeholders for provider validation errors."""
+    placeholders = {"error_message": err.message}
+    if err.status_code is not None:
+        placeholders["status_code"] = str(err.status_code)
+    return placeholders
+
+
+def _mcp_validation_placeholders(err: MCPValidationError) -> dict[str, str]:
+    """Return translation placeholders for MCP validation errors."""
+    placeholders = {"error_message": err.message}
+    if err.status_code is not None:
+        placeholders["status_code"] = str(err.status_code)
+    return placeholders
+
+
+def _log_provider_validation_failure(
+    *, step: str, model_name: str, err: ProviderValidationError
+) -> None:
+    """Log provider validation failures without request details or credentials."""
+    if err.status_code == 429:
+        _LOGGER.warning(
+            'Provider validation rate limited during %s for model "%s": '
+            "reason=%s status_code=%s",
+            step,
+            model_name,
+            err.reason,
+            err.status_code,
+        )
+        return
+
+    _LOGGER.warning(
+        'Provider validation failed during %s for model "%s": reason=%s status_code=%s',
+        step,
+        model_name,
+        err.reason,
+        err.status_code,
+    )
+
+def _normalise_skills_folder(folder: object) -> str:
+    """Return a canonical skills folder path for storage."""
+    configured = str(folder or DEFAULT_SKILLS_FOLDER).strip() or DEFAULT_SKILLS_FOLDER
+    path = PurePosixPath(configured)
+    if not path.is_absolute() and path.parts and path.parts[0] == "skills":
+        return f"/config/{path.as_posix()}".rstrip("/")
+    return configured.rstrip("/")
+
+
+def _normalise_workspace_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
+    """Return normalized workspace data for storage."""
+    data = _flatten_section_data(user_input, (_SECTION_LOGFIRE,))
+    token = data.get(CONF_LOGFIRE_TOKEN)
+    if isinstance(token, str):
+        token = token.strip()
+    if token:
+        data[CONF_LOGFIRE_TOKEN] = token
+        data[CONF_LOGFIRE_INCLUDE_CONTENT] = bool(
+            data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False)
+        )
+    else:
+        data.pop(CONF_LOGFIRE_TOKEN, None)
+        data.pop(CONF_LOGFIRE_INCLUDE_CONTENT, None)
+    data[CONF_DEFAULT_SKILLS_FOLDER] = DEFAULT_SKILLS_FOLDER
+    return data
+
+
+def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
+    """Return normalized provider data for storage and validation."""
+    data = _flatten_section_data(
+        user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_CUSTOMIZE_MODEL_LIST)
+    )
+    data[CONF_NAME] = str(data[CONF_NAME]).strip() or DEFAULT_SERVICE_NAME
+    data[CONF_BASE_URL] = _normalise_base_url(data)
+    headers = _parse_provider_headers(data.get(CONF_PROVIDER_HEADERS))
+    if headers:
+        data[CONF_PROVIDER_HEADERS] = headers
+    else:
+        data.pop(CONF_PROVIDER_HEADERS, None)
+    try:
+        provider_extra_body = _parse_key_value_json_setting(
+            data.get(CONF_PROVIDER_EXTRA_BODY, "")
+        )
+    except ValueError as err:
+        raise ProviderValidationError(
+            _model_setting_error(_MODEL_SETTING_EXTRA_BODY, str(err)),
+            "Enter provider extra body fields one per line using 'key: JSON value'.",
+        ) from err
+    if provider_extra_body:
+        try:
+            reject_chat_template_kwargs_in_extra_body(provider_extra_body)
+        except HomeAssistantError as err:
+            raise ProviderValidationError(
+                "chat_template_kwargs_conflict", str(err)
+            ) from err
+        data[CONF_PROVIDER_EXTRA_BODY] = provider_extra_body
+    else:
+        data.pop(CONF_PROVIDER_EXTRA_BODY, None)
+    if not data[CONF_BASE_URL]:
+        data.pop(CONF_BASE_URL, None)
+    api_key = data.get(CONF_API_KEY)
+    data[CONF_API_KEY] = str(api_key or "").strip()
+    data[CONF_CUSTOM_MODEL_NAMES] = _provider_custom_model_names(data)
+    return data
+
+
+def _normalise_provider_model_profiles(
+    existing_profiles: Mapping[str, Any],
+    model_names: list[str],
+    discovered_model_names: Iterable[str],
+    *,
+    keep_profile_ids: set[str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Return provider-owned profile storage synced to provider model names."""
+    discovered_set = set(discovered_model_names)
+    model_set = set(model_names)
+    keep_profile_ids = keep_profile_ids or set()
+    existing_by_model: dict[str, tuple[str, dict[str, Any]]] = {}
+    kept_profiles: dict[str, dict[str, Any]] = {}
+    for profile_id, profile in existing_profiles.items():
+        if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+            continue
+        model_name = profile.get(CONF_MODEL)
+        if not isinstance(model_name, str) or not model_name.strip():
+            continue
+        profile = dict(profile)
+        if model_name in model_set:
+            existing_by_model.setdefault(model_name, (profile_id, profile))
+            continue
+        if profile_id in keep_profile_ids:
+            model_settings = profile.get(CONF_MODEL_SETTINGS)
+            if isinstance(model_settings, Mapping):
+                profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(profile)
+            else:
+                profile.pop(CONF_MODEL_SETTINGS, None)
+            profile[CONF_ENABLED] = bool(profile.get(CONF_ENABLED, False))
+            kept_profiles[profile_id] = profile
+
+    profiles: dict[str, dict[str, Any]] = dict(kept_profiles)
+    for model_name in model_names:
+        existing_profile = existing_by_model.get(model_name)
+        if existing_profile is None:
+            profile_id = uuid4().hex
+            profile = {
+                "id": profile_id,
+                CONF_NAME: model_name,
+                CONF_MODEL: model_name,
+                CONF_ENABLED: False,
+                CONF_DISCOVERED: model_name in discovered_set,
+            }
+        else:
+            profile_id, profile = existing_profile
+            profile = dict(profile)
+        profile["id"] = profile_id
+        profile[CONF_NAME] = str(profile.get(CONF_NAME) or model_name)
+        profile[CONF_MODEL] = model_name
+        profile[CONF_ENABLED] = bool(profile.get(CONF_ENABLED, False))
+        profile[CONF_DISCOVERED] = model_name in discovered_set
+        model_settings = profile.get(CONF_MODEL_SETTINGS)
+        if isinstance(model_settings, Mapping):
+            profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(profile)
+        else:
+            profile.pop(CONF_MODEL_SETTINGS, None)
+        profiles[profile_id] = profile
+    return profiles
+
+
+def _provider_model_profiles_for_discovery_mode(
+    existing_profiles: Mapping[str, Any], *, keep_profile_ids: set[str]
+) -> dict[str, dict[str, Any]]:
+    """Return existing profiles that remain valid before discovery refresh."""
+    profiles: dict[str, dict[str, Any]] = {}
+    for profile_id, profile in existing_profiles.items():
+        if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+            continue
+        if (
+            not bool(profile.get(CONF_DISCOVERED, False))
+            and profile_id not in keep_profile_ids
+        ):
+            continue
+        model_name = profile.get(CONF_MODEL)
+        if not isinstance(model_name, str) or not model_name.strip():
+            continue
+        profile = dict(profile)
+        profile["id"] = profile_id
+        profile[CONF_MODEL] = model_name
+        profile[CONF_ENABLED] = bool(profile.get(CONF_ENABLED, False))
+        model_settings = profile.get(CONF_MODEL_SETTINGS)
+        if isinstance(model_settings, Mapping):
+            profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(profile)
+        else:
+            profile.pop(CONF_MODEL_SETTINGS, None)
+        profiles[profile_id] = profile
+    return profiles
+
+
+def _provider_profile_options(data: Mapping[str, Any]) -> list[SelectOptionDict]:
+    """Return all provider model profiles as select options."""
+    options: list[SelectOptionDict] = []
+    profiles = data.get(CONF_MODEL_PROFILES)
+    if not isinstance(profiles, Mapping):
+        return []
+    for profile_id, profile in profiles.items():
+        if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+            continue
+        model_name = profile.get(CONF_MODEL)
+        if not isinstance(model_name, str) or not model_name.strip():
+            continue
+        profile_name = profile.get(CONF_NAME)
+        label = (
+            str(profile_name)
+            if isinstance(profile_name, str) and profile_name.strip()
+            else model_name
+        )
+        if not bool(profile.get(CONF_ENABLED, False)):
+            label = f"{label} (disabled)"
+        options.append(SelectOptionDict(label=label, value=profile_id))
+    return options
+
+
+def _provider_profile_dependents(entry: ConfigEntry, profile_ref: str) -> list[str]:
+    """Return conversation and AI task titles that reference one profile."""
+    dependents: list[str] = []
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type not in {
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        }:
+            continue
+        refs = _selected_model_profile_refs(subentry.data)
+        if profile_ref in refs:
+            dependents.append(subentry.title)
+    return dependents
+
+
+def _provider_profile_selector_schema(data: Mapping[str, Any]) -> vol.Schema:
+    """Return a selector schema for existing provider-owned profiles."""
+    return vol.Schema(
+        {
+            vol.Required(_CONF_MODEL_PROFILE_ID): SelectSelector(
+                SelectSelectorConfig(
+                    options=_provider_profile_options(data),
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            )
+        }
+    )
+
+
+def _model_profile_edit_schema(
+    profile: Mapping[str, Any],
+) -> vol.Schema:
+    """Return the provider-owned model profile edit schema."""
+    options: dict[str, Any] = {
+        CONF_NAME: profile.get(CONF_NAME, profile.get(CONF_MODEL, "")),
+        CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {}),
+        CONF_ENABLED: bool(profile.get(CONF_ENABLED, False)),
+    }
+    schema: VolDictType = {
+        vol.Required(CONF_NAME, default=options[CONF_NAME]): TextSelector(
+            TextSelectorConfig()
+        ),
+        vol.Optional(CONF_ENABLED, default=options[CONF_ENABLED]): BooleanSelector(),
+    }
+    if not bool(profile.get(CONF_DISCOVERED, False)):
+        schema[vol.Required(CONF_MODEL, default=profile.get(CONF_MODEL, ""))] = (
+            TextSelector(TextSelectorConfig())
+        )
+    else:
+        schema[vol.Required(CONF_MODEL, default=profile.get(CONF_MODEL, ""))] = (
+            SelectSelector(
+                SelectSelectorConfig(
+                    options=[str(profile.get(CONF_MODEL, ""))],
+                    mode=SelectSelectorMode.DROPDOWN,
+                    translation_key=CONF_MODEL,
+                )
+            )
+        )
+    schema[
+        vol.Optional(
+            _MODEL_SETTING_TEMPERATURE,
+            description={
+                "suggested_value": options[CONF_MODEL_SETTINGS].get(
+                    _MODEL_SETTING_TEMPERATURE
+                )
+                if isinstance(options[CONF_MODEL_SETTINGS], Mapping)
+                else None
+            },
+        )
+    ] = NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1))
+    schema[
+        vol.Optional(
+            _MODEL_SETTING_THINKING,
+            description={
+                "suggested_value": _format_thinking_value(
+                    options[CONF_MODEL_SETTINGS]
+                    if isinstance(options[CONF_MODEL_SETTINGS], Mapping)
+                    else {}
+                )
+            },
+        )
+    ] = SelectSelector(
+        SelectSelectorConfig(
+            options=list(_THINKING_OPTIONS),
+            mode=SelectSelectorMode.DROPDOWN,
+            translation_key=_MODEL_SETTING_THINKING,
+        )
+    )
+    schema[vol.Optional(_SECTION_ADVANCED_MODEL_SETTINGS, default={})] = section(
+        _model_settings_schema(options), {"collapsed": True}
+    )
+    return vol.Schema(schema)
+
+
+def _validate_provider_data(hass: HomeAssistant, data: Mapping[str, Any]) -> None:
+    """Validate provider data that does not require a model."""
+    del hass
+    if data.get(CONF_PROVIDER_MODE) not in PROVIDER_MODES:
+        raise ProviderValidationError(
+            "invalid_provider_config",
+            f"Unsupported provider mode: {data.get(CONF_PROVIDER_MODE)!r}.",
+        )
+    _validate_base_url(data)
+    if data.get(CONF_PROVIDER_EXTRA_BODY) and not _provider_extra_body_supported(data):
+        raise ProviderValidationError(
+            "provider_extra_body_unsupported",
+            "Extra body is only supported by OpenAI-compatible and Anthropic provider modes.",
+        )
+
+
+def _validate_skills_folder(hass: HomeAssistant, folder: object) -> None:
+    """Validate that skills folders stay inside Home Assistant config."""
+    try:
+        skills_folder_path(hass, folder)
+    except ValueError as err:
+        raise ProviderValidationError(
+            "invalid_skills_folder",
+            "Skills folder must be /config/skills or one of its subfolders.",
+        ) from err
+
+
+def _provider_data_matches(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    """Return if two provider configurations identify the same connection."""
+    return _dedupe_data(left) == _dedupe_data(right)
+
+
+def _mcp_server_select_options(entry: ConfigEntry | None) -> list[SelectOptionDict]:
+    """Return configured MCP servers as select options."""
+    if entry is None:
+        return []
+    return [
+        SelectOptionDict(label=subentry.title, value=subentry.subentry_id)
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER
+    ]
+
+
+def _model_profile_select_options(entry: ConfigEntry | None) -> list[SelectOptionDict]:
+    """Return enabled workspace model profiles as select options."""
+    if entry is None:
+        return []
+    options: list[SelectOptionDict] = []
+    for provider_subentry in provider_subentries(entry):
+        for profile_id, profile in provider_model_profiles(provider_subentry).items():
+            if not bool(profile.get(CONF_ENABLED, False)):
+                continue
+            model_name = profile.get(CONF_MODEL)
+            if not isinstance(model_name, str) or not model_name.strip():
+                continue
+            profile_name = profile.get(CONF_NAME)
+            label = (
+                str(profile_name)
+                if isinstance(profile_name, str) and profile_name.strip()
+                else model_name
+            )
+            options.append(
+                SelectOptionDict(
+                    label=f"{provider_subentry.title} / {label}",
+                    value=model_profile_ref(provider_subentry.subentry_id, profile_id),
+                )
+            )
+    return options
+
+
+def _normalise_fallback_model_refs(
+    raw_refs: object,
+) -> list[str]:
+    """Return canonical workspace-local fallback refs, preserving order."""
+    if isinstance(raw_refs, str) or not isinstance(raw_refs, list):
+        return []
+    refs: list[str] = []
+    for raw_ref in raw_refs:
+        if not isinstance(raw_ref, str) or not raw_ref:
+            continue
+        try:
+            provider_subentry_id, profile_id = parse_model_profile_ref(raw_ref)
+        except HomeAssistantError:
+            continue
+        refs.append(model_profile_ref(provider_subentry_id, profile_id))
+    return refs
+
+
+def _fallback_model_profile_select_options(
+    hass: HomeAssistant, entry: ConfigEntry | None, selected_refs: object = None
+) -> list[SelectOptionDict]:
+    """Return workspace-local fallback profile options."""
+    del hass
+    options = _model_profile_select_options(entry)
+    configured_refs = {str(option["value"]) for option in options if "value" in option}
+    for ref in _normalise_fallback_model_refs(selected_refs):
+        if ref not in configured_refs:
+            options.append(SelectOptionDict(label=f"Unavailable / {ref}", value=ref))
+    return options
+
+
+def _selected_model_profile_refs(data: Mapping[str, Any]) -> list[str]:
+    """Return selected primary plus ordered fallback profile refs."""
+    primary_ref = data.get(CONF_PRIMARY_MODEL_REF)
+    if not isinstance(primary_ref, str) or not primary_ref:
+        return []
+    fallback_refs = data.get(CONF_FALLBACK_MODEL_REFS, [])
+    if isinstance(fallback_refs, str) or not isinstance(fallback_refs, list):
+        fallback_refs = []
+    return [primary_ref, *[item for item in fallback_refs if isinstance(item, str)]]
+
+
+def _selected_model_profile_error(
+    hass: HomeAssistant, entry: ConfigEntry, data: Mapping[str, Any]
+) -> str | None:
+    """Return a form error for missing or invalid model profile selections."""
+    del hass
+    primary_ref = data.get(CONF_PRIMARY_MODEL_REF)
+    if not isinstance(primary_ref, str) or not primary_ref:
+        return "model_profile_required"
+    if not configured_model_profile_exists(entry, primary_ref):
+        return "model_profile_not_found"
+    fallback_refs = _normalise_fallback_model_refs(
+        data.get(CONF_FALLBACK_MODEL_REFS, [])
+    )
+    if primary_ref in fallback_refs:
+        return "primary_model_in_fallbacks"
+    if len(fallback_refs) != len(set(fallback_refs)):
+        return "duplicate_fallback_model"
+    for profile_ref in fallback_refs:
+        if not configured_model_profile_exists(entry, profile_ref):
+            return "model_profile_not_found"
+    return None
+
+
+def _skill_select_options(
+    available_skills: list[AvailableSkill],
+) -> list[SelectOptionDict]:
+    """Return discovered skills as select options."""
+    return [
+        SelectOptionDict(label=skill.name, value=skill.name)
+        for skill in available_skills
+    ]
+
+
+def _hidden_configured_skill_names(
+    configured: object, available_skills: list[AvailableSkill]
+) -> list[str]:
+    """Return configured skill names that are not currently selectable."""
+    available_names = {skill.name for skill in available_skills}
+    if not configured:
+        return []
+    if isinstance(configured, str):
+        return [] if configured in available_names else [configured]
+    if not isinstance(configured, Iterable):
+        return []
+    return [name for name in configured if name not in available_names]
+
+
+def _merge_submitted_skills_with_hidden(
+    user_input: Mapping[str, Any],
+    options: Mapping[str, Any],
+    available_skills: list[AvailableSkill],
+) -> list[str]:
+    """Return submitted selectable skills plus hidden existing selections."""
+    submitted = user_input.get(CONF_SKILLS, [])
+    if isinstance(submitted, str):
+        selected = [submitted]
+    else:
+        selected = list(submitted or [])
+    if not selected:
+        return []
+    return selected + _hidden_configured_skill_names(
+        options.get(CONF_SKILLS), available_skills
+    )
+
+
+def _normalise_skill_settings(data: dict[str, Any]) -> None:
+    """Normalize and prune per-agent skill settings in place."""
+    enable_skills = bool(data.get(CONF_ENABLE_SKILLS, False))
+    data[CONF_SKILLS_FOLDER] = _normalise_skills_folder(data.get(CONF_SKILLS_FOLDER))
+    data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION] = bool(
+        data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
+    )
+    if not enable_skills:
+        data.pop(CONF_ENABLE_SKILLS, None)
+        data.pop(CONF_SKILLS, None)
+        data.pop(CONF_SKILLS_FOLDER, None)
+        data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
+        return
+    data[CONF_ENABLE_SKILLS] = True
+    if data[CONF_SKILLS_FOLDER] == DEFAULT_SKILLS_FOLDER:
+        data.pop(CONF_SKILLS_FOLDER, None)
+    if not data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION]:
+        data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
+
+
+def _skill_source(data: Mapping[str, Any]) -> tuple[bool, str, bool]:
+    """Return the fields that determine selectable skills for one agent."""
+    data = _flatten_section_data(data, (_SECTION_SKILLS,))
+    return (
+        bool(data.get(CONF_ENABLE_SKILLS, False)),
+        _normalise_skills_folder(data.get(CONF_SKILLS_FOLDER)),
+        bool(data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)),
+    )
+
+
+def _append_skill_schema_fields(
+    schema: VolDictType,
+    options: Mapping[str, Any],
+    available_skills: list[AvailableSkill] | None,
+) -> None:
+    """Append per-agent skill controls to a subentry form schema."""
+    enable_skills = bool(options.get(CONF_ENABLE_SKILLS, False))
+    schema[
+        vol.Optional(
+            CONF_ENABLE_SKILLS,
+            default=enable_skills,
+        )
+    ] = BooleanSelector()
+    schema[
+        vol.Required(
+            CONF_SKILLS_FOLDER,
+            default=options.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
+        )
+    ] = TextSelector(TextSelectorConfig())
+    schema[
+        vol.Optional(
+            CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
+            default=bool(options.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)),
+        )
+    ] = BooleanSelector()
+    skill_options = _skill_select_options(available_skills or [])
+    if not skill_options:
+        return
+    skills_schema_key = vol.Optional(CONF_SKILLS)
+    if CONF_SKILLS in options:
+        selected_skill_names = selected_available_skill_names(
+            options[CONF_SKILLS], available_skills or []
+        )
+        skills_schema_key = vol.Optional(
+            CONF_SKILLS,
+            default=selected_skill_names,
+        )
+    schema[skills_schema_key] = SelectSelector(
+        SelectSelectorConfig(options=skill_options, multiple=True)
+    )
+
+
+def _selected_mcp_server_error(
+    entry: ConfigEntry, data: Mapping[str, Any]
+) -> str | None:
+    """Return a form error for selected MCP servers that cannot run."""
+    for server_id in data.get(CONF_MCP_SERVER_IDS, []):
+        subentry = entry.subentries.get(server_id)
+        if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_MCP_SERVER:
+            return "mcp_server_not_found"
+        if not parse_allowed_tools(subentry.data.get(CONF_MCP_ALLOWED_TOOLS)):
+            return "mcp_tools_not_allowlisted"
+    return None
+
+
+def _selected_todo_workspace_error(
+    hass: HomeAssistant, data: Mapping[str, Any]
+) -> str | None:
+    """Return a form error for an invalid todo workspace entity."""
+    entity_id = data.get(CONF_TODO_LIST_ENTITY_ID)
+    if not entity_id:
+        return None
+    if not isinstance(entity_id, str) or not entity_id.startswith(f"{TODO_DOMAIN}."):
+        return "todo_list_not_found"
+    state = hass.states.get(entity_id)
+    if state is None:
+        return "todo_list_not_found"
+    supported_features = state.attributes.get("supported_features", 0)
+    if not isinstance(supported_features, int):
+        return "todo_list_unsupported"
+    if (
+        supported_features & _TODO_WORKSPACE_REQUIRED_FEATURES
+        != _TODO_WORKSPACE_REQUIRED_FEATURES
+    ):
+        return "todo_list_unsupported"
+    return None
+
+
+def _conversation_schema(
+    hass: HomeAssistant,
+    options: Mapping[str, Any] | None = None,
+    entry: ConfigEntry | None = None,
+    available_skills: list[AvailableSkill] | None = None,
+) -> vol.Schema:
+    """Return the conversation subentry schema, pruning unavailable HA APIs."""
+    options = dict(options or {})
+    model_options = _model_profile_select_options(entry)
+    fallback_model_options = _fallback_model_profile_select_options(
+        hass, entry, options.get(CONF_FALLBACK_MODEL_REFS, [])
+    )
+    hass_apis: list[SelectOptionDict] = []
+    valid_api_ids: set[str] = set()
+    for api in llm.async_get_apis(hass):
+        hass_apis.append(SelectOptionDict(label=api.name, value=api.id))
+        valid_api_ids.add(api.id)
+
+    if CONF_LLM_HASS_API in options:
+        options[CONF_LLM_HASS_API] = [
+            api for api in options[CONF_LLM_HASS_API] if api in valid_api_ids
+        ]
+    schema: VolDictType = {
+        vol.Required(
+            CONF_AGENT_NAME,
+            default=options.get(CONF_AGENT_NAME, DEFAULT_AGENT_NAME),
+        ): str,
+        vol.Optional(
+            CONF_PROMPT,
+            description={"suggested_value": options.get(CONF_PROMPT, "")},
+        ): TemplateSelector(),
+    }
+    if model_options:
+        schema[
+            vol.Required(
+                CONF_PRIMARY_MODEL_REF,
+                default=options.get(CONF_PRIMARY_MODEL_REF, ""),
+            )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=model_options,
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key=CONF_PRIMARY_MODEL_REF,
+            )
+        )
+        schema[
+            vol.Optional(
+                CONF_FALLBACK_MODEL_REFS,
+                default=_normalise_fallback_model_refs(
+                    options.get(CONF_FALLBACK_MODEL_REFS, [])
+                ),
+            )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=fallback_model_options,
+                multiple=True,
+                translation_key=CONF_FALLBACK_MODEL_REFS,
+            )
+        )
+    api_schema_key = vol.Optional(CONF_LLM_HASS_API)
+    if CONF_LLM_HASS_API in options:
+        api_schema_key = vol.Optional(
+            CONF_LLM_HASS_API,
+            default=options[CONF_LLM_HASS_API],
+        )
+    schema[api_schema_key] = SelectSelector(
+        SelectSelectorConfig(options=hass_apis, multiple=True)
+    )
+    external_tools_schema: VolDictType = {}
+    mcp_servers = _mcp_server_select_options(entry)
+    if mcp_servers:
+        mcp_schema_key = vol.Optional(CONF_MCP_SERVER_IDS)
+        if CONF_MCP_SERVER_IDS in options:
+            configured_servers = {
+                option["value"] for option in mcp_servers if "value" in option
+            }
+            mcp_schema_key = vol.Optional(
+                CONF_MCP_SERVER_IDS,
+                default=[
+                    server_id
+                    for server_id in options[CONF_MCP_SERVER_IDS]
+                    if server_id in configured_servers
+                ],
+            )
+        external_tools_schema[mcp_schema_key] = SelectSelector(
+            SelectSelectorConfig(options=mcp_servers, multiple=True)
+        )
+    external_tools_schema[
+        vol.Optional(
+            CONF_WEB_FETCH_ENABLED,
+            default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
+        )
+    ] = BooleanSelector()
+    schema[vol.Optional(_SECTION_EXTERNAL_TOOLS, default={})] = section(
+        vol.Schema(external_tools_schema), {"collapsed": True}
+    )
+    skills_schema: VolDictType = {}
+    _append_skill_schema_fields(skills_schema, options, available_skills)
+    schema[vol.Optional(_SECTION_SKILLS, default={})] = section(
+        vol.Schema(skills_schema), {"collapsed": True}
+    )
+    return vol.Schema(schema)
+
+
+def _model_profile_schema(
+    options: Mapping[str, Any] | None = None,
+    model_names: Iterable[str] | None = None,
+) -> vol.Schema:
+    """Return the model profile subentry schema."""
+    options = dict(options or {})
+    model_settings = options.get(CONF_MODEL_SETTINGS, {})
+    if not isinstance(model_settings, Mapping):
+        model_settings = {}
+    model_schema_key = vol.Required(
+        CONF_MODEL,
+        default=options.get(CONF_MODEL, ""),
+    )
+    if model_names:
+        model_options = sorted(set(model_names))
+        if existing_model := options.get(CONF_MODEL):
+            if isinstance(existing_model, str) and existing_model not in model_options:
+                model_options.insert(0, existing_model)
+        default_model = options.get(CONF_MODEL, model_options[0])
+        model_schema_key = vol.Required(CONF_MODEL, default=default_model)
+        model_selector = SelectSelector(
+            SelectSelectorConfig(
+                options=model_options,
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key=CONF_MODEL,
+            )
+        )
+    else:
+        model_selector = TextSelector(TextSelectorConfig())
+    return vol.Schema(
+        {
+            model_schema_key: model_selector,
+            vol.Required(
+                CONF_NAME,
+                default=options.get(CONF_NAME, options.get(CONF_MODEL, "")),
+            ): TextSelector(TextSelectorConfig()),
+            vol.Optional(
+                _MODEL_SETTING_TEMPERATURE,
+                description={
+                    "suggested_value": model_settings.get(_MODEL_SETTING_TEMPERATURE)
+                },
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
+            ),
+            vol.Optional(
+                _MODEL_SETTING_THINKING,
+                description={"suggested_value": _format_thinking_value(model_settings)},
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=list(_THINKING_OPTIONS),
+                    mode=SelectSelectorMode.DROPDOWN,
+                    translation_key=_MODEL_SETTING_THINKING,
+                )
+            ),
+            vol.Optional(_SECTION_ADVANCED_MODEL_SETTINGS, default={}): section(
+                _model_settings_schema(options), {"collapsed": True}
+            ),
+        }
+    )
+
+
+def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
+    """Return the advanced model settings schema."""
+    options = dict(options or {})
+    model_settings = options.get(CONF_MODEL_SETTINGS, {})
+    if not isinstance(model_settings, Mapping):
+        model_settings = {}
+    parallel_tool_calls_key = vol.Optional(_MODEL_SETTING_PARALLEL_TOOL_CALLS)
+    if _MODEL_SETTING_PARALLEL_TOOL_CALLS in model_settings:
+        parallel_tool_calls_key = vol.Optional(
+            _MODEL_SETTING_PARALLEL_TOOL_CALLS,
+            default=model_settings[_MODEL_SETTING_PARALLEL_TOOL_CALLS],
+        )
+    return vol.Schema(
+        {
+            parallel_tool_calls_key: BooleanSelector(),
+            vol.Optional(
+                _MODEL_SETTING_MAX_TOKENS,
+                description={
+                    "suggested_value": model_settings.get(_MODEL_SETTING_MAX_TOKENS)
+                },
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
+            ),
+            vol.Optional(
+                _MODEL_SETTING_MAX_ITERATIONS,
+                description={
+                    "suggested_value": model_settings.get(_MODEL_SETTING_MAX_ITERATIONS)
+                },
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
+            ),
+            vol.Optional(
+                _MODEL_SETTING_TOP_P,
+                description={
+                    "suggested_value": model_settings.get(_MODEL_SETTING_TOP_P)
+                },
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
+            ),
+            vol.Optional(
+                _MODEL_SETTING_TIMEOUT,
+                description={
+                    "suggested_value": model_settings.get(_MODEL_SETTING_TIMEOUT)
+                },
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
+            ),
+            vol.Optional(
+                _MODEL_SETTING_SEED,
+                description={
+                    "suggested_value": model_settings.get(_MODEL_SETTING_SEED)
+                },
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
+            ),
+            vol.Optional(
+                _MODEL_SETTING_PRESENCE_PENALTY,
+                description={
+                    "suggested_value": model_settings.get(
+                        _MODEL_SETTING_PRESENCE_PENALTY
+                    )
+                },
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
+            ),
+            vol.Optional(
+                _MODEL_SETTING_FREQUENCY_PENALTY,
+                description={
+                    "suggested_value": model_settings.get(
+                        _MODEL_SETTING_FREQUENCY_PENALTY
+                    )
+                },
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
+            ),
+            vol.Optional(
+                _MODEL_SETTING_CHAT_TEMPLATE_KWARGS,
+                default=_format_chat_template_kwargs(
+                    model_settings.get(_MODEL_SETTING_CHAT_TEMPLATE_KWARGS)
+                ),
+            ): ObjectSelector(
+                ObjectSelectorConfig(
+                    multiple=True,
+                    fields={
+                        CONF_CHAT_TEMPLATE_KWARG_KEY: {
+                            "selector": {"text": None},
+                            "required": True,
+                        },
+                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: {
+                            "selector": {"template": None},
+                            "required": True,
+                        },
+                    },
+                )
+            ),
+        }
+    )
+
+
+def _format_key_value_json_setting(value: object) -> str:
+    """Return a key/value JSON setting as one ``key: value`` line each."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, Mapping):
+        return ""
+    return "\n".join(
+        f"{key}: {json.dumps(value[key], sort_keys=True)}" for key in sorted(value)
+    )
+
+
+def _format_chat_template_kwargs(value: object) -> list[dict[str, str]]:
+    """Return stored chat template kwargs in selector-compatible shape."""
+    if not isinstance(value, list):
+        return []
+    formatted: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        key = item.get(CONF_CHAT_TEMPLATE_KWARG_KEY)
+        value_template = item.get(CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE)
+        if isinstance(key, str) and isinstance(value_template, str):
+            formatted.append(
+                {
+                    CONF_CHAT_TEMPLATE_KWARG_KEY: key,
+                    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: value_template,
+                }
+            )
+    return formatted
+
+
+def _format_thinking_value(model_settings: Mapping[str, Any]) -> str:
+    """Return the selector value for the configured thinking setting."""
+    value = model_settings.get(_MODEL_SETTING_THINKING)
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, str):
+        return value
+    return ""
+
+
+def _is_blank(value: object) -> bool:
+    """Return if a submitted optional field should be treated as unset."""
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _parse_float_setting(value: object) -> float:
+    """Return a float model setting from user input."""
+    if isinstance(value, bool):
+        raise ValueError
+    if not isinstance(value, (int, float, str)):
+        raise ValueError
+    return float(value)
+
+
+def _parse_positive_float_setting(value: object) -> float:
+    """Return a positive float model setting from user input."""
+    parsed = _parse_float_setting(value)
+    if parsed <= 0:
+        raise ValueError
+    return parsed
+
+
+def _parse_int_setting(value: object) -> int:
+    """Return an integer model setting from user input."""
+    if isinstance(value, bool):
+        raise ValueError
+    if not isinstance(value, (int, float, str)):
+        raise ValueError
+    parsed = int(value)
+    if float(value) != parsed:
+        raise ValueError
+    return parsed
+
+
+def _parse_positive_int_setting(value: object) -> int:
+    """Return a positive integer model setting from user input."""
+    parsed = _parse_int_setting(value)
+    if parsed <= 0:
+        raise ValueError
+    return parsed
+
+
+def _parse_non_negative_int_setting(value: object) -> int:
+    """Return a non-negative integer model setting from user input."""
+    parsed = _parse_int_setting(value)
+    if parsed < 0:
+        raise ValueError
+    return parsed
+
+
+def _parse_key_value_json_setting(value: object) -> dict[str, Any]:
+    """Return a key/value JSON model setting from user input."""
+    if not isinstance(value, str):
+        raise ValueError("invalid_key_value")
+    parsed: dict[str, Any] = {}
+    for line in value.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        key, separator, item = line.partition(":")
+        key = key.strip()
+        if not separator or not key:
+            raise ValueError("invalid_key_value")
+        if key in parsed:
+            raise ValueError("duplicate_key")
+        try:
+            parsed[key] = json.loads(item.strip())
+        except json.JSONDecodeError as err:
+            raise ValueError("invalid_json") from err
+    try:
+        reject_chat_template_kwargs_in_extra_body(parsed)
+    except HomeAssistantError as err:
+        raise ValueError("chat_template_kwargs_conflict") from err
+    return parsed
+
+
+def _parse_chat_template_kwargs(
+    hass: HomeAssistant, value: object
+) -> list[dict[str, str]]:
+    """Return configured chat template kwargs from selector input."""
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise ValueError("invalid_chat_template_kwargs")
+    parsed: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise ValueError("invalid_chat_template_kwargs")
+        key = str(item.get(CONF_CHAT_TEMPLATE_KWARG_KEY, "")).strip()
+        value_template = item.get(CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE)
+        if not key and not value_template:
+            continue
+        if not key:
+            raise ValueError("invalid_chat_template_key")
+        if key in seen:
+            raise ValueError("duplicate_key")
+        if not isinstance(value_template, str) or not value_template.strip():
+            raise ValueError("invalid_chat_template")
+        try:
+            Template(value_template, hass).ensure_valid()
+        except TemplateError as err:
+            raise ValueError("invalid_chat_template") from err
+        seen.add(key)
+        parsed.append(
+            {
+                CONF_CHAT_TEMPLATE_KWARG_KEY: key,
+                CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: value_template,
+            }
+        )
+    return parsed
+
+
+def _parse_thinking_setting(value: object) -> bool | str:
+    """Return a Pydantic AI thinking setting."""
+    if not isinstance(value, str):
+        raise ValueError
+    parsed = value.strip()
+    if parsed == "true":
+        return True
+    if parsed == "false":
+        return False
+    if parsed not in _THINKING_OPTIONS:
+        raise ValueError
+    return parsed
+
+
+def _parse_model_settings(
+    hass: HomeAssistant, user_input: Mapping[str, Any], setting_keys: set[str]
+) -> tuple[dict[str, Any], dict[str, str], set[str]]:
+    """Return parsed model settings, field errors, and explicitly cleared keys."""
+    settings: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    cleared: set[str] = set()
+    for key in setting_keys:
+        if key not in user_input:
+            continue
+        value = user_input[key]
+        if _is_blank(value):
+            # Blank fields mean "unset" in the HA form and must delete any
+            # previously stored Pydantic AI model setting.
+            cleared.add(key)
+            continue
+        try:
+            if key in {_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_MAX_ITERATIONS}:
+                settings[key] = _parse_positive_int_setting(value)
+            elif key == _MODEL_SETTING_SEED:
+                settings[key] = _parse_non_negative_int_setting(value)
+            elif key == _MODEL_SETTING_TIMEOUT:
+                settings[key] = _parse_positive_float_setting(value)
+            elif key in {
+                _MODEL_SETTING_TEMPERATURE,
+                _MODEL_SETTING_TOP_P,
+                _MODEL_SETTING_PRESENCE_PENALTY,
+                _MODEL_SETTING_FREQUENCY_PENALTY,
+            }:
+                settings[key] = _parse_float_setting(value)
+            elif key == _MODEL_SETTING_PARALLEL_TOOL_CALLS:
+                if not isinstance(value, bool):
+                    raise ValueError
+                settings[key] = value
+            elif key == _MODEL_SETTING_EXTRA_BODY:
+                settings[key] = _parse_key_value_json_setting(value)
+            elif key == _MODEL_SETTING_CHAT_TEMPLATE_KWARGS:
+                if parsed := _parse_chat_template_kwargs(hass, value):
+                    settings[key] = parsed
+                else:
+                    cleared.add(key)
+            elif key == _MODEL_SETTING_THINKING:
+                settings[key] = _parse_thinking_setting(value)
+        except ValueError as err:
+            errors[key] = _model_setting_error(key, str(err))
+    return settings, errors, cleared
+
+
+def _model_setting_error(key: str, detail: str) -> str:
+    """Return a translation key for a model setting validation error."""
+    if detail in {
+        "chat_template_kwargs_conflict",
+        "duplicate_key",
+        "invalid_chat_template",
+        "invalid_chat_template_key",
+        "invalid_chat_template_kwargs",
+        "invalid_json",
+        "invalid_key_value",
+    }:
+        return detail
+    if key in {
+        _MODEL_SETTING_MAX_TOKENS,
+        _MODEL_SETTING_MAX_ITERATIONS,
+        _MODEL_SETTING_SEED,
+    }:
+        return "invalid_integer"
+    if key == _MODEL_SETTING_TIMEOUT:
+        return "positive_number"
+    return "invalid_number"
+
+
+def _model_settings_from_options(options: Mapping[str, Any]) -> dict[str, Any]:
+    """Return existing model settings from subentry options."""
+    model_settings = options.get(CONF_MODEL_SETTINGS)
+    if isinstance(model_settings, Mapping):
+        return {
+            key: value
+            for key, value in model_settings.items()
+            if key not in _REMOVED_MODEL_SETTING_KEYS
+        }
+    return {}
+
+
+def _conversation_data_from_user_input(
+    user_input: Mapping[str, Any],
+    options: Mapping[str, Any],
+    *,
+    available_skills: list[AvailableSkill] | None = None,
+) -> dict[str, Any]:
+    """Return conversation fields with model profile references."""
+    user_input = _flatten_section_data(
+        user_input, (_SECTION_EXTERNAL_TOOLS, _SECTION_SKILLS)
+    )
+    data = {key: value for key, value in user_input.items()}
+    if not data.get(CONF_LLM_HASS_API):
+        data.pop(CONF_LLM_HASS_API, None)
+    if not data.get(CONF_MCP_SERVER_IDS):
+        data.pop(CONF_MCP_SERVER_IDS, None)
+    if not data.get(CONF_WEB_FETCH_ENABLED):
+        data.pop(CONF_WEB_FETCH_ENABLED, None)
+    if not data.get(CONF_FALLBACK_MODEL_REFS):
+        data.pop(CONF_FALLBACK_MODEL_REFS, None)
+    if (
+        data.get(CONF_ENABLE_SKILLS)
+        and CONF_SKILLS in user_input
+        and available_skills is not None
+    ):
+        data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
+            user_input, options, available_skills
+        )
+    elif (
+        data.get(CONF_ENABLE_SKILLS)
+        and CONF_SKILLS not in user_input
+        and options.get(CONF_SKILLS)
+    ):
+        data[CONF_SKILLS] = options[CONF_SKILLS]
+    if not data.get(CONF_SKILLS):
+        data.pop(CONF_SKILLS, None)
+    _normalise_skill_settings(data)
+    return data
+
+
+def _merge_model_settings(
+    existing: Mapping[str, Any],
+    parsed: Mapping[str, Any],
+    cleared: set[str],
+) -> dict[str, Any]:
+    """Return model settings with parsed values applied and cleared keys removed."""
+    merged = dict(existing)
+    # Subentry setup spans basic and advanced forms, so each save patches the
+    # existing model settings instead of replacing the whole mapping blindly.
+    for key in cleared:
+        merged.pop(key, None)
+    merged.update(parsed)
+    return merged
+
+
+def _store_model_settings(
+    data: dict[str, Any], model_settings: Mapping[str, Any]
+) -> None:
+    """Store model settings only when at least one setting is configured."""
+    if model_settings:
+        data[CONF_MODEL_SETTINGS] = dict(model_settings)
+    else:
+        data.pop(CONF_MODEL_SETTINGS, None)
+
+
+def _model_profile_data_from_user_input(
+    user_input: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return model profile data excluding form-only setting fields."""
+    return {
+        key: value
+        for key, value in user_input.items()
+        if key not in _MAIN_MODEL_SETTING_KEYS | _ADVANCED_MODEL_SETTING_KEYS
+    }
+
+
+def _ai_task_data_schema(
+    hass: HomeAssistant,
+    options: Mapping[str, Any] | None = None,
+    entry: ConfigEntry | None = None,
+    available_skills: list[AvailableSkill] | None = None,
+) -> vol.Schema:
+    """Return the AI task data subentry schema."""
+    options = dict(options or {})
+    model_options = _model_profile_select_options(entry)
+    fallback_model_options = _fallback_model_profile_select_options(
+        hass, entry, options.get(CONF_FALLBACK_MODEL_REFS, [])
+    )
+    schema: VolDictType = {
+        vol.Required(
+            CONF_AI_TASK_NAME,
+            default=options.get(CONF_AI_TASK_NAME, DEFAULT_AI_TASK_NAME),
+        ): TextSelector(TextSelectorConfig()),
+    }
+    if model_options:
+        schema[
+            vol.Required(
+                CONF_PRIMARY_MODEL_REF,
+                default=options.get(CONF_PRIMARY_MODEL_REF, ""),
+            )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=model_options,
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key=CONF_PRIMARY_MODEL_REF,
+            )
+        )
+        schema[
+            vol.Optional(
+                CONF_FALLBACK_MODEL_REFS,
+                default=_normalise_fallback_model_refs(
+                    options.get(CONF_FALLBACK_MODEL_REFS, [])
+                ),
+            )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=fallback_model_options,
+                multiple=True,
+                translation_key=CONF_FALLBACK_MODEL_REFS,
+            )
+        )
+    external_tools_schema: VolDictType = {}
+    mcp_servers = _mcp_server_select_options(entry)
+    if mcp_servers:
+        mcp_schema_key = vol.Optional(CONF_MCP_SERVER_IDS)
+        if CONF_MCP_SERVER_IDS in options:
+            configured_servers = {
+                option["value"] for option in mcp_servers if "value" in option
+            }
+            mcp_schema_key = vol.Optional(
+                CONF_MCP_SERVER_IDS,
+                default=[
+                    server_id
+                    for server_id in options[CONF_MCP_SERVER_IDS]
+                    if server_id in configured_servers
+                ],
+            )
+        external_tools_schema[mcp_schema_key] = SelectSelector(
+            SelectSelectorConfig(options=mcp_servers, multiple=True)
+        )
+    todo_schema_key = vol.Optional(CONF_TODO_LIST_ENTITY_ID)
+    if CONF_TODO_LIST_ENTITY_ID in options:
+        todo_schema_key = vol.Optional(
+            CONF_TODO_LIST_ENTITY_ID,
+            default=options[CONF_TODO_LIST_ENTITY_ID],
+        )
+    external_tools_schema[todo_schema_key] = EntitySelector(
+        EntitySelectorConfig(domain=TODO_DOMAIN)
+    )
+    external_tools_schema[
+        vol.Optional(
+            CONF_WEB_FETCH_ENABLED,
+            default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
+        )
+    ] = BooleanSelector()
+    schema[
+        vol.Required(
+            CONF_OUTPUT_MODE,
+            default=normalise_structured_output_mode(
+                options.get(CONF_OUTPUT_MODE, DEFAULT_OUTPUT_MODE)
+            ),
+        )
+    ] = SelectSelector(
+        SelectSelectorConfig(
+            options=list(_OUTPUT_MODE_OPTIONS),
+            mode=SelectSelectorMode.DROPDOWN,
+            translation_key=CONF_OUTPUT_MODE,
+        )
+    )
+    schema[vol.Optional(_SECTION_EXTERNAL_TOOLS, default={})] = section(
+        vol.Schema(external_tools_schema), {"collapsed": True}
+    )
+    skills_schema: VolDictType = {}
+    _append_skill_schema_fields(skills_schema, options, available_skills)
+    schema[vol.Optional(_SECTION_SKILLS, default={})] = section(
+        vol.Schema(skills_schema), {"collapsed": True}
+    )
+    return vol.Schema(schema)
+
+
+def _ai_task_data_from_user_input(
+    user_input: Mapping[str, Any],
+    options: Mapping[str, Any],
+    *,
+    available_skills: list[AvailableSkill] | None = None,
+) -> dict[str, Any]:
+    """Return AI task subentry data with a selected structured output mode."""
+    user_input = _flatten_section_data(
+        user_input, (_SECTION_EXTERNAL_TOOLS, _SECTION_SKILLS)
+    )
+    data = dict(user_input)
+    data.setdefault(
+        CONF_OUTPUT_MODE,
+        normalise_structured_output_mode(options.get(CONF_OUTPUT_MODE)),
+    )
+    if not data.get(CONF_MCP_SERVER_IDS):
+        data.pop(CONF_MCP_SERVER_IDS, None)
+    if not data.get(CONF_WEB_FETCH_ENABLED):
+        data.pop(CONF_WEB_FETCH_ENABLED, None)
+    if not data.get(CONF_FALLBACK_MODEL_REFS):
+        data.pop(CONF_FALLBACK_MODEL_REFS, None)
+    if not data.get(CONF_TODO_LIST_ENTITY_ID):
+        data.pop(CONF_TODO_LIST_ENTITY_ID, None)
+    if (
+        data.get(CONF_ENABLE_SKILLS)
+        and CONF_SKILLS in user_input
+        and available_skills is not None
+    ):
+        data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
+            user_input, options, available_skills
+        )
+    elif (
+        data.get(CONF_ENABLE_SKILLS)
+        and CONF_SKILLS not in user_input
+        and options.get(CONF_SKILLS)
+    ):
+        data[CONF_SKILLS] = options[CONF_SKILLS]
+    if not data.get(CONF_SKILLS):
+        data.pop(CONF_SKILLS, None)
+    _normalise_skill_settings(data)
+    return data
+
+
+def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
+    """Return the remote MCP server subentry schema."""
+    options = _flatten_section_data(options or {}, (_SECTION_ADVANCED_MCP,))
+    return vol.Schema(
+        {
+            vol.Required(CONF_NAME, default=options.get(CONF_NAME, "")): TextSelector(
+                TextSelectorConfig()
+            ),
+            vol.Required(
+                CONF_MCP_URL,
+                default=options.get(CONF_MCP_URL, ""),
+            ): TextSelector(TextSelectorConfig()),
+            vol.Optional(_SECTION_ADVANCED_MCP, default={}): section(
+                vol.Schema(
+                    {
+                        vol.Optional(
+                            CONF_MCP_HEADERS,
+                            default=_format_mcp_headers(options.get(CONF_MCP_HEADERS)),
+                        ): TextSelector(TextSelectorConfig(multiline=True)),
+                        vol.Optional(
+                            CONF_MCP_INCLUDE_RETURN_SCHEMA,
+                            default=options.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True),
+                        ): BooleanSelector(),
+                        vol.Optional(
+                            CONF_MCP_DEFERRED_LOADING,
+                            default=options.get(CONF_MCP_DEFERRED_LOADING, False),
+                        ): BooleanSelector(),
+                    }
+                ),
+                {"collapsed": True},
+            ),
+        }
+    )
+
+
+def _format_mcp_headers(headers: object) -> str:
+    """Return headers as one HTTP header per line for the config form."""
+    if headers is None:
+        return ""
+    if isinstance(headers, str):
+        return headers
+    if not isinstance(headers, Mapping):
+        return ""
+    return "\n".join(f"{name}: {headers[name]}" for name in sorted(headers))
+
+
+def _truncate_mcp_tool_description(description: str) -> str:
+    """Return a compact single-line MCP tool description for selector labels."""
+    description = " ".join(description.split())
+    if len(description) <= _MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH:
+        return description
+    return f"{description[: _MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH - 3].rstrip()}..."
+
+
+def _mcp_tool_options(
+    tools: Iterable[Mapping[str, Any]],
+    extra_tool_names: Iterable[str] = (),
+) -> list[SelectOptionDict]:
+    """Return sorted MCP tool selector options from discovered metadata."""
+    options_by_name: dict[str, SelectOptionDict] = {}
+    for tool in tools:
+        name = str(tool.get("name", "")).strip()
+        if not name or name in options_by_name:
+            continue
+        description = _truncate_mcp_tool_description(
+            str(tool.get("description", "")).strip()
+        )
+        label = f"{name} ({description})" if description else name
+        options_by_name[name] = SelectOptionDict(label=label, value=name)
+    for name in extra_tool_names:
+        if name and name not in options_by_name:
+            options_by_name[name] = SelectOptionDict(label=name, value=name)
+    return [options_by_name[name] for name in sorted(options_by_name)]
+
+
+def _mcp_tools_schema(
+    tool_options: list[SelectOptionDict], default_tool_names: list[str]
+) -> vol.Schema:
+    """Return the MCP discovered tools selection schema."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_MCP_ALLOWED_TOOLS,
+                default=default_tool_names,
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=tool_options,
+                    multiple=True,
+                )
+            )
+        }
+    )
+
+
+def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
+    """Return normalized remote MCP server subentry data."""
+    user_input = _flatten_section_data(user_input, (_SECTION_ADVANCED_MCP,))
+    data: dict[str, Any] = {
+        CONF_NAME: str(user_input[CONF_NAME]).strip(),
+        CONF_MCP_URL: normalise_mcp_url(user_input[CONF_MCP_URL]),
+        CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
+            user_input.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
+        ),
+        CONF_MCP_DEFERRED_LOADING: bool(
+            user_input.get(CONF_MCP_DEFERRED_LOADING, False)
+        ),
+    }
+    headers = parse_mcp_headers(user_input.get(CONF_MCP_HEADERS))
+    if headers:
+        data[CONF_MCP_HEADERS] = headers
+    allowed_tools = parse_allowed_tools(user_input.get(CONF_MCP_ALLOWED_TOOLS))
+    if allowed_tools:
+        data[CONF_MCP_ALLOWED_TOOLS] = allowed_tools
+    return data
+
+
+def _mcp_url_already_configured(
+    entry: ConfigEntry,
+    url: str,
+    current_subentry_id: str | None = None,
+) -> bool:
+    """Return if another MCP server subentry already uses this URL."""
+    url_identity = _mcp_url_identity(url)
+    for subentry in entry.subentries.values():
+        if subentry.subentry_id == current_subentry_id:
+            continue
+        if subentry.subentry_type != SUBENTRY_TYPE_MCP_SERVER:
+            continue
+        try:
+            existing_identity = _mcp_url_identity(subentry.data.get(CONF_MCP_URL))
+        except MCPValidationError:
+            _LOGGER.warning(
+                "Ignoring invalid stored MCP URL while checking duplicates for subentry %s",
+                subentry.subentry_id,
+            )
+            continue
+        if existing_identity == url_identity:
+            return True
+    return False
+
+
+def _mcp_url_identity(
+    url: object,
+) -> tuple[str, str, int, str, tuple[tuple[str, str], ...]]:
+    """Return a canonical identity for duplicate MCP URL checks."""
+    parsed = urlparse(normalise_mcp_url(url))
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return (
+        parsed.scheme,
+        (parsed.hostname or "").lower().rstrip("."),
+        port,
+        parsed.path or "/",
+        tuple(sorted(parse_qsl(parsed.query, keep_blank_values=True))),
+    )
+
+
+

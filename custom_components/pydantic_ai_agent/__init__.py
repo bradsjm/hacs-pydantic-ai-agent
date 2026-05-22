@@ -12,7 +12,6 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 import voluptuous as vol
 
-from .config_flow import ProviderValidationError, async_probe_model
 from .const import (
     CONF_BASE_URL,
     CONF_ENABLED,
@@ -33,6 +32,7 @@ from .const import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_PROVIDER,
 )
+from .provider_validation import ProviderValidationError, async_probe_model
 from .logfire_support import (
     async_configure_logfire,
     logfire_enabled,
