@@ -12,6 +12,7 @@ __pycache__/
 *.py[cod]
 build/
 coverage.xml
+config/
 dist/
 htmlcov/
 node_modules/
