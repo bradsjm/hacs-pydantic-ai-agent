@@ -1,5 +1,7 @@
 """Smoke tests for the workspace-first config flow."""
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
@@ -20,12 +22,15 @@ from custom_components.pydantic_ai_agent.conversation import (
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
+    CONF_BASE_URL,
     CONF_CUSTOM_MODEL_NAMES,
     CONF_ENABLED,
     CONF_DEFAULT_SKILLS_FOLDER,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_PRIMARY_MODEL_REF,
+    CONF_PROVIDER_EXTRA_BODY,
+    CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
     DEFAULT_SKILLS_FOLDER,
     DOMAIN,
@@ -33,6 +38,41 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_PROVIDER,
 )
+
+_TRANSLATIONS_PATH = (
+    Path(__file__).parents[3]
+    / "custom_components"
+    / "pydantic_ai_agent"
+    / "translations"
+    / "en.json"
+)
+
+
+def test_provider_edit_connection_translations_cover_rendered_schema() -> None:
+    """Test edit-connection fields and sections have translations."""
+    translations = json.loads(_TRANSLATIONS_PATH.read_text(encoding="utf-8"))
+    step = translations["config_subentries"]["provider"]["step"]["edit_connection"]
+
+    assert set(step["data"]) >= {
+        CONF_NAME,
+        CONF_PROVIDER_MODE,
+        CONF_API_KEY,
+        CONF_BASE_URL,
+        CONF_CUSTOM_MODEL_NAMES,
+        CONF_PROVIDER_EXTRA_BODY,
+        CONF_PROVIDER_HEADERS,
+    }
+    assert set(step["sections"]) >= {"advanced_options", "customize_model_list"}
+    assert step["sections"]["advanced_options"]["name"] == "Advanced options"
+    assert set(step["sections"]["advanced_options"]["data"]) >= {
+        CONF_PROVIDER_EXTRA_BODY,
+        CONF_PROVIDER_HEADERS,
+    }
+    assert step["sections"]["customize_model_list"]["name"] == "Customize model list"
+    assert set(step["sections"]["customize_model_list"]["data"]) >= {
+        CONF_CUSTOM_MODEL_NAMES,
+    }
+
 
 async def _loaded_workspace_entry(
     hass: HomeAssistant, subentries_data: tuple[dict[str, object], ...] = ()

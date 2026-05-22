@@ -541,6 +541,47 @@
           },
           "title": "Edit model profile"
         },
+        "edit_connection": {
+          "data": {
+            "api_key": "API key",
+            "base_url": "Base URL",
+            "custom_model_names": "Custom model names",
+            "name": "Provider name",
+            "provider_extra_body": "Extra body",
+            "provider_headers": "Provider HTTP headers",
+            "provider_mode": "Provider mode"
+          },
+          "data_description": {
+            "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
+            "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is skipped.",
+            "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
+            "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+          },
+          "description": "Update the provider connection and the language model profiles it contributes to this workspace.",
+          "sections": {
+            "advanced_options": {
+              "data": {
+                "provider_extra_body": "Extra body",
+                "provider_headers": "Provider HTTP headers"
+              },
+              "data_description": {
+                "provider_extra_body": "Provider-specific request body fields sent with every model request for this provider.",
+                "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+              },
+              "name": "Advanced options"
+            },
+            "customize_model_list": {
+              "data": {
+                "custom_model_names": "Custom model names"
+              },
+              "data_description": {
+                "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is skipped. Profiles are created disabled until enabled from Customize model profile."
+              },
+              "name": "Customize model list"
+            }
+          },
+          "title": "Edit provider connection"
+        },
         "init": {
           "data": {
             "api_key": "API key",
