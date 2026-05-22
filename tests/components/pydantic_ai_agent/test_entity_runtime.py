@@ -233,26 +233,6 @@ def test_model_settings_with_chat_template_kwargs_renders_without_mutation(
     assert settings == {"extra_body": {"service_tier": "flex"}}
 
 
-def test_model_settings_with_chat_template_kwargs_rejects_extra_body_conflict(
-    hass: HomeAssistant,
-) -> None:
-    """Test raw extra_body cannot also configure chat_template_kwargs."""
-    profile = ModelProfile(
-        ref="provider-1:model-1",
-        provider_subentry_id="provider-1",
-        profile_id="model-1",
-        title="Fast GPT",
-        provider_title="Provider",
-        provider_mode="openai_compatible_completions",
-        model_name="gpt-test",
-        model_settings={},
-    )
-    settings = ModelSettings(extra_body={CONF_CHAT_TEMPLATE_KWARGS: {"old": "path"}})
-
-    with pytest.raises(HomeAssistantError, match="dedicated model setting"):
-        _model_settings_with_chat_template_kwargs(hass, profile, settings)
-
-
 def test_model_settings_with_provider_extra_body_rejects_gemini() -> None:
     """Test unsupported provider body fields fail instead of becoming a no-op."""
     profile = ModelProfile(

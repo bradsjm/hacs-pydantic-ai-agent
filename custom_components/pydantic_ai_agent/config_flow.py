@@ -2,43 +2,24 @@
 
 from __future__ import annotations
 
+import errno
+import json
+import logging
+import socket
+import ssl
 from collections.abc import AsyncIterable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
-import errno
 from hashlib import sha256
-import json
-import logging
 from pathlib import PurePosixPath
-from uuid import uuid4
-import socket
-import ssl
 from typing import Any
 from urllib.parse import parse_qsl, urlparse
+from uuid import uuid4
 
 import httpx
-from pydantic_ai import (
-    ModelRequest,
-    PartDeltaEvent,
-    PartEndEvent,
-    PartStartEvent,
-    TextPart,
-    TextPartDelta,
-    ToolCallPart,
-)
-from pydantic_ai.messages import ModelResponseStreamEvent
-from pydantic_ai.direct import model_request_stream
-from pydantic_ai.exceptions import (
-    ModelAPIError,
-    ModelHTTPError,
-    UnexpectedModelBehavior,
-    UserError,
-)
-from pydantic_ai.models import ModelRequestParameters
-from pydantic_ai.settings import ModelSettings
 import voluptuous as vol
-
-from homeassistant.components.todo import DOMAIN as TODO_DOMAIN, TodoListEntityFeature
+from homeassistant.components.todo import DOMAIN as TODO_DOMAIN
+from homeassistant.components.todo import TodoListEntityFeature
 from homeassistant.config_entries import (
     SOURCE_USER,
     ConfigEntry,
@@ -75,8 +56,31 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.template import Template
 from homeassistant.helpers.typing import VolDictType
 from homeassistant.util import dt as dt_util
+from pydantic_ai import (
+    ModelRequest,
+    PartDeltaEvent,
+    PartEndEvent,
+    PartStartEvent,
+    TextPart,
+    TextPartDelta,
+    ToolCallPart,
+)
+from pydantic_ai.direct import model_request_stream
+from pydantic_ai.exceptions import (
+    ModelAPIError,
+    ModelHTTPError,
+    UnexpectedModelBehavior,
+    UserError,
+)
+from pydantic_ai.messages import ModelResponseStreamEvent
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.settings import ModelSettings
 
 from ._redaction import redact_data
+from .chat_template_kwargs import (
+    reject_chat_template_kwargs_in_extra_body,
+    render_chat_template_kwargs,
+)
 from .const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
@@ -90,8 +94,8 @@ from .const import (
     CONF_DISCOVERED_MODELS,
     CONF_DISCOVERED_MODELS_AT,
     CONF_DISCOVERED_MODELS_CACHE_KEY,
-    CONF_ENABLE_SKILLS,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
+    CONF_ENABLE_SKILLS,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
@@ -127,9 +131,9 @@ from .const import (
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
-    PROVIDER_MODES,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
+    PROVIDER_MODES,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     STRUCTURED_OUTPUT_MODES,
@@ -138,10 +142,6 @@ from .const import (
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     default_conversation_options,
-)
-from .chat_template_kwargs import (
-    reject_chat_template_kwargs_in_extra_body,
-    render_chat_template_kwargs,
 )
 from .mcp import (
     MCPValidationError,
@@ -164,8 +164,8 @@ from .provider import (
     list_anthropic_model_names,
     list_google_gemini_model_names,
     normalise_base_url,
-    openai_compatible_completions_model_from_config,
     openai_compatible_client_from_config,
+    openai_compatible_completions_model_from_config,
     openai_compatible_responses_model_from_config,
 )
 from .skills import (
@@ -176,20 +176,15 @@ from .skills import (
 )
 from .structured_output import (
     structured_model_request_parameters,
-    structured_output_mode as normalise_structured_output_mode,
     structured_output_name,
+)
+from .structured_output import (
+    structured_output_mode as normalise_structured_output_mode,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 _MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH = 80
-
-_RECONFIGURABLE_MODEL_VALIDATION_REASONS = {
-    "invalid_model",
-    "invalid_provider_config",
-    "model_does_not_support_streaming",
-    "permission_denied",
-}
 
 _HTTP_STATUS_LABELS = {
     400: "invalid request",
@@ -471,7 +466,7 @@ def _provider_schema(
     schema_dict: VolDictType = dict(_provider_connection_schema(options).schema)
     schema_dict[vol.Optional(_SECTION_CUSTOMIZE_MODEL_LIST, default={})] = section(
         _provider_model_selection_schema(options),
-        {"collapsed": False},
+        {"collapsed": True},
     )
     return vol.Schema(schema_dict)
 
@@ -617,103 +612,6 @@ def _referenced_provider_profile_ids(
             if ref_provider_subentry_id == provider_subentry_id:
                 referenced.add(profile_id)
     return referenced
-
-
-async def _validate_configured_models_for_provider_update(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    provider_subentry_id: str,
-    data: Mapping[str, Any],
-    step: str,
-    skip_reconfigurable_model_errors: bool,
-) -> tuple[dict[str, str], dict[str, str]]:
-    """Probe existing subentry models against new provider settings."""
-    for model, model_settings, output_mode in _configured_model_probes(
-        entry, provider_subentry_id
-    ):
-        try:
-            if output_mode is None:
-                await async_probe_model(hass, data, model, model_settings)
-            else:
-                await async_probe_model(
-                    hass,
-                    data,
-                    model,
-                    model_settings,
-                    structured_output_mode=output_mode,
-                )
-        except ProviderValidationError as err:
-            _log_provider_validation_failure(step=step, model_name=model, err=err)
-            if (
-                skip_reconfigurable_model_errors
-                and err.reason in _RECONFIGURABLE_MODEL_VALIDATION_REASONS
-            ):
-                continue
-            return {"base": err.reason}, _provider_validation_placeholders(err)
-        except Exception:
-            _LOGGER.exception("Unexpected exception validating provider")
-            return {"base": "unknown"}, {}
-    return {}, {}
-
-
-def _configured_model_probes(
-    entry: ConfigEntry,
-    provider_subentry_id: str,
-) -> list[tuple[str, dict[str, Any], str | None]]:
-    """Return unique model profile probes required by configured subentries."""
-    provider_subentry = entry.subentries.get(provider_subentry_id)
-    if (
-        provider_subentry is None
-        or provider_subentry.subentry_type != SUBENTRY_TYPE_PROVIDER
-    ):
-        return []
-    model_profiles = provider_model_profiles(provider_subentry)
-    probes: list[tuple[str, dict[str, Any], str | None]] = []
-    seen: set[tuple[str, str, str | None]] = set()
-
-    def add_probe(profile_ref: str, output_mode: str | None) -> None:
-        ref_provider_subentry_id, profile_id = parse_model_profile_ref(profile_ref)
-        if ref_provider_subentry_id != provider_subentry_id:
-            return
-        profile = model_profiles.get(profile_id)
-        if profile is None or not bool(profile.get(CONF_ENABLED, False)):
-            return
-        model = profile.get(CONF_MODEL)
-        if not isinstance(model, str) or not model:
-            return
-        settings = profile.get(CONF_MODEL_SETTINGS)
-        model_settings = dict(settings) if isinstance(settings, Mapping) else {}
-        provider_settings = dict(model_settings)
-        provider_settings.pop(_MODEL_SETTING_MAX_ITERATIONS, None)
-        dedupe_key = (
-            model,
-            json.dumps(provider_settings, sort_keys=True, separators=(",", ":")),
-            output_mode,
-        )
-        if dedupe_key in seen:
-            return
-        seen.add(dedupe_key)
-        probes.append((model, model_settings, output_mode))
-
-    for profile_id in model_profiles:
-        add_probe(model_profile_ref(provider_subentry_id, profile_id), None)
-
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
-            continue
-        output_mode = normalise_structured_output_mode(
-            subentry.data.get(CONF_OUTPUT_MODE)
-        )
-        profile_refs = _selected_model_profile_refs(subentry.data)
-        if not profile_refs:
-            _LOGGER.warning(
-                "Skipping legacy AI task subentry without model profile during provider validation: %s",
-                subentry.subentry_id,
-            )
-            continue
-        for profile_ref in profile_refs:
-            add_probe(profile_ref, output_mode)
-    return probes
 
 
 def _provider_validation_placeholders(
@@ -2773,12 +2671,16 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             self._pending_storage_data = {}
             self._pending_step_id = step_id
             self._pending_error = None
-            task = self.hass.async_create_task(self._async_validate_provider_form(data))
-            return self.async_show_progress(
-                step_id="provider_validation_progress",
-                progress_action="probe_models",
-                progress_task=task,
-            )
+            self._pending_error = await self._async_validate_provider_form(data)
+            if self._pending_error is not None:
+                field, reason, placeholders = self._pending_error
+                return await self._async_show_provider_form(
+                    step_id,
+                    options=self._pending_data,
+                    errors={field: reason},
+                    description_placeholders=placeholders,
+                )
+            return self._finish_provider_form()
 
         if not self._options and not self._is_new:
             self._options = self._provider_form_options(
@@ -2850,33 +2752,8 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         self._pending_storage_data = storage_data
         return None
 
-    async def async_step_provider_validation_progress(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Finish provider validation progress."""
-        task = self.async_get_progress_task()
-        if task is not None and not task.done():
-            return self.async_show_progress(
-                step_id="provider_validation_progress",
-                progress_action="probe_models",
-                progress_task=task,
-            )
-        self._pending_error = None if task is None else task.result()
-        return self.async_show_progress_done(next_step_id="provider_validation_finish")
-
-    async def async_step_provider_validation_finish(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    def _finish_provider_form(self) -> SubentryFlowResult:
         """Create or update the provider subentry after validation."""
-        del user_input
-        if self._pending_error is not None:
-            field, reason, placeholders = self._pending_error
-            return await self._async_show_provider_form(
-                self._pending_step_id,
-                options=self._pending_data,
-                errors={field: reason},
-                description_placeholders=placeholders,
-            )
         data = self._pending_storage_data
         if self._is_new:
             return self.async_create_entry(title=data[CONF_NAME], data=data)
@@ -3006,64 +2883,14 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             self._pending_profile_data = dict(profile) | data
             self._pending_model_settings = dict(model_settings)
             self._pending_profile_error = None
-            if not bool(self._pending_profile_data.get(CONF_ENABLED, False)):
-                _store_model_settings(
-                    self._pending_profile_data, self._pending_model_settings
-                )
-                return await self.async_step_model_profile_finish()
-            task = self.hass.async_create_task(self._async_probe_model_profile())
-            return self.async_show_progress(
-                step_id="model_profile_progress",
-                progress_action="probe_model",
-                description_placeholders={
-                    "model": str(self._pending_profile_data[CONF_MODEL])
-                },
-                progress_task=task,
+            _store_model_settings(
+                self._pending_profile_data, self._pending_model_settings
             )
+            return await self.async_step_model_profile_finish()
         return self.async_show_form(
             step_id="edit_model_profile",
             data_schema=_model_profile_edit_schema(profile),
         )
-
-    async def _async_probe_model_profile(self) -> tuple[str, dict[str, str]] | None:
-        """Validate the pending provider-owned model profile edit."""
-        _store_model_settings(self._pending_profile_data, self._pending_model_settings)
-        try:
-            await async_probe_model(
-                self.hass,
-                self._current_profile_flow_data(),
-                str(self._pending_profile_data[CONF_MODEL]),
-                self._pending_profile_data.get(CONF_MODEL_SETTINGS, {}),
-            )
-        except ProviderValidationError as err:
-            _log_provider_validation_failure(
-                step="provider model profile edit",
-                model_name=str(self._pending_profile_data[CONF_MODEL]),
-                err=err,
-            )
-            return err.reason, _provider_validation_placeholders(err)
-        except Exception:
-            _LOGGER.exception("Unexpected exception validating provider model profile")
-            return "unknown", {}
-        return None
-
-    async def async_step_model_profile_progress(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Finish provider-owned model profile validation progress."""
-        del user_input
-        task = self.async_get_progress_task()
-        if task is not None and not task.done():
-            return self.async_show_progress(
-                step_id="model_profile_progress",
-                progress_action="probe_model",
-                description_placeholders={
-                    "model": str(self._pending_profile_data[CONF_MODEL])
-                },
-                progress_task=task,
-            )
-        self._pending_profile_error = None if task is None else task.result()
-        return self.async_show_progress_done(next_step_id="model_profile_finish")
 
     async def async_step_model_profile_finish(
         self, user_input: dict[str, Any] | None = None

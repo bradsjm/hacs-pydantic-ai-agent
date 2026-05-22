@@ -52,7 +52,6 @@ from .mcp import (
 )
 from .model_profiles import (
     enabled_model_profile_refs,
-    model_profile_ref,
     parse_model_profile_ref,
     provider_model_profiles,
     provider_subentries,
@@ -452,14 +451,6 @@ def _configured_subentry_models(
                 output_mode=output_mode,
             )
         )
-
-    for provider_subentry in provider_subentries(entry):
-        for profile_id in provider_model_profiles(provider_subentry):
-            add_model(
-                provider_subentry,
-                model_profile_ref(provider_subentry.subentry_id, profile_id),
-                None,
-            )
 
     for subentry in entry.subentries.values():
         if subentry.subentry_type not in (

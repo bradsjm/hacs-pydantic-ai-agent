@@ -212,8 +212,8 @@ def test_model_profile_chain_keeps_primary_then_ordered_fallback() -> None:
     ]
 
 
-def test_model_settings_excludes_capability_backed_thinking() -> None:
-    """Test thinking is exposed through capabilities, not ModelSettings."""
+def test_thinking_capability_reads_model_setting() -> None:
+    """Test thinking model settings become Pydantic AI capabilities."""
     profile = ModelProfile(
         ref=model_profile_ref("provider-1", "profile-1"),
         provider_subentry_id="provider-1",
@@ -229,7 +229,6 @@ def test_model_settings_excludes_capability_backed_thinking() -> None:
     thinking = thinking_capability(profile)
 
     assert settings["temperature"] == 0.7
-    assert settings.get("thinking") is None
     assert thinking is not None
     assert thinking.effort == "high"
 

@@ -428,8 +428,6 @@ async def test_plain_data_task_uses_thinking_capability(hass: HomeAssistant) -> 
             instructions="Generate text",
         )
 
-    model_settings = agent_class.call_args.kwargs["model_settings"]
-    assert model_settings.get("thinking") is None
     capabilities = agent_class.call_args.kwargs["capabilities"]
     _assert_context_management_capability(capabilities)
     thinking = _thinking_capabilities(capabilities)

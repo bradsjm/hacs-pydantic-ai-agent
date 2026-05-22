@@ -497,10 +497,6 @@
         "reconfigure": "Manage provider",
         "user": "Add provider"
       },
-      "progress": {
-        "probe_model": "Validating language model",
-        "probe_models": "Validating provider and models"
-      },
       "step": {
         "edit_model_profile": {
           "data": {

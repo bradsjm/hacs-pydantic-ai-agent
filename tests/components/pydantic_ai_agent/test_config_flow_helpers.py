@@ -222,10 +222,16 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
     assert cleared == {"seed"}
 
 
-def test_model_settings_from_options_removes_legacy_extra_body() -> None:
-    """Test per-profile raw extra body is no longer a model setting."""
+def test_model_settings_from_options_sanitizes_persisted_settings() -> None:
+    """Test model profile edits keep only supported persisted model settings."""
     assert _model_settings_from_options(
-        {CONF_MODEL_SETTINGS: {"temperature": 0.2, "extra_body": {"old": True}}}
+        {
+            CONF_MODEL_SETTINGS: {
+                "temperature": 0.2,
+                "extra_body": {"old": True},
+                "extra_headers": {"X-Old": "value"},
+            }
+        }
     ) == {"temperature": 0.2}
 
 

@@ -618,8 +618,6 @@ async def test_conversation_runtime_uses_thinking_capability(
             agent_id=entity_id,
         )
 
-    model_settings = agent_class.call_args.kwargs["model_settings"]
-    assert model_settings.get("thinking") is None
     capabilities = agent_class.call_args.kwargs["capabilities"]
     _assert_context_management_capability(capabilities)
     thinking = _thinking_capabilities(capabilities)

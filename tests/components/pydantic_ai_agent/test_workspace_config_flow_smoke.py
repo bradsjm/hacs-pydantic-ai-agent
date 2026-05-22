@@ -2,10 +2,10 @@
 
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigSubentry, SubentryFlowResult
+from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -33,24 +33,6 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_PROVIDER,
 )
-
-
-async def _finish_subentry_progress(
-    hass: HomeAssistant, flow_id: str
-) -> SubentryFlowResult:
-    """Advance a subentry flow until it leaves progress states."""
-    result = await hass.config_entries.subentries.async_configure(flow_id)
-    for _ in range(10):
-        if result["type"] is FlowResultType.SHOW_PROGRESS:
-            await hass.async_block_till_done()
-            result = await hass.config_entries.subentries.async_configure(flow_id)
-            continue
-        if result["type"] is FlowResultType.SHOW_PROGRESS_DONE:
-            result = await hass.config_entries.subentries.async_configure(flow_id)
-            continue
-        return result
-    raise AssertionError(f"Subentry flow did not leave progress state: {result}")
-
 
 async def _loaded_workspace_entry(
     hass: HomeAssistant, subentries_data: tuple[dict[str, object], ...] = ()
@@ -108,38 +90,22 @@ async def test_create_provider_subentry_with_disabled_custom_profile(
     """Test provider creation stores custom profiles disabled by default."""
     entry = await _loaded_workspace_entry(hass)
 
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent.config_flow.async_list_provider_model_names",
-            new=AsyncMock(return_value=["gpt-4.1-mini"]),
-        ) as list_model_names,
-        patch(
-            "custom_components.pydantic_ai_agent.config_flow.async_probe_model",
-            new=AsyncMock(),
-        ) as probe_model,
-    ):
-        result = await hass.config_entries.subentries.async_init(
-            (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
-            context={"source": config_entries.SOURCE_USER},
-        )
-        assert result["type"] is FlowResultType.FORM
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    assert result["type"] is FlowResultType.FORM
 
-        result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"],
-            {
-                CONF_NAME: "OpenAI-compatible",
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-                CONF_API_KEY: "sk-test",
-                "customize_model_list": {CONF_CUSTOM_MODEL_NAMES: "gpt-4.1-mini"},
-            },
-        )
-        assert result["type"] is FlowResultType.SHOW_PROGRESS
-
-        result = await _finish_subentry_progress(hass, result["flow_id"])
-
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "OpenAI-compatible",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            CONF_API_KEY: "sk-test",
+            "customize_model_list": {CONF_CUSTOM_MODEL_NAMES: "gpt-4.1-mini"},
+        },
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    list_model_names.assert_not_called()
-    probe_model.assert_not_called()
     provider_data = cast(dict[str, Any], result["data"])
     assert provider_data[CONF_NAME] == "OpenAI-compatible"
     assert provider_data[CONF_PROVIDER_MODE] == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS

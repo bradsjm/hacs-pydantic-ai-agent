@@ -187,15 +187,16 @@ async def test_setup_entry_stores_workspace_runtime_data(hass: HomeAssistant) ->
                 {},
                 structured_output_mode=OUTPUT_MODE_TOOL,
             ),
-        ]
+        ],
+        any_order=True,
     )
     assert probe_model.await_count == 2
 
 
-async def test_setup_entry_deduplicates_model_setting_probes(
+async def test_setup_entry_validates_selected_model_setting_combinations(
     hass: HomeAssistant,
 ) -> None:
-    """Test setup probes each provider/model/settings/output combination once."""
+    """Test setup probes selected model/settings/output combinations."""
     first_ref = model_profile_ref("provider-1", "first-profile")
     second_ref = model_profile_ref("provider-2", "second-profile")
     entry = _workspace_entry(
@@ -228,7 +229,6 @@ async def test_setup_entry_deduplicates_model_setting_probes(
     ):
         assert await async_setup_entry(hass, entry)
 
-    assert probe_model.await_count == 3
     probe_model.assert_has_awaits(
         [
             call(
@@ -242,24 +242,20 @@ async def test_setup_entry_deduplicates_model_setting_probes(
                 entry.subentries["provider-2"].data,
                 "shared-model",
                 {"timeout": 20.0},
-            ),
-            call(
-                hass,
-                entry.subentries["provider-2"].data,
-                "shared-model",
-                {"timeout": 20.0},
                 structured_output_mode=OUTPUT_MODE_TOOL,
             ),
-        ]
+        ],
+        any_order=True,
     )
+    assert probe_model.await_count == 2
 
 
 async def test_setup_entry_model_errors_create_repair_issue(
     hass: HomeAssistant,
 ) -> None:
-    """Test setup-time model validation failures create repair issues."""
+    """Test selected model validation failures create repair issues."""
     profile_ref = model_profile_ref("provider-1", "profile-1")
-    entry = _workspace_entry((_provider_subentry(),))
+    entry = _workspace_entry((_provider_subentry(), _conversation_subentry(profile_ref)))
     entry.add_to_hass(hass)
 
     with (
@@ -292,7 +288,7 @@ async def test_setup_entry_success_clears_model_validation_repair_issue(
 ) -> None:
     """Test successful setup clears stale model validation repair issues."""
     profile_ref = model_profile_ref("provider-1", "profile-1")
-    entry = _workspace_entry((_provider_subentry(),))
+    entry = _workspace_entry((_provider_subentry(), _conversation_subentry(profile_ref)))
     entry.add_to_hass(hass)
     issue_id = model_validation_issue_id(entry, profile_ref, {})
     ir.async_create_issue(
