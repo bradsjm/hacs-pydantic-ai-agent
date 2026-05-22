@@ -118,7 +118,7 @@
     "ai_task_data": {
       "abort": {
         "entry_not_loaded": "The workspace is not loaded.",
-        "no_models_configured": "Create a language model profile before adding an AI task.",
+        "no_models_configured": "Create a provider and configure a model before adding an AI task.",
         "reconfigure_successful": "AI task configuration updated."
       },
       "entry_type": "AI task",
@@ -216,7 +216,7 @@
     "conversation": {
       "abort": {
         "entry_not_loaded": "The workspace is not loaded.",
-        "no_models_configured": "Create a language model profile before adding a conversation agent.",
+        "no_models_configured": "Create a provider and configure a model before adding an AI conversation agent.",
         "reconfigure_successful": "Conversation agent configuration updated."
       },
       "entry_type": "Conversation agent",
