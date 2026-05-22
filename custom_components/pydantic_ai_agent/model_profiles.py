@@ -20,6 +20,7 @@ from .const import (
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
+    CONF_PROVIDER_EXTRA_BODY,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
     DEFAULT_TIMEOUT,
@@ -212,9 +213,23 @@ def model_settings(profile: ResolvedModelProfile) -> ModelSettings:
     settings.pop(CONF_MAX_ITERATIONS, None)
     settings.pop(CONF_CHAT_TEMPLATE_KWARGS, None)
     settings.pop(_MODEL_SETTING_THINKING, None)
+    settings.pop("extra_body", None)
     reject_chat_template_kwargs_in_extra_body(settings.get("extra_body"))
     settings.setdefault("timeout", DEFAULT_TIMEOUT)
     return ModelSettings(**settings)
+
+
+def provider_extra_body(
+    entry: PydanticAIAgentConfigEntry, profile: ResolvedModelProfile
+) -> dict[str, Any]:
+    """Return provider-level extra request body fields for one profile."""
+    provider_subentry = entry.subentries.get(profile.provider_subentry_id)
+    if provider_subentry is None:
+        return {}
+    extra_body = provider_subentry.data.get(CONF_PROVIDER_EXTRA_BODY)
+    if not isinstance(extra_body, Mapping) or not extra_body:
+        return {}
+    return dict(extra_body)
 
 
 def thinking_capability(profile: ResolvedModelProfile) -> Thinking | None:
@@ -270,7 +285,7 @@ def chat_model_for_profile(
 
 def _profile_enabled(profile: Mapping[str, Any]) -> bool:
     """Return if one persisted model profile is enabled."""
-    return bool(profile.get(CONF_ENABLED, True))
+    return bool(profile.get(CONF_ENABLED, False))
 
 
 def _profile_title(profile: Mapping[str, Any], model_name: str) -> str:

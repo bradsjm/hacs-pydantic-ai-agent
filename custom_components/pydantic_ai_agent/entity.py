@@ -55,6 +55,9 @@ from .const import (
     CONF_SKILLS,
     CONF_WEB_FETCH_ENABLED,
     DOMAIN,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
 from .chat_template_kwargs import (
     reject_chat_template_kwargs_in_extra_body,
@@ -80,6 +83,7 @@ from .model_profiles import (
     model_profile_chain,
     model_settings,
     primary_model_profile,
+    provider_extra_body,
     thinking_capability,
 )
 from .skills import async_skills_capabilities
@@ -188,6 +192,9 @@ class PydanticAIBaseLLMEntity:
         for index, profile in enumerate(profiles):
             try:
                 settings = model_settings(profile)
+                settings = _model_settings_with_provider_extra_body(
+                    self.entry, profile, settings
+                )
                 settings = _model_settings_with_chat_template_kwargs(
                     self.hass, profile, settings
                 )
@@ -507,6 +514,27 @@ def _model_settings_with_chat_template_kwargs(
     request_extra_body = dict(extra_body) if isinstance(extra_body, Mapping) else {}
     request_extra_body[CONF_CHAT_TEMPLATE_KWARGS] = rendered_kwargs
     request_settings["extra_body"] = request_extra_body
+    return ModelSettings(**cast(Any, request_settings))
+
+
+def _model_settings_with_provider_extra_body(
+    entry: PydanticAIAgentConfigEntry, profile: ModelProfile, settings: ModelSettings
+) -> ModelSettings:
+    """Return request settings with provider-level extra body merged."""
+    extra_body = provider_extra_body(entry, profile)
+    if not extra_body:
+        return settings
+    if profile.provider_mode not in {
+        PROVIDER_ANTHROPIC,
+        PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+    }:
+        raise HomeAssistantError(
+            "Provider extra body is only supported by OpenAI-compatible and Anthropic provider modes"
+        )
+    reject_chat_template_kwargs_in_extra_body(extra_body)
+    request_settings = dict(settings)
+    request_settings["extra_body"] = extra_body
     return ModelSettings(**cast(Any, request_settings))
 
 

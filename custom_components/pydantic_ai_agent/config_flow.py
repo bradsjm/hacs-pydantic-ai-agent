@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterable, Iterable, Mapping
 from dataclasses import dataclass
+from datetime import timedelta
 import errno
+from hashlib import sha256
 import json
 import logging
 from pathlib import PurePosixPath
@@ -82,10 +84,12 @@ from .const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
-    CONF_DEFAULT_MODEL_PROFILE_ID,
+    CONF_CUSTOM_MODEL_NAMES,
     CONF_DEFAULT_SKILLS_FOLDER,
     CONF_DISCOVERED,
+    CONF_DISCOVERED_MODELS,
     CONF_DISCOVERED_MODELS_AT,
+    CONF_DISCOVERED_MODELS_CACHE_KEY,
     CONF_ENABLE_SKILLS,
     CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_ENABLED,
@@ -105,6 +109,7 @@ from .const import (
     CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROMPT,
+    CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
@@ -211,6 +216,32 @@ _MODEL_SETTING_FREQUENCY_PENALTY = "frequency_penalty"
 _MODEL_SETTING_THINKING = "thinking"
 _MODEL_SETTING_EXTRA_BODY = "extra_body"
 _MODEL_SETTING_CHAT_TEMPLATE_KWARGS = CONF_CHAT_TEMPLATE_KWARGS
+_MODEL_LIST_CACHE_TTL = timedelta(minutes=10)
+_BASE_URL_ENDPOINT_SUFFIXES = {
+    ("audio", "speech"),
+    ("audio", "transcriptions"),
+    ("audio", "translations"),
+    ("batches",),
+    ("chat", "completions"),
+    ("completions",),
+    ("embeddings",),
+    ("files",),
+    ("fine_tuning", "jobs"),
+    ("images", "edits"),
+    ("images", "generations"),
+    ("images", "variations"),
+    ("messages",),
+    ("models",),
+    ("moderations",),
+    ("responses",),
+    ("threads",),
+}
+_BASE_URL_ENDPOINT_PATH_ENDINGS = (":generatecontent", ":streamgeneratecontent")
+_PROVIDER_EXTRA_BODY_MODES = {
+    PROVIDER_ANTHROPIC,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+}
 _MAX_METADATA_REPR_LENGTH = 1000
 _SENSITIVE_METADATA_KEYS = {
     "access_token",
@@ -239,23 +270,20 @@ _ADVANCED_MODEL_SETTING_KEYS = {
     _MODEL_SETTING_SEED,
     _MODEL_SETTING_PRESENCE_PENALTY,
     _MODEL_SETTING_FREQUENCY_PENALTY,
-    _MODEL_SETTING_EXTRA_BODY,
     _MODEL_SETTING_CHAT_TEMPLATE_KWARGS,
 }
-_REMOVED_MODEL_SETTING_KEYS = {"extra_headers"}
+_REMOVED_MODEL_SETTING_KEYS = {"extra_headers", _MODEL_SETTING_EXTRA_BODY}
 _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "xhigh")
 _OUTPUT_MODE_OPTIONS = tuple(
     SelectOptionDict(value=value, label=value) for value in STRUCTURED_OUTPUT_MODES
 )
-_CONF_ENABLED_MODELS = "enabled_models"
-_CONF_MANUAL_MODELS = "manual_models"
 _CONF_MODEL_PROFILE_ID = "model_profile_id"
 _SECTION_ADVANCED_MCP = "advanced_mcp"
 _SECTION_ADVANCED_MODEL_SETTINGS = "advanced_model_settings"
 _SECTION_ADVANCED_OPTIONS = "advanced_options"
 _SECTION_EXTERNAL_TOOLS = "external_tools"
 _SECTION_LOGFIRE = "logfire"
-_SECTION_MODEL_SELECTION = "model_selection"
+_SECTION_CUSTOMIZE_MODEL_LIST = "customize_model_list"
 _SECTION_SKILLS = "skill_settings"
 _TODO_WORKSPACE_REQUIRED_FEATURES = (
     TodoListEntityFeature.CREATE_TODO_ITEM
@@ -381,7 +409,13 @@ def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol
                 vol.Optional(
                     CONF_PROVIDER_HEADERS,
                     default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
-                ): TextSelector(TextSelectorConfig(multiline=True))
+                ): TextSelector(TextSelectorConfig(multiline=True)),
+                vol.Optional(
+                    CONF_PROVIDER_EXTRA_BODY,
+                    default=_format_key_value_json_setting(
+                        data.get(CONF_PROVIDER_EXTRA_BODY)
+                    ),
+                ): TextSelector(TextSelectorConfig(multiline=True)),
             }
         ),
         {"collapsed": True},
@@ -389,31 +423,33 @@ def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol
     return vol.Schema(schema)
 
 
-def _provider_manual_models(options: Mapping[str, Any]) -> list[str]:
-    """Return configured manual model names for one provider form state."""
-    manual_models = options.get(_CONF_MANUAL_MODELS)
-    if isinstance(manual_models, str):
-        return _parse_manual_models(manual_models)
-    profiles = options.get(CONF_MODEL_PROFILES)
-    if not isinstance(profiles, Mapping):
+def _provider_custom_model_names(options: Mapping[str, Any]) -> list[str]:
+    """Return configured custom model names for one provider form state."""
+    custom_model_names = options.get(CONF_CUSTOM_MODEL_NAMES)
+    if isinstance(custom_model_names, str):
+        return _parse_custom_model_names(custom_model_names)
+    if not isinstance(custom_model_names, list):
         return []
-    return [
-        str(profile.get(CONF_MODEL)).strip()
-        for profile in profiles.values()
-        if isinstance(profile, Mapping)
-        and not bool(profile.get(CONF_DISCOVERED, False))
-        and isinstance(profile.get(CONF_MODEL), str)
-        and str(profile.get(CONF_MODEL)).strip()
-    ]
+    seen: set[str] = set()
+    names: list[str] = []
+    for model_name in custom_model_names:
+        if not isinstance(model_name, str):
+            continue
+        model_name = model_name.strip()
+        if not model_name or model_name in seen:
+            continue
+        seen.add(model_name)
+        names.append(model_name)
+    return names
 
 
-def _format_manual_models(options: Mapping[str, Any]) -> str:
-    """Return manual model names as multiline text for the form."""
-    return "\n".join(_provider_manual_models(options))
+def _format_custom_model_names(options: Mapping[str, Any]) -> str:
+    """Return custom model names as multiline text for the form."""
+    return "\n".join(_provider_custom_model_names(options))
 
 
-def _parse_manual_models(value: object) -> list[str]:
-    """Return deduplicated manual model names from multiline form input."""
+def _parse_custom_model_names(value: object) -> list[str]:
+    """Return deduplicated custom model names from multiline form input."""
     if not isinstance(value, str):
         return []
     seen: set[str] = set()
@@ -427,91 +463,14 @@ def _parse_manual_models(value: object) -> list[str]:
     return models
 
 
-def _provider_selected_model_names(options: Mapping[str, Any]) -> list[str]:
-    """Return selected provider model names in stable order."""
-    selected: list[str] = []
-    seen: set[str] = set()
-    enabled_models = options.get(_CONF_ENABLED_MODELS)
-    if isinstance(enabled_models, list):
-        for model_name in enabled_models:
-            if isinstance(model_name, str) and model_name and model_name not in seen:
-                seen.add(model_name)
-                selected.append(model_name)
-    for model_name in _provider_manual_models(options):
-        if model_name not in seen:
-            seen.add(model_name)
-            selected.append(model_name)
-    if selected:
-        return selected
-    profiles = options.get(CONF_MODEL_PROFILES)
-    if not isinstance(profiles, Mapping):
-        return []
-    for profile in profiles.values():
-        if not isinstance(profile, Mapping):
-            continue
-        model_name = profile.get(CONF_MODEL)
-        if not isinstance(model_name, str) or not model_name.strip():
-            continue
-        if model_name in seen:
-            continue
-        seen.add(model_name)
-        selected.append(model_name)
-    return selected
-
-
-def _provider_default_model_value(options: Mapping[str, Any]) -> str:
-    """Return the current default model selector value for the form."""
-    selected_models = _provider_selected_model_names(options)
-    profiles = options.get(CONF_MODEL_PROFILES)
-    if isinstance(profiles, Mapping):
-        default_profile_id = options.get(CONF_DEFAULT_MODEL_PROFILE_ID)
-        if isinstance(default_profile_id, str):
-            profile = profiles.get(default_profile_id)
-            model_name = (
-                profile.get(CONF_MODEL) if isinstance(profile, Mapping) else None
-            )
-            if isinstance(model_name, str) and model_name in selected_models:
-                return model_name
-    default_value = options.get(CONF_DEFAULT_MODEL_PROFILE_ID)
-    if isinstance(default_value, str) and default_value in selected_models:
-        return default_value
-    return selected_models[0] if selected_models else ""
-
-
-def _provider_default_model_options(
-    options: Mapping[str, Any],
-) -> list[SelectOptionDict]:
-    """Return default-model dropdown options for selected models."""
-    profiles = options.get(CONF_MODEL_PROFILES)
-    existing_labels: dict[str, str] = {}
-    if isinstance(profiles, Mapping):
-        for profile in profiles.values():
-            if not isinstance(profile, Mapping):
-                continue
-            model_name = profile.get(CONF_MODEL)
-            if not isinstance(model_name, str) or not model_name.strip():
-                continue
-            profile_name = profile.get(CONF_NAME)
-            if isinstance(profile_name, str) and profile_name.strip():
-                existing_labels[model_name] = profile_name
-    return [
-        SelectOptionDict(
-            label=existing_labels.get(model_name, model_name),
-            value=model_name,
-        )
-        for model_name in _provider_selected_model_names(options)
-    ]
-
-
 def _provider_schema(
     options: Mapping[str, Any] | None = None,
-    discovered_model_names: Iterable[str] | None = None,
 ) -> vol.Schema:
     """Return the provider subentry schema."""
     options = dict(options or {})
     schema_dict: VolDictType = dict(_provider_connection_schema(options).schema)
-    schema_dict[vol.Optional(_SECTION_MODEL_SELECTION, default={})] = section(
-        _provider_model_selection_schema(options, discovered_model_names),
+    schema_dict[vol.Optional(_SECTION_CUSTOMIZE_MODEL_LIST, default={})] = section(
+        _provider_model_selection_schema(options),
         {"collapsed": False},
     )
     return vol.Schema(schema_dict)
@@ -519,52 +478,56 @@ def _provider_schema(
 
 def _provider_model_selection_schema(
     options: Mapping[str, Any] | None = None,
-    discovered_model_names: Iterable[str] | None = None,
 ) -> vol.Schema:
     """Return the provider model-selection schema."""
     options = dict(options or {})
-    model_selection_schema: VolDictType = {}
-    if discovered_model_names:
-        model_selection_schema[
+    return vol.Schema(
+        {
             vol.Optional(
-                _CONF_ENABLED_MODELS,
-                default=[
-                    model_name
-                    for model_name in options.get(_CONF_ENABLED_MODELS, [])
-                    if isinstance(model_name, str)
-                ],
-            )
-        ] = SelectSelector(
-            SelectSelectorConfig(
-                options=sorted(set(discovered_model_names)),
-                multiple=True,
-            )
-        )
-    model_selection_schema[
-        vol.Optional(
-            _CONF_MANUAL_MODELS,
-            default=_format_manual_models(options),
-        )
-    ] = TextSelector(TextSelectorConfig(multiline=True))
-    default_model_options = _provider_default_model_options(options)
-    if default_model_options:
-        model_selection_schema[
-            vol.Required(
-                CONF_DEFAULT_MODEL_PROFILE_ID,
-                default=_provider_default_model_value(options),
-            )
-        ] = SelectSelector(
-            SelectSelectorConfig(
-                options=default_model_options,
-                mode=SelectSelectorMode.DROPDOWN,
-            )
-        )
-    return vol.Schema(model_selection_schema)
+                CONF_CUSTOM_MODEL_NAMES,
+                default=_format_custom_model_names(options),
+            ): TextSelector(TextSelectorConfig(multiline=True))
+        }
+    )
 
 
 def _normalise_base_url(data: Mapping[str, Any]) -> str | None:
     """Return a normalized base URL if one is configured."""
     return normalise_base_url(data.get(CONF_BASE_URL))
+
+
+def _base_url_endpoint_suffix(base_url: str | None) -> str | None:
+    """Return a forbidden endpoint suffix if the base URL points at one."""
+    if base_url is None:
+        return None
+    parsed = urlparse(base_url)
+    path = parsed.path.rstrip("/").lower()
+    for ending in _BASE_URL_ENDPOINT_PATH_ENDINGS:
+        if path.endswith(ending):
+            return ending.lstrip(":")
+    segments = tuple(segment for segment in parsed.path.split("/") if segment)
+    lowered = tuple(segment.lower() for segment in segments)
+    for suffix in _BASE_URL_ENDPOINT_SUFFIXES:
+        if len(lowered) >= len(suffix) and lowered[-len(suffix) :] == suffix:
+            return "/".join(suffix)
+    return None
+
+
+def _validate_base_url(data: Mapping[str, Any]) -> None:
+    """Reject endpoint URLs that the client appends itself."""
+    if suffix := _base_url_endpoint_suffix(data.get(CONF_BASE_URL)):
+        raise ProviderValidationError(
+            "invalid_base_url_endpoint",
+            (
+                "Enter the provider API base URL, not an endpoint URL. "
+                f"Remove the trailing /{suffix}."
+            ),
+        )
+
+
+def _provider_extra_body_supported(data: Mapping[str, Any]) -> bool:
+    """Return if the provider mode consumes provider-level extra body."""
+    return data.get(CONF_PROVIDER_MODE) in _PROVIDER_EXTRA_BODY_MODES
 
 
 def _dedupe_data(data: Mapping[str, Any]) -> dict[str, Any]:
@@ -577,7 +540,83 @@ def _dedupe_data(data: Mapping[str, Any]) -> dict[str, Any]:
         dedupe[CONF_BASE_URL] = base_url
     if headers := data.get(CONF_PROVIDER_HEADERS):
         dedupe[CONF_PROVIDER_HEADERS] = headers
+    if provider_extra_body := data.get(CONF_PROVIDER_EXTRA_BODY):
+        dedupe[CONF_PROVIDER_EXTRA_BODY] = provider_extra_body
     return dedupe
+
+
+def _provider_model_cache_key(data: Mapping[str, Any]) -> str:
+    """Return a stable cache key for provider model discovery."""
+    api_key = data.get(CONF_API_KEY)
+    headers = data.get(CONF_PROVIDER_HEADERS)
+    return json.dumps(
+        {
+            CONF_PROVIDER_MODE: data.get(CONF_PROVIDER_MODE),
+            CONF_API_KEY: sha256(str(api_key or "").encode()).hexdigest(),
+            CONF_BASE_URL: data.get(CONF_BASE_URL),
+            CONF_PROVIDER_HEADERS: dict(headers)
+            if isinstance(headers, Mapping)
+            else {},
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _cached_provider_model_names(data: Mapping[str, Any]) -> list[str] | None:
+    """Return cached provider model names when the persisted cache is fresh."""
+    if data.get(CONF_DISCOVERED_MODELS_CACHE_KEY) != _provider_model_cache_key(data):
+        return None
+    discovered_at = data.get(CONF_DISCOVERED_MODELS_AT)
+    if not isinstance(discovered_at, str):
+        return None
+    parsed_at = dt_util.parse_datetime(discovered_at)
+    if parsed_at is None or dt_util.utcnow() - parsed_at > _MODEL_LIST_CACHE_TTL:
+        return None
+    model_names = data.get(CONF_DISCOVERED_MODELS)
+    if not isinstance(model_names, list):
+        return None
+    parsed_names = [name for name in model_names if isinstance(name, str) and name]
+    return parsed_names or None
+
+
+def _store_provider_model_cache(data: dict[str, Any], model_names: list[str]) -> None:
+    """Store a successful provider model discovery response on provider data."""
+    if not model_names:
+        return
+    data[CONF_DISCOVERED_MODELS] = sorted(set(model_names))
+    data[CONF_DISCOVERED_MODELS_AT] = dt_util.utcnow().isoformat()
+    data[CONF_DISCOVERED_MODELS_CACHE_KEY] = _provider_model_cache_key(data)
+
+
+def _clear_provider_model_cache(data: dict[str, Any]) -> None:
+    """Remove provider model discovery cache fields."""
+    data.pop(CONF_DISCOVERED_MODELS, None)
+    data.pop(CONF_DISCOVERED_MODELS_AT, None)
+    data.pop(CONF_DISCOVERED_MODELS_CACHE_KEY, None)
+
+
+def _referenced_provider_profile_ids(
+    entry: ConfigEntry, provider_subentry_id: str
+) -> set[str]:
+    """Return model profile IDs referenced by conversation or AI task subentries."""
+    referenced: set[str] = set()
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type not in {
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        }:
+            continue
+        for profile_ref in _selected_model_profile_refs(subentry.data):
+            try:
+                ref_provider_subentry_id, profile_id = parse_model_profile_ref(
+                    profile_ref
+                )
+            except HomeAssistantError:
+                continue
+            if ref_provider_subentry_id == provider_subentry_id:
+                referenced.add(profile_id)
+    return referenced
 
 
 async def _validate_configured_models_for_provider_update(
@@ -637,7 +676,7 @@ def _configured_model_probes(
         if ref_provider_subentry_id != provider_subentry_id:
             return
         profile = model_profiles.get(profile_id)
-        if profile is None or not bool(profile.get(CONF_ENABLED, True)):
+        if profile is None or not bool(profile.get(CONF_ENABLED, False)):
             return
         model = profile.get(CONF_MODEL)
         if not isinstance(model, str) or not model:
@@ -899,6 +938,16 @@ async def async_probe_model(
     try:
         settings = dict(model_settings or {})
         settings.pop(_MODEL_SETTING_MAX_ITERATIONS, None)
+        settings.pop(_MODEL_SETTING_EXTRA_BODY, None)
+        provider_extra_body = data.get(CONF_PROVIDER_EXTRA_BODY)
+        if isinstance(provider_extra_body, Mapping) and provider_extra_body:
+            if not _provider_extra_body_supported(data):
+                raise ProviderValidationError(
+                    "provider_extra_body_unsupported",
+                    "Extra body is only supported by OpenAI-compatible and Anthropic provider modes.",
+                )
+            reject_chat_template_kwargs_in_extra_body(provider_extra_body)
+            settings[_MODEL_SETTING_EXTRA_BODY] = dict(provider_extra_body)
         chat_template_kwargs = settings.pop(_MODEL_SETTING_CHAT_TEMPLATE_KWARGS, None)
         reject_chat_template_kwargs_in_extra_body(
             settings.get(_MODEL_SETTING_EXTRA_BODY)
@@ -1075,7 +1124,7 @@ def _normalise_workspace_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
 def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
     """Return normalized provider data for storage and validation."""
     data = _flatten_section_data(
-        user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_MODEL_SELECTION)
+        user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_CUSTOMIZE_MODEL_LIST)
     )
     data[CONF_NAME] = str(data[CONF_NAME]).strip() or DEFAULT_SERVICE_NAME
     data[CONF_BASE_URL] = _normalise_base_url(data)
@@ -1084,72 +1133,67 @@ def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
         data[CONF_PROVIDER_HEADERS] = headers
     else:
         data.pop(CONF_PROVIDER_HEADERS, None)
+    try:
+        provider_extra_body = _parse_key_value_json_setting(
+            data.get(CONF_PROVIDER_EXTRA_BODY, "")
+        )
+    except ValueError as err:
+        raise ProviderValidationError(
+            _model_setting_error(_MODEL_SETTING_EXTRA_BODY, str(err)),
+            "Enter provider extra body fields one per line using 'key: JSON value'.",
+        ) from err
+    if provider_extra_body:
+        try:
+            reject_chat_template_kwargs_in_extra_body(provider_extra_body)
+        except HomeAssistantError as err:
+            raise ProviderValidationError(
+                "chat_template_kwargs_conflict", str(err)
+            ) from err
+        data[CONF_PROVIDER_EXTRA_BODY] = provider_extra_body
+    else:
+        data.pop(CONF_PROVIDER_EXTRA_BODY, None)
     if not data[CONF_BASE_URL]:
         data.pop(CONF_BASE_URL, None)
     api_key = data.get(CONF_API_KEY)
     data[CONF_API_KEY] = str(api_key or "").strip()
-    enabled_models = data.get(_CONF_ENABLED_MODELS)
-    if isinstance(enabled_models, str):
-        data[_CONF_ENABLED_MODELS] = [enabled_models]
-    elif isinstance(enabled_models, list):
-        data[_CONF_ENABLED_MODELS] = [
-            model_name
-            for model_name in enabled_models
-            if isinstance(model_name, str) and model_name
-        ]
-    else:
-        data[_CONF_ENABLED_MODELS] = []
-    data[_CONF_MANUAL_MODELS] = _parse_manual_models(data.get(_CONF_MANUAL_MODELS, ""))
+    data[CONF_CUSTOM_MODEL_NAMES] = _provider_custom_model_names(data)
     return data
-
-
-def _provider_selected_models_error(data: Mapping[str, Any]) -> tuple[str, str] | None:
-    """Return a field/error pair for provider model selection errors."""
-    selected_models = _provider_selected_model_names(data)
-    if not selected_models:
-        return _CONF_ENABLED_MODELS, "enabled_models_required"
-    default_value = data.get(CONF_DEFAULT_MODEL_PROFILE_ID)
-    if not default_value:
-        return None
-    if not isinstance(default_value, str) or default_value not in selected_models:
-        return CONF_DEFAULT_MODEL_PROFILE_ID, "default_model_profile_not_enabled"
-    return None
-
-
-def _default_model_name(data: Mapping[str, Any]) -> str:
-    """Return the selected default model name for a provider form state."""
-    selected_models = _provider_selected_model_names(data)
-    default_value = data.get(CONF_DEFAULT_MODEL_PROFILE_ID)
-    if isinstance(default_value, str) and default_value in selected_models:
-        return default_value
-    if not selected_models:
-        raise ProviderValidationError(
-            "enabled_models_required",
-            "At least one provider model must be enabled.",
-        )
-    return selected_models[0]
 
 
 def _normalise_provider_model_profiles(
     existing_profiles: Mapping[str, Any],
-    selected_models: list[str],
+    model_names: list[str],
     discovered_model_names: Iterable[str],
-    default_model_name: str,
-) -> tuple[dict[str, dict[str, Any]], str]:
-    """Return provider-owned profile storage and the resolved default profile id."""
+    *,
+    keep_profile_ids: set[str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Return provider-owned profile storage synced to provider model names."""
     discovered_set = set(discovered_model_names)
+    model_set = set(model_names)
+    keep_profile_ids = keep_profile_ids or set()
     existing_by_model: dict[str, tuple[str, dict[str, Any]]] = {}
+    kept_profiles: dict[str, dict[str, Any]] = {}
     for profile_id, profile in existing_profiles.items():
         if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
             continue
         model_name = profile.get(CONF_MODEL)
         if not isinstance(model_name, str) or not model_name.strip():
             continue
-        existing_by_model.setdefault(model_name, (profile_id, dict(profile)))
+        profile = dict(profile)
+        if model_name in model_set:
+            existing_by_model.setdefault(model_name, (profile_id, profile))
+            continue
+        if profile_id in keep_profile_ids:
+            model_settings = profile.get(CONF_MODEL_SETTINGS)
+            if isinstance(model_settings, Mapping):
+                profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(profile)
+            else:
+                profile.pop(CONF_MODEL_SETTINGS, None)
+            profile[CONF_ENABLED] = bool(profile.get(CONF_ENABLED, False))
+            kept_profiles[profile_id] = profile
 
-    profiles: dict[str, dict[str, Any]] = {}
-    default_profile_id = ""
-    for model_name in selected_models:
+    profiles: dict[str, dict[str, Any]] = dict(kept_profiles)
+    for model_name in model_names:
         existing_profile = existing_by_model.get(model_name)
         if existing_profile is None:
             profile_id = uuid4().hex
@@ -1157,7 +1201,7 @@ def _normalise_provider_model_profiles(
                 "id": profile_id,
                 CONF_NAME: model_name,
                 CONF_MODEL: model_name,
-                CONF_ENABLED: True,
+                CONF_ENABLED: False,
                 CONF_DISCOVERED: model_name in discovered_set,
             }
         else:
@@ -1166,25 +1210,55 @@ def _normalise_provider_model_profiles(
         profile["id"] = profile_id
         profile[CONF_NAME] = str(profile.get(CONF_NAME) or model_name)
         profile[CONF_MODEL] = model_name
-        profile[CONF_ENABLED] = True
+        profile[CONF_ENABLED] = bool(profile.get(CONF_ENABLED, False))
         profile[CONF_DISCOVERED] = model_name in discovered_set
-        if not isinstance(profile.get(CONF_MODEL_SETTINGS), Mapping):
+        model_settings = profile.get(CONF_MODEL_SETTINGS)
+        if isinstance(model_settings, Mapping):
+            profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(profile)
+        else:
             profile.pop(CONF_MODEL_SETTINGS, None)
         profiles[profile_id] = profile
-        if model_name == default_model_name:
-            default_profile_id = profile_id
-
-    if not default_profile_id and profiles:
-        default_profile_id = next(iter(profiles))
-    return profiles, default_profile_id
+    return profiles
 
 
-def _provider_profile_options(
-    provider_subentry: ConfigSubentry,
-) -> list[SelectOptionDict]:
+def _provider_model_profiles_for_discovery_mode(
+    existing_profiles: Mapping[str, Any], *, keep_profile_ids: set[str]
+) -> dict[str, dict[str, Any]]:
+    """Return existing profiles that remain valid before discovery refresh."""
+    profiles: dict[str, dict[str, Any]] = {}
+    for profile_id, profile in existing_profiles.items():
+        if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+            continue
+        if (
+            not bool(profile.get(CONF_DISCOVERED, False))
+            and profile_id not in keep_profile_ids
+        ):
+            continue
+        model_name = profile.get(CONF_MODEL)
+        if not isinstance(model_name, str) or not model_name.strip():
+            continue
+        profile = dict(profile)
+        profile["id"] = profile_id
+        profile[CONF_MODEL] = model_name
+        profile[CONF_ENABLED] = bool(profile.get(CONF_ENABLED, False))
+        model_settings = profile.get(CONF_MODEL_SETTINGS)
+        if isinstance(model_settings, Mapping):
+            profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(profile)
+        else:
+            profile.pop(CONF_MODEL_SETTINGS, None)
+        profiles[profile_id] = profile
+    return profiles
+
+
+def _provider_profile_options(data: Mapping[str, Any]) -> list[SelectOptionDict]:
     """Return all provider model profiles as select options."""
     options: list[SelectOptionDict] = []
-    for profile_id, profile in provider_model_profiles(provider_subentry).items():
+    profiles = data.get(CONF_MODEL_PROFILES)
+    if not isinstance(profiles, Mapping):
+        return []
+    for profile_id, profile in profiles.items():
+        if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+            continue
         model_name = profile.get(CONF_MODEL)
         if not isinstance(model_name, str) or not model_name.strip():
             continue
@@ -1194,7 +1268,7 @@ def _provider_profile_options(
             if isinstance(profile_name, str) and profile_name.strip()
             else model_name
         )
-        if not bool(profile.get(CONF_ENABLED, True)):
+        if not bool(profile.get(CONF_ENABLED, False)):
             label = f"{label} (disabled)"
         options.append(SelectOptionDict(label=label, value=profile_id))
     return options
@@ -1215,13 +1289,13 @@ def _provider_profile_dependents(entry: ConfigEntry, profile_ref: str) -> list[s
     return dependents
 
 
-def _provider_profile_selector_schema(provider_subentry: ConfigSubentry) -> vol.Schema:
+def _provider_profile_selector_schema(data: Mapping[str, Any]) -> vol.Schema:
     """Return a selector schema for existing provider-owned profiles."""
     return vol.Schema(
         {
             vol.Required(_CONF_MODEL_PROFILE_ID): SelectSelector(
                 SelectSelectorConfig(
-                    options=_provider_profile_options(provider_subentry),
+                    options=_provider_profile_options(data),
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             )
@@ -1236,7 +1310,7 @@ def _model_profile_edit_schema(
     options: dict[str, Any] = {
         CONF_NAME: profile.get(CONF_NAME, profile.get(CONF_MODEL, "")),
         CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {}),
-        CONF_ENABLED: bool(profile.get(CONF_ENABLED, True)),
+        CONF_ENABLED: bool(profile.get(CONF_ENABLED, False)),
     }
     schema: VolDictType = {
         vol.Required(CONF_NAME, default=options[CONF_NAME]): TextSelector(
@@ -1296,10 +1370,17 @@ def _model_profile_edit_schema(
 
 def _validate_provider_data(hass: HomeAssistant, data: Mapping[str, Any]) -> None:
     """Validate provider data that does not require a model."""
+    del hass
     if data.get(CONF_PROVIDER_MODE) not in PROVIDER_MODES:
         raise ProviderValidationError(
             "invalid_provider_config",
             f"Unsupported provider mode: {data.get(CONF_PROVIDER_MODE)!r}.",
+        )
+    _validate_base_url(data)
+    if data.get(CONF_PROVIDER_EXTRA_BODY) and not _provider_extra_body_supported(data):
+        raise ProviderValidationError(
+            "provider_extra_body_unsupported",
+            "Extra body is only supported by OpenAI-compatible and Anthropic provider modes.",
         )
 
 
@@ -1337,7 +1418,7 @@ def _model_profile_select_options(entry: ConfigEntry | None) -> list[SelectOptio
     options: list[SelectOptionDict] = []
     for provider_subentry in provider_subentries(entry):
         for profile_id, profile in provider_model_profiles(provider_subentry).items():
-            if not bool(profile.get(CONF_ENABLED, True)):
+            if not bool(profile.get(CONF_ENABLED, False)):
                 continue
             model_name = profile.get(CONF_MODEL)
             if not isinstance(model_name, str) or not model_name.strip():
@@ -1812,14 +1893,6 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
             ): NumberSelector(
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
             ),
-            vol.Optional(
-                _MODEL_SETTING_EXTRA_BODY,
-                description={
-                    "suggested_value": _format_key_value_json_setting(
-                        model_settings.get(_MODEL_SETTING_EXTRA_BODY)
-                    )
-                },
-            ): TextSelector(TextSelectorConfig(multiline=True)),
             vol.Optional(
                 _MODEL_SETTING_CHAT_TEMPLATE_KWARGS,
                 default=_format_chat_template_kwargs(
@@ -2551,11 +2624,12 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
     _pending_error: tuple[str, str, dict[str, str]] | None
     _pending_storage_data: dict[str, Any]
     _pending_step_id: str
-    _selected_profile_action: str | None
     _selected_profile_id: str | None
     _pending_model_settings: dict[str, Any]
     _pending_profile_data: dict[str, Any]
     _pending_profile_error: tuple[str, dict[str, str]] | None
+    _profile_flow_data: dict[str, Any]
+    _profile_refresh_error: str | None
 
     @property
     def _is_new(self) -> bool:
@@ -2572,8 +2646,9 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         self._pending_error = None
         self._pending_storage_data = {}
         self._pending_step_id = "init"
-        self._selected_profile_action = None
         self._selected_profile_id = None
+        self._profile_flow_data = {}
+        self._profile_refresh_error = None
         return await self.async_step_init(user_input)
 
     async def async_step_reconfigure(
@@ -2581,48 +2656,23 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Reconfigure a provider subentry."""
         self._options = self._provider_form_options(self._get_reconfigure_subentry())
-        self._model_names = (
-            sorted(
-                {
-                    str(profile.get(CONF_MODEL)).strip()
-                    for profile in provider_model_profiles(
-                        self._get_reconfigure_subentry()
-                    ).values()
-                    if isinstance(profile.get(CONF_MODEL), str)
-                    and str(profile.get(CONF_MODEL)).strip()
-                    and bool(profile.get(CONF_DISCOVERED, False))
-                }
-            )
-            or None
-        )
+        self._model_names = None
         self._model_names_cache_key = None
         self._pending_error = None
         self._pending_storage_data = {}
-        self._pending_step_id = "enable_models"
-        self._selected_profile_action = None
+        self._pending_step_id = "edit_connection"
         self._selected_profile_id = None
+        self._profile_flow_data = {}
+        self._profile_refresh_error = None
         return await self.async_step_reconfigure_menu()
 
     def _provider_form_options(self, subentry: ConfigSubentry) -> dict[str, Any]:
         """Return provider data expanded with form-only model-selection fields."""
         options = dict(subentry.data)
-        options[_CONF_ENABLED_MODELS] = [
-            str(profile.get(CONF_MODEL)).strip()
-            for profile in provider_model_profiles(subentry).values()
-            if isinstance(profile.get(CONF_MODEL), str)
-            and str(profile.get(CONF_MODEL)).strip()
-            and bool(profile.get(CONF_DISCOVERED, False))
-            and bool(profile.get(CONF_ENABLED, True))
-        ]
-        options[_CONF_MANUAL_MODELS] = "\n".join(
-            str(profile.get(CONF_MODEL)).strip()
-            for profile in provider_model_profiles(subentry).values()
-            if isinstance(profile.get(CONF_MODEL), str)
-            and str(profile.get(CONF_MODEL)).strip()
-            and not bool(profile.get(CONF_DISCOVERED, False))
-            and bool(profile.get(CONF_ENABLED, True))
+        options[CONF_CUSTOM_MODEL_NAMES] = _format_custom_model_names(options)
+        options[CONF_PROVIDER_EXTRA_BODY] = _format_key_value_json_setting(
+            options.get(CONF_PROVIDER_EXTRA_BODY)
         )
-        options[CONF_DEFAULT_MODEL_PROFILE_ID] = _provider_default_model_value(options)
         return options
 
     def _provider_already_configured(self, data: Mapping[str, Any]) -> bool:
@@ -2639,9 +2689,15 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
 
     async def _async_model_names(self, data: Mapping[str, Any]) -> list[str] | None:
         """Return discovered provider model names for this flow."""
-        cache_key = json.dumps(_dedupe_data(data), sort_keys=True)
+        if _provider_custom_model_names(data):
+            return None
+        cache_key = _provider_model_cache_key(data)
         if self._model_names is not None and self._model_names_cache_key == cache_key:
             return self._model_names
+        if cached_names := _cached_provider_model_names(data):
+            self._model_names = cached_names
+            self._model_names_cache_key = cache_key
+            return cached_names
         try:
             self._model_names = await async_list_provider_model_names(self.hass, data)
             self._model_names_cache_key = cache_key
@@ -2661,7 +2717,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         """Show a provider form."""
         return self.async_show_form(
             step_id=step_id,
-            data_schema=_provider_schema(options, self._model_names),
+            data_schema=_provider_schema(options),
             errors=dict(errors or {}),
             description_placeholders=description_placeholders,
         )
@@ -2675,10 +2731,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             step_id="reconfigure_menu",
             menu_options=[
                 "edit_connection",
-                "enable_models",
                 "customize_model_profile",
-                "remove_model_profile",
-                "rediscover_models",
             ],
         )
 
@@ -2693,28 +2746,6 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Edit provider connection settings."""
         return await self._async_provider_form_step("edit_connection", user_input)
-
-    async def async_step_enable_models(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Enable, disable, or manually add provider models."""
-        return await self._async_provider_form_step("enable_models", user_input)
-
-    async def async_step_rediscover_models(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Refresh discovered model names before editing model selection."""
-        del user_input
-        self._model_names = None
-        provider_data = _normalise_provider_data(
-            self._provider_form_options(self._get_reconfigure_subentry())
-        )
-        await self._async_model_names(provider_data)
-        return await self._async_show_provider_form(
-            "enable_models",
-            options=self._provider_form_options(self._get_reconfigure_subentry()),
-            errors={"base": "models_refreshed"},
-        )
 
     async def _async_provider_form_step(
         self, step_id: str, user_input: dict[str, Any] | None
@@ -2759,67 +2790,63 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         self, data: dict[str, Any]
     ) -> tuple[str, str, dict[str, str]] | None:
         """Validate one provider form submission."""
-        discovered_model_names = await self._async_model_names(data)
-        if discovered_model_names:
-            if not self._pending_data.get(_CONF_ENABLED_MODELS):
-                self._pending_data[_CONF_ENABLED_MODELS] = discovered_model_names
-            if not self._pending_data.get(CONF_DEFAULT_MODEL_PROFILE_ID):
-                self._pending_data[CONF_DEFAULT_MODEL_PROFILE_ID] = (
-                    discovered_model_names[0]
-                )
-        if selection_error := _provider_selected_models_error(self._pending_data):
-            field, reason = selection_error
-            return field, reason, {}
-        selected_models = _provider_selected_model_names(self._pending_data)
-        if not selected_models:
-            return "base", "model_list_unavailable", {}
-        try:
-            default_model_name = _default_model_name(self._pending_data)
-        except ProviderValidationError as err:
-            return "base", err.reason, _provider_validation_placeholders(err)
-
         existing_profiles: Mapping[str, Any] = {}
+        existing_data: Mapping[str, Any] = {}
         if not self._is_new:
-            existing_profiles = self._get_reconfigure_subentry().data.get(
-                CONF_MODEL_PROFILES, {}
+            existing_data = self._get_reconfigure_subentry().data
+            existing_profiles = existing_data.get(CONF_MODEL_PROFILES, {})
+        custom_model_names = _provider_custom_model_names(self._pending_data)
+        if custom_model_names:
+            keep_profile_ids = (
+                _referenced_provider_profile_ids(
+                    self._get_entry(), self._get_reconfigure_subentry().subentry_id
+                )
+                if not self._is_new
+                else set()
             )
-        model_profiles, default_profile_id = _normalise_provider_model_profiles(
-            existing_profiles,
-            selected_models,
-            discovered_model_names or [],
-            default_model_name,
-        )
+            model_profiles = _normalise_provider_model_profiles(
+                existing_profiles,
+                custom_model_names,
+                [],
+                keep_profile_ids=keep_profile_ids,
+            )
+        elif isinstance(existing_profiles, Mapping):
+            model_profiles = (
+                _provider_model_profiles_for_discovery_mode(
+                    existing_profiles,
+                    keep_profile_ids=_referenced_provider_profile_ids(
+                        self._get_entry(), self._get_reconfigure_subentry().subentry_id
+                    ),
+                )
+                if not self._is_new
+                else {}
+            )
+        else:
+            model_profiles = {}
         storage_data: dict[str, Any] = {
             CONF_NAME: self._pending_data[CONF_NAME],
             CONF_PROVIDER_MODE: self._pending_data[CONF_PROVIDER_MODE],
             CONF_API_KEY: self._pending_data[CONF_API_KEY],
             CONF_MODEL_PROFILES: model_profiles,
-            CONF_DEFAULT_MODEL_PROFILE_ID: default_profile_id,
         }
+        if custom_model_names:
+            storage_data[CONF_CUSTOM_MODEL_NAMES] = custom_model_names
         if base_url := self._pending_data.get(CONF_BASE_URL):
             storage_data[CONF_BASE_URL] = base_url
         if provider_headers := self._pending_data.get(CONF_PROVIDER_HEADERS):
             storage_data[CONF_PROVIDER_HEADERS] = provider_headers
-        if discovered_model_names:
-            storage_data[CONF_DISCOVERED_MODELS_AT] = dt_util.utcnow().isoformat()
-        for profile in model_profiles.values():
-            try:
-                await async_probe_model(
-                    self.hass,
-                    storage_data,
-                    str(profile[CONF_MODEL]),
-                    dict(profile.get(CONF_MODEL_SETTINGS, {})),
-                )
-            except ProviderValidationError as err:
-                _log_provider_validation_failure(
-                    step="provider subentry",
-                    model_name=str(profile[CONF_MODEL]),
-                    err=err,
-                )
-                return "base", err.reason, _provider_validation_placeholders(err)
-            except Exception:
-                _LOGGER.exception("Unexpected exception validating provider model")
-                return "base", "unknown", {}
+        if provider_extra_body := self._pending_data.get(CONF_PROVIDER_EXTRA_BODY):
+            storage_data[CONF_PROVIDER_EXTRA_BODY] = dict(provider_extra_body)
+        if not custom_model_names:
+            for key in (
+                CONF_DISCOVERED_MODELS,
+                CONF_DISCOVERED_MODELS_AT,
+                CONF_DISCOVERED_MODELS_CACHE_KEY,
+            ):
+                if key in existing_data:
+                    storage_data[key] = existing_data[key]
+            if _cached_provider_model_names(storage_data) is None:
+                _clear_provider_model_cache(storage_data)
         self._pending_storage_data = storage_data
         return None
 
@@ -2865,77 +2892,91 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Choose a provider-owned profile to edit."""
         del user_input
-        self._selected_profile_action = "edit"
+        (
+            self._profile_flow_data,
+            self._profile_refresh_error,
+        ) = await self._async_prepare_profile_flow_data()
+        self._selected_profile_id = None
         return await self.async_step_pick_model_profile()
 
-    async def async_step_remove_model_profile(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Choose a provider-owned profile to remove."""
-        del user_input
-        self._selected_profile_action = "remove"
-        return await self.async_step_pick_model_profile()
+    async def _async_prepare_profile_flow_data(
+        self,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Return provider data with refreshed model profiles for profile editing."""
+        provider_subentry = self._get_reconfigure_subentry()
+        data = dict(provider_subentry.data)
+        existing_profiles = data.get(CONF_MODEL_PROFILES, {})
+        custom_model_names = _provider_custom_model_names(data)
+        if custom_model_names:
+            _clear_provider_model_cache(data)
+            data[CONF_MODEL_PROFILES] = _normalise_provider_model_profiles(
+                existing_profiles,
+                custom_model_names,
+                [],
+                keep_profile_ids=_referenced_provider_profile_ids(
+                    self._get_entry(), provider_subentry.subentry_id
+                ),
+            )
+            return data, None
+
+        discovered_model_names = await self._async_model_names(data)
+        if not discovered_model_names:
+            return data, None if provider_model_profiles(
+                provider_subentry
+            ) else "model_list_unavailable"
+
+        _store_provider_model_cache(data, discovered_model_names)
+        data[CONF_MODEL_PROFILES] = _normalise_provider_model_profiles(
+            existing_profiles,
+            discovered_model_names,
+            discovered_model_names,
+            keep_profile_ids=_referenced_provider_profile_ids(
+                self._get_entry(), provider_subentry.subentry_id
+            ),
+        )
+        return data, None
+
+    def _current_profile_flow_data(self) -> dict[str, Any]:
+        """Return transient provider data for the active profile edit flow."""
+        if profile_flow_data := getattr(self, "_profile_flow_data", None):
+            return profile_flow_data
+        return dict(self._get_reconfigure_subentry().data)
 
     async def async_step_pick_model_profile(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Pick one existing provider-owned model profile."""
-        provider_subentry = self._get_reconfigure_subentry()
+        data = self._current_profile_flow_data()
         if user_input is None:
+            if not _provider_profile_options(data):
+                return self.async_show_form(
+                    step_id="pick_model_profile",
+                    data_schema=vol.Schema({}),
+                    errors={
+                        "base": getattr(self, "_profile_refresh_error", None)
+                        or "model_list_unavailable"
+                    },
+                )
+            errors = {}
+            if profile_refresh_error := getattr(self, "_profile_refresh_error", None):
+                errors["base"] = profile_refresh_error
             return self.async_show_form(
                 step_id="pick_model_profile",
-                data_schema=_provider_profile_selector_schema(provider_subentry),
+                data_schema=_provider_profile_selector_schema(data),
+                errors=errors,
             )
         self._selected_profile_id = str(user_input[_CONF_MODEL_PROFILE_ID])
-        if self._selected_profile_action == "remove":
-            return await self.async_step_confirm_remove_model_profile()
         return await self.async_step_edit_model_profile()
-
-    async def async_step_confirm_remove_model_profile(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Remove one provider-owned model profile after dependency checks."""
-        del user_input
-        provider_subentry = self._get_reconfigure_subentry()
-        profile_id = self._selected_profile_id
-        if profile_id is None:
-            return await self.async_step_pick_model_profile()
-        profile_ref = model_profile_ref(provider_subentry.subentry_id, profile_id)
-        dependents = _provider_profile_dependents(self._get_entry(), profile_ref)
-        if dependents:
-            return self.async_show_form(
-                step_id="pick_model_profile",
-                data_schema=_provider_profile_selector_schema(provider_subentry),
-                errors={"base": "model_profile_in_use"},
-                description_placeholders={"dependents": ", ".join(sorted(dependents))},
-            )
-        data = dict(provider_subentry.data)
-        profiles = provider_model_profiles(provider_subentry)
-        profiles.pop(profile_id, None)
-        data[CONF_MODEL_PROFILES] = profiles
-        enabled_profile_ids = [
-            current_profile_id
-            for current_profile_id, profile in profiles.items()
-            if bool(profile.get(CONF_ENABLED, True))
-        ]
-        if data.get(CONF_DEFAULT_MODEL_PROFILE_ID) not in enabled_profile_ids:
-            if enabled_profile_ids:
-                data[CONF_DEFAULT_MODEL_PROFILE_ID] = enabled_profile_ids[0]
-            else:
-                data.pop(CONF_DEFAULT_MODEL_PROFILE_ID, None)
-        return self.async_update_and_abort(
-            self._get_entry(), provider_subentry, title=data[CONF_NAME], data=data
-        )
 
     async def async_step_edit_model_profile(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Edit one provider-owned model profile."""
-        provider_subentry = self._get_reconfigure_subentry()
         profile_id = self._selected_profile_id
         if profile_id is None:
             return await self.async_step_pick_model_profile()
-        profile = provider_model_profiles(provider_subentry).get(profile_id)
+        profiles = self._current_profile_flow_data().get(CONF_MODEL_PROFILES, {})
+        profile = profiles.get(profile_id) if isinstance(profiles, Mapping) else None
         if profile is None:
             return self.async_abort(reason="model_profile_not_found")
         if user_input is not None:
@@ -2965,6 +3006,11 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             self._pending_profile_data = dict(profile) | data
             self._pending_model_settings = dict(model_settings)
             self._pending_profile_error = None
+            if not bool(self._pending_profile_data.get(CONF_ENABLED, False)):
+                _store_model_settings(
+                    self._pending_profile_data, self._pending_model_settings
+                )
+                return await self.async_step_model_profile_finish()
             task = self.hass.async_create_task(self._async_probe_model_profile())
             return self.async_show_progress(
                 step_id="model_profile_progress",
@@ -2981,12 +3027,11 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
 
     async def _async_probe_model_profile(self) -> tuple[str, dict[str, str]] | None:
         """Validate the pending provider-owned model profile edit."""
-        provider_subentry = self._get_reconfigure_subentry()
         _store_model_settings(self._pending_profile_data, self._pending_model_settings)
         try:
             await async_probe_model(
                 self.hass,
-                provider_subentry.data,
+                self._current_profile_flow_data(),
                 str(self._pending_profile_data[CONF_MODEL]),
                 self._pending_profile_data.get(CONF_MODEL_SETTINGS, {}),
             )
@@ -3037,21 +3082,11 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                 errors={"base": reason},
                 description_placeholders=placeholders,
             )
-        data = dict(provider_subentry.data)
-        profiles = provider_model_profiles(provider_subentry)
+        data = self._current_profile_flow_data()
+        profiles = dict(data.get(CONF_MODEL_PROFILES, {}))
         profile = dict(self._pending_profile_data)
         profile["id"] = profile_id
         profiles[profile_id] = profile
-        enabled_profile_ids = [
-            current_profile_id
-            for current_profile_id, current_profile in profiles.items()
-            if bool(current_profile.get(CONF_ENABLED, True))
-        ]
-        if enabled_profile_ids:
-            if data.get(CONF_DEFAULT_MODEL_PROFILE_ID) not in enabled_profile_ids:
-                data[CONF_DEFAULT_MODEL_PROFILE_ID] = enabled_profile_ids[0]
-        else:
-            data.pop(CONF_DEFAULT_MODEL_PROFILE_ID, None)
         data[CONF_MODEL_PROFILES] = profiles
         return self.async_update_and_abort(
             self._get_entry(), provider_subentry, title=data[CONF_NAME], data=data

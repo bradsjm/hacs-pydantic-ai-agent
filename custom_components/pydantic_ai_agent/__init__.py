@@ -25,6 +25,7 @@ from .const import (
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
+    CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
     DOMAIN,
@@ -113,6 +114,7 @@ class ProviderRuntimeData:
     provider_mode: str
     base_url: str | None
     provider_headers: dict[str, str] = field(default_factory=dict)
+    provider_extra_body: dict[str, Any] = field(default_factory=dict)
     client: Any | None = None
     discovered_models: list[str] | None = None
 
@@ -333,6 +335,7 @@ def _normalise_model_settings(settings: Mapping[str, Any]) -> str:
     """Return a stable representation of model settings for de-duplication."""
     provider_settings = dict(settings)
     provider_settings.pop(CONF_MAX_ITERATIONS, None)
+    provider_settings.pop("extra_body", None)
     return json.dumps(provider_settings, sort_keys=True, separators=(",", ":"))
 
 
@@ -357,6 +360,7 @@ def _provider_runtimes(
             )
             continue
         headers = subentry.data.get(CONF_PROVIDER_HEADERS)
+        provider_extra_body = subentry.data.get(CONF_PROVIDER_EXTRA_BODY)
         runtimes[subentry.subentry_id] = ProviderRuntimeData(
             provider_subentry_id=subentry.subentry_id,
             name=subentry.title,
@@ -364,6 +368,9 @@ def _provider_runtimes(
             provider_mode=provider_mode,
             base_url=subentry.data.get(CONF_BASE_URL),
             provider_headers=dict(headers) if isinstance(headers, Mapping) else {},
+            provider_extra_body=dict(provider_extra_body)
+            if isinstance(provider_extra_body, Mapping)
+            else {},
         )
     return runtimes
 
@@ -418,7 +425,7 @@ def _configured_subentry_models(
         if provider_subentry.subentry_id != provider_subentry_id:
             return
         profile = provider_model_profiles(provider_subentry).get(profile_id)
-        if profile is None or not bool(profile.get(CONF_ENABLED, True)):
+        if profile is None or not bool(profile.get(CONF_ENABLED, False)):
             return
         model = profile.get(CONF_MODEL)
         if not isinstance(model, str) or not model:

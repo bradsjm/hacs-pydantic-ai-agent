@@ -196,13 +196,13 @@ integration subentry actions.
 
 Example instances:
 
-| Workspace | Provider title      | Provider mode                 | Example model       | HA tools |
-| --------- | ------------------- | ----------------------------- | ------------------- | -------- |
-| `Home`    | `OpenAI Home`       | OpenAI-compatible Completions | `gpt-5.1`           | Enabled  |
-| `Home`    | `Local LLM`         | OpenAI-compatible Completions | `llama-3.3-70b`     | Disabled |
-| `Admin`   | `Admin Provider`    | OpenAI-compatible Responses   | `gpt-5.1`           | Enabled  |
-| `Home`    | `Anthropic Home`    | Anthropic                     | `claude-sonnet-4-5` | Enabled  |
-| `Home`    | `Gemini Home`       | Google Gemini                 | `gemini-2.5-pro`    | Enabled  |
+| Workspace | Provider title   | Provider mode                 | Example model       | HA tools |
+| --------- | ---------------- | ----------------------------- | ------------------- | -------- |
+| `Home`    | `OpenAI Home`    | OpenAI-compatible Completions | `gpt-5.1`           | Enabled  |
+| `Home`    | `Local LLM`      | OpenAI-compatible Completions | `llama-3.3-70b`     | Disabled |
+| `Admin`   | `Admin Provider` | OpenAI-compatible Responses   | `gpt-5.1`           | Enabled  |
+| `Home`    | `Anthropic Home` | Anthropic                     | `claude-sonnet-4-5` | Enabled  |
+| `Home`    | `Gemini Home`    | Google Gemini                 | `gemini-2.5-pro`    | Enabled  |
 
 Each conversation subentry appears as a separate selectable conversation agent in
 Home Assistant Assist configuration. Changing one conversation subentry must not
@@ -347,18 +347,20 @@ remote Streamable HTTP MCP servers.
 The config flow should collect only values required to create a working,
 independent instance.
 
-| Field                    | Required | Stored in                        | Notes                                                    |
-| ------------------------ | -------- | -------------------------------- | -------------------------------------------------------- |
-| Workspace name           | Yes      | Config entry title/data          | User-facing name for the workspace.                      |
-| Provider mode            | Yes      | Data                             | One implemented provider mode.                           |
-| API key                  | Yes      | Data                             | Credential used for provider validation and requests.    |
-| Base URL                 | No       | Data                             | Optional provider endpoint override.                     |
-| Logfire token            | No       | Data                             | Enables optional Logfire tracing for the provider entry. |
-| Skills folder            | No       | Data                             | Must be `/config/skills` or a subfolder when configured. |
-| Initial agent name       | No       | Conversation subentry title/data | Collected by the conversation subentry flow.             |
-| AI task name             | Yes      | AI task subentry title/data      | Collected by the AI task subentry flow.                  |
-| Language model profile   | No       | Conversation/AI task subentry    | Selected and validated by subentry flows.                |
-| HA LLM API               | No       | Conversation subentry data       | Tool access is enabled when this selector has values.    |
+| Field                  | Required | Stored in                        | Notes                                                    |
+| ---------------------- | -------- | -------------------------------- | -------------------------------------------------------- |
+| Workspace name         | Yes      | Config entry title/data          | User-facing name for the workspace.                      |
+| Provider mode          | Yes      | Data                             | One implemented provider mode.                           |
+| API key                | Yes      | Data                             | Credential used for provider validation and requests.    |
+| Base URL               | No       | Data                             | Optional provider endpoint override.                     |
+| Custom model names     | No       | Provider subentry data           | One model name per line; skips provider model discovery. |
+| Extra body             | No       | Provider subentry data           | JSON object merged into all provider request bodies.     |
+| Logfire token          | No       | Data                             | Enables optional Logfire tracing for the provider entry. |
+| Skills folder          | No       | Data                             | Must be `/config/skills` or a subfolder when configured. |
+| Initial agent name     | No       | Conversation subentry title/data | Collected by the conversation subentry flow.             |
+| AI task name           | Yes      | AI task subentry title/data      | Collected by the AI task subentry flow.                  |
+| Language model profile | No       | Conversation/AI task subentry    | Selected and validated by subentry flows.                |
+| HA LLM API             | No       | Conversation subentry data       | Tool access is enabled when this selector has values.    |
 
 Provider mode values are `openai_compatible_completions`,
 `openai_compatible_responses`, `anthropic`, and `google_gemini`.
@@ -412,7 +414,6 @@ without recreating the parent provider/service entry.
 | Seed                       | Provider-specific deterministic sampling hint.              |
 | Presence penalty           | Provider-specific repetition control.                       |
 | Frequency penalty          | Provider-specific frequency control.                        |
-| Extra body                 | JSON object merged into provider request bodies.            |
 
 Subentry reconfigure UX requirements:
 

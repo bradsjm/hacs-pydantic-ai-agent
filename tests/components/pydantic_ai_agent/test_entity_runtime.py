@@ -4,6 +4,7 @@ import errno
 import socket
 import ssl
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 from typing import Any, cast
 
 import httpx
@@ -36,6 +37,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
+    CONF_PROVIDER_EXTRA_BODY,
+    PROVIDER_GOOGLE_GEMINI,
 )
 
 from custom_components.pydantic_ai_agent.entity import (
@@ -45,6 +48,7 @@ from custom_components.pydantic_ai_agent.entity import (
     _has_connection_failure,
     _home_assistant_error,
     _model_settings_with_chat_template_kwargs,
+    _model_settings_with_provider_extra_body,
     _should_fallback,
 )
 from custom_components.pydantic_ai_agent.metrics import MetricsStore, record_run_failure
@@ -247,6 +251,33 @@ def test_model_settings_with_chat_template_kwargs_rejects_extra_body_conflict(
 
     with pytest.raises(HomeAssistantError, match="dedicated model setting"):
         _model_settings_with_chat_template_kwargs(hass, profile, settings)
+
+
+def test_model_settings_with_provider_extra_body_rejects_gemini() -> None:
+    """Test unsupported provider body fields fail instead of becoming a no-op."""
+    profile = ModelProfile(
+        ref="provider-1:model-1",
+        provider_subentry_id="provider-1",
+        profile_id="model-1",
+        title="Gemini",
+        provider_title="Provider",
+        provider_mode=PROVIDER_GOOGLE_GEMINI,
+        model_name="gemini-test",
+        model_settings={},
+    )
+    entry = cast(
+        Any,
+        SimpleNamespace(
+            subentries={
+                "provider-1": SimpleNamespace(
+                    data={CONF_PROVIDER_EXTRA_BODY: {"service_tier": "flex"}}
+                )
+            }
+        ),
+    )
+
+    with pytest.raises(HomeAssistantError, match="OpenAI-compatible and Anthropic"):
+        _model_settings_with_provider_extra_body(entry, profile, ModelSettings())
 
 
 async def test_agent_messages_to_chat_deltas_preserves_assistant_parts() -> None:

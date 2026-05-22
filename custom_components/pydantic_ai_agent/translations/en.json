@@ -160,8 +160,8 @@
             "enable_skills": "Enable skills",
             "fallback_model_refs": "Fallback language model profiles",
             "mcp_server_ids": "MCP servers",
-            "primary_model_ref": "Primary language model profile",
             "output_mode": "Structured output mode",
+            "primary_model_ref": "Primary language model profile",
             "skills": "Skills",
             "skills_folder": "Skills folder",
             "todo_list_entity_id": "Todo workspace list",
@@ -309,161 +309,6 @@
         }
       }
     },
-    "provider": {
-      "abort": {
-        "already_configured": "This provider is already configured in the workspace.",
-        "entry_not_loaded": "The workspace is not loaded.",
-        "reconfigure_successful": "Provider configuration updated."
-      },
-      "entry_type": "Provider",
-      "error": {
-        "cannot_connect": "{error_message}",
-        "chat_template_kwargs_conflict": "Use the dedicated Chat template arguments field instead of setting chat_template_kwargs in Extra body.",
-        "default_model_profile_not_enabled": "The default language model must stay enabled.",
-        "duplicate_key": "Enter each key only once.",
-        "enabled_models_required": "Select at least one language model or enter one manual model.",
-        "invalid_auth": "{error_message}",
-        "invalid_chat_template": "Enter a valid Home Assistant template.",
-        "invalid_chat_template_key": "Enter a non-empty key for each chat template argument.",
-        "invalid_chat_template_kwargs": "Enter chat template arguments as key/template rows.",
-        "invalid_integer": "Enter an integer value in this field.",
-        "invalid_json": "Enter valid JSON.",
-        "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",
-        "invalid_model": "{error_message}",
-        "invalid_number": "Enter a valid number in this field.",
-        "invalid_provider_config": "{error_message}",
-        "invalid_provider_headers": "{error_message}",
-        "manual_model_invalid": "Enter one model name per line.",
-        "model_does_not_support_streaming": "{error_message}",
-        "model_list_unavailable": "The provider model list could not be loaded. Enter one or more manual model names or try again.",
-        "model_profile_in_use": "This model profile is still referenced by: {dependents}",
-        "models_refreshed": "Provider models were refreshed. Review the selected models and submit again.",
-        "permission_denied": "{error_message}",
-        "positive_number": "Enter a number greater than zero.",
-        "provider_error": "{error_message}",
-        "rate_limited": "{error_message}",
-        "timeout": "{error_message}",
-        "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
-      },
-      "initiate_flow": {
-        "reconfigure": "Manage provider",
-        "user": "Add provider"
-      },
-      "progress": {
-        "probe_model": "Validating language model",
-        "probe_models": "Validating provider and models"
-      },
-      "step": {
-        "init": {
-          "data": {
-            "api_key": "API key",
-            "base_url": "Base URL",
-            "default_model_profile_id": "Default language model",
-            "enabled_models": "Enabled discovered models",
-            "manual_models": "Manual models",
-            "name": "Provider name",
-            "provider_headers": "Provider HTTP headers",
-            "provider_mode": "Provider mode"
-          },
-          "data_description": {
-            "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
-            "default_model_profile_id": "The default model profile used when a conversation agent or AI task selects this provider's default.",
-            "enabled_models": "Choose provider-discovered models to create or keep as enabled profiles in this workspace.",
-            "manual_models": "Optional additional model names, one per line, for providers that do not support discovery or for custom model IDs.",
-            "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
-          },
-          "description": "Configure a provider connection and the language model profiles it contributes to this workspace.",
-          "sections": {
-            "advanced_options": {
-              "data": {
-                "provider_headers": "Provider HTTP headers"
-              },
-              "data_description": {
-                "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
-              },
-              "name": "Advanced options"
-            },
-            "model_selection": {
-              "data": {
-                "default_model_profile_id": "Default language model",
-                "enabled_models": "Enabled discovered models",
-                "manual_models": "Manual models"
-              },
-              "data_description": {
-                "default_model_profile_id": "Choose the default enabled model profile for this provider.",
-                "enabled_models": "Choose provider-discovered models to enable for this workspace.",
-                "manual_models": "Optional additional model names, one per line."
-              },
-              "name": "Model selection"
-            }
-          },
-          "title": "Configure provider"
-        },
-        "reconfigure_menu": {
-          "description": "Choose which part of this workspace provider to manage.",
-          "menu_options": {
-            "customize_model_profile": "Customize model profile",
-            "edit_connection": "Edit connection",
-            "enable_models": "Enable models",
-            "rediscover_models": "Rediscover models",
-            "remove_model_profile": "Remove model profile"
-          },
-          "title": "Manage provider"
-        },
-        "pick_model_profile": {
-          "data": {
-            "model_profile_id": "Model profile"
-          },
-          "description": "Choose a provider-owned model profile.",
-          "title": "Select model profile"
-        },
-        "edit_model_profile": {
-          "data": {
-            "enabled": "Enabled",
-            "model": "Provider model name",
-            "name": "Profile name",
-            "temperature": "Temperature",
-            "thinking": "Thinking (Reasoning) Mode"
-          },
-          "data_description": {
-            "enabled": "Disable this profile without deleting it from the provider.",
-            "model": "Model name as understood by the configured provider. Only manual profiles can change this value.",
-            "temperature": "Controls response randomness. Leave empty to use the provider or model default.",
-            "thinking": "Optional reasoning effort if supported by the model (levels map to the closest available value)."
-          },
-          "sections": {
-            "advanced_model_settings": {
-              "data": {
-                "chat_template_kwargs": "Chat template arguments",
-                "extra_body": "Extra body",
-                "frequency_penalty": "Frequency penalty",
-                "max_iterations": "Max iterations",
-                "max_tokens": "Max tokens",
-                "parallel_tool_calls": "Parallel tool calls",
-                "presence_penalty": "Presence penalty",
-                "seed": "Seed",
-                "timeout": "Timeout",
-                "top_p": "Top P"
-              },
-              "data_description": {
-                "chat_template_kwargs": "Optional chat template keyword arguments rendered from Home Assistant templates and sent as extra_body.chat_template_kwargs.",
-                "extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated field.",
-                "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
-                "max_iterations": "Maximum Pydantic AI agent request iterations for one run. Must be a positive integer. Leave empty to use the conversation or AI task default.",
-                "max_tokens": "Maximum tokens the model may generate per response. Must be a positive integer.",
-                "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
-                "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
-                "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
-                "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
-                "top_p": "Nucleus sampling value. Leave empty to use the provider default."
-              },
-              "name": "Advanced model settings"
-            }
-          },
-          "title": "Edit model profile"
-        }
-      }
-    },
     "mcp_server": {
       "abort": {
         "already_configured": "This MCP server URL is already configured.",
@@ -559,6 +404,7 @@
         "permission_denied": "{error_message}",
         "positive_number": "Enter a number greater than zero.",
         "provider_error": "{error_message}",
+        "provider_extra_body_unsupported": "{error_message}",
         "rate_limited": "{error_message}",
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
@@ -588,7 +434,6 @@
             "advanced_model_settings": {
               "data": {
                 "chat_template_kwargs": "Chat template arguments",
-                "extra_body": "Extra body",
                 "frequency_penalty": "Frequency penalty",
                 "max_iterations": "Max iterations",
                 "max_tokens": "Max tokens",
@@ -600,7 +445,6 @@
               },
               "data_description": {
                 "chat_template_kwargs": "Optional chat template keyword arguments rendered from Home Assistant templates and sent as extra_body.chat_template_kwargs.",
-                "extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated field.",
                 "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
                 "max_iterations": "Maximum Pydantic AI agent request iterations for one run. Must be a positive integer. Leave empty to use the conversation or AI task default.",
                 "max_tokens": "Maximum tokens the model may generate per response. Must be a positive integer.",
@@ -614,6 +458,148 @@
             }
           },
           "title": "Configure language model profile"
+        }
+      }
+    },
+    "provider": {
+      "abort": {
+        "already_configured": "This provider is already configured in the workspace.",
+        "entry_not_loaded": "The workspace is not loaded.",
+        "reconfigure_successful": "Provider configuration updated."
+      },
+      "entry_type": "Provider",
+      "error": {
+        "cannot_connect": "{error_message}",
+        "chat_template_kwargs_conflict": "Use the dedicated Chat template arguments field instead of setting chat_template_kwargs in Extra body.",
+        "duplicate_key": "Enter each key only once.",
+        "invalid_auth": "{error_message}",
+        "invalid_base_url_endpoint": "{error_message}",
+        "invalid_chat_template": "Enter a valid Home Assistant template.",
+        "invalid_chat_template_key": "Enter a non-empty key for each chat template argument.",
+        "invalid_chat_template_kwargs": "Enter chat template arguments as key/template rows.",
+        "invalid_integer": "Enter an integer value in this field.",
+        "invalid_json": "Enter valid JSON.",
+        "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",
+        "invalid_model": "{error_message}",
+        "invalid_number": "Enter a valid number in this field.",
+        "invalid_provider_config": "{error_message}",
+        "invalid_provider_headers": "{error_message}",
+        "model_does_not_support_streaming": "{error_message}",
+        "model_list_unavailable": "The provider model list could not be loaded. Enter custom model names or try again.",
+        "permission_denied": "{error_message}",
+        "positive_number": "Enter a number greater than zero.",
+        "provider_error": "{error_message}",
+        "rate_limited": "{error_message}",
+        "timeout": "{error_message}",
+        "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
+      },
+      "initiate_flow": {
+        "reconfigure": "Manage provider",
+        "user": "Add provider"
+      },
+      "progress": {
+        "probe_model": "Validating language model",
+        "probe_models": "Validating provider and models"
+      },
+      "step": {
+        "edit_model_profile": {
+          "data": {
+            "enabled": "Enabled",
+            "model": "Provider model name",
+            "name": "Profile name",
+            "temperature": "Temperature",
+            "thinking": "Thinking (Reasoning) Mode"
+          },
+          "data_description": {
+            "enabled": "Disable this profile without deleting it from the provider.",
+            "model": "Model name as understood by the configured provider. Only manual profiles can change this value.",
+            "temperature": "Controls response randomness. Leave empty to use the provider or model default.",
+            "thinking": "Optional reasoning effort if supported by the model (levels map to the closest available value)."
+          },
+          "sections": {
+            "advanced_model_settings": {
+              "data": {
+                "chat_template_kwargs": "Chat template arguments",
+                "frequency_penalty": "Frequency penalty",
+                "max_iterations": "Max iterations",
+                "max_tokens": "Max tokens",
+                "parallel_tool_calls": "Parallel tool calls",
+                "presence_penalty": "Presence penalty",
+                "seed": "Seed",
+                "timeout": "Timeout",
+                "top_p": "Top P"
+              },
+              "data_description": {
+                "chat_template_kwargs": "Optional chat template keyword arguments rendered from Home Assistant templates and sent as extra_body.chat_template_kwargs.",
+                "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
+                "max_iterations": "Maximum Pydantic AI agent request iterations for one run. Must be a positive integer. Leave empty to use the conversation or AI task default.",
+                "max_tokens": "Maximum tokens the model may generate per response. Must be a positive integer.",
+                "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
+                "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
+                "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
+                "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
+                "top_p": "Nucleus sampling value. Leave empty to use the provider default."
+              },
+              "name": "Advanced model settings"
+            }
+          },
+          "title": "Edit model profile"
+        },
+        "init": {
+          "data": {
+            "api_key": "API key",
+            "base_url": "Base URL",
+            "custom_model_names": "Custom model names",
+            "name": "Provider name",
+            "provider_extra_body": "Extra body",
+            "provider_headers": "Provider HTTP headers",
+            "provider_mode": "Provider mode"
+          },
+          "data_description": {
+            "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
+            "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is skipped.",
+            "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
+            "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+          },
+          "description": "Configure a provider connection and the language model profiles it contributes to this workspace.",
+          "sections": {
+            "advanced_options": {
+              "data": {
+                "provider_extra_body": "Extra body",
+                "provider_headers": "Provider HTTP headers"
+              },
+              "data_description": {
+                "provider_extra_body": "Provider-specific request body fields sent with every model request for this provider.",
+                "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+              },
+              "name": "Advanced options"
+            },
+            "customize_model_list": {
+              "data": {
+                "custom_model_names": "Custom model names"
+              },
+              "data_description": {
+                "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is skipped. Profiles are created disabled until enabled from Customize model profile."
+              },
+              "name": "Customize model list"
+            }
+          },
+          "title": "Configure provider"
+        },
+        "pick_model_profile": {
+          "data": {
+            "model_profile_id": "Model profile"
+          },
+          "description": "Choose a provider-owned model profile.",
+          "title": "Select model profile"
+        },
+        "reconfigure_menu": {
+          "description": "Choose which part of this workspace provider to manage.",
+          "menu_options": {
+            "customize_model_profile": "Customize model profile",
+            "edit_connection": "Edit connection"
+          },
+          "title": "Manage provider"
         }
       }
     }

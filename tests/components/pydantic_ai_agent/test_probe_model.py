@@ -23,6 +23,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
     CONF_MAX_ITERATIONS,
+    CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_MODE,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
@@ -390,10 +391,9 @@ async def test_probe_model_renders_chat_template_kwargs(hass: HomeAssistant) -> 
     ):
         await async_probe_model(
             hass,
-            _provider_data(),
+            _provider_data() | {CONF_PROVIDER_EXTRA_BODY: {"service_tier": "flex"}},
             "gpt-test",
             {
-                "extra_body": {"service_tier": "flex"},
                 CONF_CHAT_TEMPLATE_KWARGS: [
                     {
                         CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
