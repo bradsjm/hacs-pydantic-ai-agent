@@ -296,7 +296,7 @@ References checked before implementation:
 - [x] Add provider wizard package skeleton, compact dataclasses, mapping,
   filtering, normalization, and unit tests.
 - [x] Add lazy catalog fetch/cache lifecycle and unit tests.
-- [ ] Add wizard schemas, selector builders, provider-data builders, and tests.
+- [x] Add wizard schemas, selector builders, provider-data builders, and tests.
 - [ ] Integrate guided/manual setup entry point into `ProviderSubentryFlowHandler`
   while preserving reconfigure behavior.
 - [ ] Complete guided end-to-end provider creation with enabled selected profiles.
