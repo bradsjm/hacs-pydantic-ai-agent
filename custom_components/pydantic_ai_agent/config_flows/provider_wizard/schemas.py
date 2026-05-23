@@ -10,6 +10,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
+    TextSelectorType,
 )
 
 from ...const import CONF_BASE_URL, CONF_PROVIDER_EXTRA_BODY, CONF_PROVIDER_HEADERS
@@ -86,7 +87,7 @@ def connection_schema(provider: CatalogProviderOption, options: dict[str, object
                 TextSelectorConfig()
             ),
             vol.Required(CONF_API_KEY, default=options.get(CONF_API_KEY, "")): TextSelector(
-                TextSelectorConfig()
+                TextSelectorConfig(type=TextSelectorType.PASSWORD)
             ),
             vol.Optional(
                 CONF_BASE_URL,

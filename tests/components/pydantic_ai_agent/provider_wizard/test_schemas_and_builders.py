@@ -2,7 +2,9 @@
 
 from typing import cast
 
+import voluptuous as vol
 from homeassistant.const import CONF_API_KEY, CONF_NAME
+from homeassistant.helpers.selector import TextSelector
 
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
     CONF_FAMILY,
@@ -19,6 +21,7 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard.flow impor
     selected_models_by_id,
 )
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.schemas import (
+    connection_schema,
     default_selected_model_ids,
     driver_options,
     filters_from_user_input,
@@ -83,6 +86,15 @@ def test_driver_options_use_user_facing_labels() -> None:
         {"label": "Chat Completions", "value": PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS},
         {"label": "Responses", "value": PROVIDER_OPENAI_COMPATIBLE_RESPONSES},
     ]
+
+
+def test_connection_schema_uses_password_api_key_selector() -> None:
+    """Test guided setup does not expose API keys as plain text."""
+    schema = connection_schema(_provider("openai"), {})
+    selector = _selector_for_schema_key(schema, CONF_API_KEY)
+
+    assert isinstance(selector, TextSelector)
+    assert selector.config["type"] == "password"
 
 
 def test_model_options_include_capability_badges() -> None:
@@ -210,6 +222,14 @@ def _provider(
         model_count=1,
         families=("gpt",),
     )
+
+
+def _selector_for_schema_key(schema: vol.Schema, key: str) -> object:
+    """Return a selector for a voluptuous schema key."""
+    for schema_key, selector in schema.schema.items():
+        if getattr(schema_key, "schema", None) == key:
+            return selector
+    raise AssertionError(f"Schema key {key} not found")
 
 
 def _model(
