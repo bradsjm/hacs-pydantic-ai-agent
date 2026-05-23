@@ -205,8 +205,8 @@ def test_normalize_catalog_uses_openai_compatible_base_url() -> None:
     assert catalog.providers["deepseek"].default_base_url == "https://api.deepseek.com"
 
 
-def test_normalize_catalog_discards_endpoint_shaped_api_url() -> None:
-    """Test catalog endpoint URLs are not used as provider base URL defaults."""
+def test_normalize_catalog_strips_endpoint_shaped_api_url() -> None:
+    """Test catalog endpoint URLs become provider base URL defaults."""
     catalog = normalize_catalog(
         {
             "bailing": {
@@ -228,7 +228,7 @@ def test_normalize_catalog_discards_endpoint_shaped_api_url() -> None:
         }
     )
 
-    assert catalog.providers["bailing"].default_base_url is None
+    assert catalog.providers["bailing"].default_base_url == "https://api.tbox.cn/api/llm/v1"
 
 
 def _model(

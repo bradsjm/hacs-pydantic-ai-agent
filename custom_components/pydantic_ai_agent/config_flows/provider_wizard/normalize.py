@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from urllib.parse import urlparse
+from urllib.parse import urlunparse
 
 from .mapping import supported_drivers_for_provider
 from .types import (
@@ -119,24 +120,24 @@ def _http_url(value: object) -> str | None:
     value = _string(value)
     if value is None or not value.startswith(("https://", "http://")):
         return None
-    if _endpoint_suffix(value) is not None:
-        return None
-    return value.rstrip("/")
+    return _strip_endpoint_suffix(value).rstrip("/")
 
 
-def _endpoint_suffix(value: str) -> str | None:
-    """Return a forbidden endpoint suffix if the URL points at one."""
+def _strip_endpoint_suffix(value: str) -> str:
+    """Return a base URL with known endpoint suffixes removed."""
     parsed = urlparse(value)
     path = parsed.path.rstrip("/").lower()
     for ending in _ENDPOINT_PATH_ENDINGS:
         if path.endswith(ending):
-            return ending.lstrip(":")
-    segments = tuple(segment for segment in parsed.path.split("/") if segment)
+            return urlunparse(parsed._replace(path=parsed.path[: -len(ending)]))
+    segments = tuple(segment for segment in parsed.path.rstrip("/").split("/") if segment)
     lowered = tuple(segment.lower() for segment in segments)
     for suffix in _ENDPOINT_SUFFIXES:
         if len(lowered) >= len(suffix) and lowered[-len(suffix) :] == suffix:
-            return "/".join(suffix)
-    return None
+            base_segments = segments[: -len(suffix)]
+            base_path = f"/{'/'.join(base_segments)}" if base_segments else ""
+            return urlunparse(parsed._replace(path=base_path))
+    return value
 
 
 def _optional_bool(value: object) -> bool | None:
