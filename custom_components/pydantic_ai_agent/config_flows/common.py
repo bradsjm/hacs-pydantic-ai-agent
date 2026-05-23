@@ -892,7 +892,6 @@ def _model_profile_edit_schema(
                 SelectSelectorConfig(
                     options=[str(profile.get(CONF_MODEL, ""))],
                     mode=SelectSelectorMode.DROPDOWN,
-                    translation_key=CONF_MODEL,
                 )
             )
         )
@@ -1356,7 +1355,6 @@ def _model_profile_schema(
             SelectSelectorConfig(
                 options=model_options,
                 mode=SelectSelectorMode.DROPDOWN,
-                translation_key=CONF_MODEL,
             )
         )
     else:

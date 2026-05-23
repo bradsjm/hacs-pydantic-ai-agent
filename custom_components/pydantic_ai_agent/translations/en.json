@@ -1,7 +1,7 @@
 {
   "config": {
     "abort": {
-      "already_configured": "This workspace resource is already configured.",
+      "already_configured": "This workspace is already configured.",
       "cannot_connect": "{error_message}",
       "entry_not_loaded": "The workspace is not loaded.",
       "invalid_auth": "{error_message}",
@@ -11,7 +11,6 @@
       "permission_denied": "{error_message}",
       "provider_error": "{error_message}",
       "rate_limited": "{error_message}",
-      "reauth_successful": "Pydantic AI Agent was reauthenticated successfully.",
       "reconfigure_successful": "Pydantic AI Agent workspace was reconfigured successfully.",
       "timeout": "{error_message}"
     },
@@ -30,36 +29,7 @@
       "timeout": "{error_message}",
       "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
     },
-    "progress": {
-      "probe_models": "Validating configured models"
-    },
     "step": {
-      "reauth_confirm": {
-        "data": {
-          "logfire_include_content": "Include prompt and response content in Logfire",
-          "logfire_token": "Logfire token",
-          "name": "Workspace name"
-        },
-        "data_description": {
-          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
-          "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this workspace."
-        },
-        "description": "Update workspace settings.",
-        "sections": {
-          "logfire": {
-            "data": {
-              "logfire_include_content": "Include prompt and response content in Logfire",
-              "logfire_token": "Logfire token"
-            },
-            "data_description": {
-              "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
-              "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this workspace."
-            },
-            "name": "Logfire tracing"
-          }
-        },
-        "title": "Reconfigure Pydantic AI Agent workspace"
-      },
       "reconfigure": {
         "data": {
           "logfire_include_content": "Include prompt and response content in Logfire",
@@ -125,6 +95,7 @@
       "error": {
         "cannot_connect": "{error_message}",
         "duplicate_fallback_model": "Select each fallback language model profile only once.",
+        "invalid_skills_folder": "{error_message}",
         "invalid_auth": "{error_message}",
         "invalid_base_url": "{error_message}",
         "invalid_model": "{error_message}",
@@ -142,7 +113,7 @@
         "timeout": "{error_message}",
         "todo_list_not_found": "Selected todo workspace list was not found.",
         "todo_list_unsupported": "Selected todo workspace list must support creating, updating, deleting, and item descriptions.",
-        "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details.",
+        "unknown": "Unexpected error while validating the AI task. Check Home Assistant logs for details.",
         "unsupported_output_mode": "{error_message}"
       },
       "initiate_flow": {
@@ -177,8 +148,8 @@
             "output_mode": "Tool output is the default and works with providers that support tool calls. Native uses the provider's JSON schema support. Prompted asks for JSON in the prompt and validates the result.",
             "skills": "Optional local skills this AI task may load from its configured skills folder.",
             "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
-            "todo_list_entity_id": "Optional dedicated todo list for model planning. When set, this list is cleared before every AI Task run and the model can only manage items in this list.",
-            "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs."
+            "todo_list_entity_id": "Optional dedicated todo list for model planning. When set, this list is cleared before every AI task run and the model can only manage items in this list.",
+            "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
           },
           "description": "Name this AI task and choose its language model profile for Home Assistant data generation.",
           "sections": {
@@ -190,8 +161,8 @@
               },
               "data_description": {
                 "mcp_server_ids": "Optional MCP servers this AI task may use. Only enabled tools will be made available.",
-                "todo_list_entity_id": "Optional dedicated todo list for model planning. When set, this list is cleared before every AI Task run and the model can only manage items in this list.",
-                "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs."
+                "todo_list_entity_id": "Optional dedicated todo list for model planning. When set, this list is cleared before every AI task run and the model can only manage items in this list.",
+                "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
               },
               "name": "External tools and data"
             },
@@ -236,7 +207,7 @@
     "conversation": {
       "abort": {
         "entry_not_loaded": "The workspace is not loaded.",
-        "no_models_configured": "Create a provider and configure a model before adding an AI conversation agent.",
+        "no_models_configured": "Create a provider and configure a model before adding a conversation agent.",
         "reconfigure_successful": "Conversation agent configuration updated."
       },
       "entry_type": "Conversation agent",
@@ -252,6 +223,7 @@
         "invalid_model": "{error_message}",
         "invalid_number": "Enter a valid number in this field.",
         "invalid_provider_config": "{error_message}",
+        "invalid_skills_folder": "{error_message}",
         "mcp_server_not_found": "Selected MCP server was not found.",
         "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
         "model_does_not_support_streaming": "{error_message}",
@@ -264,7 +236,7 @@
         "rate_limited": "{error_message}",
         "skills_refreshed": "Skill options were refreshed. Review selected skills and submit again.",
         "timeout": "{error_message}",
-        "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
+        "unknown": "Unexpected error while validating the conversation agent. Check Home Assistant logs for details."
       },
       "initiate_flow": {
         "reconfigure": "Reconfigure conversation agent",
@@ -291,7 +263,7 @@
             "fallback_model_refs": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure.",
             "llm_hass_api": "Select which tools the model can use to interact with your devices and entities.",
             "mcp_server_ids": "Optional MCP servers this conversation agent may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
-            "prompt": "Instruct how the LLM should respond. This can be a template.",
+            "prompt": "System instructions for the language model. Supports Home Assistant templates.",
             "skills": "Optional local skills this conversation agent may load from its configured skills folder.",
             "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
             "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
@@ -417,95 +389,13 @@
         }
       }
     },
-    "model": {
-      "abort": {
-        "entry_not_loaded": "The provider connection is not loaded.",
-        "reconfigure_successful": "Language model profile updated."
-      },
-      "entry_type": "Language model profile",
-      "error": {
-        "cannot_connect": "{error_message}",
-        "chat_template_kwargs_conflict": "Use the dedicated Chat template arguments field instead of setting chat_template_kwargs in Extra body.",
-        "duplicate_key": "Enter each key only once.",
-        "invalid_auth": "{error_message}",
-        "invalid_chat_template": "Enter a valid Home Assistant template.",
-        "invalid_chat_template_key": "Enter a non-empty key for each chat template argument.",
-        "invalid_chat_template_kwargs": "Enter chat template arguments as key/template rows.",
-        "invalid_integer": "Enter an integer value in this field.",
-        "invalid_json": "Enter valid JSON.",
-        "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",
-        "invalid_model": "{error_message}",
-        "invalid_number": "Enter a valid number in this field.",
-        "invalid_provider_config": "{error_message}",
-        "model_does_not_support_streaming": "{error_message}",
-        "model_list_unavailable": "The provider model list could not be loaded. Enter the model name manually.",
-        "permission_denied": "{error_message}",
-        "positive_number": "Enter a number greater than zero.",
-        "provider_error": "{error_message}",
-        "provider_extra_body_unsupported": "{error_message}",
-        "rate_limited": "{error_message}",
-        "timeout": "{error_message}",
-        "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
-      },
-      "initiate_flow": {
-        "reconfigure": "Reconfigure language model profile",
-        "user": "Add language model profile"
-      },
-      "progress": {
-        "probe_model": "Validating language model"
-      },
-      "step": {
-        "init": {
-          "data": {
-            "model": "Provider model name",
-            "name": "Profile name",
-            "temperature": "Temperature",
-            "thinking": "Thinking (Reasoning) Mode"
-          },
-          "data_description": {
-            "model": "Model name as understood by the configured OpenAI-compatible provider.",
-            "temperature": "Controls response randomness. Leave empty to use the provider or model default.",
-            "thinking": "Optional reasoning effort if supported by the model (levels map to the closest available value)."
-          },
-          "description": "Create a reusable language model profile. Conversation agents and AI tasks select one primary profile and optional fallbacks.",
-          "sections": {
-            "advanced_model_settings": {
-              "data": {
-                "chat_template_kwargs": "Chat template arguments",
-                "frequency_penalty": "Frequency penalty",
-                "max_iterations": "Max iterations",
-                "max_tokens": "Max tokens",
-                "parallel_tool_calls": "Parallel tool calls",
-                "presence_penalty": "Presence penalty",
-                "seed": "Seed",
-                "timeout": "Timeout",
-                "top_p": "Top P"
-              },
-              "data_description": {
-                "chat_template_kwargs": "Optional chat template keyword arguments rendered from Home Assistant templates and sent as extra_body.chat_template_kwargs.",
-                "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
-                "max_iterations": "Maximum Pydantic AI agent request iterations for one run. Must be a positive integer. Leave empty to use the conversation or AI task default.",
-                "max_tokens": "Maximum tokens the model may generate per response. Must be a positive integer.",
-                "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
-                "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
-                "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
-                "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
-                "top_p": "Nucleus sampling value. Leave empty to use the provider default."
-              },
-              "name": "Advanced model settings"
-            }
-          },
-          "title": "Configure language model profile"
-        }
-      }
-    },
     "provider": {
       "abort": {
         "already_configured": "This provider is already configured in the workspace.",
         "entry_not_loaded": "The workspace is not loaded.",
         "reconfigure_successful": "Provider configuration updated."
       },
-      "entry_type": "Langauge Model Provider",
+      "entry_type": "Language model provider",
       "error": {
         "cannot_connect": "{error_message}",
         "chat_template_kwargs_conflict": "Use the dedicated Chat template arguments field instead of setting chat_template_kwargs in Extra body.",
@@ -527,12 +417,13 @@
         "permission_denied": "{error_message}",
         "positive_number": "Enter a number greater than zero.",
         "provider_error": "{error_message}",
+        "provider_extra_body_unsupported": "{error_message}",
         "rate_limited": "{error_message}",
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
       },
       "initiate_flow": {
-        "reconfigure": "Manage provider",
+        "reconfigure": "Reconfigure provider",
         "user": "Add provider"
       },
       "step": {
@@ -548,11 +439,11 @@
           },
           "data_description": {
             "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
-            "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is skipped.",
+            "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is disabled.",
             "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
             "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
           },
-          "description": "Update the provider connection details.",
+          "description": "Change provider mode, API key, base URL, or custom model list.",
           "sections": {
             "advanced_options": {
               "data": {
@@ -659,20 +550,20 @@
               "name": "Override provider model list"
             }
           },
-          "title": "Configure languge model provider"
+          "title": "Configure language model provider"
         },
         "pick_model_profile": {
           "data": {
-            "model_profile_id": "Language Model"
+            "model_profile_id": "Model profile"
           },
-          "description": "Select model profile to enable or customize",
+          "description": "Select a model profile to enable or customize.",
           "title": "Select language model"
         },
         "reconfigure_menu": {
           "description": "Configure workspace provider then enable and configure models (models default to disabled).",
           "menu_options": {
-            "customize_model_profile": "Configure language model settings",
-            "edit_connection": "Edit model provider connection"
+            "customize_model_profile": "Edit model profiles",
+            "edit_connection": "Edit provider connection"
           },
           "title": "Configure models and provider"
         }
@@ -685,7 +576,7 @@
       "title": "Pydantic AI Agent Logfire token conflict"
     },
     "model_validation_failed": {
-      "description": "Provider connection {entry_title} could not validate model {model}: {error_message} Reason: {reason}. Reconfigure the affected conversation agent, AI task, or provider credentials, then reload the integration.",
+      "description": "Provider connection {entry_title}: model {model} failed validation - {error_message}: {reason}. Check affected agents, tasks, or credentials, then reload the integration.",
       "title": "Pydantic AI Agent model validation failed"
     }
   },
