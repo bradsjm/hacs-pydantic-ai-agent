@@ -4,9 +4,8 @@
 
 This document is the implementation reference and running checklist for phase 1
 of the provider and model setup wizard for `custom_components/pydantic_ai_agent`.
-Current source, tests, manifests, and translations remain authoritative. Planned
-behavior described here must be verified against current Home Assistant and
-Pydantic AI APIs before coding.
+Phase 1 implementation is complete in this branch. Current source, tests,
+manifests, and translations remain authoritative for future changes.
 
 ## Phase 1 Purpose
 
@@ -302,8 +301,8 @@ References checked before implementation:
 - [x] Complete guided end-to-end provider creation with enabled selected profiles.
 - [x] Add translations, diagnostics coverage, and smoke tests for rendered flow
   steps and progress actions.
-- [ ] Run focused tests after each section and `scripts/check` at completion.
-- [ ] Commit each successful tested section before moving to the next one.
+- [x] Run focused tests after each section and `scripts/check` at completion.
+- [x] Commit each successful tested section before moving to the next one.
 
 ## Testing Plan
 
