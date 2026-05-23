@@ -59,6 +59,34 @@ from .common import (
     provider_subentries,
     vol,
 )
+from .provider_wizard.catalog_cache import catalog_manager
+from .provider_wizard.const import (
+    CONF_DRIVER,
+    CONF_PROVIDER_ID,
+    CONF_SELECTED_MODEL_IDS,
+    CONF_SETUP_METHOD,
+    CUSTOM_PROVIDER_ID,
+    SETUP_METHOD_CUSTOM,
+    SETUP_METHOD_GUIDED,
+)
+from .provider_wizard.filters import ModelFilterOptions, filtered_models
+from .provider_wizard.flow import build_provider_data, selected_models_by_id
+from .provider_wizard.models_dev import CatalogLoadError
+from .provider_wizard.schemas import (
+    connection_schema,
+    driver_selection_schema,
+    filters_from_user_input,
+    model_filter_schema,
+    model_selection_schema,
+    needs_model_filter_step,
+    provider_selection_schema,
+    setup_method_schema,
+)
+from .provider_wizard.types import (
+    CatalogModelOption,
+    CatalogProviderOption,
+    CompactCatalog,
+)
 
 class ProviderSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing workspace-owned provider subentries."""
@@ -76,6 +104,15 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
     _pending_profile_error: tuple[str, dict[str, str]] | None
     _profile_flow_data: dict[str, Any]
     _profile_refresh_error: str | None
+    _wizard_catalog: CompactCatalog | None
+    _wizard_catalog_error: str | None
+    _wizard_connection_data: dict[str, Any]
+    _wizard_connection_options: dict[str, Any]
+    _wizard_driver: str | None
+    _wizard_filters: ModelFilterOptions
+    _wizard_models: tuple[CatalogModelOption, ...]
+    _wizard_provider: CatalogProviderOption | None
+    _wizard_selected_models: tuple[CatalogModelOption, ...]
 
     @property
     def _is_new(self) -> bool:
@@ -95,7 +132,16 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         self._selected_profile_id = None
         self._profile_flow_data = {}
         self._profile_refresh_error = None
-        return await self.async_step_init(user_input)
+        self._wizard_catalog = None
+        self._wizard_catalog_error = None
+        self._wizard_connection_data = {}
+        self._wizard_connection_options = {}
+        self._wizard_driver = None
+        self._wizard_filters = ModelFilterOptions()
+        self._wizard_models = ()
+        self._wizard_provider = None
+        self._wizard_selected_models = ()
+        return await self.async_step_setup_method(user_input)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -167,6 +213,241 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             errors=dict(errors or {}),
             description_placeholders=description_placeholders,
         )
+
+    async def async_step_setup_method(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Choose guided or custom provider setup."""
+        entry = self._get_entry()
+        if entry.state != ConfigEntryState.LOADED:
+            return self.async_abort(reason="entry_not_loaded")
+        if user_input is None:
+            return self.async_show_form(
+                step_id="setup_method",
+                data_schema=setup_method_schema(),
+                errors={"base": self._wizard_catalog_error}
+                if self._wizard_catalog_error
+                else {},
+            )
+        setup_method = user_input.get(CONF_SETUP_METHOD)
+        if setup_method == SETUP_METHOD_CUSTOM:
+            return await self.async_step_init()
+        if setup_method != SETUP_METHOD_GUIDED:
+            return self.async_show_form(
+                step_id="setup_method",
+                data_schema=setup_method_schema(),
+                errors={CONF_SETUP_METHOD: "invalid_provider_config"},
+            )
+        manager = catalog_manager(self.hass)
+        if catalog := manager.cached_catalog():
+            self._wizard_catalog = catalog
+            self._wizard_catalog_error = None
+            return await self.async_step_pick_provider()
+        task = manager.load_task()
+        return self.async_show_progress(
+            step_id="load_model_catalog_progress",
+            progress_action="load_model_catalog",
+            progress_task=task,
+        )
+
+    async def async_step_load_model_catalog_progress(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Finish provider catalog loading progress."""
+        del user_input
+        task = self.async_get_progress_task()
+        if task is not None and not task.done():
+            return self.async_show_progress(
+                step_id="load_model_catalog_progress",
+                progress_action="load_model_catalog",
+                progress_task=task,
+            )
+        self._wizard_catalog = None
+        self._wizard_catalog_error = None
+        if task is not None:
+            try:
+                self._wizard_catalog = task.result()
+            except CatalogLoadError:
+                self._wizard_catalog_error = "model_catalog_unavailable"
+            except Exception:
+                _LOGGER.exception("Unexpected exception loading provider model catalog")
+                self._wizard_catalog_error = "model_catalog_unavailable"
+        return self.async_show_progress_done(next_step_id="load_model_catalog_finish")
+
+    async def async_step_load_model_catalog_finish(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Continue after provider catalog loading."""
+        del user_input
+        if self._wizard_catalog_error is not None or self._wizard_catalog is None:
+            return await self.async_step_setup_method()
+        return await self.async_step_pick_provider()
+
+    async def async_step_pick_provider(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Choose a catalog provider by name."""
+        catalog = self._wizard_catalog
+        if catalog is None:
+            return await self.async_step_setup_method()
+        if user_input is None:
+            return self.async_show_form(
+                step_id="pick_provider", data_schema=provider_selection_schema(catalog)
+            )
+        provider_id = user_input.get(CONF_PROVIDER_ID)
+        if not isinstance(provider_id, str):
+            return self.async_show_form(
+                step_id="pick_provider",
+                data_schema=provider_selection_schema(catalog),
+                errors={CONF_PROVIDER_ID: "invalid_provider_config"},
+            )
+        if provider_id == CUSTOM_PROVIDER_ID:
+            return await self.async_step_init()
+        provider = catalog.providers.get(provider_id)
+        if provider is None:
+            return self.async_show_form(
+                step_id="pick_provider",
+                data_schema=provider_selection_schema(catalog),
+                errors={CONF_PROVIDER_ID: "invalid_provider_config"},
+            )
+        self._wizard_provider = provider
+        self._wizard_models = catalog.models_for_provider(provider.id)
+        self._wizard_filters = ModelFilterOptions()
+        if not provider.supported_drivers:
+            return self.async_show_form(
+                step_id="pick_provider",
+                data_schema=provider_selection_schema(catalog),
+                errors={CONF_PROVIDER_ID: "invalid_provider_config"},
+            )
+        if len(provider.supported_drivers) > 1:
+            return await self.async_step_pick_driver()
+        self._wizard_driver = next(iter(provider.supported_drivers))
+        return await self.async_step_wizard_connection()
+
+    async def async_step_pick_driver(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Choose an API mode when the provider supports more than one."""
+        provider = self._wizard_provider
+        if provider is None:
+            return await self.async_step_pick_provider()
+        if user_input is None:
+            return self.async_show_form(
+                step_id="pick_driver", data_schema=driver_selection_schema(provider)
+            )
+        driver = user_input.get(CONF_DRIVER)
+        if driver not in provider.supported_drivers:
+            return self.async_show_form(
+                step_id="pick_driver",
+                data_schema=driver_selection_schema(provider),
+                errors={CONF_DRIVER: "invalid_provider_config"},
+            )
+        self._wizard_driver = str(driver)
+        return await self.async_step_wizard_connection()
+
+    async def async_step_wizard_connection(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Collect guided provider connection details."""
+        provider = self._wizard_provider
+        driver = self._wizard_driver
+        if provider is None or driver is None:
+            return await self.async_step_pick_provider()
+        if user_input is None:
+            return self.async_show_form(
+                step_id="wizard_connection",
+                data_schema=connection_schema(provider, self._wizard_connection_options),
+            )
+        data_input = dict(user_input)
+        data_input[CONF_PROVIDER_MODE] = driver
+        try:
+            data = _normalise_provider_data(data_input)
+            _validate_provider_data(self.hass, data)
+        except ProviderValidationError as err:
+            self._wizard_connection_options = data_input
+            return self.async_show_form(
+                step_id="wizard_connection",
+                data_schema=connection_schema(provider, data_input),
+                errors={"base": err.reason},
+                description_placeholders=_provider_validation_placeholders(err),
+            )
+        if self._provider_already_configured(data):
+            return self.async_abort(reason="already_configured")
+        self._wizard_connection_data = data
+        self._wizard_connection_options = dict(data_input)
+        return await self._async_next_model_step()
+
+    async def _async_next_model_step(self) -> SubentryFlowResult:
+        """Advance to filter, model selection, or finish for guided setup."""
+        default_models = filtered_models(self._wizard_models, self._wizard_filters)
+        if not default_models:
+            return await self.async_step_model_filters()
+        if needs_model_filter_step(self._wizard_models):
+            return await self.async_step_model_filters()
+        if len(default_models) == 1:
+            self._wizard_selected_models = default_models
+            return self._finish_guided_provider()
+        return await self.async_step_pick_models()
+
+    async def async_step_model_filters(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Filter a large or empty default catalog model list."""
+        provider = self._wizard_provider
+        if provider is None:
+            return await self.async_step_pick_provider()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            self._wizard_filters = filters_from_user_input(user_input)
+            if not filtered_models(self._wizard_models, self._wizard_filters):
+                errors["base"] = "no_models_available"
+            else:
+                return await self.async_step_pick_models()
+        return self.async_show_form(
+            step_id="model_filters",
+            data_schema=model_filter_schema(provider, self._wizard_filters),
+            errors=errors,
+        )
+
+    async def async_step_pick_models(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Select catalog models to enable."""
+        models = filtered_models(self._wizard_models, self._wizard_filters)
+        if user_input is None:
+            return self.async_show_form(
+                step_id="pick_models", data_schema=model_selection_schema(models)
+            )
+        selected_models = selected_models_by_id(
+            models, user_input.get(CONF_SELECTED_MODEL_IDS)
+        )
+        if not selected_models:
+            return self.async_show_form(
+                step_id="pick_models",
+                data_schema=model_selection_schema(models),
+                errors={CONF_SELECTED_MODEL_IDS: "model_required"},
+            )
+        self._wizard_selected_models = selected_models
+        return self._finish_guided_provider()
+
+    def _finish_guided_provider(self) -> SubentryFlowResult:
+        """Create a provider subentry from guided wizard selections."""
+        provider = self._wizard_provider
+        if provider is None:
+            return self.async_abort(reason="invalid_provider_config")
+        headers = self._wizard_connection_data.get(CONF_PROVIDER_HEADERS)
+        extra_body = self._wizard_connection_data.get(CONF_PROVIDER_EXTRA_BODY)
+        data = build_provider_data(
+            provider,
+            provider_mode=str(self._wizard_connection_data[CONF_PROVIDER_MODE]),
+            api_key=str(self._wizard_connection_data[CONF_API_KEY]),
+            selected_models=self._wizard_selected_models,
+            provider_name=str(self._wizard_connection_data[CONF_NAME]),
+            base_url=self._wizard_connection_data.get(CONF_BASE_URL),
+            provider_headers=dict(headers) if isinstance(headers, Mapping) else None,
+            provider_extra_body=dict(extra_body) if isinstance(extra_body, Mapping) else None,
+        )
+        return self.async_create_entry(title=str(data[CONF_NAME]), data=data)
 
     async def async_step_reconfigure_menu(
         self, user_input: dict[str, Any] | None = None

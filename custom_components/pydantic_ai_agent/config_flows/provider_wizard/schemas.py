@@ -1,14 +1,18 @@
 """Home Assistant schemas for the provider setup wizard."""
 
 import voluptuous as vol
+from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.helpers.selector import (
     BooleanSelector,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
 )
 
+from ...const import CONF_BASE_URL, CONF_PROVIDER_EXTRA_BODY, CONF_PROVIDER_HEADERS
 from .const import (
     CONF_DRIVER,
     CONF_FAMILY,
@@ -70,6 +74,32 @@ def driver_selection_schema(provider: CatalogProviderOption) -> vol.Schema:
                     mode=SelectSelectorMode.LIST,
                 )
             )
+        }
+    )
+
+
+def connection_schema(provider: CatalogProviderOption, options: dict[str, object]) -> vol.Schema:
+    """Return guided provider connection details schema."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_NAME, default=options.get(CONF_NAME, provider.name)): TextSelector(
+                TextSelectorConfig()
+            ),
+            vol.Required(CONF_API_KEY, default=options.get(CONF_API_KEY, "")): TextSelector(
+                TextSelectorConfig()
+            ),
+            vol.Optional(
+                CONF_BASE_URL,
+                default=options.get(CONF_BASE_URL, provider.default_base_url or ""),
+            ): TextSelector(TextSelectorConfig()),
+            vol.Optional(
+                CONF_PROVIDER_HEADERS,
+                default=options.get(CONF_PROVIDER_HEADERS, ""),
+            ): TextSelector(TextSelectorConfig(multiline=True)),
+            vol.Optional(
+                CONF_PROVIDER_EXTRA_BODY,
+                default=options.get(CONF_PROVIDER_EXTRA_BODY, ""),
+            ): TextSelector(TextSelectorConfig(multiline=True)),
         }
     )
 

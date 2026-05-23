@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent import (
@@ -40,6 +41,22 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_PROVIDER,
+)
+from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
+    CONF_DRIVER,
+    CONF_PROVIDER_ID,
+    CONF_SELECTED_MODEL_IDS,
+    CONF_SETUP_METHOD,
+    SETUP_METHOD_CUSTOM,
+    SETUP_METHOD_GUIDED,
+)
+from custom_components.pydantic_ai_agent.config_flows.provider_wizard.catalog_cache import (
+    catalog_manager,
+)
+from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types import (
+    CatalogModelOption,
+    CatalogProviderOption,
+    CompactCatalog,
 )
 
 _TRANSLATIONS_PATH = (
@@ -141,6 +158,13 @@ async def test_create_provider_subentry_with_disabled_custom_profile(
         context={"source": config_entries.SOURCE_USER},
     )
     assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "setup_method"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_CUSTOM}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -161,6 +185,99 @@ async def test_create_provider_subentry_with_disabled_custom_profile(
     assert profile[CONF_MODEL] == "gpt-4.1-mini"
     assert profile[CONF_ENABLED] is False
     assert provider_data[CONF_CUSTOM_MODEL_NAMES] == ["gpt-4.1-mini"]
+
+
+async def test_guided_provider_subentry_creates_enabled_profile(
+    hass: HomeAssistant,
+) -> None:
+    """Test guided provider creation stores selected profiles enabled."""
+    entry = await _loaded_workspace_entry(hass)
+    manager = catalog_manager(hass)
+    now = dt_util.utcnow()
+    manager.catalog = _wizard_catalog()
+    manager.loaded_at = now
+    manager.last_used_at = now
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "setup_method"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_GUIDED}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "pick_provider"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_PROVIDER_ID: "openai"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "pick_driver"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_DRIVER: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "wizard_connection"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_NAME: "OpenAI", CONF_API_KEY: "sk-test"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "pick_models"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini"]}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    provider_data = cast(dict[str, Any], result["data"])
+    assert provider_data[CONF_NAME] == "OpenAI"
+    assert provider_data[CONF_PROVIDER_MODE] == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS
+    assert CONF_BASE_URL not in provider_data
+    model_profiles = cast(dict[str, dict[str, Any]], provider_data[CONF_MODEL_PROFILES])
+    profile = next(iter(model_profiles.values()))
+    assert profile[CONF_NAME] == "GPT 4.1 Mini"
+    assert profile[CONF_MODEL] == "gpt-4.1-mini"
+    assert profile[CONF_ENABLED] is True
+
+
+async def test_guided_single_driver_single_model_skips_extra_steps(
+    hass: HomeAssistant,
+) -> None:
+    """Test guided setup skips driver and model steps when choices are singular."""
+    entry = await _loaded_workspace_entry(hass)
+    manager = catalog_manager(hass)
+    now = dt_util.utcnow()
+    manager.catalog = _wizard_catalog(single_anthropic=True)
+    manager.loaded_at = now
+    manager.last_used_at = now
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_GUIDED}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_PROVIDER_ID: "anthropic"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "wizard_connection"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_NAME: "Anthropic", CONF_API_KEY: "sk-ant"}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    provider_data = cast(dict[str, Any], result["data"])
+    assert provider_data[CONF_PROVIDER_MODE] == "anthropic"
+    model_profiles = cast(dict[str, dict[str, Any]], provider_data[CONF_MODEL_PROFILES])
+    assert next(iter(model_profiles.values()))[CONF_ENABLED] is True
 
 
 async def test_conversation_entity_streaming_supports_model_profile_ref(
@@ -317,6 +434,9 @@ async def test_provider_subentry_base_url_endpoint_returns_form_error(
         context={"source": config_entries.SOURCE_USER},
     )
     result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_CUSTOM}
+    )
+    result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
             CONF_NAME: "OpenAI-compatible",
@@ -328,3 +448,64 @@ async def test_provider_subentry_base_url_endpoint_returns_form_error(
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "invalid_base_url_endpoint"}
+
+
+def _wizard_catalog(*, single_anthropic: bool = False) -> CompactCatalog:
+    """Return a compact catalog fixture for guided flow tests."""
+    openai_provider = CatalogProviderOption(
+        id="openai",
+        name="OpenAI",
+        doc_url="https://models.dev/providers/openai",
+        api_key_hints=("OPENAI_API_KEY",),
+        default_base_url=None,
+        supported_drivers=(
+            PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            "openai_compatible_responses",
+        ),
+        model_count=2,
+        families=("gpt",),
+    )
+    openai_models = (
+        _wizard_model("gpt-4.1-mini", "GPT 4.1 Mini", "openai"),
+        _wizard_model("gpt-4.1", "GPT 4.1", "openai"),
+    )
+    if not single_anthropic:
+        return CompactCatalog(
+            providers={"openai": openai_provider},
+            models_by_provider={"openai": openai_models},
+        )
+    anthropic_provider = CatalogProviderOption(
+        id="anthropic",
+        name="Anthropic",
+        doc_url="https://models.dev/providers/anthropic",
+        api_key_hints=("ANTHROPIC_API_KEY",),
+        default_base_url=None,
+        supported_drivers=("anthropic",),
+        model_count=1,
+        families=("claude",),
+    )
+    return CompactCatalog(
+        providers={"anthropic": anthropic_provider, "openai": openai_provider},
+        models_by_provider={
+            "anthropic": (_wizard_model("claude-sonnet-4", "Claude Sonnet 4", "anthropic"),),
+            "openai": openai_models,
+        },
+    )
+
+
+def _wizard_model(model_id: str, name: str, provider_id: str) -> CatalogModelOption:
+    """Return a compact catalog model fixture."""
+    return CatalogModelOption(
+        id=model_id,
+        name=name,
+        provider_id=provider_id,
+        family="gpt",
+        tool_call=True,
+        structured_output=True,
+        reasoning=False,
+        attachment=False,
+        text_output=True,
+        context_limit=128000,
+        output_limit=16000,
+        status=None,
+    )

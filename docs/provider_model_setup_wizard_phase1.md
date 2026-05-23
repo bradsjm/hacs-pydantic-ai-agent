@@ -297,9 +297,9 @@ References checked before implementation:
   filtering, normalization, and unit tests.
 - [x] Add lazy catalog fetch/cache lifecycle and unit tests.
 - [x] Add wizard schemas, selector builders, provider-data builders, and tests.
-- [ ] Integrate guided/manual setup entry point into `ProviderSubentryFlowHandler`
+- [x] Integrate guided/manual setup entry point into `ProviderSubentryFlowHandler`
   while preserving reconfigure behavior.
-- [ ] Complete guided end-to-end provider creation with enabled selected profiles.
+- [x] Complete guided end-to-end provider creation with enabled selected profiles.
 - [ ] Add translations, diagnostics coverage, and smoke tests for rendered flow
   steps and progress actions.
 - [ ] Run focused tests after each section and `scripts/check` at completion.
