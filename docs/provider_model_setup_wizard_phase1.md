@@ -265,10 +265,33 @@ Model validation:
 - phase 1 avoids provider probes during provider wizard creation;
 - AI task and setup-time model validation remain the stronger runtime checks.
 
+## Home Assistant Progress Pattern
+
+Catalog loading should follow Home Assistant's current data-entry-flow progress
+pattern and the existing in-repo `ai_task_flow.py` and `mcp_server_flow.py`
+implementations:
+
+- create the long-running load with `hass.async_create_task(...)`;
+- pass the task to `async_show_progress(progress_task=task, ...)`;
+- when the frontend refreshes the flow while the task is unfinished, return
+  `async_show_progress(...)` with the same progress action and task;
+- when the task is complete, store its result on flow state and return
+  `async_show_progress_done(next_step_id="...")`;
+- handle the result or controlled error in the next step;
+- do not call `async_show_progress()` without `progress_task`.
+
+References checked before implementation:
+
+- Home Assistant developer docs for data entry flow progress;
+- Home Assistant `data_entry_flow.py` `async_show_progress()` and
+  `async_show_progress_done()` behavior;
+- in-repo `config_flows/ai_task_flow.py` model probe progress;
+- in-repo `config_flows/mcp_server_flow.py` MCP validation progress.
+
 ## Execution Checklist
 
 - [x] Restore this phase 1 implementation reference in the worktree.
-- [ ] Inspect Home Assistant progress-flow references and record the selected
+- [x] Inspect Home Assistant progress-flow references and record the selected
   pattern before coding catalog loading.
 - [ ] Add provider wizard package skeleton, compact dataclasses, mapping,
   filtering, normalization, and unit tests.
