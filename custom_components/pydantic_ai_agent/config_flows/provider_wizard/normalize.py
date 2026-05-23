@@ -13,25 +13,25 @@ from .types import (
 )
 
 
-_ENDPOINT_SUFFIXES = {
+_ENDPOINT_SUFFIXES = (
     ("audio", "speech"),
     ("audio", "transcriptions"),
     ("audio", "translations"),
-    ("batches",),
     ("chat", "completions"),
-    ("completions",),
-    ("embeddings",),
-    ("files",),
     ("fine_tuning", "jobs"),
     ("images", "edits"),
     ("images", "generations"),
     ("images", "variations"),
+    ("batches",),
+    ("completions",),
+    ("embeddings",),
+    ("files",),
     ("messages",),
     ("models",),
     ("moderations",),
     ("responses",),
     ("threads",),
-}
+)
 _ENDPOINT_PATH_ENDINGS = (":generatecontent", ":streamgeneratecontent")
 
 
