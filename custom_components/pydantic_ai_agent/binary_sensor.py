@@ -70,7 +70,7 @@ CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
         key="assist_enabled",
         name="Assist enabled",
         icon="mdi:assistant",
-        subentry_types=(SUBENTRY_TYPE_CONVERSATION,),
+        subentry_types=(SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK),
         value_fn=lambda subentry: bool(subentry.data.get(CONF_LLM_HASS_API)),
     ),
     PydanticAIConfigBinarySensorDescription(

@@ -28,6 +28,7 @@ from .common import (
     _LOGGER,
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
+    _SECTION_HASS_CONTROL,
     _SECTION_SKILLS,
     _ai_task_data_from_user_input,
     _ai_task_data_schema,
@@ -95,7 +96,12 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
         if user_input is not None:
             flat_user_input = _flatten_section_data(
                 user_input,
-                (_SECTION_EXTERNAL_TOOLS, _SECTION_FALLBACK_MODELS, _SECTION_SKILLS),
+                (
+                    _SECTION_EXTERNAL_TOOLS,
+                    _SECTION_FALLBACK_MODELS,
+                    _SECTION_HASS_CONTROL,
+                    _SECTION_SKILLS,
+                ),
             )
             if flat_user_input.get(CONF_ENABLE_SKILLS):
                 try:

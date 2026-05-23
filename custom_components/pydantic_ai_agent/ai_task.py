@@ -5,9 +5,15 @@ import json
 import voluptuous as vol
 
 from homeassistant.components import ai_task, conversation
+from homeassistant.components.ai_task.const import (
+    DEFAULT_SYSTEM_PROMPT,
+    DOMAIN as AI_TASK_DOMAIN,
+)
 from homeassistant.config_entries import ConfigSubentry
+from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import llm
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
@@ -64,7 +70,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
         )
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | bool | list[str]]:
+    def extra_state_attributes(self) -> dict[str, str | bool | list[str] | None]:
         """Return observability attributes."""
         profiles = model_profile_chain(self.entry, self.subentry)
         return {
@@ -81,6 +87,8 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
             "todo_workspace_enabled": bool(
                 self.subentry.data.get(CONF_TODO_LIST_ENTITY_ID)
             ),
+            "ha_tools_enabled": bool(self.subentry.data.get(CONF_LLM_HASS_API)),
+            "ha_llm_api": self.subentry.data.get(CONF_LLM_HASS_API),
         }
 
     async def _async_generate_data(
@@ -89,6 +97,22 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
         chat_log: conversation.ChatLog,
     ) -> ai_task.GenDataTaskResult:
         """Generate task data and validate structured responses when requested."""
+        if task.llm_api is None and self.subentry.data.get(CONF_LLM_HASS_API):
+            await chat_log.async_provide_llm_data(
+                llm.LLMContext(
+                    platform=getattr(
+                        getattr(self, "platform", None), "domain", AI_TASK_DOMAIN
+                    ),
+                    context=None,
+                    language=None,
+                    # Assist entity exposure defaults are keyed to the
+                    # conversation assistant, even when AI Task owns the run.
+                    assistant=conversation.DOMAIN,
+                    device_id=None,
+                ),
+                user_llm_hass_api=self.subentry.data.get(CONF_LLM_HASS_API),
+                user_llm_prompt=DEFAULT_SYSTEM_PROMPT,
+            )
         todo_entity_id = self.subentry.data.get(CONF_TODO_LIST_ENTITY_ID)
         if isinstance(todo_entity_id, str) and todo_entity_id:
             workspace = TodoWorkspace(self.hass, todo_entity_id)

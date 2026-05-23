@@ -295,7 +295,9 @@ def test_agent_schemas_group_fallbacks_and_hass_control(
     assert CONF_FALLBACK_MODEL_REFS not in _schema_key_names(conversation_schema)
     assert CONF_LLM_HASS_API not in _schema_key_names(conversation_schema)
     assert _SECTION_FALLBACK_MODELS in _schema_key_names(ai_task_schema)
+    assert _SECTION_HASS_CONTROL in _schema_key_names(ai_task_schema)
     assert CONF_FALLBACK_MODEL_REFS not in _schema_key_names(ai_task_schema)
+    assert CONF_LLM_HASS_API not in _schema_key_names(ai_task_schema)
 
 
 def test_sectioned_conversation_input_flattens_and_prunes_disabled_skills() -> None:
@@ -332,6 +334,7 @@ def test_sectioned_ai_task_input_flattens_and_defaults_enabled_skills() -> None:
             CONF_PRIMARY_MODEL_REF: "provider:primary",
             CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
             _SECTION_FALLBACK_MODELS: {CONF_FALLBACK_MODEL_REFS: ["provider:fallback"]},
+            _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: ["assist"]},
             _SECTION_SKILLS: {CONF_ENABLE_SKILLS: True},
         },
         {},
@@ -339,10 +342,29 @@ def test_sectioned_ai_task_input_flattens_and_defaults_enabled_skills() -> None:
     )
 
     assert data[CONF_FALLBACK_MODEL_REFS] == ["provider:fallback"]
+    assert data[CONF_LLM_HASS_API] == ["assist"]
     assert data[CONF_ENABLE_SKILLS] is True
     assert CONF_SKILLS_FOLDER not in data
     assert _SECTION_FALLBACK_MODELS not in data
+    assert _SECTION_HASS_CONTROL not in data
     assert _SECTION_SKILLS not in data
+
+
+def test_sectioned_ai_task_input_prunes_empty_llm_api() -> None:
+    """Test clearing AI task Home Assistant control removes the persisted key."""
+    data = _ai_task_data_from_user_input(
+        {
+            CONF_AI_TASK_NAME: "Summary Task",
+            CONF_PRIMARY_MODEL_REF: "provider:primary",
+            CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+            _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: []},
+        },
+        {},
+        available_skills=[],
+    )
+
+    assert CONF_LLM_HASS_API not in data
+    assert _SECTION_HASS_CONTROL not in data
 
 
 def test_provider_base_url_rejects_endpoint_suffix(hass: HomeAssistant) -> None:

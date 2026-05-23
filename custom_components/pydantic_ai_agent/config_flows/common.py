@@ -1840,6 +1840,16 @@ def _ai_task_data_schema(
     fallback_model_options = _fallback_model_profile_select_options(
         hass, entry, options.get(CONF_FALLBACK_MODEL_REFS, [])
     )
+    hass_apis: list[SelectOptionDict] = []
+    valid_api_ids: set[str] = set()
+    for api in llm.async_get_apis(hass):
+        hass_apis.append(SelectOptionDict(label=api.name, value=api.id))
+        valid_api_ids.add(api.id)
+
+    if CONF_LLM_HASS_API in options:
+        options[CONF_LLM_HASS_API] = [
+            api for api in options[CONF_LLM_HASS_API] if api in valid_api_ids
+        ]
     schema: VolDictType = {
         vol.Required(
             CONF_AI_TASK_NAME,
@@ -1877,6 +1887,19 @@ def _ai_task_data_schema(
         schema[vol.Optional(_SECTION_FALLBACK_MODELS, default={})] = section(
             vol.Schema(fallback_schema), {"collapsed": True}
         )
+    api_schema_key = vol.Optional(CONF_LLM_HASS_API)
+    if CONF_LLM_HASS_API in options:
+        api_schema_key = vol.Optional(
+            CONF_LLM_HASS_API,
+            default=options[CONF_LLM_HASS_API],
+        )
+    hass_control_schema: VolDictType = {}
+    hass_control_schema[api_schema_key] = SelectSelector(
+        SelectSelectorConfig(options=hass_apis, multiple=True)
+    )
+    schema[vol.Optional(_SECTION_HASS_CONTROL, default={})] = section(
+        vol.Schema(hass_control_schema), {"collapsed": True}
+    )
     external_tools_schema: VolDictType = {}
     mcp_servers = _mcp_server_select_options(entry)
     if mcp_servers:
@@ -1945,7 +1968,12 @@ def _ai_task_data_from_user_input(
     """Return AI task subentry data with a selected structured output mode."""
     user_input = _flatten_section_data(
         user_input,
-        (_SECTION_EXTERNAL_TOOLS, _SECTION_FALLBACK_MODELS, _SECTION_SKILLS),
+        (
+            _SECTION_EXTERNAL_TOOLS,
+            _SECTION_FALLBACK_MODELS,
+            _SECTION_HASS_CONTROL,
+            _SECTION_SKILLS,
+        ),
     )
     data = dict(user_input)
     data.setdefault(
@@ -1960,6 +1988,8 @@ def _ai_task_data_from_user_input(
         data.pop(CONF_FALLBACK_MODEL_REFS, None)
     if not data.get(CONF_TODO_LIST_ENTITY_ID):
         data.pop(CONF_TODO_LIST_ENTITY_ID, None)
+    if not data.get(CONF_LLM_HASS_API):
+        data.pop(CONF_LLM_HASS_API, None)
     if (
         data.get(CONF_ENABLE_SKILLS)
         and CONF_SKILLS in user_input
