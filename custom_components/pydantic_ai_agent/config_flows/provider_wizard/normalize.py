@@ -1,6 +1,7 @@
 """Normalize models.dev catalog data for the provider setup wizard."""
 
 from collections.abc import Mapping
+from urllib.parse import urlparse
 
 from .mapping import supported_drivers_for_provider
 from .types import (
@@ -9,6 +10,28 @@ from .types import (
     CompactCatalog,
     sorted_unique_strings,
 )
+
+
+_ENDPOINT_SUFFIXES = {
+    ("audio", "speech"),
+    ("audio", "transcriptions"),
+    ("audio", "translations"),
+    ("batches",),
+    ("chat", "completions"),
+    ("completions",),
+    ("embeddings",),
+    ("files",),
+    ("fine_tuning", "jobs"),
+    ("images", "edits"),
+    ("images", "generations"),
+    ("images", "variations"),
+    ("messages",),
+    ("models",),
+    ("moderations",),
+    ("responses",),
+    ("threads",),
+}
+_ENDPOINT_PATH_ENDINGS = (":generatecontent", ":streamgeneratecontent")
 
 
 def normalize_catalog(payload: Mapping[str, object]) -> CompactCatalog:
@@ -96,7 +119,24 @@ def _http_url(value: object) -> str | None:
     value = _string(value)
     if value is None or not value.startswith(("https://", "http://")):
         return None
+    if _endpoint_suffix(value) is not None:
+        return None
     return value.rstrip("/")
+
+
+def _endpoint_suffix(value: str) -> str | None:
+    """Return a forbidden endpoint suffix if the URL points at one."""
+    parsed = urlparse(value)
+    path = parsed.path.rstrip("/").lower()
+    for ending in _ENDPOINT_PATH_ENDINGS:
+        if path.endswith(ending):
+            return ending.lstrip(":")
+    segments = tuple(segment for segment in parsed.path.split("/") if segment)
+    lowered = tuple(segment.lower() for segment in segments)
+    for suffix in _ENDPOINT_SUFFIXES:
+        if len(lowered) >= len(suffix) and lowered[-len(suffix) :] == suffix:
+            return "/".join(suffix)
+    return None
 
 
 def _optional_bool(value: object) -> bool | None:
