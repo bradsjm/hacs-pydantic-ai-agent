@@ -286,6 +286,8 @@ _SECTION_ADVANCED_MCP = "advanced_mcp"
 _SECTION_ADVANCED_MODEL_SETTINGS = "advanced_model_settings"
 _SECTION_ADVANCED_OPTIONS = "advanced_options"
 _SECTION_EXTERNAL_TOOLS = "external_tools"
+_SECTION_FALLBACK_MODELS = "fallback_models"
+_SECTION_HASS_CONTROL = "hass_control"
 _SECTION_LOGFIRE = "logfire"
 _SECTION_CUSTOMIZE_MODEL_LIST = "customize_model_list"
 _SECTION_SKILLS = "skill_settings"
@@ -304,7 +306,6 @@ _STRUCTURED_PROBE_SCHEMA = {
     "required": ["ok"],
     "additionalProperties": False,
 }
-
 
 
 def _format_http_headers(headers: object) -> str:
@@ -655,6 +656,7 @@ def _log_provider_validation_failure(
         err.reason,
         err.status_code,
     )
+
 
 def _normalise_skills_folder(folder: object) -> str:
     """Return a canonical skills folder path for storage."""
@@ -1130,8 +1132,11 @@ def _normalise_skill_settings(data: dict[str, Any]) -> None:
 def _skill_source(data: Mapping[str, Any]) -> tuple[bool, str, bool]:
     """Return the fields that determine selectable skills for one agent."""
     data = _flatten_section_data(data, (_SECTION_SKILLS,))
+    enable_skills = bool(data.get(CONF_ENABLE_SKILLS, False))
+    if not enable_skills:
+        return False, DEFAULT_SKILLS_FOLDER, False
     return (
-        bool(data.get(CONF_ENABLE_SKILLS, False)),
+        True,
         _normalise_skills_folder(data.get(CONF_SKILLS_FOLDER)),
         bool(data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)),
     )
@@ -1151,7 +1156,7 @@ def _append_skill_schema_fields(
         )
     ] = BooleanSelector()
     schema[
-        vol.Required(
+        vol.Optional(
             CONF_SKILLS_FOLDER,
             default=options.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
         )
@@ -1260,7 +1265,8 @@ def _conversation_schema(
                 translation_key=CONF_PRIMARY_MODEL_REF,
             )
         )
-        schema[
+        fallback_schema: VolDictType = {}
+        fallback_schema[
             vol.Optional(
                 CONF_FALLBACK_MODEL_REFS,
                 default=_normalise_fallback_model_refs(
@@ -1274,14 +1280,21 @@ def _conversation_schema(
                 translation_key=CONF_FALLBACK_MODEL_REFS,
             )
         )
+        schema[vol.Optional(_SECTION_FALLBACK_MODELS, default={})] = section(
+            vol.Schema(fallback_schema), {"collapsed": True}
+        )
     api_schema_key = vol.Optional(CONF_LLM_HASS_API)
     if CONF_LLM_HASS_API in options:
         api_schema_key = vol.Optional(
             CONF_LLM_HASS_API,
             default=options[CONF_LLM_HASS_API],
         )
-    schema[api_schema_key] = SelectSelector(
+    hass_control_schema: VolDictType = {}
+    hass_control_schema[api_schema_key] = SelectSelector(
         SelectSelectorConfig(options=hass_apis, multiple=True)
+    )
+    schema[vol.Optional(_SECTION_HASS_CONTROL, default={})] = section(
+        vol.Schema(hass_control_schema), {"collapsed": True}
     )
     external_tools_schema: VolDictType = {}
     mcp_servers = _mcp_server_select_options(entry)
@@ -1742,7 +1755,13 @@ def _conversation_data_from_user_input(
 ) -> dict[str, Any]:
     """Return conversation fields with model profile references."""
     user_input = _flatten_section_data(
-        user_input, (_SECTION_EXTERNAL_TOOLS, _SECTION_SKILLS)
+        user_input,
+        (
+            _SECTION_EXTERNAL_TOOLS,
+            _SECTION_FALLBACK_MODELS,
+            _SECTION_HASS_CONTROL,
+            _SECTION_SKILLS,
+        ),
     )
     data = {key: value for key, value in user_input.items()}
     if not data.get(CONF_LLM_HASS_API):
@@ -1840,7 +1859,8 @@ def _ai_task_data_schema(
                 translation_key=CONF_PRIMARY_MODEL_REF,
             )
         )
-        schema[
+        fallback_schema: VolDictType = {}
+        fallback_schema[
             vol.Optional(
                 CONF_FALLBACK_MODEL_REFS,
                 default=_normalise_fallback_model_refs(
@@ -1853,6 +1873,9 @@ def _ai_task_data_schema(
                 multiple=True,
                 translation_key=CONF_FALLBACK_MODEL_REFS,
             )
+        )
+        schema[vol.Optional(_SECTION_FALLBACK_MODELS, default={})] = section(
+            vol.Schema(fallback_schema), {"collapsed": True}
         )
     external_tools_schema: VolDictType = {}
     mcp_servers = _mcp_server_select_options(entry)
@@ -1921,7 +1944,8 @@ def _ai_task_data_from_user_input(
 ) -> dict[str, Any]:
     """Return AI task subentry data with a selected structured output mode."""
     user_input = _flatten_section_data(
-        user_input, (_SECTION_EXTERNAL_TOOLS, _SECTION_SKILLS)
+        user_input,
+        (_SECTION_EXTERNAL_TOOLS, _SECTION_FALLBACK_MODELS, _SECTION_SKILLS),
     )
     data = dict(user_input)
     data.setdefault(
@@ -2110,6 +2134,3 @@ def _mcp_url_identity(
         parsed.path or "/",
         tuple(sorted(parse_qsl(parsed.query, keep_blank_values=True))),
     )
-
-
-

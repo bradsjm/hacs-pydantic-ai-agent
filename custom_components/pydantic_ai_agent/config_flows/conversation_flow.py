@@ -7,6 +7,7 @@ from __future__ import annotations
 from .common import (
     Any,
     CONF_AGENT_NAME,
+    CONF_ENABLE_SKILLS,
     CONF_MCP_SERVER_IDS,
     CONF_PRIMARY_MODEL_REF,
     CONF_SKILLS,
@@ -18,6 +19,8 @@ from .common import (
     SOURCE_USER,
     SubentryFlowResult,
     _SECTION_EXTERNAL_TOOLS,
+    _SECTION_FALLBACK_MODELS,
+    _SECTION_HASS_CONTROL,
     _SECTION_SKILLS,
     _conversation_data_from_user_input,
     _conversation_schema,
@@ -32,6 +35,7 @@ from .common import (
     async_available_skills,
     default_conversation_options,
 )
+
 
 class ConversationSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing conversation subentries."""
@@ -71,25 +75,32 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
 
         if user_input is not None:
             flat_user_input = _flatten_section_data(
-                user_input, (_SECTION_EXTERNAL_TOOLS, _SECTION_SKILLS)
+                user_input,
+                (
+                    _SECTION_EXTERNAL_TOOLS,
+                    _SECTION_FALLBACK_MODELS,
+                    _SECTION_HASS_CONTROL,
+                    _SECTION_SKILLS,
+                ),
             )
-            try:
-                _validate_skills_folder(
-                    self.hass,
-                    flat_user_input.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
-                )
-            except ProviderValidationError as err:
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=_conversation_schema(
+            if flat_user_input.get(CONF_ENABLE_SKILLS):
+                try:
+                    _validate_skills_folder(
                         self.hass,
-                        self._options | flat_user_input,
-                        entry,
-                        available_skills,
-                    ),
-                    errors={"base": err.reason},
-                    description_placeholders=_provider_validation_placeholders(err),
-                )
+                        flat_user_input.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
+                    )
+                except ProviderValidationError as err:
+                    return self.async_show_form(
+                        step_id="init",
+                        data_schema=_conversation_schema(
+                            self.hass,
+                            self._options | flat_user_input,
+                            entry,
+                            available_skills,
+                        ),
+                        errors={"base": err.reason},
+                        description_placeholders=_provider_validation_placeholders(err),
+                    )
             if _skill_source(flat_user_input) != _skill_source(self._options):
                 refreshed_options = dict(flat_user_input)
                 refreshed_options[CONF_SKILLS_FOLDER] = _normalise_skills_folder(

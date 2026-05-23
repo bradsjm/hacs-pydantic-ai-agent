@@ -24,7 +24,9 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
     CONF_CUSTOM_MODEL_NAMES,
+    CONF_ENABLE_SKILLS,
     CONF_ENABLED,
+    CONF_FALLBACK_MODEL_REFS,
     CONF_DEFAULT_SKILLS_FOLDER,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
@@ -32,6 +34,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    CONF_SKILLS_FOLDER,
     DEFAULT_SKILLS_FOLDER,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
@@ -68,7 +71,10 @@ def test_provider_edit_connection_translations_cover_rendered_schema() -> None:
         CONF_PROVIDER_EXTRA_BODY,
         CONF_PROVIDER_HEADERS,
     }
-    assert step["sections"]["customize_model_list"]["name"] == "Customize model list"
+    assert (
+        step["sections"]["customize_model_list"]["name"]
+        == "Override provider model list"
+    )
     assert set(step["sections"]["customize_model_list"]["data"]) >= {
         CONF_CUSTOM_MODEL_NAMES,
     }
@@ -243,6 +249,61 @@ async def test_conversation_entity_streaming_supports_model_profile_ref(
     assert (
         PydanticAIConversationEntity(entry, tool_subentry).supports_streaming is False
     )
+
+
+async def test_conversation_disabled_skills_ignores_invalid_folder(
+    hass: HomeAssistant,
+) -> None:
+    """Test disabled skills do not require or validate the skills folder."""
+    provider_subentry_id = "provider-1"
+    default_profile_id = "profile-1"
+    profile_ref = f"{provider_subentry_id}:{default_profile_id}"
+    entry = await _loaded_workspace_entry(
+        hass,
+        (
+            {
+                "subentry_id": provider_subentry_id,
+                "subentry_type": SUBENTRY_TYPE_PROVIDER,
+                "title": "OpenAI-compatible",
+                "unique_id": None,
+                "data": {
+                    CONF_NAME: "OpenAI-compatible",
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+                    CONF_API_KEY: "sk-test",
+                    CONF_MODEL_PROFILES: {
+                        default_profile_id: {
+                            "id": default_profile_id,
+                            CONF_NAME: "GPT Mini",
+                            CONF_MODEL: "gpt-4.1-mini",
+                            CONF_ENABLED: True,
+                        }
+                    },
+                },
+            },
+        ),
+    )
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_PRIMARY_MODEL_REF: profile_ref,
+            "fallback_models": {CONF_FALLBACK_MODEL_REFS: []},
+            "skill_settings": {
+                CONF_ENABLE_SKILLS: False,
+                CONF_SKILLS_FOLDER: "/tmp/skills",
+            },
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_PRIMARY_MODEL_REF] == profile_ref
+    assert CONF_ENABLE_SKILLS not in result["data"]
+    assert CONF_SKILLS_FOLDER not in result["data"]
 
 
 async def test_provider_subentry_base_url_endpoint_returns_form_error(

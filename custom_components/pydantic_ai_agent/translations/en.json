@@ -193,6 +193,15 @@
               },
               "name": "External tools and data"
             },
+            "fallback_models": {
+              "data": {
+                "fallback_model_refs": "Fallback language model profiles"
+              },
+              "data_description": {
+                "fallback_model_refs": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure."
+              },
+              "name": "Fallback language models"
+            },
             "skill_settings": {
               "data": {
                 "enable_skill_script_execution": "Allow skill script execution",
@@ -288,6 +297,24 @@
                 "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
               },
               "name": "External tools and data"
+            },
+            "fallback_models": {
+              "data": {
+                "fallback_model_refs": "Fallback language model profiles"
+              },
+              "data_description": {
+                "fallback_model_refs": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure."
+              },
+              "name": "Fallback language models"
+            },
+            "hass_control": {
+              "data": {
+                "llm_hass_api": "Control Home Assistant"
+              },
+              "data_description": {
+                "llm_hass_api": "Select which tools the model can use to interact with your devices and entities."
+              },
+              "name": "Control Home Assistant"
             },
             "skill_settings": {
               "data": {
@@ -467,7 +494,7 @@
         "entry_not_loaded": "The workspace is not loaded.",
         "reconfigure_successful": "Provider configuration updated."
       },
-      "entry_type": "Provider",
+      "entry_type": "Langauge Model Provider",
       "error": {
         "cannot_connect": "{error_message}",
         "chat_template_kwargs_conflict": "Use the dedicated Chat template arguments field instead of setting chat_template_kwargs in Extra body.",
@@ -498,17 +525,58 @@
         "user": "Add provider"
       },
       "step": {
+        "edit_connection": {
+          "data": {
+            "api_key": "API key",
+            "base_url": "Base URL",
+            "custom_model_names": "Custom model names",
+            "name": "Provider name",
+            "provider_extra_body": "Extra body",
+            "provider_headers": "Provider HTTP headers",
+            "provider_mode": "Provider mode"
+          },
+          "data_description": {
+            "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
+            "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is skipped.",
+            "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
+            "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+          },
+          "description": "Update the provider connection details.",
+          "sections": {
+            "advanced_options": {
+              "data": {
+                "provider_extra_body": "Extra body",
+                "provider_headers": "Provider HTTP headers"
+              },
+              "data_description": {
+                "provider_extra_body": "Provider-specific request body fields sent with every model request for this provider.",
+                "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+              },
+              "name": "Advanced options"
+            },
+            "customize_model_list": {
+              "data": {
+                "custom_model_names": "Custom model names (e.g. deepseek-v4-pro)"
+              },
+              "data_description": {
+                "custom_model_names": "One model name per line. When set, provider model discovery is disabled."
+              },
+              "name": "Override provider model list"
+            }
+          },
+          "title": "Edit provider connection"
+        },
         "edit_model_profile": {
           "data": {
-            "enabled": "Enabled",
-            "model": "Provider model name",
-            "name": "Profile name",
-            "temperature": "Temperature",
+            "enabled": "Language Model Enabled",
+            "model": "Language Model identifier",
+            "name": "Language Model name",
+            "temperature": "Custom Model Temperature",
             "thinking": "Thinking (Reasoning) Mode"
           },
           "data_description": {
-            "enabled": "Disable this profile without deleting it from the provider.",
-            "model": "Model name as understood by the configured provider. Only manual profiles can change this value.",
+            "enabled": "Enable this model for use with AI tasks and conversations.",
+            "model": "Model name from the provider.",
             "temperature": "Controls response randomness. Leave empty to use the provider or model default.",
             "thinking": "Optional reasoning effort if supported by the model (levels map to the closest available value)."
           },
@@ -541,47 +609,6 @@
           },
           "title": "Edit model profile"
         },
-        "edit_connection": {
-          "data": {
-            "api_key": "API key",
-            "base_url": "Base URL",
-            "custom_model_names": "Custom model names",
-            "name": "Provider name",
-            "provider_extra_body": "Extra body",
-            "provider_headers": "Provider HTTP headers",
-            "provider_mode": "Provider mode"
-          },
-          "data_description": {
-            "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
-            "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is skipped.",
-            "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
-            "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
-          },
-          "description": "Update the provider connection and the language model profiles it contributes to this workspace.",
-          "sections": {
-            "advanced_options": {
-              "data": {
-                "provider_extra_body": "Extra body",
-                "provider_headers": "Provider HTTP headers"
-              },
-              "data_description": {
-                "provider_extra_body": "Provider-specific request body fields sent with every model request for this provider.",
-                "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
-              },
-              "name": "Advanced options"
-            },
-            "customize_model_list": {
-              "data": {
-                "custom_model_names": "Custom model names"
-              },
-              "data_description": {
-                "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is skipped. Profiles are created disabled until enabled from Customize model profile."
-              },
-              "name": "Customize model list"
-            }
-          },
-          "title": "Edit provider connection"
-        },
         "init": {
           "data": {
             "api_key": "API key",
@@ -594,11 +621,11 @@
           },
           "data_description": {
             "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
-            "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is skipped.",
+            "custom_model_names": "One model name per line. When set, provider model discovery is disabled.",
             "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
             "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
           },
-          "description": "Configure a provider connection and the language model profiles it contributes to this workspace.",
+          "description": "Configure a provider connection. Once configured, use the menu option to enable the desired models.",
           "sections": {
             "advanced_options": {
               "data": {
@@ -616,27 +643,27 @@
                 "custom_model_names": "Custom model names"
               },
               "data_description": {
-                "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is skipped. Profiles are created disabled until enabled from Customize model profile."
+                "custom_model_names": "One model name per line. When set, provider model discovery is disabled."
               },
-              "name": "Customize model list"
+              "name": "Override provider model list"
             }
           },
-          "title": "Configure provider"
+          "title": "Configure languge model provider"
         },
         "pick_model_profile": {
           "data": {
-            "model_profile_id": "Model profile"
+            "model_profile_id": "Language Model"
           },
-          "description": "Choose a provider-owned model profile.",
-          "title": "Select model profile"
+          "description": "Select model profile to enable or customize",
+          "title": "Select language model"
         },
         "reconfigure_menu": {
-          "description": "Choose which part of this workspace provider to manage.",
+          "description": "Configure workspace provider then enable and configure models (models default to disabled).",
           "menu_options": {
-            "customize_model_profile": "Customize model profile",
-            "edit_connection": "Edit connection"
+            "customize_model_profile": "Configure language model settings",
+            "edit_connection": "Edit model provider connection"
           },
-          "title": "Manage provider"
+          "title": "Configure models and provider"
         }
       }
     }

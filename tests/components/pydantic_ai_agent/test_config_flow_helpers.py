@@ -7,13 +7,21 @@ import ssl
 import httpx
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 import pytest
+import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_NAME
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent.config_flows.common import (
+    _SECTION_FALLBACK_MODELS,
+    _SECTION_HASS_CONTROL,
+    _SECTION_SKILLS,
+    _ai_task_data_from_user_input,
+    _ai_task_data_schema,
+    _conversation_data_from_user_input,
+    _conversation_schema,
     _format_mcp_headers,
     _mcp_tool_options,
     _mcp_url_already_configured,
@@ -32,23 +40,33 @@ from custom_components.pydantic_ai_agent.provider_validation import (
     _map_http_error,
 )
 from custom_components.pydantic_ai_agent.const import (
+    CONF_AGENT_NAME,
+    CONF_AI_TASK_NAME,
     CONF_BASE_URL,
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
     CONF_DISCOVERED,
+    CONF_ENABLE_SKILLS,
     CONF_ENABLED,
+    CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
     CONF_MCP_URL,
     CONF_MODEL,
+    CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
+    CONF_OUTPUT_MODE,
+    CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_MODE,
+    CONF_SKILLS_FOLDER,
     DOMAIN,
+    DEFAULT_OUTPUT_MODE,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_MCP_SERVER,
+    SUBENTRY_TYPE_PROVIDER,
 )
 from custom_components.pydantic_ai_agent.mcp import MCPValidationError
 
@@ -235,6 +253,96 @@ def test_model_settings_from_options_sanitizes_persisted_settings() -> None:
             }
         }
     ) == {"temperature": 0.2}
+
+
+def _schema_key_names(data_schema: vol.Schema) -> set[str]:
+    """Return top-level voluptuous schema key names."""
+    return {key.schema for key in data_schema.schema}
+
+
+def test_agent_schemas_group_fallbacks_and_hass_control(
+    hass: HomeAssistant,
+) -> None:
+    """Test per-agent schemas expose requested controls as sections."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_NAME: "Workspace"},
+        source=config_entries.SOURCE_USER,
+        subentries_data=(
+            {
+                "subentry_id": "provider",
+                "subentry_type": SUBENTRY_TYPE_PROVIDER,
+                "title": "Provider",
+                "unique_id": None,
+                "data": {
+                    CONF_NAME: "Provider",
+                    CONF_MODEL_PROFILES: {
+                        "primary": {
+                            CONF_NAME: "Primary",
+                            CONF_MODEL: "gpt-test",
+                            CONF_ENABLED: True,
+                        }
+                    },
+                },
+            },
+        ),
+    )
+    conversation_schema = _conversation_schema(hass, entry=entry)
+    ai_task_schema = _ai_task_data_schema(hass, entry=entry)
+
+    assert _SECTION_FALLBACK_MODELS in _schema_key_names(conversation_schema)
+    assert _SECTION_HASS_CONTROL in _schema_key_names(conversation_schema)
+    assert CONF_FALLBACK_MODEL_REFS not in _schema_key_names(conversation_schema)
+    assert CONF_LLM_HASS_API not in _schema_key_names(conversation_schema)
+    assert _SECTION_FALLBACK_MODELS in _schema_key_names(ai_task_schema)
+    assert CONF_FALLBACK_MODEL_REFS not in _schema_key_names(ai_task_schema)
+
+
+def test_sectioned_conversation_input_flattens_and_prunes_disabled_skills() -> None:
+    """Test sectioned conversation form input stores existing flat keys."""
+    data = _conversation_data_from_user_input(
+        {
+            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_PRIMARY_MODEL_REF: "provider:primary",
+            _SECTION_FALLBACK_MODELS: {CONF_FALLBACK_MODEL_REFS: ["provider:fallback"]},
+            _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: ["assist"]},
+            _SECTION_SKILLS: {
+                CONF_ENABLE_SKILLS: False,
+                CONF_SKILLS_FOLDER: "/tmp/skills",
+            },
+        },
+        {},
+        available_skills=[],
+    )
+
+    assert data[CONF_FALLBACK_MODEL_REFS] == ["provider:fallback"]
+    assert data[CONF_LLM_HASS_API] == ["assist"]
+    assert CONF_ENABLE_SKILLS not in data
+    assert CONF_SKILLS_FOLDER not in data
+    assert _SECTION_FALLBACK_MODELS not in data
+    assert _SECTION_HASS_CONTROL not in data
+    assert _SECTION_SKILLS not in data
+
+
+def test_sectioned_ai_task_input_flattens_and_defaults_enabled_skills() -> None:
+    """Test sectioned AI task input defaults the enabled skills folder."""
+    data = _ai_task_data_from_user_input(
+        {
+            CONF_AI_TASK_NAME: "Summary Task",
+            CONF_PRIMARY_MODEL_REF: "provider:primary",
+            CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+            _SECTION_FALLBACK_MODELS: {CONF_FALLBACK_MODEL_REFS: ["provider:fallback"]},
+            _SECTION_SKILLS: {CONF_ENABLE_SKILLS: True},
+        },
+        {},
+        available_skills=[],
+    )
+
+    assert data[CONF_FALLBACK_MODEL_REFS] == ["provider:fallback"]
+    assert data[CONF_ENABLE_SKILLS] is True
+    assert CONF_SKILLS_FOLDER not in data
+    assert _SECTION_FALLBACK_MODELS not in data
+    assert _SECTION_SKILLS not in data
 
 
 def test_provider_base_url_rejects_endpoint_suffix(hass: HomeAssistant) -> None:
