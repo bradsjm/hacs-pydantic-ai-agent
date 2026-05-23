@@ -97,6 +97,34 @@ def test_provider_edit_connection_translations_cover_rendered_schema() -> None:
     }
 
 
+def test_provider_wizard_translations_cover_rendered_steps() -> None:
+    """Test guided provider wizard steps and errors have translations."""
+    translations = json.loads(_TRANSLATIONS_PATH.read_text(encoding="utf-8"))
+    provider = translations["config_subentries"]["provider"]
+    steps = provider["step"]
+
+    assert set(steps) >= {
+        "setup_method",
+        "pick_provider",
+        "pick_driver",
+        "wizard_connection",
+        "model_filters",
+        "pick_models",
+    }
+    assert provider["progress"]["load_model_catalog"]
+    assert set(provider["error"]) >= {
+        "model_catalog_unavailable",
+        "model_required",
+        "no_models_available",
+    }
+    assert steps["setup_method"]["data"][CONF_SETUP_METHOD]
+    assert steps["pick_provider"]["data"][CONF_PROVIDER_ID]
+    assert steps["pick_driver"]["data"][CONF_DRIVER]
+    assert steps["wizard_connection"]["data"][CONF_API_KEY]
+    assert steps["model_filters"]["data"]["include_without_tool_call"]
+    assert steps["pick_models"]["data"][CONF_SELECTED_MODEL_IDS]
+
+
 async def _loaded_workspace_entry(
     hass: HomeAssistant, subentries_data: tuple[dict[str, object], ...] = ()
 ) -> MockConfigEntry:

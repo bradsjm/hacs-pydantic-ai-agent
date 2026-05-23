@@ -300,7 +300,7 @@ References checked before implementation:
 - [x] Integrate guided/manual setup entry point into `ProviderSubentryFlowHandler`
   while preserving reconfigure behavior.
 - [x] Complete guided end-to-end provider creation with enabled selected profiles.
-- [ ] Add translations, diagnostics coverage, and smoke tests for rendered flow
+- [x] Add translations, diagnostics coverage, and smoke tests for rendered flow
   steps and progress actions.
 - [ ] Run focused tests after each section and `scripts/check` at completion.
 - [ ] Commit each successful tested section before moving to the next one.

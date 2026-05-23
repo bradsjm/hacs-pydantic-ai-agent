@@ -393,6 +393,7 @@
       "abort": {
         "already_configured": "This provider is already configured in the workspace.",
         "entry_not_loaded": "The workspace is not loaded.",
+        "invalid_provider_config": "Provider configuration is incomplete. Start provider setup again.",
         "reconfigure_successful": "Provider configuration updated."
       },
       "entry_type": "Language model provider",
@@ -413,7 +414,10 @@
         "invalid_provider_config": "{error_message}",
         "invalid_provider_headers": "{error_message}",
         "model_does_not_support_streaming": "{error_message}",
+        "model_catalog_unavailable": "The model catalog could not be loaded. Try again or choose custom provider setup.",
+        "model_required": "Select at least one model.",
         "model_list_unavailable": "The provider model list could not be loaded. Enter custom model names or try again.",
+        "no_models_available": "No models match these filters. Adjust filters or choose custom provider setup.",
         "permission_denied": "{error_message}",
         "positive_number": "Enter a number greater than zero.",
         "provider_error": "{error_message}",
@@ -425,6 +429,9 @@
       "initiate_flow": {
         "reconfigure": "Reconfigure provider",
         "user": "Add provider"
+      },
+      "progress": {
+        "load_model_catalog": "Loading provider and model catalog"
       },
       "step": {
         "edit_connection": {
@@ -552,6 +559,45 @@
           },
           "title": "Configure language model provider"
         },
+        "model_filters": {
+          "data": {
+            "family": "Model family",
+            "include_deprecated": "Include deprecated models",
+            "include_non_text_output": "Include models without text output",
+            "include_without_structured_output": "Include models without structured output",
+            "include_without_tool_call": "Include models without tool calling"
+          },
+          "data_description": {
+            "family": "Limit the model list to one catalog family.",
+            "include_deprecated": "Deprecated models are hidden by default.",
+            "include_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
+            "include_without_structured_output": "Models without native structured output are hidden by default for reliable AI task setup.",
+            "include_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
+          },
+          "description": "Narrow the model list before selecting models to enable.",
+          "title": "Filter provider models"
+        },
+        "pick_driver": {
+          "data": {
+            "driver": "API mode"
+          },
+          "description": "Choose how this provider should be called. Chat Completions is the default unless you know the provider supports the Responses API.",
+          "title": "Choose provider API mode"
+        },
+        "pick_models": {
+          "data": {
+            "selected_model_ids": "Models to enable"
+          },
+          "description": "Select the language models to enable now. You can customize model settings later from provider reconfiguration.",
+          "title": "Choose models"
+        },
+        "pick_provider": {
+          "data": {
+            "provider_id": "Provider"
+          },
+          "description": "Choose a provider from the live models.dev catalog, or choose custom provider for manual setup.",
+          "title": "Choose provider"
+        },
         "pick_model_profile": {
           "data": {
             "model_profile_id": "Model profile"
@@ -566,6 +612,29 @@
             "edit_connection": "Edit provider connection"
           },
           "title": "Configure models and provider"
+        },
+        "setup_method": {
+          "data": {
+            "setup_method": "Setup method"
+          },
+          "description": "Guided setup loads a provider and model catalog to prefill a working provider. Custom setup keeps the advanced manual form.",
+          "title": "Add provider"
+        },
+        "wizard_connection": {
+          "data": {
+            "api_key": "API key",
+            "base_url": "Base URL",
+            "name": "Provider name",
+            "provider_extra_body": "Extra body",
+            "provider_headers": "Provider HTTP headers"
+          },
+          "data_description": {
+            "base_url": "Optional OpenAI-compatible API base URL. Catalog providers prefill this when available.",
+            "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted.",
+            "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+          },
+          "description": "Enter credentials and connection details for the selected provider.",
+          "title": "Connect provider"
         }
       }
     }
