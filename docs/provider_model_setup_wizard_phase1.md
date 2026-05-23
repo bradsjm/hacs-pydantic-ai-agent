@@ -293,7 +293,7 @@ References checked before implementation:
 - [x] Restore this phase 1 implementation reference in the worktree.
 - [x] Inspect Home Assistant progress-flow references and record the selected
   pattern before coding catalog loading.
-- [ ] Add provider wizard package skeleton, compact dataclasses, mapping,
+- [x] Add provider wizard package skeleton, compact dataclasses, mapping,
   filtering, normalization, and unit tests.
 - [ ] Add lazy catalog fetch/cache lifecycle and unit tests.
 - [ ] Add wizard schemas, selector builders, provider-data builders, and tests.
