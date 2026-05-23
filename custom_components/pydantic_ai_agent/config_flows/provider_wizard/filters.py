@@ -29,7 +29,7 @@ def model_matches_filters(
         return False
     if not filters.include_without_tool_call and not model.tool_call:
         return False
-    if not filters.include_without_structured_output and model.structured_output is not True:
+    if not filters.include_without_structured_output and model.structured_output is False:
         return False
     return True
 

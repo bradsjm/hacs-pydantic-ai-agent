@@ -57,7 +57,7 @@ def test_supported_drivers_for_provider(
 
 
 def test_filtered_models_default_hides_non_recommended_models() -> None:
-    """Test default filters keep only recommended text/tool/structured models."""
+    """Test default filters hide known unsupported models."""
     models = (
         _model("good", name="Good"),
         _model("image", text_output=False),
@@ -67,7 +67,10 @@ def test_filtered_models_default_hides_non_recommended_models() -> None:
         _model("unknown-structured", structured_output=None),
     )
 
-    assert [model.id for model in filtered_models(models)] == ["good"]
+    assert [model.id for model in filtered_models(models)] == [
+        "good",
+        "unknown-structured",
+    ]
 
 
 def test_filtered_models_advanced_flags_include_additional_models() -> None:

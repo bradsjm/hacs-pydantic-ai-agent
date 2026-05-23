@@ -87,7 +87,8 @@ Default visible model filters:
 - hide non-chat and non-text-output models;
 - hide deprecated models;
 - hide models that do not support tool calling;
-- hide models that do not support structured output according to catalog data.
+- hide models known not to support structured output according to catalog data;
+  missing catalog metadata is treated as unknown, not unsupported.
 
 The structured-output filter is a UX default, not a runtime guarantee. If this
 filter hides too many otherwise useful models for a provider, the implementation
@@ -309,8 +310,8 @@ References checked before implementation:
 Required test areas:
 
 - provider mapping from catalog provider data to supported integration modes;
-- default model filtering hides non-text, deprecated, non-tool, and
-  non-structured-output models;
+- default model filtering hides non-text, deprecated, non-tool, and models known
+  not to support structured output;
 - advanced filter flags include additional models;
 - provider selection hides unsupported providers but includes custom provider;
 - driver step is skipped for providers with one supported mode;
@@ -350,4 +351,6 @@ Resolved phase 1 defaults:
 - OpenAI defaults to Chat Completions but offers Responses as a user-visible
   API-mode choice;
 - catalog fetch failure shows retry/manual fallback;
-- default structured-output filter requires `structured_output is True`.
+- default structured-output filter excludes `structured_output is False`; missing
+  or unknown catalog metadata remains visible so first-class providers are not
+  accidentally hidden.

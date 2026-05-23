@@ -564,14 +564,14 @@
             "family": "Model family",
             "include_deprecated": "Include deprecated models",
             "include_non_text_output": "Include models without text output",
-            "include_without_structured_output": "Include models without structured output",
+            "include_without_structured_output": "Include models known to lack structured output",
             "include_without_tool_call": "Include models without tool calling"
           },
           "data_description": {
             "family": "Limit the model list to one catalog family.",
             "include_deprecated": "Deprecated models are hidden by default.",
             "include_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
-            "include_without_structured_output": "Models without native structured output are hidden by default for reliable AI task setup.",
+            "include_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup. Models with unknown catalog metadata remain visible.",
             "include_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
           },
           "description": "Narrow the model list before selecting models to enable.",
