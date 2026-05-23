@@ -1,5 +1,7 @@
 """Home Assistant schemas for the provider setup wizard."""
 
+from collections.abc import Iterable
+
 import voluptuous as vol
 from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.helpers.selector import (
@@ -161,10 +163,14 @@ def model_selection_schema(
 
 def provider_options(catalog: CompactCatalog) -> list[SelectOptionDict]:
     """Return provider selector options including custom setup."""
-    options = [
-        SelectOptionDict(label=provider.name, value=provider.id)
-        for provider in catalog.sorted_providers()
-    ]
+    providers = catalog.sorted_providers()
+    duplicate_names = _duplicate_values(provider.name for provider in providers)
+    options = []
+    for provider in providers:
+        label = provider.name
+        if label in duplicate_names:
+            label = f"{label} ({provider.id})"
+        options.append(SelectOptionDict(label=label, value=provider.id))
     options.append(SelectOptionDict(label="Custom provider", value=CUSTOM_PROVIDER_ID))
     return options
 
@@ -179,9 +185,15 @@ def driver_options(provider: CatalogProviderOption) -> list[SelectOptionDict]:
 
 def model_options(models: tuple[CatalogModelOption, ...]) -> list[SelectOptionDict]:
     """Return model selector options."""
+    sorted_models = sorted(models, key=lambda model: (model.name.casefold(), model.id))
+    labels_by_id = {model.id: _model_label(model) for model in sorted_models}
+    duplicate_labels = _duplicate_values(labels_by_id.values())
     return [
-        SelectOptionDict(label=_model_label(model), value=model.id)
-        for model in sorted(models, key=lambda model: (model.name.casefold(), model.id))
+        SelectOptionDict(
+            label=_disambiguated_model_label(model, labels_by_id[model.id], duplicate_labels),
+            value=model.id,
+        )
+        for model in sorted_models
     ]
 
 
@@ -221,3 +233,24 @@ def _model_label(model: CatalogModelOption) -> str:
     if model.context_limit:
         badges.append(f"{model.context_limit:,} context")
     return f"{model.name} ({', '.join(badges)})" if badges else model.name
+
+
+def _disambiguated_model_label(
+    model: CatalogModelOption, label: str, duplicate_labels: set[str]
+) -> str:
+    """Return a model label with a stable ID hint when needed."""
+    if label not in duplicate_labels:
+        return label
+    return f"{label} - {model.id}"
+
+
+def _duplicate_values(values: Iterable[str]) -> set[str]:
+    """Return values that occur more than once."""
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for value in values:
+        if value in seen:
+            duplicates.add(value)
+        else:
+            seen.add(value)
+    return duplicates

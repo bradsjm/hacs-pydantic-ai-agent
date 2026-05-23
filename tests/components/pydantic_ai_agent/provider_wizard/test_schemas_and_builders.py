@@ -72,6 +72,22 @@ def test_provider_options_include_supported_providers_and_custom() -> None:
     ]
 
 
+def test_provider_options_disambiguate_duplicate_names() -> None:
+    """Test duplicate provider names include stable provider IDs."""
+    catalog = CompactCatalog(
+        providers={
+            "stepfun": _provider("stepfun", name="StepFun"),
+            "stepfun-ai": _provider("stepfun-ai", name="StepFun"),
+        },
+        models_by_provider={},
+    )
+
+    assert provider_options(catalog)[:2] == [
+        {"label": "StepFun (stepfun)", "value": "stepfun"},
+        {"label": "StepFun (stepfun-ai)", "value": "stepfun-ai"},
+    ]
+
+
 def test_driver_options_use_user_facing_labels() -> None:
     """Test driver options hide internal SDK details."""
     provider = _provider(
@@ -112,6 +128,29 @@ def test_model_options_include_capability_badges() -> None:
             "label": "GPT 4.1 Mini (reasoning, attachments, 128,000 context)",
             "value": "gpt-4.1-mini",
         }
+    ]
+
+
+def test_model_options_disambiguate_duplicate_labels() -> None:
+    """Test duplicate model labels include stable model IDs."""
+    models = (
+        _model("gpt-4.1-mini", name="OpenAI GPT-4.1 Mini", context_limit=1047576),
+        _model(
+            "gpt-4.1-mini-2025-04-14",
+            name="OpenAI GPT-4.1 Mini",
+            context_limit=1047576,
+        ),
+    )
+
+    assert model_options(models) == [
+        {
+            "label": "OpenAI GPT-4.1 Mini (1,047,576 context) - gpt-4.1-mini",
+            "value": "gpt-4.1-mini",
+        },
+        {
+            "label": "OpenAI GPT-4.1 Mini (1,047,576 context) - gpt-4.1-mini-2025-04-14",
+            "value": "gpt-4.1-mini-2025-04-14",
+        },
     ]
 
 
