@@ -62,14 +62,14 @@ class ProviderWizardCatalogManager:
 
     @callback
     def load_task(self) -> asyncio.Task[CompactCatalog]:
-        """Return the shared catalog load task, creating one if needed."""
+        """Return a per-flow catalog load task, creating the shared fetch if needed."""
         cached_catalog = self.cached_catalog()
         if cached_catalog is not None:
             task = self.hass.loop.create_task(_return_catalog(cached_catalog))
             return task
         if self.inflight_task is None or self.inflight_task.done():
             self.inflight_task = self.hass.async_create_task(self._async_load_catalog())
-        return self.inflight_task
+        return self.hass.loop.create_task(_await_shared_catalog(self.inflight_task))
 
     async def async_get_catalog(self) -> CompactCatalog:
         """Return a fresh catalog, loading it if needed."""
@@ -132,3 +132,10 @@ def catalog_manager(hass: HomeAssistant) -> ProviderWizardCatalogManager:
 async def _return_catalog(catalog: CompactCatalog) -> CompactCatalog:
     """Return a cached catalog through a task interface."""
     return catalog
+
+
+async def _await_shared_catalog(
+    task: asyncio.Task[CompactCatalog],
+) -> CompactCatalog:
+    """Await the shared fetch without allowing one flow to cancel it."""
+    return await asyncio.shield(task)

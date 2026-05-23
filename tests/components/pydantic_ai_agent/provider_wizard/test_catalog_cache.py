@@ -29,10 +29,10 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types impo
 from custom_components.pydantic_ai_agent.const import DOMAIN
 
 
-async def test_catalog_manager_reuses_single_inflight_task(
+async def test_catalog_manager_reuses_single_inflight_fetch(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test concurrent catalog callers share one load task."""
+    """Test concurrent catalog callers share one fetch through per-flow tasks."""
     calls = 0
     release = asyncio.Event()
     catalog = _catalog()
@@ -49,9 +49,40 @@ async def test_catalog_manager_reuses_single_inflight_task(
     first_task = manager.load_task()
     second_task = manager.load_task()
 
-    assert first_task is second_task
+    assert first_task is not second_task
+    assert manager.inflight_task is not None
     release.set()
     assert await first_task is catalog
+    assert await second_task is catalog
+    assert calls == 1
+
+
+async def test_catalog_manager_flow_task_cancel_does_not_cancel_shared_fetch(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test cancelling one flow task does not cancel the shared catalog fetch."""
+    calls = 0
+    release = asyncio.Event()
+    catalog = _catalog()
+
+    async def fake_fetch_catalog(hass: HomeAssistant) -> CompactCatalog:
+        nonlocal calls
+        calls += 1
+        await release.wait()
+        return catalog
+
+    monkeypatch.setattr(catalog_cache, "async_fetch_catalog", fake_fetch_catalog)
+    manager = ProviderWizardCatalogManager(hass)
+
+    cancelled_task = manager.load_task()
+    surviving_task = manager.load_task()
+    cancelled_task.cancel()
+    await asyncio.gather(cancelled_task, return_exceptions=True)
+
+    assert manager.inflight_task is not None
+    assert not manager.inflight_task.cancelled()
+    release.set()
+    assert await surviving_task is catalog
     assert calls == 1
 
 
