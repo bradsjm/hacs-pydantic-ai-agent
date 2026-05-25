@@ -2,11 +2,8 @@
 
 from collections.abc import AsyncIterable, AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
-import errno
 import json
 import logging
-import socket
-import ssl
 from typing import Any, cast
 
 import httpx
@@ -64,6 +61,7 @@ from .chat_template_kwargs import (
     render_chat_template_kwargs,
 )
 from .context_management import SlidingWindowContextCapability
+from .error_classification import has_connection_failure
 from .ha_toolset import tool_definitions_from_llm_api, tools_from_llm_api
 from .history import chat_log_content_to_model_messages, split_last_user_prompt
 from .logfire_support import agent_run_span, instrument_agent
@@ -582,27 +580,7 @@ def _should_fallback(err: Exception) -> bool:
 
 def _has_connection_failure(err: BaseException) -> bool:
     """Return if an exception cause chain indicates transport failure."""
-    seen: set[int] = set()
-    current: BaseException | None = err
-    while current is not None and id(current) not in seen and len(seen) < 8:
-        seen.add(id(current))
-        if isinstance(
-            current,
-            TimeoutError
-            | httpx.TimeoutException
-            | httpx.ConnectError
-            | socket.gaierror
-            | ssl.SSLError,
-        ):
-            return True
-        if isinstance(current, OSError) and current.errno in {
-            errno.ECONNREFUSED,
-            errno.ENETUNREACH,
-            errno.EHOSTUNREACH,
-        }:
-            return True
-        current = current.__cause__ or current.__context__
-    return False
+    return has_connection_failure(err)
 
 
 def _set_span_usage_attributes(span: Any, result: Any) -> None:

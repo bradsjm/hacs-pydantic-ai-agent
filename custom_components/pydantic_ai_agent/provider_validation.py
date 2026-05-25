@@ -1,9 +1,6 @@
 """Provider validation helpers for Pydantic AI Agent."""
 
-import errno
 import json
-import socket
-import ssl
 from collections.abc import AsyncIterable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -53,6 +50,7 @@ from .const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
+from .error_classification import connection_failure_message
 from .provider import (
     anthropic_model,
     google_gemini_model,
@@ -158,35 +156,9 @@ def _format_http_error(err: ModelHTTPError) -> str:
     return message
 
 
-def _iter_exception_chain(err: BaseException) -> list[BaseException]:
-    """Return an exception and its causes/contexts without looping forever."""
-    chain: list[BaseException] = []
-    seen: set[int] = set()
-    current: BaseException | None = err
-    while current is not None and id(current) not in seen and len(chain) < 8:
-        chain.append(current)
-        seen.add(id(current))
-        current = current.__cause__ or current.__context__
-    return chain
-
-
 def _format_connection_error(err: BaseException) -> str | None:
     """Return a well-defined connection error message if one can be identified."""
-    for item in _iter_exception_chain(err):
-        if isinstance(item, TimeoutError | httpx.TimeoutException):
-            return "Request timed out."
-        if isinstance(item, socket.gaierror):
-            return "Host not found."
-        if isinstance(item, ssl.SSLError):
-            return "TLS error."
-        if isinstance(item, OSError):
-            if item.errno == errno.ECONNREFUSED:
-                return "Connection refused."
-            if item.errno in (errno.ENETUNREACH, errno.EHOSTUNREACH):
-                return "Network unreachable."
-        if isinstance(item, httpx.ConnectError):
-            return "Connection failed."
-    return None
+    return connection_failure_message(err)
 
 
 def _format_api_error(err: ModelAPIError) -> ProviderValidationError:

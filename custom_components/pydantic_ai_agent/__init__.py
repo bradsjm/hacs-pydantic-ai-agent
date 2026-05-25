@@ -1,7 +1,7 @@
 """Pydantic AI Agent integration."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import json
 import logging
 from typing import Any
@@ -35,6 +35,7 @@ from .const import (
 from .provider_validation import ProviderValidationError, async_probe_model
 from .logfire_support import (
     async_configure_logfire,
+    async_release_logfire,
     logfire_enabled,
     logfire_include_content,
 )
@@ -183,17 +184,27 @@ async def async_setup_entry(
     provider_runtimes = _provider_runtimes(entry)
     mcp_runtime = _mcp_server_runtimes(entry)
     model_profiles = _resolved_model_profiles(entry, provider_runtimes)
-    entry.runtime_data = WorkspaceRuntimeData(
-        workspace_name=entry.data[CONF_NAME],
-        providers=provider_runtimes,
-        mcp_servers=mcp_runtime,
-        model_profiles=model_profiles,
-        logfire_enabled=logfire_enabled(hass, entry),
-        logfire_include_content=logfire_include_content(hass, entry),
-    )
     await async_configure_logfire(hass, entry)
-    await _async_validate_configured_models(hass, entry)
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    try:
+        entry.runtime_data = WorkspaceRuntimeData(
+            workspace_name=entry.data[CONF_NAME],
+            providers=provider_runtimes,
+            mcp_servers=mcp_runtime,
+            model_profiles=model_profiles,
+            logfire_enabled=logfire_enabled(hass, entry),
+            logfire_include_content=logfire_include_content(hass, entry),
+        )
+        await _async_validate_configured_models(hass, entry)
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        await async_configure_logfire(hass, entry)
+        entry.runtime_data = replace(
+            entry.runtime_data,
+            logfire_enabled=logfire_enabled(hass, entry),
+            logfire_include_content=logfire_include_content(hass, entry),
+        )
+    except BaseException:
+        await async_release_logfire(hass, entry)
+        raise
     entry.async_on_unload(entry.add_update_listener(async_update_entry))
     return True
 
@@ -204,6 +215,7 @@ async def async_unload_entry(
     """Unload a config entry."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
+        await async_release_logfire(hass, entry)
         async_delete_logfire_token_conflict_issue(hass, entry)
     return unloaded
 
@@ -226,6 +238,7 @@ async def async_remove_entry(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> None:
     """Clean up repair issues when a config entry is permanently removed."""
+    await async_release_logfire(hass, entry)
     async_delete_entry_repair_issues(hass, entry)
 
 

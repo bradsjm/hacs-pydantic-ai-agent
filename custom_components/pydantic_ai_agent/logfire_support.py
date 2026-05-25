@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic_ai import Agent
 
-from homeassistant.config_entries import ConfigEntry, ConfigSubentry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigSubentry
 from homeassistant.const import CONF_LLM_HASS_API, __version__
 from homeassistant.core import HomeAssistant
 
@@ -37,6 +37,7 @@ class LogfireState:
 
     configured_token: str | None = None
     configured_include_content: bool = False
+    owner_include_content_by_entry_id: dict[str, bool] = field(default_factory=dict)
     configure_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
@@ -53,12 +54,17 @@ async def async_configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bo
     """Configure process-global Logfire once for a config entry."""
     token = _entry_logfire_token(entry)
     if token is None:
+        await async_release_logfire(hass, entry)
         async_delete_logfire_token_conflict_issue(hass, entry)
         return False
 
     include_content = bool(entry.data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False))
     state = _logfire_state(hass)
     async with state.configure_lock:
+        if state.configured_token is not None and not state.owner_include_content_by_entry_id:
+            state.configured_token = None
+            state.configured_include_content = False
+
         if state.configured_token is None:
             try:
                 await hass.async_add_executor_job(_configure_logfire_sync, token)
@@ -69,11 +75,14 @@ async def async_configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bo
                 )
                 return False
             state.configured_token = token
-            state.configured_include_content = include_content
+            state.owner_include_content_by_entry_id[entry.entry_id] = include_content
+            state.configured_include_content = _configured_include_content(state)
             async_delete_logfire_token_conflict_issue(hass, entry)
             return True
 
         if token == state.configured_token:
+            state.owner_include_content_by_entry_id[entry.entry_id] = include_content
+            state.configured_include_content = _configured_include_content(state)
             async_delete_logfire_token_conflict_issue(hass, entry)
             return True
 
@@ -84,6 +93,43 @@ async def async_configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bo
         )
         async_create_logfire_token_conflict_issue(hass, entry)
         return False
+
+
+async def async_release_logfire(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Release this entry's ownership of the process-global Logfire token."""
+    state = _logfire_state(hass)
+    async with state.configure_lock:
+        state.owner_include_content_by_entry_id.pop(entry.entry_id, None)
+        if state.owner_include_content_by_entry_id:
+            state.configured_include_content = _configured_include_content(state)
+            return
+        state.configured_token = None
+        state.configured_include_content = False
+    await _async_configure_next_logfire_owner(hass, entry.entry_id)
+
+
+def _configured_include_content(state: LogfireState) -> bool:
+    """Return if any active Logfire owner captures prompt/completion content."""
+    return any(state.owner_include_content_by_entry_id.values())
+
+
+async def _async_configure_next_logfire_owner(
+    hass: HomeAssistant, released_entry_id: str
+) -> None:
+    """Promote a loaded conflicting entry after the last owner releases Logfire."""
+    promoted_token: str | None = None
+    for candidate in hass.config_entries.async_entries(DOMAIN):
+        if candidate.entry_id == released_entry_id:
+            continue
+        if candidate.state is not ConfigEntryState.LOADED:
+            continue
+        token = _entry_logfire_token(candidate)
+        if token is None:
+            continue
+        if promoted_token is not None and token != promoted_token:
+            continue
+        if await async_configure_logfire(hass, candidate):
+            promoted_token = token
 
 
 def _configure_logfire_sync(token: str) -> None:
@@ -107,14 +153,20 @@ def logfire_enabled(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 def logfire_active_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Return if Logfire should emit traces for this entry."""
     token = _entry_logfire_token(entry)
-    return token is not None and token == _logfire_state(hass).configured_token
+    state = _logfire_state(hass)
+    return (
+        token is not None
+        and token == state.configured_token
+        and entry.entry_id in state.owner_include_content_by_entry_id
+    )
 
 
 def logfire_include_content(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Return if Logfire should include prompt and completion content."""
     if not logfire_active_for_entry(hass, entry):
         return False
-    return _logfire_state(hass).configured_include_content
+    state = _logfire_state(hass)
+    return state.owner_include_content_by_entry_id.get(entry.entry_id, False)
 
 
 def logfire_token_conflict(hass: HomeAssistant, entry: ConfigEntry) -> bool:
