@@ -41,8 +41,11 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_ENABLED,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
+    CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
@@ -106,11 +109,36 @@ def test_driver_options_use_user_facing_labels() -> None:
 
 def test_connection_schema_uses_password_api_key_selector() -> None:
     """Test guided setup does not expose API keys as plain text."""
-    schema = connection_schema(_provider("openai"), {})
+    schema = connection_schema(
+        _provider("openai"), PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS, {}
+    )
     selector = _selector_for_schema_key(schema, CONF_API_KEY)
 
     assert isinstance(selector, TextSelector)
     assert selector.config["type"] == "password"
+
+
+def test_connection_schema_hides_extra_body_for_google() -> None:
+    """Test guided Google setup does not show an unsupported field."""
+    schema = connection_schema(_provider("google"), PROVIDER_GOOGLE_GEMINI, {})
+
+    assert not _schema_has_key(schema, CONF_PROVIDER_EXTRA_BODY)
+
+
+def test_connection_schema_shows_extra_body_for_supported_modes() -> None:
+    """Test guided setup shows extra body only for supported provider modes."""
+    assert _schema_has_key(
+        connection_schema(_provider("openai"), PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS, {}),
+        CONF_PROVIDER_EXTRA_BODY,
+    )
+    assert _schema_has_key(
+        connection_schema(_provider("openai"), PROVIDER_OPENAI_COMPATIBLE_RESPONSES, {}),
+        CONF_PROVIDER_EXTRA_BODY,
+    )
+    assert _schema_has_key(
+        connection_schema(_provider("anthropic"), PROVIDER_ANTHROPIC, {}),
+        CONF_PROVIDER_EXTRA_BODY,
+    )
 
 
 def test_model_options_include_capability_badges() -> None:
@@ -269,6 +297,11 @@ def _selector_for_schema_key(schema: vol.Schema, key: str) -> object:
         if getattr(schema_key, "schema", None) == key:
             return selector
     raise AssertionError(f"Schema key {key} not found")
+
+
+def _schema_has_key(schema: vol.Schema, key: str) -> bool:
+    """Return if a voluptuous schema contains a key."""
+    return any(getattr(schema_key, "schema", None) == key for schema_key in schema.schema)
 
 
 def _model(

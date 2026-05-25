@@ -356,7 +356,9 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         if user_input is None:
             return self.async_show_form(
                 step_id="wizard_connection",
-                data_schema=connection_schema(provider, self._wizard_connection_options),
+                data_schema=connection_schema(
+                    provider, driver, self._wizard_connection_options
+                ),
             )
         data_input = dict(user_input)
         data_input[CONF_PROVIDER_MODE] = driver
@@ -367,7 +369,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             self._wizard_connection_options = data_input
             return self.async_show_form(
                 step_id="wizard_connection",
-                data_schema=connection_schema(provider, data_input),
+                data_schema=connection_schema(provider, driver, data_input),
                 errors={"base": err.reason},
                 description_placeholders=_provider_validation_placeholders(err),
             )
@@ -381,6 +383,8 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         """Advance to filter, model selection, or finish for guided setup."""
         default_models = filtered_models(self._wizard_models, self._wizard_filters)
         if not default_models:
+            return await self.async_step_model_filters()
+        if len(default_models) < len(self._wizard_models):
             return await self.async_step_model_filters()
         if needs_model_filter_step(self._wizard_models):
             return await self.async_step_model_filters()

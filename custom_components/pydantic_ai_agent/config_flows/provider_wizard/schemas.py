@@ -15,7 +15,14 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from ...const import CONF_BASE_URL, CONF_PROVIDER_EXTRA_BODY, CONF_PROVIDER_HEADERS
+from ...const import (
+    CONF_BASE_URL,
+    CONF_PROVIDER_EXTRA_BODY,
+    CONF_PROVIDER_HEADERS,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+)
 from .const import (
     CONF_DRIVER,
     CONF_FAMILY,
@@ -34,6 +41,13 @@ from .const import (
 )
 from .filters import ModelFilterOptions, filtered_models
 from .types import CatalogModelOption, CatalogProviderOption, CompactCatalog
+
+
+_PROVIDER_EXTRA_BODY_MODES = {
+    PROVIDER_ANTHROPIC,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+}
 
 
 def setup_method_schema() -> vol.Schema:
@@ -81,30 +95,34 @@ def driver_selection_schema(provider: CatalogProviderOption) -> vol.Schema:
     )
 
 
-def connection_schema(provider: CatalogProviderOption, options: dict[str, object]) -> vol.Schema:
+def connection_schema(
+    provider: CatalogProviderOption, driver: str, options: dict[str, object]
+) -> vol.Schema:
     """Return guided provider connection details schema."""
-    return vol.Schema(
-        {
-            vol.Required(CONF_NAME, default=options.get(CONF_NAME, provider.name)): TextSelector(
-                TextSelectorConfig()
-            ),
-            vol.Required(CONF_API_KEY, default=options.get(CONF_API_KEY, "")): TextSelector(
-                TextSelectorConfig(type=TextSelectorType.PASSWORD)
-            ),
-            vol.Optional(
-                CONF_BASE_URL,
-                default=options.get(CONF_BASE_URL, provider.default_base_url or ""),
-            ): TextSelector(TextSelectorConfig()),
-            vol.Optional(
-                CONF_PROVIDER_HEADERS,
-                default=options.get(CONF_PROVIDER_HEADERS, ""),
-            ): TextSelector(TextSelectorConfig(multiline=True)),
+    schema = {
+        vol.Required(CONF_NAME, default=options.get(CONF_NAME, provider.name)): TextSelector(
+            TextSelectorConfig()
+        ),
+        vol.Required(CONF_API_KEY, default=options.get(CONF_API_KEY, "")): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        ),
+        vol.Optional(
+            CONF_BASE_URL,
+            default=options.get(CONF_BASE_URL, provider.default_base_url or ""),
+        ): TextSelector(TextSelectorConfig()),
+        vol.Optional(
+            CONF_PROVIDER_HEADERS,
+            default=options.get(CONF_PROVIDER_HEADERS, ""),
+        ): TextSelector(TextSelectorConfig(multiline=True)),
+    }
+    if driver in _PROVIDER_EXTRA_BODY_MODES:
+        schema[
             vol.Optional(
                 CONF_PROVIDER_EXTRA_BODY,
                 default=options.get(CONF_PROVIDER_EXTRA_BODY, ""),
-            ): TextSelector(TextSelectorConfig(multiline=True)),
-        }
-    )
+            )
+        ] = TextSelector(TextSelectorConfig(multiline=True))
+    return vol.Schema(schema)
 
 
 def model_filter_schema(

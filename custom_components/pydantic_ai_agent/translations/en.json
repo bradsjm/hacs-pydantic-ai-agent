@@ -445,7 +445,7 @@
             "provider_mode": "Provider mode"
           },
           "data_description": {
-            "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
+            "base_url": "Optional provider API base URL. Leave empty to use the selected mode's default endpoint.",
             "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is disabled.",
             "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
             "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
@@ -529,7 +529,7 @@
             "provider_mode": "Provider mode"
           },
           "data_description": {
-            "base_url": "Optional OpenAI-compatible API base URL. Defaults to https://api.openai.com/v1.",
+            "base_url": "Optional provider API base URL. Leave empty to use the selected mode's default endpoint.",
             "custom_model_names": "One model name per line. When set, provider model discovery is disabled.",
             "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
             "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
@@ -629,7 +629,7 @@
             "provider_headers": "Provider HTTP headers"
           },
           "data_description": {
-            "base_url": "Optional OpenAI-compatible API base URL. Catalog providers prefill this when available.",
+            "base_url": "Optional provider API base URL. Catalog providers prefill this when available.",
             "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted.",
             "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
           },

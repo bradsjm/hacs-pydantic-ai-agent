@@ -273,6 +273,69 @@ async def test_guided_provider_subentry_creates_enabled_profile(
     assert profile[CONF_ENABLED] is True
 
 
+async def test_guided_provider_hidden_models_shows_filter_step(
+    hass: HomeAssistant,
+) -> None:
+    """Test hidden default-filtered models remain reachable in guided setup."""
+    entry = await _loaded_workspace_entry(hass)
+    manager = catalog_manager(hass)
+    now = dt_util.utcnow()
+    manager.catalog = _wizard_catalog(hidden_openai_model=True)
+    manager.loaded_at = now
+    manager.last_used_at = now
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_GUIDED}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_PROVIDER_ID: "openai"}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_DRIVER: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_NAME: "OpenAI", CONF_API_KEY: "sk-test"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "model_filters"
+
+
+async def test_guided_single_visible_model_with_hidden_model_does_not_auto_create(
+    hass: HomeAssistant,
+) -> None:
+    """Test hidden models prevent the single-model auto-finish shortcut."""
+    entry = await _loaded_workspace_entry(hass)
+    manager = catalog_manager(hass)
+    now = dt_util.utcnow()
+    manager.catalog = _wizard_catalog(
+        single_anthropic=True, hidden_anthropic_model=True
+    )
+    manager.loaded_at = now
+    manager.last_used_at = now
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_GUIDED}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_PROVIDER_ID: "anthropic"}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_NAME: "Anthropic", CONF_API_KEY: "sk-ant"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "model_filters"
+
+
 async def test_guided_single_driver_single_model_skips_extra_steps(
     hass: HomeAssistant,
 ) -> None:
@@ -478,7 +541,12 @@ async def test_provider_subentry_base_url_endpoint_returns_form_error(
     assert result["errors"] == {"base": "invalid_base_url_endpoint"}
 
 
-def _wizard_catalog(*, single_anthropic: bool = False) -> CompactCatalog:
+def _wizard_catalog(
+    *,
+    single_anthropic: bool = False,
+    hidden_openai_model: bool = False,
+    hidden_anthropic_model: bool = False,
+) -> CompactCatalog:
     """Return a compact catalog fixture for guided flow tests."""
     openai_provider = CatalogProviderOption(
         id="openai",
@@ -493,14 +561,18 @@ def _wizard_catalog(*, single_anthropic: bool = False) -> CompactCatalog:
         model_count=2,
         families=("gpt",),
     )
-    openai_models = (
+    openai_models = [
         _wizard_model("gpt-4.1-mini", "GPT 4.1 Mini", "openai"),
         _wizard_model("gpt-4.1", "GPT 4.1", "openai"),
-    )
+    ]
+    if hidden_openai_model:
+        openai_models.append(
+            _wizard_model("gpt-4.1-no-tools", "GPT 4.1 No Tools", "openai", tool_call=False)
+        )
     if not single_anthropic:
         return CompactCatalog(
             providers={"openai": openai_provider},
-            models_by_provider={"openai": openai_models},
+            models_by_provider={"openai": tuple(openai_models)},
         )
     anthropic_provider = CatalogProviderOption(
         id="anthropic",
@@ -512,23 +584,41 @@ def _wizard_catalog(*, single_anthropic: bool = False) -> CompactCatalog:
         model_count=1,
         families=("claude",),
     )
+    anthropic_models = [
+        _wizard_model("claude-sonnet-4", "Claude Sonnet 4", "anthropic"),
+    ]
+    if hidden_anthropic_model:
+        anthropic_models.append(
+            _wizard_model(
+                "claude-sonnet-4-no-tools",
+                "Claude Sonnet 4 No Tools",
+                "anthropic",
+                tool_call=False,
+            )
+        )
     return CompactCatalog(
         providers={"anthropic": anthropic_provider, "openai": openai_provider},
         models_by_provider={
-            "anthropic": (_wizard_model("claude-sonnet-4", "Claude Sonnet 4", "anthropic"),),
-            "openai": openai_models,
+            "anthropic": tuple(anthropic_models),
+            "openai": tuple(openai_models),
         },
     )
 
 
-def _wizard_model(model_id: str, name: str, provider_id: str) -> CatalogModelOption:
+def _wizard_model(
+    model_id: str,
+    name: str,
+    provider_id: str,
+    *,
+    tool_call: bool = True,
+) -> CatalogModelOption:
     """Return a compact catalog model fixture."""
     return CatalogModelOption(
         id=model_id,
         name=name,
         provider_id=provider_id,
         family="gpt",
-        tool_call=True,
+        tool_call=tool_call,
         structured_output=True,
         reasoning=False,
         attachment=False,
