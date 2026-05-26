@@ -33,6 +33,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_DEFAULT_SKILLS_FOLDER,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
+    CONF_MODEL_SETTINGS,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
@@ -326,6 +327,450 @@ async def test_provider_edit_connection_clears_catalog_metadata_when_repointed(
     assert result["reason"] == "reconfigure_successful"
     updated_subentry = entry.subentries[provider_subentry.subentry_id]
     assert CONF_PROVIDER_METADATA not in updated_subentry.data
+
+
+async def test_provider_reconfigure_menu_exposes_model_management(
+    hass: HomeAssistant,
+) -> None:
+    """Test provider reconfigure separates connection, availability, and editing."""
+    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
+    provider_subentry = next(iter(entry.subentries.values()))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == [
+        "edit_connection",
+        "manage_models",
+        "customize_model_profile",
+    ]
+
+
+async def test_provider_manage_models_preselects_enabled_profiles(
+    hass: HomeAssistant,
+) -> None:
+    """Test availability management preselects enabled catalog profiles."""
+    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
+    provider_subentry = next(iter(entry.subentries.values()))
+    _cache_provider_catalog(hass, _wizard_catalog())
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "manage_models"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "manage_models"
+    assert _schema_default(result["data_schema"], CONF_SELECTED_MODEL_IDS) == [
+        "gpt-4.1-mini"
+    ]
+    assert _schema_select_options(result["data_schema"], CONF_SELECTED_MODEL_IDS) == [
+        {"label": "GPT 4.1 (128K context)", "value": "gpt-4.1"},
+        {"label": "GPT 4.1 Mini (128K context)", "value": "gpt-4.1-mini"},
+    ]
+
+
+async def test_provider_manage_models_includes_enabled_models_hidden_by_filters(
+    hass: HomeAssistant,
+) -> None:
+    """Test enabled models hidden by default filters stay manageable."""
+    provider_data = _provider_subentry_data()
+    provider_config = cast(dict[str, Any], provider_data["data"])
+    provider_config[CONF_MODEL_PROFILES]["profile-2"] = {
+        "id": "profile-2",
+        CONF_NAME: "No Tools",
+        CONF_MODEL: "gpt-4.1-no-tools",
+        CONF_ENABLED: True,
+    }
+    entry = await _loaded_workspace_entry(hass, (provider_data,))
+    provider_subentry = next(iter(entry.subentries.values()))
+    _cache_provider_catalog(hass, _wizard_catalog(hidden_openai_model=True))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "manage_models"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "manage_model_filters"
+
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], {})
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "manage_models"
+    assert _schema_default(result["data_schema"], CONF_SELECTED_MODEL_IDS) == [
+        "gpt-4.1-mini",
+        "gpt-4.1-no-tools",
+    ]
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini"]}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated_profiles = entry.subentries[provider_subentry.subentry_id].data[
+        CONF_MODEL_PROFILES
+    ]
+    assert updated_profiles["profile-2"][CONF_ENABLED] is False
+
+
+async def test_provider_manage_models_matches_catalog_after_metadata_cleared(
+    hass: HomeAssistant,
+) -> None:
+    """Test stale profiles do not block catalog matching without metadata."""
+    provider_data = _provider_subentry_data()
+    provider_config = cast(dict[str, Any], provider_data["data"])
+    provider_config.pop(CONF_PROVIDER_METADATA)
+    provider_config[CONF_MODEL_PROFILES]["profile-old"] = {
+        "id": "profile-old",
+        CONF_NAME: "Old Model",
+        CONF_MODEL: "gpt-removed",
+        CONF_ENABLED: True,
+    }
+    entry = await _loaded_workspace_entry(hass, (provider_data,))
+    provider_subentry = next(iter(entry.subentries.values()))
+    _cache_provider_catalog(hass, _wizard_catalog())
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "manage_models"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "manage_models"
+    assert _schema_default(result["data_schema"], CONF_SELECTED_MODEL_IDS) == [
+        "gpt-4.1-mini",
+        "gpt-removed",
+    ]
+
+
+async def test_provider_manage_models_discovers_manual_provider_models(
+    hass: HomeAssistant,
+) -> None:
+    """Test manual providers without a model list manage discovered models."""
+    provider_data = _provider_subentry_data()
+    provider_config = cast(dict[str, Any], provider_data["data"])
+    provider_config.pop(CONF_PROVIDER_METADATA)
+    provider_config[CONF_MODEL_PROFILES] = {}
+    entry = await _loaded_workspace_entry(hass, (provider_data,))
+    provider_subentry = next(iter(entry.subentries.values()))
+
+    async def fake_list_provider_model_names(
+        _hass: HomeAssistant, _data: dict[str, Any]
+    ) -> list[str]:
+        return ["gpt-4.1-mini", "manual-model"]
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flows.provider_flow.async_list_provider_model_names",
+        new=fake_list_provider_model_names,
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "subentry_id": provider_subentry.subentry_id,
+            },
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {"next_step_id": "manage_models"}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "manage_models"
+    assert _schema_select_options(result["data_schema"], CONF_SELECTED_MODEL_IDS) == [
+        {"label": "gpt-4.1-mini", "value": "gpt-4.1-mini"},
+        {"label": "manual-model", "value": "manual-model"}
+    ]
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini", "manual-model"]}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated_profiles = entry.subentries[provider_subentry.subentry_id].data[
+        CONF_MODEL_PROFILES
+    ]
+    assert {profile[CONF_MODEL] for profile in updated_profiles.values()} == {
+        "gpt-4.1-mini",
+        "manual-model",
+    }
+    assert all(profile[CONF_ENABLED] is True for profile in updated_profiles.values())
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "edit_connection"}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "OpenAI-compatible",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            CONF_API_KEY: "sk-updated",
+        },
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated_profiles = entry.subentries[provider_subentry.subentry_id].data[
+        CONF_MODEL_PROFILES
+    ]
+    assert {profile[CONF_MODEL] for profile in updated_profiles.values()} == {
+        "gpt-4.1-mini",
+        "manual-model",
+    }
+
+
+async def test_provider_manage_models_ignores_stale_profiles_with_catalog_metadata(
+    hass: HomeAssistant,
+) -> None:
+    """Test stale profile IDs do not block catalog-backed availability edits."""
+    provider_data = _provider_subentry_data()
+    provider_config = cast(dict[str, Any], provider_data["data"])
+    provider_config[CONF_MODEL_PROFILES]["profile-old"] = {
+        "id": "profile-old",
+        CONF_NAME: "Old Model",
+        CONF_MODEL: "gpt-removed",
+        CONF_ENABLED: True,
+    }
+    entry = await _loaded_workspace_entry(hass, (provider_data,))
+    provider_subentry = next(iter(entry.subentries.values()))
+    _cache_provider_catalog(hass, _wizard_catalog())
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "manage_models"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "manage_models"
+    assert _schema_default(result["data_schema"], CONF_SELECTED_MODEL_IDS) == [
+        "gpt-4.1-mini",
+        "gpt-removed",
+    ]
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini"]}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated_profiles = entry.subentries[provider_subentry.subentry_id].data[
+        CONF_MODEL_PROFILES
+    ]
+    assert updated_profiles["profile-old"][CONF_ENABLED] is False
+
+
+async def test_provider_manage_models_creates_selected_catalog_profile(
+    hass: HomeAssistant,
+) -> None:
+    """Test selected catalog models are created with catalog display names."""
+    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
+    provider_subentry = next(iter(entry.subentries.values()))
+    _cache_provider_catalog(hass, _wizard_catalog())
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "manage_models"}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini", "gpt-4.1"]}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated_subentry = entry.subentries[provider_subentry.subentry_id]
+    model_profiles = cast(
+        dict[str, dict[str, Any]], updated_subentry.data[CONF_MODEL_PROFILES]
+    )
+    created_profile = next(
+        profile for profile in model_profiles.values() if profile[CONF_MODEL] == "gpt-4.1"
+    )
+    assert created_profile[CONF_NAME] == "GPT 4.1"
+    assert created_profile[CONF_ENABLED] is True
+
+
+async def test_provider_manage_models_can_disable_last_unrefenced_profile(
+    hass: HomeAssistant,
+) -> None:
+    """Test availability management can leave a provider with no enabled models."""
+    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
+    provider_subentry = next(iter(entry.subentries.values()))
+    _cache_provider_catalog(hass, _wizard_catalog())
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "manage_models"}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SELECTED_MODEL_IDS: []}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated_subentry = entry.subentries[provider_subentry.subentry_id]
+    model_profiles = cast(
+        dict[str, dict[str, Any]], updated_subentry.data[CONF_MODEL_PROFILES]
+    )
+    assert model_profiles["profile-1"][CONF_ENABLED] is False
+
+
+async def test_provider_manage_models_preserves_existing_profile_customization(
+    hass: HomeAssistant,
+) -> None:
+    """Test enabling an existing profile preserves custom name and settings."""
+    provider_data = _provider_subentry_data()
+    provider_config = cast(dict[str, Any], provider_data["data"])
+    provider_config[CONF_MODEL_PROFILES]["profile-2"] = {
+        "id": "profile-2",
+        CONF_NAME: "Fast Custom",
+        CONF_MODEL: "gpt-4.1",
+        CONF_ENABLED: False,
+        CONF_MODEL_SETTINGS: {"temperature": 0.2},
+    }
+    entry = await _loaded_workspace_entry(hass, (provider_data,))
+    provider_subentry = next(iter(entry.subentries.values()))
+    _cache_provider_catalog(hass, _wizard_catalog())
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "manage_models"}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini", "gpt-4.1"]}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated_subentry = entry.subentries[provider_subentry.subentry_id]
+    model_profiles = cast(
+        dict[str, dict[str, Any]], updated_subentry.data[CONF_MODEL_PROFILES]
+    )
+    assert model_profiles["profile-2"][CONF_NAME] == "Fast Custom"
+    assert model_profiles["profile-2"][CONF_ENABLED] is True
+    assert model_profiles["profile-2"][CONF_MODEL_SETTINGS] == {"temperature": 0.2}
+
+
+async def test_provider_manage_models_rejects_disabling_referenced_profile(
+    hass: HomeAssistant,
+) -> None:
+    """Test referenced model profiles cannot be removed from availability."""
+    entry = await _loaded_workspace_entry(
+        hass,
+        (
+            _provider_subentry_data(),
+            {
+                "subentry_id": "agent-1",
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Kitchen Agent",
+                "unique_id": None,
+                "data": {
+                    CONF_AGENT_NAME: "Kitchen Agent",
+                    CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                },
+            },
+        ),
+    )
+    provider_subentry = entry.subentries["provider-1"]
+    _cache_provider_catalog(hass, _wizard_catalog())
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "manage_models"}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SELECTED_MODEL_IDS: ["gpt-4.1"]}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "manage_models"
+    assert result["errors"] == {"base": "model_profile_in_use"}
+
+
+async def test_provider_edit_model_picker_shows_only_enabled_profiles(
+    hass: HomeAssistant,
+) -> None:
+    """Test model customization only offers available profiles."""
+    provider_data = _provider_subentry_data()
+    provider_config = cast(dict[str, Any], provider_data["data"])
+    provider_config[CONF_MODEL_PROFILES]["profile-2"] = {
+        "id": "profile-2",
+        CONF_NAME: "Disabled Model",
+        CONF_MODEL: "gpt-4.1",
+        CONF_ENABLED: False,
+    }
+    entry = await _loaded_workspace_entry(hass, (provider_data,))
+    provider_subentry = next(iter(entry.subentries.values()))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "customize_model_profile"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "pick_model_profile"
+    assert _schema_select_options(result["data_schema"], "model_profile_id") == [
+        {"label": "GPT Mini", "value": "profile-1"}
+    ]
 
 
 async def test_create_workspace_entry(hass: HomeAssistant) -> None:

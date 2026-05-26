@@ -821,9 +821,12 @@ def _provider_model_profiles_for_discovery_mode(
 
 
 def _provider_profile_options(
-    data: Mapping[str, Any], model_ids: set[str] | None = None
+    data: Mapping[str, Any],
+    model_ids: set[str] | None = None,
+    *,
+    enabled_only: bool = False,
 ) -> list[SelectOptionDict]:
-    """Return all provider model profiles as select options."""
+    """Return provider model profiles as select options."""
     options: list[SelectOptionDict] = []
     profiles = data.get(CONF_MODEL_PROFILES)
     if not isinstance(profiles, Mapping):
@@ -834,6 +837,9 @@ def _provider_profile_options(
         model_name = profile.get(CONF_MODEL)
         if not isinstance(model_name, str) or not model_name.strip():
             continue
+        enabled = bool(profile.get(CONF_ENABLED, False))
+        if enabled_only and not enabled:
+            continue
         if model_ids is not None and model_name not in model_ids:
             continue
         profile_name = profile.get(CONF_NAME)
@@ -842,7 +848,7 @@ def _provider_profile_options(
             if isinstance(profile_name, str) and profile_name.strip()
             else model_name
         )
-        if not bool(profile.get(CONF_ENABLED, False)):
+        if not enabled:
             label = f"{label} (disabled)"
         options.append(SelectOptionDict(label=label, value=profile_id))
     return options
@@ -864,14 +870,19 @@ def _provider_profile_dependents(entry: ConfigEntry, profile_ref: str) -> list[s
 
 
 def _provider_profile_selector_schema(
-    data: Mapping[str, Any], model_ids: set[str] | None = None
+    data: Mapping[str, Any],
+    model_ids: set[str] | None = None,
+    *,
+    enabled_only: bool = False,
 ) -> vol.Schema:
     """Return a selector schema for existing provider-owned profiles."""
     return vol.Schema(
         {
             vol.Required(_CONF_MODEL_PROFILE_ID): SelectSelector(
                 SelectSelectorConfig(
-                    options=_provider_profile_options(data, model_ids),
+                    options=_provider_profile_options(
+                        data, model_ids, enabled_only=enabled_only
+                    ),
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             )
@@ -886,13 +897,11 @@ def _model_profile_edit_schema(
     options: dict[str, Any] = {
         CONF_NAME: profile.get(CONF_NAME, profile.get(CONF_MODEL, "")),
         CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {}),
-        CONF_ENABLED: bool(profile.get(CONF_ENABLED, False)),
     }
     schema: VolDictType = {
         vol.Required(CONF_NAME, default=options[CONF_NAME]): TextSelector(
             TextSelectorConfig()
         ),
-        vol.Optional(CONF_ENABLED, default=options[CONF_ENABLED]): BooleanSelector(),
     }
     if not bool(profile.get(CONF_DISCOVERED, False)):
         schema[vol.Required(CONF_MODEL, default=profile.get(CONF_MODEL, ""))] = (
