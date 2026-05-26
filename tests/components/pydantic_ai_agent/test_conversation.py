@@ -437,7 +437,7 @@ async def test_conversation_subentries_add_separate_entity_agents(
                     f"{entry.entry_id}:{subentries[0].subentry_type}:{subentries[0].subentry_id}",
                 )
             },
-            "name": "Kitchen Agent",
+            "name": "Kitchen Agent Configuration",
             "manufacturer": "Pydantic AI",
             "model": "gpt-kitchen",
             "entry_type": dr.DeviceEntryType.SERVICE,
@@ -449,7 +449,7 @@ async def test_conversation_subentries_add_separate_entity_agents(
                     f"{entry.entry_id}:{subentries[1].subentry_type}:{subentries[1].subentry_id}",
                 )
             },
-            "name": "Garage Agent",
+            "name": "Garage Agent Configuration",
             "manufacturer": "Pydantic AI",
             "model": "gpt-garage",
             "entry_type": dr.DeviceEntryType.SERVICE,

@@ -356,7 +356,8 @@ def test_ai_task_entity_uses_task_name() -> None:
     entity = PydanticAIAgentAITaskEntity(entry, subentry)
 
     assert entity.device_info is not None
-    assert entity.device_info["name"] == "Report task"
+    assert entity.device_info["name"] == "Report task Configuration"
+    assert entity.name == "Report task"
 
 
 def test_ai_task_entity_falls_back_to_legacy_subentry_title() -> None:
@@ -367,7 +368,8 @@ def test_ai_task_entity_falls_back_to_legacy_subentry_title() -> None:
     entity = PydanticAIAgentAITaskEntity(entry, subentry)
 
     assert entity.device_info is not None
-    assert entity.device_info["name"] == "Report task"
+    assert entity.device_info["name"] == "Report task Configuration"
+    assert entity.name == "Report task"
 
 
 def test_ai_task_entity_features() -> None:

@@ -12,11 +12,14 @@ from .common import (
     CONF_DISCOVERED_MODELS,
     CONF_DISCOVERED_MODELS_AT,
     CONF_DISCOVERED_MODELS_CACHE_KEY,
+    CONF_ENABLED,
+    CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_NAME,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
+    CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
     ConfigEntryState,
     ConfigSubentry,
@@ -36,6 +39,7 @@ from .common import (
     _format_custom_model_names,
     _format_key_value_json_setting,
     _merge_model_settings,
+    _normalise_base_url,
     _model_profile_data_from_user_input,
     _model_profile_edit_schema,
     _model_settings_from_options,
@@ -57,11 +61,16 @@ from .common import (
     async_list_provider_model_names,
     provider_model_profiles,
     provider_subentries,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_GOOGLE_GEMINI,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     vol,
 )
 from .provider_wizard.catalog_cache import catalog_manager
 from .provider_wizard.const import (
     CATALOG_RETRY_PROVIDER_ID,
+    CONF_CATALOG_PROVIDER_ID,
     CONF_DRIVER,
     CONF_PROVIDER_ID,
     CONF_SELECTED_MODEL_IDS,
@@ -86,6 +95,36 @@ from .provider_wizard.types import (
 )
 from ..generated_titles import DEFAULT_SERVICE_TITLE_SUFFIX, generated_default_title
 
+
+def _catalog_provider_metadata_still_valid(
+    existing_data: Mapping[str, Any], storage_data: Mapping[str, Any]
+) -> bool:
+    """Return if stored catalog metadata still matches the edited endpoint."""
+    return _effective_catalog_base_url(existing_data) == _effective_catalog_base_url(
+        storage_data
+    )
+
+
+def _effective_catalog_base_url(data: Mapping[str, Any]) -> str | None:
+    """Return the effective endpoint used by model discovery/catalog metadata."""
+    base_url = _normalise_base_url(data)
+    provider_mode = data.get(CONF_PROVIDER_MODE)
+    if provider_mode == PROVIDER_ANTHROPIC:
+        if base_url and base_url.endswith("/v1"):
+            return base_url.removesuffix("/v1")
+        return base_url or "https://api.anthropic.com"
+    if provider_mode == PROVIDER_GOOGLE_GEMINI:
+        if base_url and base_url.endswith(("/v1beta", "/v1")):
+            return base_url.rsplit("/", 1)[0]
+        return base_url or "https://generativelanguage.googleapis.com"
+    if provider_mode in {
+        PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+    }:
+        return base_url or "https://api.openai.com/v1"
+    return base_url
+
+
 class ProviderSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing workspace-owned provider subentries."""
 
@@ -101,6 +140,9 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
     _pending_profile_data: dict[str, Any]
     _pending_profile_error: tuple[str, dict[str, str]] | None
     _profile_flow_data: dict[str, Any]
+    _profile_filter_provider: CatalogProviderOption | None
+    _profile_filters: ModelFilterOptions
+    _profile_models: tuple[CatalogModelOption, ...]
     _profile_refresh_error: str | None
     _wizard_catalog: CompactCatalog | None
     _wizard_catalog_error: str | None
@@ -134,6 +176,9 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         self._pending_step_id = "init"
         self._selected_profile_id = None
         self._profile_flow_data = {}
+        self._profile_filter_provider = None
+        self._profile_filters = ModelFilterOptions()
+        self._profile_models = ()
         self._profile_refresh_error = None
         self._wizard_catalog = None
         self._wizard_catalog_error = None
@@ -579,6 +624,10 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             storage_data[CONF_PROVIDER_HEADERS] = provider_headers
         if provider_extra_body := self._pending_data.get(CONF_PROVIDER_EXTRA_BODY):
             storage_data[CONF_PROVIDER_EXTRA_BODY] = dict(provider_extra_body)
+        if isinstance(
+            provider_metadata := existing_data.get(CONF_PROVIDER_METADATA), Mapping
+        ) and _catalog_provider_metadata_still_valid(existing_data, storage_data):
+            storage_data[CONF_PROVIDER_METADATA] = dict(provider_metadata)
         if not custom_model_names:
             for key in (
                 CONF_DISCOVERED_MODELS,
@@ -612,13 +661,23 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         (
             self._profile_flow_data,
             self._profile_refresh_error,
+            self._profile_filter_provider,
+            self._profile_models,
         ) = await self._async_prepare_profile_flow_data()
         self._selected_profile_id = None
+        self._profile_filters = ModelFilterOptions()
+        if self._profile_needs_model_filter_step():
+            return await self.async_step_profile_model_filters()
         return await self.async_step_pick_model_profile()
 
     async def _async_prepare_profile_flow_data(
         self,
-    ) -> tuple[dict[str, Any], str | None]:
+    ) -> tuple[
+        dict[str, Any],
+        str | None,
+        CatalogProviderOption | None,
+        tuple[CatalogModelOption, ...],
+    ]:
         """Return provider data with refreshed model profiles for profile editing."""
         provider_subentry = self._get_reconfigure_subentry()
         data = dict(provider_subentry.data)
@@ -634,24 +693,124 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                     self._get_entry(), provider_subentry.subentry_id
                 ),
             )
-            return data, None
+            return data, None, None, ()
 
         discovered_model_names = await self._async_model_names(data)
         if not discovered_model_names:
-            return data, None if provider_model_profiles(
-                provider_subentry
-            ) else "model_list_unavailable"
+            refresh_error = (
+                None if provider_model_profiles(provider_subentry) else "model_list_unavailable"
+            )
+            return data, refresh_error, None, ()
+
+        catalog_provider, catalog_models = await self._async_catalog_models_for_profile(
+            data, discovered_model_names
+        )
+        model_labels = {model.id: model.name for model in catalog_models}
 
         _store_provider_model_cache(data, discovered_model_names)
         data[CONF_MODEL_PROFILES] = _normalise_provider_model_profiles(
             existing_profiles,
             discovered_model_names,
             discovered_model_names,
+            model_labels=model_labels,
             keep_profile_ids=_referenced_provider_profile_ids(
                 self._get_entry(), provider_subentry.subentry_id
             ),
         )
-        return data, None
+        return data, None, catalog_provider, catalog_models
+
+    async def _async_catalog_models_for_profile(
+        self, data: Mapping[str, Any], discovered_model_names: list[str]
+    ) -> tuple[CatalogProviderOption | None, tuple[CatalogModelOption, ...]]:
+        """Return catalog provider models matching this provider configuration."""
+        try:
+            catalog = await catalog_manager(self.hass).async_get_catalog()
+        except CatalogLoadError:
+            return None, ()
+        metadata = data.get(CONF_PROVIDER_METADATA)
+        catalog_provider_id = (
+            metadata.get(CONF_CATALOG_PROVIDER_ID)
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        provider = (
+            catalog.providers.get(catalog_provider_id)
+            if isinstance(catalog_provider_id, str)
+            else None
+        )
+        discovered_ids = set(discovered_model_names)
+        if provider is not None and not discovered_ids.issubset(
+            {model.id for model in catalog.models_for_provider(provider.id)}
+        ):
+            provider = None
+        if provider is None:
+            matches = [
+                candidate
+                for candidate in catalog.providers.values()
+                if discovered_ids.issubset(
+                    {model.id for model in catalog.models_for_provider(candidate.id)}
+                )
+            ]
+            if len(matches) != 1:
+                return None, ()
+            provider = matches[0]
+        return provider, catalog.models_for_provider(provider.id)
+
+    def _profile_filtered_model_ids(self) -> set[str] | None:
+        """Return model IDs visible in the active profile reconfigure filter."""
+        if not self._profile_models:
+            return None
+        visible_ids = {
+            model.id
+            for model in filtered_models(self._profile_models, self._profile_filters)
+        }
+        data = self._current_profile_flow_data()
+        profiles = data.get(CONF_MODEL_PROFILES, {})
+        referenced_profile_ids = _referenced_provider_profile_ids(
+            self._get_entry(), self._get_reconfigure_subentry().subentry_id
+        )
+        if isinstance(profiles, Mapping):
+            for profile_id, profile in profiles.items():
+                if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+                    continue
+                model_name = profile.get(CONF_MODEL)
+                if not isinstance(model_name, str):
+                    continue
+                if (
+                    bool(profile.get(CONF_ENABLED, False))
+                    or profile_id in referenced_profile_ids
+                ):
+                    visible_ids.add(model_name)
+        return visible_ids
+
+    def _profile_needs_model_filter_step(self) -> bool:
+        """Return if profile reconfiguration should show model filters first."""
+        if self._profile_filter_provider is None or not self._profile_models:
+            return False
+        default_models = filtered_models(self._profile_models, self._profile_filters)
+        return len(default_models) < len(self._profile_models) or needs_model_filter_step(
+            self._profile_models
+        )
+
+    async def async_step_profile_model_filters(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Filter provider-owned model profiles before selecting one to edit."""
+        provider = self._profile_filter_provider
+        if provider is None:
+            return await self.async_step_pick_model_profile()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            self._profile_filters = filters_from_user_input(user_input)
+            if not self._profile_filtered_model_ids():
+                errors["base"] = "no_models_available"
+            else:
+                return await self.async_step_pick_model_profile()
+        return self.async_show_form(
+            step_id="profile_model_filters",
+            data_schema=model_filter_schema(provider, self._profile_filters),
+            errors=errors,
+        )
 
     def _current_profile_flow_data(self) -> dict[str, Any]:
         """Return transient provider data for the active profile edit flow."""
@@ -664,8 +823,9 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Pick one existing provider-owned model profile."""
         data = self._current_profile_flow_data()
+        filtered_model_ids = self._profile_filtered_model_ids()
         if user_input is None:
-            if not _provider_profile_options(data):
+            if not _provider_profile_options(data, filtered_model_ids):
                 return self.async_show_form(
                     step_id="pick_model_profile",
                     data_schema=vol.Schema({}),
@@ -679,7 +839,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                 errors["base"] = profile_refresh_error
             return self.async_show_form(
                 step_id="pick_model_profile",
-                data_schema=_provider_profile_selector_schema(data),
+                data_schema=_provider_profile_selector_schema(data, filtered_model_ids),
                 errors=errors,
             )
         self._selected_profile_id = str(user_input[_CONF_MODEL_PROFILE_ID])

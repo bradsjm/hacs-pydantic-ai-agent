@@ -8,6 +8,11 @@ from homeassistant.helpers.selector import TextSelector
 
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
     CONF_FAMILY,
+    CONF_HIDE_DEPRECATED,
+    CONF_HIDE_NON_TEXT_OUTPUT,
+    CONF_HIDE_WITHOUT_STRUCTURED_OUTPUT,
+    CONF_HIDE_WITHOUT_TOOL_CALL,
+    SECTION_ADVANCED_FILTERS,
     CUSTOM_PROVIDER_ID,
 )
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.filters import (
@@ -40,6 +45,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_PROFILES,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
+    CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
@@ -112,7 +118,8 @@ def test_connection_schema_hides_extra_body_for_google() -> None:
     """Test guided Google setup does not show an unsupported field."""
     schema = connection_schema(_provider("google"), PROVIDER_GOOGLE_GEMINI, {})
 
-    assert not _schema_has_key(schema, CONF_PROVIDER_EXTRA_BODY)
+    assert _schema_has_key(schema, "advanced_options")
+    assert not _schema_has_key(schema, CONF_PROVIDER_EXTRA_BODY, nested=True)
 
 
 def test_connection_schema_shows_extra_body_for_supported_modes() -> None:
@@ -120,14 +127,17 @@ def test_connection_schema_shows_extra_body_for_supported_modes() -> None:
     assert _schema_has_key(
         connection_schema(_provider("openai"), PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS, {}),
         CONF_PROVIDER_EXTRA_BODY,
+        nested=True,
     )
     assert _schema_has_key(
         connection_schema(_provider("openai"), PROVIDER_OPENAI_COMPATIBLE_RESPONSES, {}),
         CONF_PROVIDER_EXTRA_BODY,
+        nested=True,
     )
     assert _schema_has_key(
         connection_schema(_provider("anthropic"), PROVIDER_ANTHROPIC, {}),
         CONF_PROVIDER_EXTRA_BODY,
+        nested=True,
     )
 
 
@@ -143,7 +153,7 @@ def test_model_options_include_capability_badges() -> None:
 
     assert model_options((model,)) == [
         {
-            "label": "GPT 4.1 Mini (reasoning, attachments, 128,000 context)",
+            "label": "GPT 4.1 Mini (reasoning, attachments, 128K context)",
             "value": "gpt-4.1-mini",
         }
     ]
@@ -162,11 +172,11 @@ def test_model_options_disambiguate_duplicate_labels() -> None:
 
     assert model_options(models) == [
         {
-            "label": "OpenAI GPT-4.1 Mini (1,047,576 context) - gpt-4.1-mini",
+            "label": "OpenAI GPT-4.1 Mini (1,048K context) - gpt-4.1-mini",
             "value": "gpt-4.1-mini",
         },
         {
-            "label": "OpenAI GPT-4.1 Mini (1,047,576 context) - gpt-4.1-mini-2025-04-14",
+            "label": "OpenAI GPT-4.1 Mini (1,048K context) - gpt-4.1-mini-2025-04-14",
             "value": "gpt-4.1-mini-2025-04-14",
         },
     ]
@@ -177,18 +187,20 @@ def test_filters_from_user_input_parses_flags() -> None:
     filters = filters_from_user_input(
         {
             CONF_FAMILY: "gpt",
-            "include_without_tool_call": True,
-            "include_without_structured_output": True,
-            "include_deprecated": True,
-            "include_non_text_output": True,
+            SECTION_ADVANCED_FILTERS: {
+                CONF_HIDE_WITHOUT_TOOL_CALL: False,
+                CONF_HIDE_WITHOUT_STRUCTURED_OUTPUT: False,
+                CONF_HIDE_DEPRECATED: False,
+                CONF_HIDE_NON_TEXT_OUTPUT: False,
+            },
         }
     )
 
     assert filters == ModelFilterOptions(
-        include_without_tool_call=True,
-        include_without_structured_output=True,
-        include_deprecated=True,
-        include_non_text_output=True,
+        hide_without_tool_call=False,
+        hide_without_structured_output=False,
+        hide_deprecated=False,
+        hide_non_text_output=False,
         family="gpt",
     )
 
@@ -245,6 +257,7 @@ def test_build_provider_data_uses_runtime_provider_schema() -> None:
     assert data[CONF_API_KEY] == "sk-test"
     assert data[CONF_BASE_URL] == "https://api.deepseek.com"
     assert data[CONF_PROVIDER_HEADERS] == {"X-Test": "value"}
+    assert data[CONF_PROVIDER_METADATA] == {"catalog_provider_id": "deepseek"}
     profiles = cast(dict[str, dict[str, object]], data[CONF_MODEL_PROFILES])
     assert profiles["profile-1"][CONF_ENABLED] is True
 
@@ -289,9 +302,21 @@ def _selector_for_schema_key(schema: vol.Schema, key: str) -> object:
     raise AssertionError(f"Schema key {key} not found")
 
 
-def _schema_has_key(schema: vol.Schema, key: str) -> bool:
+def _schema_has_key(schema: vol.Schema, key: str, *, nested: bool = False) -> bool:
     """Return if a voluptuous schema contains a key."""
-    return any(getattr(schema_key, "schema", None) == key for schema_key in schema.schema)
+    if isinstance(schema, vol.Schema):
+        schema = schema.schema
+    if not isinstance(schema, dict):
+        if nested and hasattr(schema, "schema"):
+            return _schema_has_key(schema.schema, key, nested=nested)
+        return False
+    schema_dict = schema
+    for schema_key, selector in schema_dict.items():
+        if getattr(schema_key, "schema", None) == key:
+            return True
+        if nested and _schema_has_key(selector, key, nested=True):
+            return True
+    return False
 
 
 def _model(

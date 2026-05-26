@@ -65,8 +65,12 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
         self, entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
     ) -> None:
         """Initialize the AI task entity."""
+        name = str(subentry.data.get(CONF_AI_TASK_NAME, subentry.title))
         super().__init__(
-            entry, subentry, name=subentry.data.get(CONF_AI_TASK_NAME, subentry.title)
+            entry,
+            subentry,
+            name=name,
+            device_name=f"{name} Configuration",
         )
 
     @property

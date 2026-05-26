@@ -9,10 +9,10 @@ from .types import CatalogModelOption
 class ModelFilterOptions:
     """Model filter options for catalog model selection."""
 
-    include_without_tool_call: bool = False
-    include_without_structured_output: bool = False
-    include_deprecated: bool = False
-    include_non_text_output: bool = False
+    hide_without_tool_call: bool = True
+    hide_without_structured_output: bool = True
+    hide_deprecated: bool = True
+    hide_non_text_output: bool = True
     family: str | None = None
 
 
@@ -23,13 +23,13 @@ def model_matches_filters(
     filters = filters or ModelFilterOptions()
     if filters.family and model.family != filters.family:
         return False
-    if not filters.include_non_text_output and not model.text_output:
+    if filters.hide_non_text_output and not model.text_output:
         return False
-    if not filters.include_deprecated and model.status == "deprecated":
+    if filters.hide_deprecated and model.status == "deprecated":
         return False
-    if not filters.include_without_tool_call and not model.tool_call:
+    if filters.hide_without_tool_call and not model.tool_call:
         return False
-    if not filters.include_without_structured_output and model.structured_output is False:
+    if filters.hide_without_structured_output and model.structured_output is False:
         return False
     return True
 

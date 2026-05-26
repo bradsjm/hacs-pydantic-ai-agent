@@ -372,7 +372,7 @@
                 "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
                 "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility."
               },
-              "name": "Advanced options"
+              "name": "Advanced Options"
             }
           },
           "title": "Configure remote MCP server (Step 1 of 2)"
@@ -461,7 +461,7 @@
                 "provider_extra_body": "Provider-specific request body fields sent with every model request for this provider.",
                 "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
               },
-              "name": "Advanced options"
+              "name": "Advanced Options"
             },
             "customize_model_list": {
               "data": {
@@ -545,7 +545,7 @@
                 "provider_extra_body": "Provider-specific request body fields sent with every model request for this provider.",
                 "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
               },
-              "name": "Advanced options"
+              "name": "Advanced Options"
             },
             "customize_model_list": {
               "data": {
@@ -562,19 +562,36 @@
         "model_filters": {
           "data": {
             "family": "Model family",
-            "include_deprecated": "Include deprecated models",
-            "include_non_text_output": "Include models without text output",
-            "include_without_structured_output": "Include models known to lack structured output",
-            "include_without_tool_call": "Include models without tool calling"
+            "hide_deprecated": "Hide deprecated models",
+            "hide_non_text_output": "Hide models without text output",
+            "hide_without_structured_output": "Hide models known to lack structured output",
+            "hide_without_tool_call": "Hide models without tool calling"
           },
           "data_description": {
             "family": "Limit the model list to one catalog family.",
-            "include_deprecated": "Deprecated models are hidden by default.",
-            "include_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
-            "include_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup. Models with unknown catalog metadata remain visible.",
-            "include_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
+            "hide_deprecated": "Deprecated models are hidden by default.",
+            "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
+            "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup. Models with unknown catalog metadata remain visible.",
+            "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
           },
-          "description": "Narrow the model list before selecting models to enable.",
+          "description": "In order to reduce the number of models shown, you can select filters to narrow down your model selection in the next step.",
+          "sections": {
+            "advanced_filters": {
+              "data": {
+                "hide_deprecated": "Hide deprecated models",
+                "hide_non_text_output": "Hide models without text output",
+                "hide_without_structured_output": "Hide models known to lack structured output",
+                "hide_without_tool_call": "Hide models without tool calling"
+              },
+              "data_description": {
+                "hide_deprecated": "Deprecated models are hidden by default.",
+                "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
+                "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup. Models with unknown catalog metadata remain visible.",
+                "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
+              },
+              "name": "Advanced Filters"
+            }
+          },
           "title": "Filter provider models"
         },
         "pick_driver": {
@@ -598,6 +615,41 @@
           "description": "Choose a provider (from https://models.dev/), or choose custom provider for manual setup.",
           "title": "Choose provider"
         },
+        "profile_model_filters": {
+          "data": {
+            "family": "Model family",
+            "hide_deprecated": "Hide deprecated models",
+            "hide_non_text_output": "Hide models without text output",
+            "hide_without_structured_output": "Hide models known to lack structured output",
+            "hide_without_tool_call": "Hide models without tool calling"
+          },
+          "data_description": {
+            "family": "Limit the model list to one catalog family.",
+            "hide_deprecated": "Deprecated models are hidden by default.",
+            "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
+            "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup. Models with unknown catalog metadata remain visible.",
+            "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
+          },
+          "description": "In order to reduce the number of models shown, you can select filters to narrow down your model selection in the next step.",
+          "sections": {
+            "advanced_filters": {
+              "data": {
+                "hide_deprecated": "Hide deprecated models",
+                "hide_non_text_output": "Hide models without text output",
+                "hide_without_structured_output": "Hide models known to lack structured output",
+                "hide_without_tool_call": "Hide models without tool calling"
+              },
+              "data_description": {
+                "hide_deprecated": "Deprecated models are hidden by default.",
+                "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
+                "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup. Models with unknown catalog metadata remain visible.",
+                "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
+              },
+              "name": "Advanced Filters"
+            }
+          },
+          "title": "Filter provider models"
+        },
         "pick_model_profile": {
           "data": {
             "model_profile_id": "Model profile"
@@ -606,7 +658,7 @@
           "title": "Select language model"
         },
         "reconfigure_menu": {
-          "description": "Configure workspace provider then enable and configure models (models default to disabled).",
+          "description": "Configure language model provider connection and configure model profiles.",
           "menu_options": {
             "customize_model_profile": "Edit model profiles",
             "edit_connection": "Edit provider connection"
@@ -627,6 +679,19 @@
             "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
           },
           "description": "Enter credentials and connection details for the selected provider.",
+          "sections": {
+            "advanced_options": {
+              "data": {
+                "provider_extra_body": "Extra body",
+                "provider_headers": "Provider HTTP headers"
+              },
+              "data_description": {
+                "provider_extra_body": "Provider-specific request body fields sent with every model request for this provider.",
+                "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+              },
+              "name": "Advanced Options"
+            }
+          },
           "title": "Connect provider"
         }
       }

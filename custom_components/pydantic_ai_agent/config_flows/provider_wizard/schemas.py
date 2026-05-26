@@ -4,6 +4,7 @@ from collections.abc import Iterable
 
 import voluptuous as vol
 from homeassistant.const import CONF_API_KEY, CONF_NAME
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers.selector import (
     BooleanSelector,
     SelectOptionDict,
@@ -14,6 +15,7 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
     TextSelectorType,
 )
+from homeassistant.helpers.typing import VolDictType
 
 from ...const import (
     CONF_BASE_URL,
@@ -27,15 +29,16 @@ from .const import (
     CATALOG_RETRY_PROVIDER_ID,
     CONF_DRIVER,
     CONF_FAMILY,
-    CONF_INCLUDE_DEPRECATED,
-    CONF_INCLUDE_NON_TEXT_OUTPUT,
-    CONF_INCLUDE_WITHOUT_STRUCTURED_OUTPUT,
-    CONF_INCLUDE_WITHOUT_TOOL_CALL,
+    CONF_HIDE_DEPRECATED,
+    CONF_HIDE_NON_TEXT_OUTPUT,
+    CONF_HIDE_WITHOUT_STRUCTURED_OUTPUT,
+    CONF_HIDE_WITHOUT_TOOL_CALL,
     CONF_PROVIDER_ID,
     CONF_SELECTED_MODEL_IDS,
     CUSTOM_PROVIDER_ID,
     DEFAULT_MODEL_FILTER_THRESHOLD,
     MODE_LABELS,
+    SECTION_ADVANCED_FILTERS,
 )
 from .filters import ModelFilterOptions, filtered_models
 from .types import CatalogModelOption, CatalogProviderOption, CompactCatalog
@@ -46,6 +49,7 @@ _PROVIDER_EXTRA_BODY_MODES = {
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 }
+_SECTION_ADVANCED_OPTIONS = "advanced_options"
 
 
 def provider_selection_schema(
@@ -82,29 +86,35 @@ def connection_schema(
     provider: CatalogProviderOption, driver: str, options: dict[str, object]
 ) -> vol.Schema:
     """Return guided provider connection details schema."""
-    schema = {
-        vol.Required(CONF_NAME, default=options.get(CONF_NAME, provider.name)): TextSelector(
+    data = _flatten_section_data(options, (_SECTION_ADVANCED_OPTIONS,))
+    schema: VolDictType = {
+        vol.Required(CONF_NAME, default=data.get(CONF_NAME, provider.name)): TextSelector(
             TextSelectorConfig()
         ),
-        vol.Required(CONF_API_KEY, default=options.get(CONF_API_KEY, "")): TextSelector(
+        vol.Required(CONF_API_KEY, default=data.get(CONF_API_KEY, "")): TextSelector(
             TextSelectorConfig(type=TextSelectorType.PASSWORD)
         ),
         vol.Optional(
             CONF_BASE_URL,
-            default=options.get(CONF_BASE_URL, provider.default_base_url or ""),
+            default=data.get(CONF_BASE_URL, provider.default_base_url or ""),
         ): TextSelector(TextSelectorConfig()),
+    }
+    advanced_schema: VolDictType = {
         vol.Optional(
             CONF_PROVIDER_HEADERS,
-            default=options.get(CONF_PROVIDER_HEADERS, ""),
+            default=data.get(CONF_PROVIDER_HEADERS, ""),
         ): TextSelector(TextSelectorConfig(multiline=True)),
     }
     if driver in _PROVIDER_EXTRA_BODY_MODES:
-        schema[
+        advanced_schema[
             vol.Optional(
                 CONF_PROVIDER_EXTRA_BODY,
-                default=options.get(CONF_PROVIDER_EXTRA_BODY, ""),
+                default=data.get(CONF_PROVIDER_EXTRA_BODY, ""),
             )
         ] = TextSelector(TextSelectorConfig(multiline=True))
+    schema[vol.Optional(_SECTION_ADVANCED_OPTIONS, default={})] = section(
+        vol.Schema(advanced_schema), {"collapsed": True}
+    )
     return vol.Schema(schema)
 
 
@@ -123,22 +133,29 @@ def model_filter_schema(
             vol.Optional(CONF_FAMILY, default=filters.family or ""): SelectSelector(
                 SelectSelectorConfig(options=family_options, mode=SelectSelectorMode.DROPDOWN)
             ),
-            vol.Optional(
-                CONF_INCLUDE_WITHOUT_TOOL_CALL,
-                default=filters.include_without_tool_call,
-            ): BooleanSelector(),
-            vol.Optional(
-                CONF_INCLUDE_WITHOUT_STRUCTURED_OUTPUT,
-                default=filters.include_without_structured_output,
-            ): BooleanSelector(),
-            vol.Optional(
-                CONF_INCLUDE_DEPRECATED,
-                default=filters.include_deprecated,
-            ): BooleanSelector(),
-            vol.Optional(
-                CONF_INCLUDE_NON_TEXT_OUTPUT,
-                default=filters.include_non_text_output,
-            ): BooleanSelector(),
+            vol.Optional(SECTION_ADVANCED_FILTERS, default={}): section(
+                vol.Schema(
+                    {
+                        vol.Optional(
+                            CONF_HIDE_WITHOUT_TOOL_CALL,
+                            default=filters.hide_without_tool_call,
+                        ): BooleanSelector(),
+                        vol.Optional(
+                            CONF_HIDE_WITHOUT_STRUCTURED_OUTPUT,
+                            default=filters.hide_without_structured_output,
+                        ): BooleanSelector(),
+                        vol.Optional(
+                            CONF_HIDE_DEPRECATED,
+                            default=filters.hide_deprecated,
+                        ): BooleanSelector(),
+                        vol.Optional(
+                            CONF_HIDE_NON_TEXT_OUTPUT,
+                            default=filters.hide_non_text_output,
+                        ): BooleanSelector(),
+                    }
+                ),
+                {"collapsed": True},
+            ),
         }
     )
 
@@ -206,14 +223,15 @@ def model_options(models: tuple[CatalogModelOption, ...]) -> list[SelectOptionDi
 
 def filters_from_user_input(user_input: dict[str, object]) -> ModelFilterOptions:
     """Return model filters from user input."""
-    family = user_input.get(CONF_FAMILY)
+    data = _flatten_section_data(user_input, (SECTION_ADVANCED_FILTERS,))
+    family = data.get(CONF_FAMILY)
     return ModelFilterOptions(
-        include_without_tool_call=bool(user_input.get(CONF_INCLUDE_WITHOUT_TOOL_CALL)),
-        include_without_structured_output=bool(
-            user_input.get(CONF_INCLUDE_WITHOUT_STRUCTURED_OUTPUT)
+        hide_without_tool_call=bool(data.get(CONF_HIDE_WITHOUT_TOOL_CALL, True)),
+        hide_without_structured_output=bool(
+            data.get(CONF_HIDE_WITHOUT_STRUCTURED_OUTPUT, True)
         ),
-        include_deprecated=bool(user_input.get(CONF_INCLUDE_DEPRECATED)),
-        include_non_text_output=bool(user_input.get(CONF_INCLUDE_NON_TEXT_OUTPUT)),
+        hide_deprecated=bool(data.get(CONF_HIDE_DEPRECATED, True)),
+        hide_non_text_output=bool(data.get(CONF_HIDE_NON_TEXT_OUTPUT, True)),
         family=family if isinstance(family, str) and family else None,
     )
 
@@ -238,8 +256,29 @@ def _model_label(model: CatalogModelOption) -> str:
     if model.attachment:
         badges.append("attachments")
     if model.context_limit:
-        badges.append(f"{model.context_limit:,} context")
+        badges.append(f"{_format_context_limit(model.context_limit)} context")
     return f"{model.name} ({', '.join(badges)})" if badges else model.name
+
+
+def _format_context_limit(context_limit: int) -> str:
+    """Return a compact context limit label."""
+    if context_limit < 1000:
+        return str(context_limit)
+    return f"{round(context_limit / 1000):,}K"
+
+
+def _flatten_section_data(
+    data: dict[str, object], section_keys: Iterable[str]
+) -> dict[str, object]:
+    """Return form data with HA section namespaces flattened."""
+    flattened = dict(data)
+    for key in section_keys:
+        value = flattened.pop(key, None)
+        if isinstance(value, dict):
+            flattened.update(value)
+        elif value is not None:
+            flattened[key] = value
+    return flattened
 
 
 def _disambiguated_model_label(

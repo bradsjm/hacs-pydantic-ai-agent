@@ -86,10 +86,10 @@ def test_filtered_models_advanced_flags_include_additional_models() -> None:
     filtered = filtered_models(
         models,
         ModelFilterOptions(
-            include_without_tool_call=True,
-            include_without_structured_output=True,
-            include_deprecated=True,
-            include_non_text_output=True,
+            hide_without_tool_call=False,
+            hide_without_structured_output=False,
+            hide_deprecated=False,
+            hide_non_text_output=False,
         ),
     )
 

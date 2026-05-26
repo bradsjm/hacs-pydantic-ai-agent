@@ -13,8 +13,10 @@ from ...const import (
     CONF_MODEL_PROFILES,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
+    CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
 )
+from .const import CONF_CATALOG_PROVIDER_ID
 from .types import CatalogModelOption, CatalogProviderOption
 
 
@@ -39,6 +41,7 @@ def build_provider_data(
         CONF_NAME: provider_name or provider.name,
         CONF_PROVIDER_MODE: provider_mode,
         CONF_API_KEY: api_key.strip(),
+        CONF_PROVIDER_METADATA: {CONF_CATALOG_PROVIDER_ID: provider.id},
         CONF_MODEL_PROFILES: build_model_profiles(
             selected_models, profile_id_factory=profile_id_factory
         ),

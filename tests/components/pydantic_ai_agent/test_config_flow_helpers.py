@@ -450,6 +450,37 @@ def test_normalise_provider_model_profiles_adds_new_profiles_disabled() -> None:
     assert profile[CONF_DISCOVERED] is True
 
 
+def test_normalise_provider_model_profiles_uses_catalog_display_name() -> None:
+    """Test catalog names replace default identifier-derived profile names."""
+    profiles = _normalise_provider_model_profiles(
+        {
+            "profile-1": {
+                "id": "profile-1",
+                CONF_NAME: "deepseek-v4-pro",
+                CONF_MODEL: "deepseek-v4-pro",
+                CONF_ENABLED: False,
+                CONF_DISCOVERED: True,
+            },
+            "profile-2": {
+                "id": "profile-2",
+                CONF_NAME: "Custom Display Name",
+                CONF_MODEL: "deepseek-v4-flash",
+                CONF_ENABLED: False,
+                CONF_DISCOVERED: True,
+            },
+        },
+        ["deepseek-v4-pro", "deepseek-v4-flash"],
+        ["deepseek-v4-pro", "deepseek-v4-flash"],
+        model_labels={
+            "deepseek-v4-pro": "Deepseek V4 Pro",
+            "deepseek-v4-flash": "Deepseek V4 Flash",
+        },
+    )
+
+    assert profiles["profile-1"][CONF_NAME] == "Deepseek V4 Pro"
+    assert profiles["profile-2"][CONF_NAME] == "Custom Display Name"
+
+
 def test_normalise_provider_model_profiles_keeps_referenced_missing_profile() -> None:
     """Test refresh pruning keeps disappeared models still referenced by agents."""
     profiles = _normalise_provider_model_profiles(

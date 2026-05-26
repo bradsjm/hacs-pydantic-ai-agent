@@ -128,15 +128,19 @@ class PydanticAIBaseLLMEntity:
         subentry: ConfigSubentry,
         *,
         name: str,
+        device_name: str | None = None,
     ) -> None:
         """Initialize shared entity metadata."""
         self.entry = entry
         self.subentry = subentry
+        if device_name is not None and device_name != name:
+            self._attr_has_entity_name = False
+            self._attr_name = name
         profile = primary_model_profile(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry(entry, subentry)
         self._attr_device_info = dr.DeviceInfo(
             identifiers={device_identifier_for_subentry(entry, subentry)},
-            name=name,
+            name=device_name or name,
             manufacturer="Pydantic AI",
             model=profile.model_name,
             entry_type=dr.DeviceEntryType.SERVICE,

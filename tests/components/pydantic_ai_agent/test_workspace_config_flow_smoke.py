@@ -36,6 +36,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
+    CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
     CONF_SKILLS_FOLDER,
     DEFAULT_SKILLS_FOLDER,
@@ -47,6 +48,7 @@ from custom_components.pydantic_ai_agent.const import (
 )
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
     CATALOG_RETRY_PROVIDER_ID,
+    CONF_CATALOG_PROVIDER_ID,
     CONF_DRIVER,
     CONF_PROVIDER_ID,
     CONF_SELECTED_MODEL_IDS,
@@ -106,7 +108,7 @@ def test_provider_edit_connection_translations_cover_rendered_schema() -> None:
         CONF_PROVIDER_HEADERS,
     }
     assert set(step["sections"]) >= {"advanced_options", "customize_model_list"}
-    assert step["sections"]["advanced_options"]["name"] == "Advanced options"
+    assert step["sections"]["advanced_options"]["name"] == "Advanced Options"
     assert set(step["sections"]["advanced_options"]["data"]) >= {
         CONF_PROVIDER_EXTRA_BODY,
         CONF_PROVIDER_HEADERS,
@@ -142,7 +144,12 @@ def test_provider_wizard_translations_cover_rendered_steps() -> None:
     assert steps["pick_provider"]["data"][CONF_PROVIDER_ID]
     assert steps["pick_driver"]["data"][CONF_DRIVER]
     assert steps["wizard_connection"]["data"][CONF_API_KEY]
-    assert steps["model_filters"]["data"]["include_without_tool_call"]
+    assert steps["model_filters"]["sections"]["advanced_filters"]["name"] == (
+        "Advanced Filters"
+    )
+    assert steps["model_filters"]["sections"]["advanced_filters"]["data"][
+        "hide_without_tool_call"
+    ]
     assert steps["pick_models"]["data"][CONF_SELECTED_MODEL_IDS]
 
 
@@ -193,6 +200,7 @@ def _provider_subentry_data() -> dict[str, object]:
             CONF_NAME: "OpenAI-compatible",
             CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: "sk-test",
+            CONF_PROVIDER_METADATA: {CONF_CATALOG_PROVIDER_ID: "openai"},
             CONF_MODEL_PROFILES: {
                 "profile-1": {
                     "id": "profile-1",
@@ -203,6 +211,121 @@ def _provider_subentry_data() -> dict[str, object]:
             },
         },
     }
+
+
+async def test_provider_edit_connection_preserves_catalog_metadata(
+    hass: HomeAssistant,
+) -> None:
+    """Test editing a guided provider keeps catalog metadata for profile filters."""
+    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
+    provider_subentry = next(iter(entry.subentries.values()))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    assert result["type"] is FlowResultType.MENU
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "edit_connection"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "edit_connection"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "OpenAI-compatible",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            CONF_API_KEY: "sk-updated",
+        },
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    updated_subentry = entry.subentries[provider_subentry.subentry_id]
+    assert updated_subentry.data[CONF_PROVIDER_METADATA] == {
+        CONF_CATALOG_PROVIDER_ID: "openai"
+    }
+
+
+async def test_provider_edit_connection_preserves_catalog_metadata_for_default_url(
+    hass: HomeAssistant,
+) -> None:
+    """Test explicit default URLs keep guided provider catalog metadata."""
+    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
+    provider_subentry = next(iter(entry.subentries.values()))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    assert result["type"] is FlowResultType.MENU
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "edit_connection"}
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "OpenAI-compatible",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            CONF_API_KEY: "sk-updated",
+            CONF_BASE_URL: "https://api.openai.com/v1",
+        },
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    updated_subentry = entry.subentries[provider_subentry.subentry_id]
+    assert updated_subentry.data[CONF_PROVIDER_METADATA] == {
+        CONF_CATALOG_PROVIDER_ID: "openai"
+    }
+
+
+async def test_provider_edit_connection_clears_catalog_metadata_when_repointed(
+    hass: HomeAssistant,
+) -> None:
+    """Test repointing a guided provider clears stale catalog metadata."""
+    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
+    provider_subentry = next(iter(entry.subentries.values()))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    assert result["type"] is FlowResultType.MENU
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "edit_connection"}
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "OpenAI-compatible",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            CONF_API_KEY: "sk-updated",
+            CONF_BASE_URL: "https://api.deepseek.com/v1",
+        },
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    updated_subentry = entry.subentries[provider_subentry.subentry_id]
+    assert CONF_PROVIDER_METADATA not in updated_subentry.data
 
 
 async def test_create_workspace_entry(hass: HomeAssistant) -> None:

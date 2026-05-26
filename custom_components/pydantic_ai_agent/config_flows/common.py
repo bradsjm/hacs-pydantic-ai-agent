@@ -117,6 +117,7 @@ from ..const import (
     CONF_PROMPT,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
+    CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_SKILLS_FOLDER,
@@ -729,9 +730,11 @@ def _normalise_provider_model_profiles(
     model_names: list[str],
     discovered_model_names: Iterable[str],
     *,
+    model_labels: Mapping[str, str] | None = None,
     keep_profile_ids: set[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Return provider-owned profile storage synced to provider model names."""
+    model_labels = model_labels or {}
     discovered_set = set(discovered_model_names)
     model_set = set(model_names)
     keep_profile_ids = keep_profile_ids or set()
@@ -763,7 +766,7 @@ def _normalise_provider_model_profiles(
             profile_id = uuid4().hex
             profile = {
                 "id": profile_id,
-                CONF_NAME: model_name,
+                CONF_NAME: model_labels.get(model_name, model_name),
                 CONF_MODEL: model_name,
                 CONF_ENABLED: False,
                 CONF_DISCOVERED: model_name in discovered_set,
@@ -772,7 +775,10 @@ def _normalise_provider_model_profiles(
             profile_id, profile = existing_profile
             profile = dict(profile)
         profile["id"] = profile_id
-        profile[CONF_NAME] = str(profile.get(CONF_NAME) or model_name)
+        profile_name = str(profile.get(CONF_NAME) or "").strip()
+        if not profile_name or profile_name == model_name:
+            profile_name = model_labels.get(model_name, model_name)
+        profile[CONF_NAME] = profile_name
         profile[CONF_MODEL] = model_name
         profile[CONF_ENABLED] = bool(profile.get(CONF_ENABLED, False))
         profile[CONF_DISCOVERED] = model_name in discovered_set
@@ -814,7 +820,9 @@ def _provider_model_profiles_for_discovery_mode(
     return profiles
 
 
-def _provider_profile_options(data: Mapping[str, Any]) -> list[SelectOptionDict]:
+def _provider_profile_options(
+    data: Mapping[str, Any], model_ids: set[str] | None = None
+) -> list[SelectOptionDict]:
     """Return all provider model profiles as select options."""
     options: list[SelectOptionDict] = []
     profiles = data.get(CONF_MODEL_PROFILES)
@@ -825,6 +833,8 @@ def _provider_profile_options(data: Mapping[str, Any]) -> list[SelectOptionDict]
             continue
         model_name = profile.get(CONF_MODEL)
         if not isinstance(model_name, str) or not model_name.strip():
+            continue
+        if model_ids is not None and model_name not in model_ids:
             continue
         profile_name = profile.get(CONF_NAME)
         label = (
@@ -853,13 +863,15 @@ def _provider_profile_dependents(entry: ConfigEntry, profile_ref: str) -> list[s
     return dependents
 
 
-def _provider_profile_selector_schema(data: Mapping[str, Any]) -> vol.Schema:
+def _provider_profile_selector_schema(
+    data: Mapping[str, Any], model_ids: set[str] | None = None
+) -> vol.Schema:
     """Return a selector schema for existing provider-owned profiles."""
     return vol.Schema(
         {
             vol.Required(_CONF_MODEL_PROFILE_ID): SelectSelector(
                 SelectSelectorConfig(
-                    options=_provider_profile_options(data),
+                    options=_provider_profile_options(data, model_ids),
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             )
