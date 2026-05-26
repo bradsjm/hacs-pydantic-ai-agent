@@ -1,19 +1,11 @@
 """Test Pydantic AI Agent AI task entities."""
 
-# ruff: noqa: E402
-
 from collections.abc import AsyncGenerator, Iterable
 from contextlib import asynccontextmanager
 import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
-pytest.skip(
-    "Legacy model-subentry AI task tests need workspace/provider-profile rewrite.",
-    allow_module_level=True,
-)
-
 from pydantic_ai import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.capabilities import Thinking
 from pydantic_ai.models.test import TestModel
@@ -28,17 +20,22 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import Entity
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.pydantic_ai_agent import ProviderRuntimeData, WorkspaceRuntimeData
 from custom_components.pydantic_ai_agent.ai_task import (
     PydanticAIAgentAITaskEntity,
     async_setup_entry,
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_AI_TASK_NAME,
+    CONF_DEFAULT_MODEL_PROFILE_ID,
+    CONF_ENABLED,
     CONF_ENABLE_SKILLS,
     CONF_MAX_ITERATIONS,
     CONF_MODEL,
+    CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
+    CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_TODO_LIST_ENTITY_ID,
@@ -49,6 +46,7 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_TOOL,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_AI_TASK,
+    SUBENTRY_TYPE_PROVIDER,
 )
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
@@ -58,16 +56,9 @@ from custom_components.pydantic_ai_agent.metrics import (
     EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED,
 )
 
-CONF_MODEL_SUBENTRY_ID = "model_subentry_id"
-SUBENTRY_TYPE_MODEL = "model"
-
-
-class PydanticAIAgentRuntimeData:
-    """Legacy runtime-data test double for obsolete model-subentry tests."""
-
-    def __init__(self, **kwargs: object) -> None:
-        """Store provided attributes."""
-        self.__dict__.update(kwargs)
+_PROVIDER_SUBENTRY_ID = "provider-1"
+_MODEL_PROFILE_ID = "task-profile"
+_MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
 
 
 class _Usage:
@@ -110,14 +101,17 @@ def _entry(
     output_mode: str | None = None,
     skills: list[str] | None = None,
     *,
-    legacy_task_name: bool = False,
+    include_task_name: bool = True,
+    subentry_title: str = "AI task subentry title",
     web_fetch_enabled: bool = False,
     model_settings: dict[str, object] | None = None,
     todo_workspace_entity_id: str | None = None,
 ) -> MockConfigEntry:
     """Return a config entry with one AI task subentry."""
-    subentry_data: dict[str, object] = {CONF_MODEL_SUBENTRY_ID: "task_model_profile"}
-    if not legacy_task_name:
+    subentry_data: dict[str, object] = {
+        CONF_PRIMARY_MODEL_REF: _MODEL_PROFILE_REF,
+    }
+    if include_task_name:
         subentry_data[CONF_AI_TASK_NAME] = "Report task"
     if output_mode is not None:
         subentry_data[CONF_OUTPUT_MODE] = output_mode
@@ -128,47 +122,57 @@ def _entry(
         subentry_data[CONF_WEB_FETCH_ENABLED] = True
     if todo_workspace_entity_id is not None:
         subentry_data[CONF_TODO_LIST_ENTITY_ID] = todo_workspace_entity_id
-    model_subentry_data: dict[str, object] = {
+    model_profile: dict[str, object] = {
+        "id": _MODEL_PROFILE_ID,
         CONF_NAME: "Task Model",
         CONF_MODEL: "task-model",
+        CONF_ENABLED: True,
     }
     if model_settings is not None:
-        model_subentry_data[CONF_MODEL_SETTINGS] = model_settings
+        model_profile[CONF_MODEL_SETTINGS] = model_settings
 
     entry = MockConfigEntry(
+        version=2,
+        minor_version=0,
         domain=DOMAIN,
-        title="Hosted OpenAI",
-        data={
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-            CONF_API_KEY: "sk-test",
-        },
+        title="Workspace",
+        data={CONF_NAME: "Workspace"},
         source=config_entries.SOURCE_USER,
         subentries_data=(
             {
                 "data": subentry_data,
                 "subentry_type": SUBENTRY_TYPE_AI_TASK,
-                "title": "Report task",
+                "title": subentry_title,
                 "unique_id": None,
             },
             {
-                "subentry_id": "task_model_profile",
-                "data": model_subentry_data,
-                "subentry_type": SUBENTRY_TYPE_MODEL,
-                "title": "Task Model",
+                "subentry_id": _PROVIDER_SUBENTRY_ID,
+                "data": {
+                    CONF_NAME: "Hosted OpenAI",
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+                    CONF_API_KEY: "sk-test",
+                    CONF_MODEL_PROFILES: {_MODEL_PROFILE_ID: model_profile},
+                    CONF_DEFAULT_MODEL_PROFILE_ID: _MODEL_PROFILE_ID,
+                },
+                "subentry_type": SUBENTRY_TYPE_PROVIDER,
+                "title": "Hosted OpenAI",
                 "unique_id": None,
             },
         ),
         options={},
         unique_id=None,
     )
-    entry.runtime_data = PydanticAIAgentRuntimeData(
-        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-        name="Hosted OpenAI",
-        api_key="sk-test",
-        base_url=None,
-        logfire_enabled=False,
-        logfire_include_content=False,
+    entry.runtime_data = WorkspaceRuntimeData(
+        workspace_name="Workspace",
+        providers={
+            _PROVIDER_SUBENTRY_ID: ProviderRuntimeData(
+                provider_subentry_id=_PROVIDER_SUBENTRY_ID,
+                name="Hosted OpenAI",
+                api_key="sk-test",
+                provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+                base_url=None,
+            )
+        },
     )
     return entry
 
@@ -360,16 +364,16 @@ def test_ai_task_entity_uses_task_name() -> None:
     assert entity.name == "Report task"
 
 
-def test_ai_task_entity_falls_back_to_legacy_subentry_title() -> None:
-    """Test legacy AI task subentries without task names keep their title."""
-    entry = _entry(legacy_task_name=True)
+def test_ai_task_entity_falls_back_to_subentry_title() -> None:
+    """Test nameless AI task subentries use their subentry title."""
+    entry = _entry(include_task_name=False, subentry_title="Title-only task")
     subentry = next(iter(entry.subentries.values()))
 
     entity = PydanticAIAgentAITaskEntity(entry, subentry)
 
     assert entity.device_info is not None
-    assert entity.device_info["name"] == "Report task Configuration"
-    assert entity.name == "Report task"
+    assert entity.device_info["name"] == "Title-only task Configuration"
+    assert entity.name == "Title-only task"
 
 
 def test_ai_task_entity_features() -> None:

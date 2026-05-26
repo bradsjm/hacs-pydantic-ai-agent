@@ -1,7 +1,5 @@
 """Test Pydantic AI Agent conversation entities."""
 
-# ruff: noqa: E402
-
 from collections.abc import AsyncGenerator, AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 import sys
@@ -10,12 +8,6 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-
-pytest.skip(
-    "Legacy model-subentry conversation tests need workspace/provider-profile rewrite.",
-    allow_module_level=True,
-)
-
 from homeassistant import config_entries
 from homeassistant.components import conversation
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME, __version__
@@ -36,14 +28,19 @@ from pydantic_ai.capabilities import Thinking, ToolSearch
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
+from custom_components.pydantic_ai_agent import ProviderRuntimeData, WorkspaceRuntimeData
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
+    CONF_DEFAULT_MODEL_PROFILE_ID,
+    CONF_ENABLED,
     CONF_ENABLE_SKILLS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
     CONF_MODEL,
+    CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
+    CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     CONF_WEB_FETCH_ENABLED,
@@ -51,6 +48,7 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_TOOL,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_PROVIDER,
 )
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
@@ -61,16 +59,9 @@ from custom_components.pydantic_ai_agent.conversation import (
 )
 from custom_components.pydantic_ai_agent.metrics import EVENT_AGENT_RUN_COMPLETED
 
-CONF_MODEL_SUBENTRY_ID = "model_subentry_id"
-SUBENTRY_TYPE_MODEL = "model"
-
-
-class PydanticAIAgentRuntimeData:
-    """Legacy runtime-data test double for obsolete model-subentry tests."""
-
-    def __init__(self, **kwargs: object) -> None:
-        """Store provided attributes."""
-        self.__dict__.update(kwargs)
+_PROVIDER_SUBENTRY_ID = "provider-1"
+_MODEL_PROFILE_ID = "model-profile-1"
+_MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
 
 
 class _TextStream:
@@ -199,7 +190,7 @@ def _entry(
     """Return a config entry with one conversation subentry."""
     subentry_data: dict[str, object] = {
         CONF_AGENT_NAME: "Kitchen Agent",
-        CONF_MODEL_SUBENTRY_ID: "model_profile_1",
+        CONF_PRIMARY_MODEL_REF: _MODEL_PROFILE_REF,
     }
     if llm_hass_api is not None:
         subentry_data[CONF_LLM_HASS_API] = llm_hass_api
@@ -209,21 +200,21 @@ def _entry(
     if web_fetch_enabled:
         subentry_data[CONF_WEB_FETCH_ENABLED] = True
 
-    model_subentry_data: dict[str, object] = {
+    model_profile: dict[str, object] = {
+        "id": _MODEL_PROFILE_ID,
         CONF_NAME: "Fast GPT",
         CONF_MODEL: "gpt-test",
+        CONF_ENABLED: True,
     }
     if model_settings is not None:
-        model_subentry_data[CONF_MODEL_SETTINGS] = model_settings
+        model_profile[CONF_MODEL_SETTINGS] = model_settings
 
     entry = MockConfigEntry(
+        version=2,
+        minor_version=0,
         domain=DOMAIN,
-        title="Hosted OpenAI",
-        data={
-            CONF_NAME: "Hosted OpenAI",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-            CONF_API_KEY: "sk-test",
-        },
+        title="Workspace",
+        data={CONF_NAME: "Workspace"},
         source=config_entries.SOURCE_USER,
         subentries_data=(
             {
@@ -233,47 +224,57 @@ def _entry(
                 "unique_id": None,
             },
             {
-                "subentry_id": "model_profile_1",
-                "data": model_subentry_data,
-                "subentry_type": SUBENTRY_TYPE_MODEL,
-                "title": "Fast GPT",
+                "subentry_id": _PROVIDER_SUBENTRY_ID,
+                "data": {
+                    CONF_NAME: "Hosted OpenAI",
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+                    CONF_API_KEY: "sk-test",
+                    CONF_MODEL_PROFILES: {_MODEL_PROFILE_ID: model_profile},
+                    CONF_DEFAULT_MODEL_PROFILE_ID: _MODEL_PROFILE_ID,
+                },
+                "subentry_type": SUBENTRY_TYPE_PROVIDER,
+                "title": "Hosted OpenAI",
                 "unique_id": None,
             },
         ),
         options={},
         unique_id=None,
     )
-    entry.runtime_data = PydanticAIAgentRuntimeData(
-        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-        name="Hosted OpenAI",
-        api_key="sk-test",
-        base_url=None,
-        logfire_enabled=False,
-        logfire_include_content=False,
+    entry.runtime_data = WorkspaceRuntimeData(
+        workspace_name="Workspace",
+        providers={
+            _PROVIDER_SUBENTRY_ID: ProviderRuntimeData(
+                provider_subentry_id=_PROVIDER_SUBENTRY_ID,
+                name="Hosted OpenAI",
+                api_key="sk-test",
+                provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+                base_url=None,
+            )
+        },
     )
     return entry
 
 
 def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigEntry:
     """Return a config entry with two conversation subentries."""
-    data: dict[str, object] = {
-        CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-        CONF_API_KEY: "sk-test",
-    }
+    data: dict[str, object] = {CONF_NAME: "Workspace"}
     if logfire:
         data[CONF_LOGFIRE_TOKEN] = "lf-token"
         data[CONF_LOGFIRE_INCLUDE_CONTENT] = True
+    kitchen_profile_id = "kitchen-model"
+    garage_profile_id = "garage-model"
     entry = MockConfigEntry(
+        version=2,
+        minor_version=0,
         domain=DOMAIN,
-        title="Hosted OpenAI",
+        title="Workspace",
         data=data,
         source=config_entries.SOURCE_USER,
         subentries_data=(
             {
                 "data": {
                     CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_MODEL_SUBENTRY_ID: "kitchen_model",
+                    CONF_PRIMARY_MODEL_REF: f"{_PROVIDER_SUBENTRY_ID}:{kitchen_profile_id}",
                 },
                 "subentry_type": SUBENTRY_TYPE_CONVERSATION,
                 "title": "Kitchen Agent",
@@ -282,35 +283,53 @@ def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigE
             {
                 "data": {
                     CONF_AGENT_NAME: "Garage Agent",
-                    CONF_MODEL_SUBENTRY_ID: "garage_model",
+                    CONF_PRIMARY_MODEL_REF: f"{_PROVIDER_SUBENTRY_ID}:{garage_profile_id}",
                 },
                 "subentry_type": SUBENTRY_TYPE_CONVERSATION,
                 "title": "Garage Agent",
                 "unique_id": None,
             },
             {
-                "subentry_id": "kitchen_model",
-                "data": {CONF_NAME: "Kitchen Model", CONF_MODEL: "gpt-kitchen"},
-                "subentry_type": SUBENTRY_TYPE_MODEL,
-                "title": "Kitchen Model",
-                "unique_id": None,
-            },
-            {
-                "subentry_id": "garage_model",
-                "data": {CONF_NAME: "Garage Model", CONF_MODEL: "gpt-garage"},
-                "subentry_type": SUBENTRY_TYPE_MODEL,
-                "title": "Garage Model",
+                "subentry_id": _PROVIDER_SUBENTRY_ID,
+                "data": {
+                    CONF_NAME: "Hosted OpenAI",
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+                    CONF_API_KEY: "sk-test",
+                    CONF_MODEL_PROFILES: {
+                        kitchen_profile_id: {
+                            "id": kitchen_profile_id,
+                            CONF_NAME: "Kitchen Model",
+                            CONF_MODEL: "gpt-kitchen",
+                            CONF_ENABLED: True,
+                        },
+                        garage_profile_id: {
+                            "id": garage_profile_id,
+                            CONF_NAME: "Garage Model",
+                            CONF_MODEL: "gpt-garage",
+                            CONF_ENABLED: True,
+                        },
+                    },
+                    CONF_DEFAULT_MODEL_PROFILE_ID: kitchen_profile_id,
+                },
+                "subentry_type": SUBENTRY_TYPE_PROVIDER,
+                "title": "Hosted OpenAI",
                 "unique_id": None,
             },
         ),
         options={},
         unique_id=None,
     )
-    entry.runtime_data = PydanticAIAgentRuntimeData(
-        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-        name="Hosted OpenAI",
-        api_key="sk-test",
-        base_url=None,
+    entry.runtime_data = WorkspaceRuntimeData(
+        workspace_name="Workspace",
+        providers={
+            _PROVIDER_SUBENTRY_ID: ProviderRuntimeData(
+                provider_subentry_id=_PROVIDER_SUBENTRY_ID,
+                name="Hosted OpenAI",
+                api_key="sk-test",
+                provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+                base_url=None,
+            )
+        },
         logfire_enabled=logfire,
         logfire_include_content=logfire,
     )
@@ -482,8 +501,8 @@ async def test_conversation_entity_id_dispatches_assist_agent(
         conversation.async_get_agent(hass, entity_id) for entity_id in entity_ids
     )
 
-    kitchen_entity_id = next(
-        entity_id for entity_id in entity_ids if entity_id.endswith("kitchen_agent")
+    garage_entity_id = next(
+        entity_id for entity_id in entity_ids if entity_id.endswith("garage_agent")
     )
     events: list[dict[str, object]] = []
     hass.bus.async_listen(
@@ -502,39 +521,42 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     ):
         result = await conversation.async_converse(
             hass,
-            "hello",
-            None,
-            Context(),
-            agent_id=kitchen_entity_id,
-        )
+                "hello",
+                None,
+                Context(),
+                agent_id=garage_entity_id,
+            )
         await hass.async_block_till_done()
 
     assert result.response.speech["plain"]["speech"] == "runtime response"
     assert chat_model.call_args is not None
-    assert chat_model.call_args.args[1].model_name == "gpt-kitchen"
+    assert chat_model.call_args.args[2].model_name == "gpt-garage"
     assert agent_class.call_args.kwargs["output_type"] is str
     _assert_context_management_capability(agent_class.call_args.kwargs["capabilities"])
-    assert (
-        _state(hass, "sensor.kitchen_agent_last_run_model_profile") == "Kitchen Model"
+    assert _state(hass, "sensor.garage_agent_last_run_model_profile") == "Garage Model"
+    assert _state(hass, "sensor.garage_agent_last_run_input_tokens") == "10"
+    assert _state(hass, "sensor.garage_agent_last_run_output_tokens") == "2"
+    assert _state(hass, "sensor.garage_agent_last_run_total_tokens") == "12"
+    assert _state(hass, "sensor.garage_agent_last_run_model_request_count") == "1"
+    assert _state(hass, "sensor.garage_agent_last_run_tool_use_count") == "3"
+    assert _state(hass, "sensor.garage_agent_cumulative_input_tokens") == "10"
+    assert _state(hass, "sensor.garage_agent_cumulative_output_tokens") == "2"
+    assert _state(hass, "sensor.garage_agent_cumulative_total_tokens") == "12"
+    assert _state(hass, "sensor.garage_agent_consecutive_failures") == "0"
+    assert _state(hass, "sensor.garage_agent_last_error_type") == "unknown"
+    assert _state(hass, "binary_sensor.garage_agent_provider_healthy") == "on"
+    assert _state(hass, "binary_sensor.garage_agent_last_run_succeeded") == "on"
+    garage_subentry = next(
+        subentry
+        for subentry in entry.subentries.values()
+        if subentry.data.get(CONF_AGENT_NAME) == "Garage Agent"
     )
-    assert _state(hass, "sensor.kitchen_agent_last_run_input_tokens") == "10"
-    assert _state(hass, "sensor.kitchen_agent_last_run_output_tokens") == "2"
-    assert _state(hass, "sensor.kitchen_agent_last_run_total_tokens") == "12"
-    assert _state(hass, "sensor.kitchen_agent_last_run_model_request_count") == "1"
-    assert _state(hass, "sensor.kitchen_agent_last_run_tool_use_count") == "3"
-    assert _state(hass, "sensor.kitchen_agent_cumulative_input_tokens") == "10"
-    assert _state(hass, "sensor.kitchen_agent_cumulative_output_tokens") == "2"
-    assert _state(hass, "sensor.kitchen_agent_cumulative_total_tokens") == "12"
-    assert _state(hass, "sensor.kitchen_agent_consecutive_failures") == "0"
-    assert _state(hass, "sensor.kitchen_agent_last_error_type") == "unknown"
-    assert _state(hass, "binary_sensor.kitchen_agent_provider_healthy") == "on"
-    assert _state(hass, "binary_sensor.kitchen_agent_last_run_succeeded") == "on"
     assert events == [
         {
             "config_entry_id": entry.entry_id,
-            "subentry_id": next(iter(entry.subentries.values())).subentry_id,
-            "entity_id": kitchen_entity_id,
-            "model_profile": "Kitchen Model",
+            "subentry_id": garage_subentry.subentry_id,
+            "entity_id": garage_entity_id,
+            "model_profile": "Garage Model",
         }
     ]
 
