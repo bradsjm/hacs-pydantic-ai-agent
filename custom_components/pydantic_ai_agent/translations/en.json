@@ -447,7 +447,7 @@
           },
           "data_description": {
             "base_url": "Optional provider API base URL. Leave empty to use the selected mode's default endpoint.",
-            "custom_model_names": "Optional custom model names, one per line. When set, provider model discovery is disabled.",
+            "custom_model_names": "Optional custom model names, one per line.",
             "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
             "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
           },
@@ -469,7 +469,7 @@
                 "custom_model_names": "Custom model names (e.g. deepseek-v4-pro)"
               },
               "data_description": {
-                "custom_model_names": "One model name per line. When set, provider model discovery is disabled."
+                "custom_model_names": "One model name per line."
               },
               "name": "Override provider model list"
             }
@@ -551,7 +551,7 @@
                 "custom_model_names": "Custom model names"
               },
               "data_description": {
-                "custom_model_names": "One model name per line. When set, provider model discovery is disabled."
+                "custom_model_names": "One model name per line."
               },
               "name": "Override provider model list"
             }
@@ -570,7 +570,7 @@
             "family": "Limit the model list to one catalog family.",
             "hide_deprecated": "Deprecated models are hidden by default.",
             "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
-            "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup. Models with unknown catalog metadata remain visible.",
+            "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup.",
             "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
           },
           "description": "In order to reduce the number of models shown, you can select filters to narrow down your model selection in the next step.",
@@ -585,7 +585,7 @@
               "data_description": {
                 "hide_deprecated": "Deprecated models are hidden by default.",
                 "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
-                "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup. Models with unknown catalog metadata remain visible.",
+                "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup.",
                 "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
               },
               "name": "Advanced Filters"
@@ -605,7 +605,7 @@
             "family": "Limit the model list to one catalog family.",
             "hide_deprecated": "Deprecated models are hidden by default.",
             "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
-            "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup. Models with unknown catalog metadata remain visible.",
+            "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup.",
             "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
           },
           "description": "Filter models before selecting which ones are available to agents and tasks.",
@@ -620,7 +620,7 @@
               "data_description": {
                 "hide_deprecated": "Deprecated models are hidden by default.",
                 "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
-                "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup. Models with unknown catalog metadata remain visible.",
+                "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup..",
                 "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
               },
               "name": "Advanced Filters"
@@ -632,7 +632,7 @@
           "data": {
             "selected_model_ids": "Available models"
           },
-          "description": "Select the provider models available to conversation agents and AI tasks. Existing custom names and settings are preserved.",
+          "description": "Select the provider models available to conversation agents and AI tasks.",
           "title": "Manage available models"
         },
         "pick_driver": {
