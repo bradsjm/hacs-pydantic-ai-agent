@@ -91,7 +91,7 @@
         "no_models_configured": "Create a provider and configure a model before adding an AI task.",
         "reconfigure_successful": "AI task configuration updated."
       },
-      "entry_type": "AI task",
+      "entry_type": "AI task configuration",
       "error": {
         "cannot_connect": "{error_message}",
         "duplicate_fallback_model": "Select each fallback language model profile only once.",
@@ -210,7 +210,7 @@
         "no_models_configured": "Create a provider and configure a model before adding a conversation agent.",
         "reconfigure_successful": "Conversation agent configuration updated."
       },
-      "entry_type": "Conversation agent",
+      "entry_type": "Conversation agent configuration",
       "error": {
         "cannot_connect": "{error_message}",
         "duplicate_fallback_model": "Select each fallback language model profile only once.",
