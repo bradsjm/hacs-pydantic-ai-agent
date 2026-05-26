@@ -595,7 +595,7 @@
           "data": {
             "provider_id": "Provider"
           },
-          "description": "Choose a provider from the live models.dev catalog, or choose custom provider for manual setup.",
+          "description": "Choose a provider (from https://models.dev/), or choose custom provider for manual setup.",
           "title": "Choose provider"
         },
         "pick_model_profile": {
