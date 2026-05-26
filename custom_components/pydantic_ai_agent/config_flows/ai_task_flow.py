@@ -48,6 +48,7 @@ from .common import (
     parse_model_profile_ref,
     provider_model_profiles,
 )
+from ..generated_titles import DEFAULT_AI_TASK_TITLE_SUFFIX, generated_default_title
 
 
 class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
@@ -66,7 +67,12 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Add an AI task data subentry."""
-        self._options = {}
+        self._options = {
+            CONF_AI_TASK_NAME: generated_default_title(
+                DEFAULT_AI_TASK_TITLE_SUFFIX,
+                (subentry.title for subentry in self._get_entry().subentries.values()),
+            )
+        }
         self._pending_ai_task_data = {}
         self._pending_ai_task_error = None
         return await self.async_step_init(user_input)

@@ -23,6 +23,7 @@ _EXPLICIT_RUNTIME_REQUIREMENTS = {
     "tiktoken>=0.12.0",
     "fastmcp-slim[client,server]>=3.3.0",
     "markdownify>=1.2",
+    "names-generator==0.2.0",
 }
 
 

@@ -87,6 +87,7 @@ from .provider_wizard.types import (
     CatalogProviderOption,
     CompactCatalog,
 )
+from ..generated_titles import DEFAULT_SERVICE_TITLE_SUFFIX, generated_default_title
 
 class ProviderSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing workspace-owned provider subentries."""
@@ -125,7 +126,12 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         """Add a provider subentry."""
         self._model_names = None
         self._model_names_cache_key = None
-        self._options = {}
+        self._options = {
+            CONF_NAME: generated_default_title(
+                DEFAULT_SERVICE_TITLE_SUFFIX,
+                (subentry.title for subentry in provider_subentries(self._get_entry())),
+            )
+        }
         self._pending_error = None
         self._pending_storage_data = {}
         self._pending_step_id = "init"

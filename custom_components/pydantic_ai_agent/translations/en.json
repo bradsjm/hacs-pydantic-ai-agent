@@ -38,7 +38,7 @@
         },
         "data_description": {
           "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
-          "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this workspace."
+          "logfire_token": "Optional Logfire (https://pydantic.dev/logfire) write token for Pydantic AI traces. Leave blank to disable Logfire for this workspace."
         },
         "description": "Update workspace settings for providers, agents, AI tasks, and MCP servers.",
         "sections": {

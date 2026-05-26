@@ -747,6 +747,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cmdkit"
+version = "2.7.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/8d/0483d6018a5293ef74889ee132b243d34c324be19378acb93341bbefb43b/cmdkit-2.7.7.tar.gz", hash = "sha256:afe20b60ee60658e299dba465248b74c1801bfe24f891ef745b3a6810251c280", size = 23225, upload-time = "2024-12-28T21:21:57.08Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/23/62/c82680c31dc2dcfa55918a28720d2e5695cbb4e778b621416d12883203cd/cmdkit-2.7.7-py3-none-any.whl", hash = "sha256:9dfb1ae63329d0ce1970886206ef14a9773d5ebcc15608c96df119bc82abf023", size = 26819, upload-time = "2024-12-28T21:21:54.931Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1308,6 +1317,7 @@ dependencies = [
     { name = "google-genai" },
     { name = "logfire" },
     { name = "markdownify" },
+    { name = "names-generator" },
     { name = "pydantic-ai-skills" },
     { name = "pydantic-ai-slim" },
     { name = "tiktoken" },
@@ -1338,6 +1348,7 @@ requires-dist = [
     { name = "google-genai", specifier = ">=1.70.0" },
     { name = "logfire", specifier = "==4.33.0" },
     { name = "markdownify", specifier = ">=1.2" },
+    { name = "names-generator", specifier = "==0.2.0" },
     { name = "pydantic-ai-skills", specifier = "==0.10.0" },
     { name = "pydantic-ai-slim", specifier = "==1.97.0" },
     { name = "tiktoken", specifier = ">=0.12.0" },
@@ -2016,6 +2027,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/f7/addf1087b860ac60e6f382240f64fb99f8bfb532bb06f7c542b83c29ca61/multidict-6.7.1-cp314-cp314t-win_amd64.whl", hash = "sha256:497bde6223c212ba11d462853cfa4f0ae6ef97465033e7dc9940cdb3ab5b48e5", size = 53542, upload-time = "2026-01-26T02:46:08.809Z" },
     { url = "https://files.pythonhosted.org/packages/4c/81/4629d0aa32302ef7b2ec65c75a728cc5ff4fa410c50096174c1632e70b3e/multidict-6.7.1-cp314-cp314t-win_arm64.whl", hash = "sha256:2bbd113e0d4af5db41d5ebfe9ccaff89de2120578164f86a5d17d5a576d1e5b2", size = 44719, upload-time = "2026-01-26T02:46:11.146Z" },
     { url = "https://files.pythonhosted.org/packages/81/08/7036c080d7117f28a4af526d794aab6a84463126db031b007717c1a6676e/multidict-6.7.1-py3-none-any.whl", hash = "sha256:55d97cc6dae627efa6a6e548885712d4864b81110ac76fa4e534c03819fa4a56", size = 12319, upload-time = "2026-01-26T02:46:44.004Z" },
+]
+
+[[package]]
+name = "names-generator"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cmdkit" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fd/de/60c26d1488db2ffdb050d2c0e6007998c2afd90760a4d7b23d32cde5b446/names_generator-0.2.0.tar.gz", hash = "sha256:de60e354b8ca8f2d1ce0816079d3ba569417371867b94328021f03c9dd47a5be", size = 27106, upload-time = "2024-04-16T03:38:58.399Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/3d/7210fc4b1999771b875d96ffa30cf4384c7fe8f0a7d9874df4b753b7703e/names_generator-0.2.0-py3-none-any.whl", hash = "sha256:693e8e48e9a54a2a8f714b01d1bd70945743a15d4587059e7e4e16efc361be11", size = 26699, upload-time = "2024-04-16T03:38:54.288Z" },
 ]
 
 [[package]]

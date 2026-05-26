@@ -25,12 +25,17 @@ from .common import (
 from .conversation_flow import ConversationSubentryFlowHandler
 from .mcp_server_flow import MCPServerSubentryFlowHandler
 from .provider_flow import ProviderSubentryFlowHandler
+from ..generated_titles import (
+    DEFAULT_WORKSPACE_TITLE_SUFFIX,
+    generated_default_title,
+)
 
 class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Pydantic AI Agent."""
 
     VERSION = 2
     MINOR_VERSION = 0
+    _default_workspace_name: str | None = None
 
     def _async_update_workspace_and_abort(
         self, entry: ConfigEntry, data: dict[str, Any]
@@ -53,10 +58,22 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(
-                _base_schema(user_input), _provider_form_suggested_values(user_input)
+                _base_schema(
+                    user_input or {CONF_NAME: self._new_workspace_default_name()}
+                ),
+                _provider_form_suggested_values(user_input),
             ),
             errors=errors,
         )
+
+    def _new_workspace_default_name(self) -> str:
+        """Return the generated default name for this workspace flow."""
+        if self._default_workspace_name is None:
+            self._default_workspace_name = generated_default_title(
+                DEFAULT_WORKSPACE_TITLE_SUFFIX,
+                (entry.title for entry in self._async_current_entries()),
+            )
+        return self._default_workspace_name
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None

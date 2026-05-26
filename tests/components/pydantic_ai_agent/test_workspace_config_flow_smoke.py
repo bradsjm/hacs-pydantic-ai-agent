@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
@@ -23,6 +24,7 @@ from custom_components.pydantic_ai_agent.conversation import (
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
+    CONF_AI_TASK_NAME,
     CONF_BASE_URL,
     CONF_CUSTOM_MODEL_NAMES,
     CONF_ENABLE_SKILLS,
@@ -40,6 +42,7 @@ from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_PROVIDER,
 )
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
@@ -66,6 +69,15 @@ _TRANSLATIONS_PATH = (
     / "translations"
     / "en.json"
 )
+
+
+def _schema_default(data_schema: vol.Schema | None, field: str) -> Any:
+    """Return a voluptuous top-level field default from a flow schema."""
+    assert data_schema is not None
+    for key in data_schema.schema:
+        if key.schema == field:
+            return key.default()
+    raise AssertionError(f"Schema field {field} not found")
 
 
 def test_provider_edit_connection_translations_cover_rendered_schema() -> None:
@@ -152,6 +164,29 @@ async def _loaded_workspace_entry(
     return entry
 
 
+def _provider_subentry_data() -> dict[str, object]:
+    """Return a provider subentry with one enabled profile for flow tests."""
+    return {
+        "subentry_id": "provider-1",
+        "subentry_type": SUBENTRY_TYPE_PROVIDER,
+        "title": "OpenAI-compatible",
+        "unique_id": None,
+        "data": {
+            CONF_NAME: "OpenAI-compatible",
+            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            CONF_API_KEY: "sk-test",
+            CONF_MODEL_PROFILES: {
+                "profile-1": {
+                    "id": "profile-1",
+                    CONF_NAME: "GPT Mini",
+                    CONF_MODEL: "gpt-4.1-mini",
+                    CONF_ENABLED: True,
+                }
+            },
+        },
+    }
+
+
 async def test_create_workspace_entry(hass: HomeAssistant) -> None:
     """Test the parent flow creates a workspace entry."""
     result = await hass.config_entries.flow.async_init(
@@ -173,6 +208,122 @@ async def test_create_workspace_entry(hass: HomeAssistant) -> None:
         CONF_NAME: "Living Room Workspace",
         CONF_DEFAULT_SKILLS_FOLDER: DEFAULT_SKILLS_FOLDER,
     }
+
+
+async def test_new_workspace_default_title_is_generated(
+    hass: HomeAssistant,
+) -> None:
+    """Test new workspace setup uses a generated default title."""
+    with patch(
+        "custom_components.pydantic_ai_agent.generated_titles.generate_name",
+        return_value="brave_turing",
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert _schema_default(result["data_schema"], CONF_NAME) == "Brave Turing Workspace"
+
+
+async def test_new_custom_provider_default_title_is_generated(
+    hass: HomeAssistant,
+) -> None:
+    """Test custom provider setup uses a generated default service title."""
+    entry = await _loaded_workspace_entry(hass)
+
+    with patch(
+        "custom_components.pydantic_ai_agent.generated_titles.generate_name",
+        return_value="clever_matsumoto",
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+            context={"source": config_entries.SOURCE_USER},
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_CUSTOM}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    assert _schema_default(result["data_schema"], CONF_NAME) == "Clever Matsumoto Service"
+
+
+async def test_guided_provider_default_title_stays_provider_name(
+    hass: HomeAssistant,
+) -> None:
+    """Test guided provider setup keeps provider-specific default names."""
+    entry = await _loaded_workspace_entry(hass)
+    manager = catalog_manager(hass)
+    now = dt_util.utcnow()
+    manager.catalog = _wizard_catalog()
+    manager.loaded_at = now
+    manager.last_used_at = now
+
+    with patch(
+        "custom_components.pydantic_ai_agent.generated_titles.generate_name",
+        return_value="clever_matsumoto",
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+            context={"source": config_entries.SOURCE_USER},
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_GUIDED}
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {CONF_PROVIDER_ID: "openai"}
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {CONF_DRIVER: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "wizard_connection"
+    assert _schema_default(result["data_schema"], CONF_NAME) == "OpenAI"
+
+
+async def test_new_conversation_default_title_is_generated(
+    hass: HomeAssistant,
+) -> None:
+    """Test new conversation setup uses a generated default agent title."""
+    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
+
+    with patch(
+        "custom_components.pydantic_ai_agent.generated_titles.generate_name",
+        return_value="fervent_ardinghelli",
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+            context={"source": config_entries.SOURCE_USER},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert _schema_default(result["data_schema"], CONF_AGENT_NAME) == (
+        "Fervent Ardinghelli Agent"
+    )
+
+
+async def test_new_ai_task_default_title_is_generated(
+    hass: HomeAssistant,
+) -> None:
+    """Test new AI task setup uses a generated default AI task title."""
+    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
+
+    with patch(
+        "custom_components.pydantic_ai_agent.generated_titles.generate_name",
+        return_value="trusting_knuth",
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
+            context={"source": config_entries.SOURCE_USER},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert _schema_default(result["data_schema"], CONF_AI_TASK_NAME) == (
+        "Trusting Knuth AI Task"
+    )
 
 
 async def test_create_provider_subentry_with_disabled_custom_profile(

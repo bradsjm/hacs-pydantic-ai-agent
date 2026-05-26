@@ -35,6 +35,7 @@ from .common import (
     async_available_skills,
     default_conversation_options,
 )
+from ..generated_titles import DEFAULT_AGENT_TITLE_SUFFIX, generated_default_title
 
 
 class ConversationSubentryFlowHandler(ConfigSubentryFlow):
@@ -53,6 +54,10 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Add a conversation subentry."""
         self._options = default_conversation_options()
+        self._options[CONF_AGENT_NAME] = generated_default_title(
+            DEFAULT_AGENT_TITLE_SUFFIX,
+            (subentry.title for subentry in self._get_entry().subentries.values()),
+        )
         return await self.async_step_init(user_input)
 
     async def async_step_reconfigure(
