@@ -24,6 +24,7 @@ from ...const import (
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
 from .const import (
+    CATALOG_RETRY_PROVIDER_ID,
     CONF_DRIVER,
     CONF_FAMILY,
     CONF_INCLUDE_DEPRECATED,
@@ -32,12 +33,9 @@ from .const import (
     CONF_INCLUDE_WITHOUT_TOOL_CALL,
     CONF_PROVIDER_ID,
     CONF_SELECTED_MODEL_IDS,
-    CONF_SETUP_METHOD,
     CUSTOM_PROVIDER_ID,
     DEFAULT_MODEL_FILTER_THRESHOLD,
     MODE_LABELS,
-    SETUP_METHOD_CUSTOM,
-    SETUP_METHOD_GUIDED,
 )
 from .filters import ModelFilterOptions, filtered_models
 from .types import CatalogModelOption, CatalogProviderOption, CompactCatalog
@@ -50,30 +48,15 @@ _PROVIDER_EXTRA_BODY_MODES = {
 }
 
 
-def setup_method_schema() -> vol.Schema:
-    """Return the guided/custom setup method schema."""
-    return vol.Schema(
-        {
-            vol.Required(CONF_SETUP_METHOD, default=SETUP_METHOD_GUIDED): SelectSelector(
-                SelectSelectorConfig(
-                    options=[
-                        SelectOptionDict(label="Guided setup", value=SETUP_METHOD_GUIDED),
-                        SelectOptionDict(label="Custom provider", value=SETUP_METHOD_CUSTOM),
-                    ],
-                    mode=SelectSelectorMode.LIST,
-                )
-            )
-        }
-    )
-
-
-def provider_selection_schema(catalog: CompactCatalog) -> vol.Schema:
+def provider_selection_schema(
+    catalog: CompactCatalog, *, include_retry: bool = False
+) -> vol.Schema:
     """Return a provider selection schema."""
     return vol.Schema(
         {
             vol.Required(CONF_PROVIDER_ID): SelectSelector(
                 SelectSelectorConfig(
-                    options=provider_options(catalog),
+                    options=provider_options(catalog, include_retry=include_retry),
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             )
@@ -179,11 +162,17 @@ def model_selection_schema(
     )
 
 
-def provider_options(catalog: CompactCatalog) -> list[SelectOptionDict]:
+def provider_options(
+    catalog: CompactCatalog, *, include_retry: bool = False
+) -> list[SelectOptionDict]:
     """Return provider selector options including custom setup."""
     providers = catalog.sorted_providers()
     duplicate_names = _duplicate_values(provider.name for provider in providers)
     options = []
+    if include_retry:
+        options.append(
+            SelectOptionDict(label="Try loading catalog again", value=CATALOG_RETRY_PROVIDER_ID)
+        )
     for provider in providers:
         label = provider.name
         if label in duplicate_names:

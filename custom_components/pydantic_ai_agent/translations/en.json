@@ -613,13 +613,6 @@
           },
           "title": "Configure models and provider"
         },
-        "setup_method": {
-          "data": {
-            "setup_method": "Setup method"
-          },
-          "description": "Guided setup loads a provider and model catalog to prefill a working provider. Custom setup keeps the advanced manual form.",
-          "title": "Add provider"
-        },
         "wizard_connection": {
           "data": {
             "api_key": "API key",

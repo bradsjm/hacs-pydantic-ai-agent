@@ -8,9 +8,7 @@ from homeassistant.helpers.selector import TextSelector
 
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
     CONF_FAMILY,
-    CONF_SETUP_METHOD,
     CUSTOM_PROVIDER_ID,
-    SETUP_METHOD_GUIDED,
 )
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.filters import (
     ModelFilterOptions,
@@ -28,7 +26,6 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard.schemas im
     model_options,
     needs_model_filter_step,
     provider_options,
-    setup_method_schema,
 )
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types import (
     CatalogModelOption,
@@ -49,13 +46,6 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
-
-
-def test_setup_method_schema_defaults_to_guided() -> None:
-    """Test setup method schema defaults to guided setup."""
-    schema = setup_method_schema()
-
-    assert schema({})[CONF_SETUP_METHOD] == SETUP_METHOD_GUIDED
 
 
 def test_provider_options_include_supported_providers_and_custom() -> None:

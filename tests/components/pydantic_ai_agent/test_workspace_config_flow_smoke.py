@@ -46,12 +46,14 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_PROVIDER,
 )
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
+    CATALOG_RETRY_PROVIDER_ID,
     CONF_DRIVER,
     CONF_PROVIDER_ID,
     CONF_SELECTED_MODEL_IDS,
-    CONF_SETUP_METHOD,
-    SETUP_METHOD_CUSTOM,
-    SETUP_METHOD_GUIDED,
+    CUSTOM_PROVIDER_ID,
+)
+from custom_components.pydantic_ai_agent.config_flows.provider_wizard.models_dev import (
+    CatalogLoadError,
 )
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.catalog_cache import (
     catalog_manager,
@@ -77,6 +79,15 @@ def _schema_default(data_schema: vol.Schema | None, field: str) -> Any:
     for key in data_schema.schema:
         if key.schema == field:
             return key.default()
+    raise AssertionError(f"Schema field {field} not found")
+
+
+def _schema_select_options(data_schema: vol.Schema | None, field: str) -> list[Any]:
+    """Return selector options for a voluptuous top-level field."""
+    assert data_schema is not None
+    for key, selector in data_schema.schema.items():
+        if key.schema == field:
+            return list(selector.config["options"])
     raise AssertionError(f"Schema field {field} not found")
 
 
@@ -116,7 +127,6 @@ def test_provider_wizard_translations_cover_rendered_steps() -> None:
     steps = provider["step"]
 
     assert set(steps) >= {
-        "setup_method",
         "pick_provider",
         "pick_driver",
         "wizard_connection",
@@ -129,7 +139,6 @@ def test_provider_wizard_translations_cover_rendered_steps() -> None:
         "model_required",
         "no_models_available",
     }
-    assert steps["setup_method"]["data"][CONF_SETUP_METHOD]
     assert steps["pick_provider"]["data"][CONF_PROVIDER_ID]
     assert steps["pick_driver"]["data"][CONF_DRIVER]
     assert steps["wizard_connection"]["data"][CONF_API_KEY]
@@ -162,6 +171,15 @@ async def _loaded_workspace_entry(
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     return entry
+
+
+def _cache_provider_catalog(hass: HomeAssistant, catalog: CompactCatalog) -> None:
+    """Cache a provider wizard catalog for flow tests."""
+    manager = catalog_manager(hass)
+    now = dt_util.utcnow()
+    manager.catalog = catalog
+    manager.loaded_at = now
+    manager.last_used_at = now
 
 
 def _provider_subentry_data() -> dict[str, object]:
@@ -232,6 +250,7 @@ async def test_new_custom_provider_default_title_is_generated(
 ) -> None:
     """Test custom provider setup uses a generated default service title."""
     entry = await _loaded_workspace_entry(hass)
+    _cache_provider_catalog(hass, _wizard_catalog())
 
     with patch(
         "custom_components.pydantic_ai_agent.generated_titles.generate_name",
@@ -242,7 +261,7 @@ async def test_new_custom_provider_default_title_is_generated(
             context={"source": config_entries.SOURCE_USER},
         )
         result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_CUSTOM}
+            result["flow_id"], {CONF_PROVIDER_ID: CUSTOM_PROVIDER_ID}
         )
 
     assert result["type"] is FlowResultType.FORM
@@ -255,11 +274,7 @@ async def test_guided_provider_default_title_stays_provider_name(
 ) -> None:
     """Test guided provider setup keeps provider-specific default names."""
     entry = await _loaded_workspace_entry(hass)
-    manager = catalog_manager(hass)
-    now = dt_util.utcnow()
-    manager.catalog = _wizard_catalog()
-    manager.loaded_at = now
-    manager.last_used_at = now
+    _cache_provider_catalog(hass, _wizard_catalog())
 
     with patch(
         "custom_components.pydantic_ai_agent.generated_titles.generate_name",
@@ -268,9 +283,6 @@ async def test_guided_provider_default_title_stays_provider_name(
         result = await hass.config_entries.subentries.async_init(
             (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
             context={"source": config_entries.SOURCE_USER},
-        )
-        result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_GUIDED}
         )
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"], {CONF_PROVIDER_ID: "openai"}
@@ -331,16 +343,17 @@ async def test_create_provider_subentry_with_disabled_custom_profile(
 ) -> None:
     """Test provider creation stores custom profiles disabled by default."""
     entry = await _loaded_workspace_entry(hass)
+    _cache_provider_catalog(hass, _wizard_catalog())
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
         context={"source": config_entries.SOURCE_USER},
     )
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "setup_method"
+    assert result["step_id"] == "pick_provider"
 
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_CUSTOM}
+        result["flow_id"], {CONF_PROVIDER_ID: CUSTOM_PROVIDER_ID}
     )
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
@@ -366,26 +379,97 @@ async def test_create_provider_subentry_with_disabled_custom_profile(
     assert provider_data[CONF_CUSTOM_MODEL_NAMES] == ["gpt-4.1-mini"]
 
 
+async def test_provider_catalog_failure_shows_fallback_picker(
+    hass: HomeAssistant,
+) -> None:
+    """Test catalog failures still allow custom provider setup or retry."""
+    entry = await _loaded_workspace_entry(hass)
+
+    async def fake_fetch_catalog(_hass: HomeAssistant) -> CompactCatalog:
+        raise CatalogLoadError("failed")
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flows.provider_wizard.catalog_cache.async_fetch_catalog",
+        new=fake_fetch_catalog,
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+            context={"source": config_entries.SOURCE_USER},
+        )
+        assert result["type"] is FlowResultType.SHOW_PROGRESS
+
+        await hass.async_block_till_done()
+        result = await hass.config_entries.subentries.async_configure(result["flow_id"])
+
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "pick_provider"
+        assert result["errors"] == {"base": "model_catalog_unavailable"}
+        assert _schema_select_options(result["data_schema"], CONF_PROVIDER_ID) == [
+            {"label": "Try loading catalog again", "value": CATALOG_RETRY_PROVIDER_ID},
+            {"label": "Custom provider", "value": CUSTOM_PROVIDER_ID},
+        ]
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_PROVIDER_ID: CUSTOM_PROVIDER_ID}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+
+async def test_provider_catalog_failure_can_retry_catalog_load(
+    hass: HomeAssistant,
+) -> None:
+    """Test catalog failure fallback can retry guided provider setup."""
+    entry = await _loaded_workspace_entry(hass)
+    catalog = _wizard_catalog()
+    calls = 0
+
+    async def fake_fetch_catalog(_hass: HomeAssistant) -> CompactCatalog:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise CatalogLoadError("failed")
+        return catalog
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flows.provider_wizard.catalog_cache.async_fetch_catalog",
+        new=fake_fetch_catalog,
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+            context={"source": config_entries.SOURCE_USER},
+        )
+        await hass.async_block_till_done()
+        result = await hass.config_entries.subentries.async_configure(result["flow_id"])
+
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {CONF_PROVIDER_ID: CATALOG_RETRY_PROVIDER_ID}
+        )
+        assert result["type"] is FlowResultType.SHOW_PROGRESS
+
+        await hass.async_block_till_done()
+        result = await hass.config_entries.subentries.async_configure(result["flow_id"])
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "pick_provider"
+    assert result["errors"] == {}
+    assert _schema_select_options(result["data_schema"], CONF_PROVIDER_ID) == [
+        {"label": "OpenAI", "value": "openai"},
+        {"label": "Custom provider", "value": CUSTOM_PROVIDER_ID},
+    ]
+    assert calls == 2
+
+
 async def test_guided_provider_subentry_creates_enabled_profile(
     hass: HomeAssistant,
 ) -> None:
     """Test guided provider creation stores selected profiles enabled."""
     entry = await _loaded_workspace_entry(hass)
-    manager = catalog_manager(hass)
-    now = dt_util.utcnow()
-    manager.catalog = _wizard_catalog()
-    manager.loaded_at = now
-    manager.last_used_at = now
+    _cache_provider_catalog(hass, _wizard_catalog())
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
         context={"source": config_entries.SOURCE_USER},
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "setup_method"
-
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_GUIDED}
     )
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "pick_provider"
@@ -429,18 +513,11 @@ async def test_guided_provider_hidden_models_shows_filter_step(
 ) -> None:
     """Test hidden default-filtered models remain reachable in guided setup."""
     entry = await _loaded_workspace_entry(hass)
-    manager = catalog_manager(hass)
-    now = dt_util.utcnow()
-    manager.catalog = _wizard_catalog(hidden_openai_model=True)
-    manager.loaded_at = now
-    manager.last_used_at = now
+    _cache_provider_catalog(hass, _wizard_catalog(hidden_openai_model=True))
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
         context={"source": config_entries.SOURCE_USER},
-    )
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_GUIDED}
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {CONF_PROVIDER_ID: "openai"}
@@ -461,20 +538,13 @@ async def test_guided_single_visible_model_with_hidden_model_does_not_auto_creat
 ) -> None:
     """Test hidden models prevent the single-model auto-finish shortcut."""
     entry = await _loaded_workspace_entry(hass)
-    manager = catalog_manager(hass)
-    now = dt_util.utcnow()
-    manager.catalog = _wizard_catalog(
-        single_anthropic=True, hidden_anthropic_model=True
+    _cache_provider_catalog(
+        hass, _wizard_catalog(single_anthropic=True, hidden_anthropic_model=True)
     )
-    manager.loaded_at = now
-    manager.last_used_at = now
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
         context={"source": config_entries.SOURCE_USER},
-    )
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_GUIDED}
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {CONF_PROVIDER_ID: "anthropic"}
@@ -492,18 +562,11 @@ async def test_guided_single_driver_single_model_skips_extra_steps(
 ) -> None:
     """Test guided setup skips driver and model steps when choices are singular."""
     entry = await _loaded_workspace_entry(hass)
-    manager = catalog_manager(hass)
-    now = dt_util.utcnow()
-    manager.catalog = _wizard_catalog(single_anthropic=True)
-    manager.loaded_at = now
-    manager.last_used_at = now
+    _cache_provider_catalog(hass, _wizard_catalog(single_anthropic=True))
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
         context={"source": config_entries.SOURCE_USER},
-    )
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_GUIDED}
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {CONF_PROVIDER_ID: "anthropic"}
@@ -670,13 +733,14 @@ async def test_provider_subentry_base_url_endpoint_returns_form_error(
 ) -> None:
     """Test provider URL endpoint validation replays as a form error."""
     entry = await _loaded_workspace_entry(hass)
+    _cache_provider_catalog(hass, _wizard_catalog())
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
         context={"source": config_entries.SOURCE_USER},
     )
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_SETUP_METHOD: SETUP_METHOD_CUSTOM}
+        result["flow_id"], {CONF_PROVIDER_ID: CUSTOM_PROVIDER_ID}
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],

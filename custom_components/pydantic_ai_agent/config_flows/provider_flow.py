@@ -61,13 +61,11 @@ from .common import (
 )
 from .provider_wizard.catalog_cache import catalog_manager
 from .provider_wizard.const import (
+    CATALOG_RETRY_PROVIDER_ID,
     CONF_DRIVER,
     CONF_PROVIDER_ID,
     CONF_SELECTED_MODEL_IDS,
-    CONF_SETUP_METHOD,
     CUSTOM_PROVIDER_ID,
-    SETUP_METHOD_CUSTOM,
-    SETUP_METHOD_GUIDED,
 )
 from .provider_wizard.filters import ModelFilterOptions, filtered_models
 from .provider_wizard.flow import build_provider_data, selected_models_by_id
@@ -80,7 +78,6 @@ from .provider_wizard.schemas import (
     model_selection_schema,
     needs_model_filter_step,
     provider_selection_schema,
-    setup_method_schema,
 )
 from .provider_wizard.types import (
     CatalogModelOption,
@@ -147,7 +144,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         self._wizard_models = ()
         self._wizard_provider = None
         self._wizard_selected_models = ()
-        return await self.async_step_setup_method(user_input)
+        return await self.async_step_pick_provider(user_input)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -220,30 +217,11 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             description_placeholders=description_placeholders,
         )
 
-    async def async_step_setup_method(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Choose guided or custom provider setup."""
+    async def _async_load_model_catalog(self) -> SubentryFlowResult:
+        """Load the provider model catalog before provider selection."""
         entry = self._get_entry()
         if entry.state != ConfigEntryState.LOADED:
             return self.async_abort(reason="entry_not_loaded")
-        if user_input is None:
-            return self.async_show_form(
-                step_id="setup_method",
-                data_schema=setup_method_schema(),
-                errors={"base": self._wizard_catalog_error}
-                if self._wizard_catalog_error
-                else {},
-            )
-        setup_method = user_input.get(CONF_SETUP_METHOD)
-        if setup_method == SETUP_METHOD_CUSTOM:
-            return await self.async_step_init()
-        if setup_method != SETUP_METHOD_GUIDED:
-            return self.async_show_form(
-                step_id="setup_method",
-                data_schema=setup_method_schema(),
-                errors={CONF_SETUP_METHOD: "invalid_provider_config"},
-            )
         manager = catalog_manager(self.hass)
         if catalog := manager.cached_catalog():
             self._wizard_catalog = catalog
@@ -286,26 +264,47 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         """Continue after provider catalog loading."""
         del user_input
         if self._wizard_catalog_error is not None or self._wizard_catalog is None:
-            return await self.async_step_setup_method()
+            return await self.async_step_pick_provider()
         return await self.async_step_pick_provider()
+
+    def _pick_provider_errors(self, field_error: str | None = None) -> dict[str, str]:
+        """Return provider picker errors including catalog load failures."""
+        errors: dict[str, str] = {}
+        if self._wizard_catalog_error is not None:
+            errors["base"] = self._wizard_catalog_error
+        if field_error is not None:
+            errors[CONF_PROVIDER_ID] = field_error
+        return errors
 
     async def async_step_pick_provider(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Choose a catalog provider by name."""
         catalog = self._wizard_catalog
+        has_catalog_error = self._wizard_catalog_error is not None
         if catalog is None:
-            return await self.async_step_setup_method()
+            if not has_catalog_error:
+                return await self._async_load_model_catalog()
+            catalog = CompactCatalog(providers={}, models_by_provider={})
         if user_input is None:
             return self.async_show_form(
-                step_id="pick_provider", data_schema=provider_selection_schema(catalog)
+                step_id="pick_provider",
+                data_schema=provider_selection_schema(
+                    catalog, include_retry=has_catalog_error
+                ),
+                errors=self._pick_provider_errors(),
             )
         provider_id = user_input.get(CONF_PROVIDER_ID)
+        if provider_id == CATALOG_RETRY_PROVIDER_ID and has_catalog_error:
+            self._wizard_catalog_error = None
+            return await self._async_load_model_catalog()
         if not isinstance(provider_id, str):
             return self.async_show_form(
                 step_id="pick_provider",
-                data_schema=provider_selection_schema(catalog),
-                errors={CONF_PROVIDER_ID: "invalid_provider_config"},
+                data_schema=provider_selection_schema(
+                    catalog, include_retry=has_catalog_error
+                ),
+                errors=self._pick_provider_errors("invalid_provider_config"),
             )
         if provider_id == CUSTOM_PROVIDER_ID:
             return await self.async_step_init()
@@ -313,8 +312,10 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         if provider is None:
             return self.async_show_form(
                 step_id="pick_provider",
-                data_schema=provider_selection_schema(catalog),
-                errors={CONF_PROVIDER_ID: "invalid_provider_config"},
+                data_schema=provider_selection_schema(
+                    catalog, include_retry=has_catalog_error
+                ),
+                errors=self._pick_provider_errors("invalid_provider_config"),
             )
         self._wizard_provider = provider
         self._wizard_models = catalog.models_for_provider(provider.id)
