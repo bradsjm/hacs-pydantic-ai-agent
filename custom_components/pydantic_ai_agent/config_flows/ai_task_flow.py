@@ -30,6 +30,7 @@ from .common import (
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
     _SECTION_SKILLS,
+    _agent_form_suggested_values,
     _ai_task_data_from_user_input,
     _ai_task_data_schema,
     _flatten_section_data,
@@ -118,11 +119,16 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 except ProviderValidationError as err:
                     return self.async_show_form(
                         step_id="init",
-                        data_schema=_ai_task_data_schema(
-                            self.hass,
-                            self._options | flat_user_input,
-                            entry,
-                            available_skills,
+                        data_schema=self.add_suggested_values_to_schema(
+                            _ai_task_data_schema(
+                                self.hass,
+                                self._options | flat_user_input,
+                                entry,
+                                available_skills,
+                            ),
+                            _agent_form_suggested_values(
+                                self._options | flat_user_input, self.hass
+                            ),
                         ),
                         errors={"base": err.reason},
                         description_placeholders=_provider_validation_placeholders(err),
@@ -139,8 +145,11 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 )
                 return self.async_show_form(
                     step_id="init",
-                    data_schema=_ai_task_data_schema(
-                        self.hass, refreshed_options, entry, refreshed_skills
+                    data_schema=self.add_suggested_values_to_schema(
+                        _ai_task_data_schema(
+                            self.hass, refreshed_options, entry, refreshed_skills
+                        ),
+                        _agent_form_suggested_values(refreshed_options, self.hass),
                     ),
                     errors={"base": "skills_refreshed"},
                 )
@@ -153,24 +162,33 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             if model_error := _selected_model_profile_error(self.hass, entry, data):
                 return self.async_show_form(
                     step_id="init",
-                    data_schema=_ai_task_data_schema(
-                        self.hass, self._options | data, entry, available_skills
+                    data_schema=self.add_suggested_values_to_schema(
+                        _ai_task_data_schema(
+                            self.hass, self._options | data, entry, available_skills
+                        ),
+                        _agent_form_suggested_values(self._options | data, self.hass),
                     ),
                     errors={CONF_PRIMARY_MODEL_REF: model_error},
                 )
             if mcp_error := _selected_mcp_server_error(entry, data):
                 return self.async_show_form(
                     step_id="init",
-                    data_schema=_ai_task_data_schema(
-                        self.hass, self._options | data, entry, available_skills
+                    data_schema=self.add_suggested_values_to_schema(
+                        _ai_task_data_schema(
+                            self.hass, self._options | data, entry, available_skills
+                        ),
+                        _agent_form_suggested_values(self._options | data, self.hass),
                     ),
                     errors={CONF_MCP_SERVER_IDS: mcp_error},
                 )
             if todo_error := _selected_todo_workspace_error(self.hass, data):
                 return self.async_show_form(
                     step_id="init",
-                    data_schema=_ai_task_data_schema(
-                        self.hass, self._options | data, entry, available_skills
+                    data_schema=self.add_suggested_values_to_schema(
+                        _ai_task_data_schema(
+                            self.hass, self._options | data, entry, available_skills
+                        ),
+                        _agent_form_suggested_values(self._options | data, self.hass),
                     ),
                     errors={CONF_TODO_LIST_ENTITY_ID: todo_error},
                 )
@@ -178,8 +196,9 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_ai_task_data_schema(
-                self.hass, self._options, entry, available_skills
+            data_schema=self.add_suggested_values_to_schema(
+                _ai_task_data_schema(self.hass, self._options, entry, available_skills),
+                _agent_form_suggested_values(self._options, self.hass),
             ),
         )
 
@@ -273,8 +292,11 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             field, reason, placeholders = self._pending_ai_task_error
             return self.async_show_form(
                 step_id="init",
-                data_schema=_ai_task_data_schema(
-                    self.hass, self._options | data, entry, available_skills
+                data_schema=self.add_suggested_values_to_schema(
+                    _ai_task_data_schema(
+                        self.hass, self._options | data, entry, available_skills
+                    ),
+                    _agent_form_suggested_values(self._options | data, self.hass),
                 ),
                 errors={field: reason},
                 description_placeholders=placeholders,

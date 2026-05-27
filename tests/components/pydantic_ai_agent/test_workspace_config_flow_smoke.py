@@ -39,6 +39,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
+    CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
@@ -46,6 +47,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_MODE,
     CONF_SKILLS_FOLDER,
     DEFAULT_SKILLS_FOLDER,
+    DEFAULT_OUTPUT_MODE,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
@@ -73,6 +75,9 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types impo
     CatalogModelOption,
     CatalogProviderOption,
     CompactCatalog,
+)
+from custom_components.pydantic_ai_agent.config_flows.common import (
+    _SECTION_HASS_CONTROL,
 )
 
 _TRANSLATIONS_PATH = (
@@ -106,6 +111,21 @@ def _schema_key_names(data_schema: vol.Schema | None) -> set[str]:
     """Return top-level field names from a flow schema."""
     assert data_schema is not None
     return {key.schema for key in data_schema.schema}
+
+
+def _section_field_suggested_value(
+    data_schema: vol.Schema | None, section_name: str, field: str
+) -> Any:
+    """Return a sectioned field suggested value from a flow schema."""
+    assert data_schema is not None
+    for section_key, section_value in data_schema.schema.items():
+        if section_key.schema != section_name:
+            continue
+        for field_key in section_value.schema.schema:
+            if field_key.schema == field:
+                assert field_key.description is not None
+                return field_key.description["suggested_value"]
+    raise AssertionError(f"Section field {section_name}.{field} not found")
 
 
 def test_provider_edit_connection_translations_cover_rendered_schema() -> None:
@@ -228,6 +248,82 @@ def _provider_subentry_data() -> dict[str, object]:
             },
         },
     }
+
+
+async def test_reconfigure_forms_prefill_llm_hass_api_in_control_section(
+    hass: HomeAssistant,
+) -> None:
+    """Test agent reconfigure forms prefill HA control values in their section."""
+    profile_ref = "provider-1:profile-1"
+    conversation_subentry_id = "conversation-1"
+    ai_task_subentry_id = "ai-task-1"
+    entry = await _loaded_workspace_entry(
+        hass,
+        (
+            _provider_subentry_data(),
+            {
+                "subentry_id": conversation_subentry_id,
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Kitchen Agent",
+                "unique_id": None,
+                "data": {
+                    CONF_AGENT_NAME: "Kitchen Agent",
+                    CONF_PRIMARY_MODEL_REF: profile_ref,
+                    CONF_LLM_HASS_API: ["assist"],
+                },
+            },
+            {
+                "subentry_id": ai_task_subentry_id,
+                "subentry_type": SUBENTRY_TYPE_AI_TASK,
+                "title": "Summary Task",
+                "unique_id": None,
+                "data": {
+                    CONF_AI_TASK_NAME: "Summary Task",
+                    CONF_PRIMARY_MODEL_REF: profile_ref,
+                    CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+                    CONF_LLM_HASS_API: ["assist"],
+                },
+            },
+        ),
+    )
+
+    conversation_result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": conversation_subentry_id,
+        },
+    )
+    ai_task_result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": ai_task_subentry_id,
+        },
+    )
+
+    assert conversation_result["type"] is FlowResultType.FORM
+    assert _SECTION_HASS_CONTROL in _schema_key_names(
+        conversation_result["data_schema"]
+    )
+    assert (
+        _section_field_suggested_value(
+            conversation_result["data_schema"],
+            _SECTION_HASS_CONTROL,
+            CONF_LLM_HASS_API,
+        )
+        == ["assist"]
+    )
+    assert ai_task_result["type"] is FlowResultType.FORM
+    assert _SECTION_HASS_CONTROL in _schema_key_names(ai_task_result["data_schema"])
+    assert (
+        _section_field_suggested_value(
+            ai_task_result["data_schema"],
+            _SECTION_HASS_CONTROL,
+            CONF_LLM_HASS_API,
+        )
+        == ["assist"]
+    )
 
 
 async def test_provider_edit_connection_preserves_catalog_metadata(

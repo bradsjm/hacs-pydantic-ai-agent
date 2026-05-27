@@ -335,6 +335,22 @@ def _flatten_section_data(
     return flattened
 
 
+def _agent_form_suggested_values(
+    options: Mapping[str, Any], hass: HomeAssistant | None = None
+) -> dict[str, Any]:
+    """Return per-agent suggested values matching the sectioned form schema."""
+    suggested_values = dict(options)
+    if CONF_LLM_HASS_API in options:
+        llm_hass_api = options[CONF_LLM_HASS_API]
+        if hass is not None:
+            valid_api_ids = {api.id for api in llm.async_get_apis(hass)}
+            llm_hass_api = [api for api in llm_hass_api if api in valid_api_ids]
+        suggested_values[_SECTION_HASS_CONTROL] = {
+            CONF_LLM_HASS_API: llm_hass_api
+        }
+    return suggested_values
+
+
 def _parse_provider_headers(value: object) -> dict[str, str]:
     """Return provider HTTP headers from form input."""
     try:
