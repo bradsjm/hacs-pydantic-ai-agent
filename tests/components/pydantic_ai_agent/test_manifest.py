@@ -19,7 +19,6 @@ _EXPLICIT_RUNTIME_REQUIREMENTS = {
     "pydantic-ai-slim==1.97.0",
     "anthropic>=0.97.0",
     "google-genai>=1.70.0",
-    "pydantic-ai-skills==0.10.0",
     "tiktoken>=0.12.0",
     "fastmcp-slim[client,server]>=3.3.0",
     "markdownify>=1.2",

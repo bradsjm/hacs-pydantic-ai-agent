@@ -13,7 +13,6 @@ from collections.abc import AsyncIterable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from hashlib import sha256
-from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import parse_qsl, urlparse
 from uuid import uuid4
@@ -91,13 +90,11 @@ from ..const import (
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
     CONF_CUSTOM_MODEL_NAMES,
-    CONF_DEFAULT_SKILLS_FOLDER,
+    CONF_DESCRIPTION,
     CONF_DISCOVERED,
     CONF_DISCOVERED_MODELS,
     CONF_DISCOVERED_MODELS_AT,
     CONF_DISCOVERED_MODELS_CACHE_KEY,
-    CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
-    CONF_ENABLE_SKILLS,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
@@ -119,15 +116,16 @@ from ..const import (
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
+    CONF_SKILL_CONTENT,
+    CONF_SKILL_REFERENCES,
     CONF_SKILLS,
-    CONF_SKILLS_FOLDER,
     CONF_TODO_LIST_ENTITY_ID,
     CONF_WEB_FETCH_ENABLED,
     DEFAULT_AGENT_NAME,
     DEFAULT_AI_TASK_NAME,
     DEFAULT_OUTPUT_MODE,
     DEFAULT_SERVICE_NAME,
-    DEFAULT_SKILLS_FOLDER,
+    DEFAULT_SKILL_NAME,
     DEFAULT_TIMEOUT,
     DEFAULT_WORKSPACE_NAME,
     DOMAIN,
@@ -144,6 +142,7 @@ from ..const import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
+    SUBENTRY_TYPE_SKILL,
     default_conversation_options,
 )
 from ..mcp import (
@@ -178,12 +177,6 @@ from ..provider_validation import (
     _map_http_error,
     async_list_provider_model_names,
     async_probe_model,
-)
-from ..skills import (
-    AvailableSkill,
-    async_available_skills,
-    selected_available_skill_names,
-    skills_folder_path,
 )
 from ..structured_output import (
     structured_model_request_parameters,
@@ -283,6 +276,20 @@ _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "x
 _OUTPUT_MODE_OPTIONS = tuple(
     SelectOptionDict(value=value, label=value) for value in STRUCTURED_OUTPUT_MODES
 )
+_SKILL_NAME_MAX_LENGTH = 80
+_SKILL_DESCRIPTION_MAX_LENGTH = 500
+_SKILL_CONTENT_MAX_LENGTH = 20000
+
+
+class SkillDataValidationError(ValueError):
+    """Error raised when native workspace Skill form data is invalid."""
+
+    def __init__(self, errors: dict[str, str]) -> None:
+        """Initialize the error with Home Assistant form error keys."""
+        super().__init__("invalid_skill")
+        self.errors = errors
+
+
 _CONF_MODEL_PROFILE_ID = "model_profile_id"
 _SECTION_ADVANCED_MCP = "advanced_mcp"
 _SECTION_ADVANCED_MODEL_SETTINGS = "advanced_model_settings"
@@ -353,12 +360,13 @@ def _section_defaults(section_schema: VolDictType) -> dict[str, Any]:
     """Return defaults for an expandable section from its nested fields."""
     defaults: dict[str, Any] = {}
     for key in section_schema:
+        key_default = getattr(key, "default", vol.Undefined)
         if (
             isinstance(key, vol.Marker)
             and isinstance(key.schema, str)
-            and not isinstance(key.default, vol.Undefined)
+            and not isinstance(key_default, vol.Undefined)
         ):
-            defaults[key.schema] = key.default()
+            defaults[key.schema] = key_default()
     return defaults
 
 
@@ -672,15 +680,6 @@ def _log_provider_validation_failure(
     )
 
 
-def _normalise_skills_folder(folder: object) -> str:
-    """Return a canonical skills folder path for storage."""
-    configured = str(folder or DEFAULT_SKILLS_FOLDER).strip() or DEFAULT_SKILLS_FOLDER
-    path = PurePosixPath(configured)
-    if not path.is_absolute() and path.parts and path.parts[0] == "skills":
-        return f"/config/{path.as_posix()}".rstrip("/")
-    return configured.rstrip("/")
-
-
 def _normalise_workspace_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
     """Return normalized workspace data for storage."""
     data = _flatten_section_data(user_input, (_SECTION_LOGFIRE,))
@@ -695,7 +694,6 @@ def _normalise_workspace_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
     else:
         data.pop(CONF_LOGFIRE_TOKEN, None)
         data.pop(CONF_LOGFIRE_INCLUDE_CONTENT, None)
-    data[CONF_DEFAULT_SKILLS_FOLDER] = DEFAULT_SKILLS_FOLDER
     return data
 
 
@@ -967,17 +965,6 @@ def _validate_provider_data(hass: HomeAssistant, data: Mapping[str, Any]) -> Non
         )
 
 
-def _validate_skills_folder(hass: HomeAssistant, folder: object) -> None:
-    """Validate that skills folders stay inside Home Assistant config."""
-    try:
-        skills_folder_path(hass, folder)
-    except ValueError as err:
-        raise ProviderValidationError(
-            "invalid_skills_folder",
-            "Skills folder must be /config/skills or one of its subfolders.",
-        ) from err
-
-
 def _provider_data_matches(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
     """Return if two provider configurations identify the same connection."""
     return _dedupe_data(left) == _dedupe_data(right)
@@ -1081,121 +1068,83 @@ def _selected_model_profile_error(
     return None
 
 
-def _skill_select_options(
-    available_skills: list[AvailableSkill],
-) -> list[SelectOptionDict]:
-    """Return discovered skills as select options."""
-    return [
-        SelectOptionDict(label=skill.name, value=skill.name)
-        for skill in available_skills
-    ]
-
-
-def _hidden_configured_skill_names(
-    configured: object, available_skills: list[AvailableSkill]
-) -> list[str]:
-    """Return configured skill names that are not currently selectable."""
-    available_names = {skill.name for skill in available_skills}
-    if not configured:
-        return []
-    if isinstance(configured, str):
-        return [] if configured in available_names else [configured]
-    if not isinstance(configured, Iterable):
-        return []
-    return [name for name in configured if name not in available_names]
-
-
-def _merge_submitted_skills_with_hidden(
-    user_input: Mapping[str, Any],
-    options: Mapping[str, Any],
-    available_skills: list[AvailableSkill],
-) -> list[str]:
-    """Return submitted selectable skills plus hidden existing selections."""
-    submitted = user_input.get(CONF_SKILLS, [])
-    if isinstance(submitted, str):
-        selected = [submitted]
+def _normalise_selected_skill_ids(raw_skill_ids: object) -> list[str]:
+    """Return selected Skill subentry IDs in storage order without duplicates."""
+    if isinstance(raw_skill_ids, str):
+        raw_values: Iterable[object] = (raw_skill_ids,)
+    elif isinstance(raw_skill_ids, Iterable):
+        raw_values = raw_skill_ids
     else:
-        selected = list(submitted or [])
-    if not selected:
         return []
-    return selected + _hidden_configured_skill_names(
-        options.get(CONF_SKILLS), available_skills
-    )
+    skill_ids: list[str] = []
+    seen: set[str] = set()
+    for raw_value in raw_values:
+        if not isinstance(raw_value, str):
+            continue
+        skill_id = raw_value.strip()
+        if not skill_id or skill_id in seen:
+            continue
+        seen.add(skill_id)
+        skill_ids.append(skill_id)
+    return skill_ids
 
 
-def _normalise_skill_settings(data: dict[str, Any]) -> None:
-    """Normalize and prune per-agent skill settings in place."""
-    enable_skills = bool(data.get(CONF_ENABLE_SKILLS, False))
-    data[CONF_SKILLS_FOLDER] = _normalise_skills_folder(data.get(CONF_SKILLS_FOLDER))
-    data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION] = bool(
-        data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
-    )
-    if not enable_skills:
-        data.pop(CONF_ENABLE_SKILLS, None)
-        data.pop(CONF_SKILLS, None)
-        data.pop(CONF_SKILLS_FOLDER, None)
-        data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
-        return
-    data[CONF_ENABLE_SKILLS] = True
-    if data[CONF_SKILLS_FOLDER] == DEFAULT_SKILLS_FOLDER:
-        data.pop(CONF_SKILLS_FOLDER, None)
-    if not data[CONF_ENABLE_SKILL_SCRIPT_EXECUTION]:
-        data.pop(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, None)
-
-
-def _skill_source(data: Mapping[str, Any]) -> tuple[bool, str, bool]:
-    """Return the fields that determine selectable skills for one agent."""
-    data = _flatten_section_data(data, (_SECTION_SKILLS,))
-    enable_skills = bool(data.get(CONF_ENABLE_SKILLS, False))
-    if not enable_skills:
-        return False, DEFAULT_SKILLS_FOLDER, False
-    return (
-        True,
-        _normalise_skills_folder(data.get(CONF_SKILLS_FOLDER)),
-        bool(data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)),
-    )
+def _skill_select_options(
+    entry: ConfigEntry | None, selected_skill_ids: object = None
+) -> list[SelectOptionDict]:
+    """Return workspace Skill subentries as select options."""
+    if entry is None:
+        return []
+    options = [
+        SelectOptionDict(label=subentry.title, value=subentry.subentry_id)
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_SKILL
+    ]
+    configured_ids = {str(option["value"]) for option in options if "value" in option}
+    for skill_id in _normalise_selected_skill_ids(selected_skill_ids):
+        if skill_id not in configured_ids:
+            options.append(
+                SelectOptionDict(label=f"Unavailable / {skill_id}", value=skill_id)
+            )
+    return options
 
 
 def _append_skill_schema_fields(
     schema: VolDictType,
     options: Mapping[str, Any],
-    available_skills: list[AvailableSkill] | None,
+    entry: ConfigEntry | None,
 ) -> None:
-    """Append per-agent skill controls to a subentry form schema."""
-    enable_skills = bool(options.get(CONF_ENABLE_SKILLS, False))
-    schema[
-        vol.Optional(
-            CONF_ENABLE_SKILLS,
-            default=enable_skills,
-        )
-    ] = BooleanSelector()
-    schema[
-        vol.Optional(
-            CONF_SKILLS_FOLDER,
-            default=options.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
-        )
-    ] = TextSelector(TextSelectorConfig())
-    schema[
-        vol.Optional(
-            CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
-            default=bool(options.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)),
-        )
-    ] = BooleanSelector()
-    skill_options = _skill_select_options(available_skills or [])
+    """Append per-agent workspace Skill selection controls to a subentry form."""
+    skill_options = _skill_select_options(entry, options.get(CONF_SKILLS))
     if not skill_options:
         return
-    skills_schema_key = vol.Optional(CONF_SKILLS)
-    if CONF_SKILLS in options:
-        selected_skill_names = selected_available_skill_names(
-            options[CONF_SKILLS], available_skills or []
-        )
-        skills_schema_key = vol.Optional(
+    schema[
+        vol.Optional(
             CONF_SKILLS,
-            default=selected_skill_names,
+            default=_normalise_selected_skill_ids(options.get(CONF_SKILLS)),
         )
-    schema[skills_schema_key] = SelectSelector(
-        SelectSelectorConfig(options=skill_options, multiple=True)
-    )
+    ] = SelectSelector(SelectSelectorConfig(options=skill_options, multiple=True))
+
+
+def _selected_skill_error(entry: ConfigEntry, data: Mapping[str, Any]) -> str | None:
+    """Return a form error for selected Skills that no longer exist."""
+    for skill_id in _normalise_selected_skill_ids(data.get(CONF_SKILLS)):
+        subentry = entry.subentries.get(skill_id)
+        if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_SKILL:
+            return "skill_not_found"
+    return None
+
+
+def _normalise_skill_selection(data: dict[str, Any]) -> None:
+    """Store only current native Skill subentry IDs on agents and tasks."""
+    data.pop("enable_skills", None)
+    data.pop("skills_folder", None)
+    data.pop("enable_skill_script_execution", None)
+    skill_ids = _normalise_selected_skill_ids(data.get(CONF_SKILLS))
+    if skill_ids:
+        data[CONF_SKILLS] = skill_ids
+    else:
+        data.pop(CONF_SKILLS, None)
 
 
 def _selected_mcp_server_error(
@@ -1238,7 +1187,6 @@ def _conversation_schema(
     hass: HomeAssistant,
     options: Mapping[str, Any] | None = None,
     entry: ConfigEntry | None = None,
-    available_skills: list[AvailableSkill] | None = None,
 ) -> vol.Schema:
     """Return the conversation subentry schema, pruning unavailable HA APIs."""
     options = dict(options or {})
@@ -1339,11 +1287,60 @@ def _conversation_schema(
         section(vol.Schema(external_tools_schema), {"collapsed": True})
     )
     skills_schema: VolDictType = {}
-    _append_skill_schema_fields(skills_schema, options, available_skills)
+    _append_skill_schema_fields(skills_schema, options, entry)
     schema[_section_schema_key(_SECTION_SKILLS, skills_schema)] = section(
-        vol.Schema(skills_schema), {"collapsed": True}
+        vol.Schema(skills_schema, extra=vol.REMOVE_EXTRA), {"collapsed": True}
     )
     return vol.Schema(schema)
+
+
+def _skill_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
+    """Return the native workspace Skill subentry schema."""
+    options = dict(options or {})
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_NAME,
+                default=options.get(CONF_NAME, DEFAULT_SKILL_NAME),
+            ): TextSelector(TextSelectorConfig()),
+            vol.Optional(
+                CONF_DESCRIPTION,
+                default=options.get(CONF_DESCRIPTION, ""),
+            ): TextSelector(TextSelectorConfig(multiline=True)),
+            vol.Required(
+                CONF_SKILL_CONTENT,
+                default=options.get(CONF_SKILL_CONTENT, ""),
+            ): TemplateSelector(),
+        }
+    )
+
+
+def _skill_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
+    """Return normalized native workspace Skill data."""
+    name = str(user_input[CONF_NAME]).strip()
+    description = str(user_input.get(CONF_DESCRIPTION, "")).strip()
+    content = str(user_input.get(CONF_SKILL_CONTENT, "")).strip()
+    errors: dict[str, str] = {}
+    if not name:
+        errors[CONF_NAME] = "required"
+    elif len(name) > _SKILL_NAME_MAX_LENGTH:
+        errors[CONF_NAME] = "string_too_long"
+    if len(description) > _SKILL_DESCRIPTION_MAX_LENGTH:
+        errors[CONF_DESCRIPTION] = "string_too_long"
+    if not content:
+        errors[CONF_SKILL_CONTENT] = "required"
+    elif len(content) > _SKILL_CONTENT_MAX_LENGTH:
+        errors[CONF_SKILL_CONTENT] = "string_too_long"
+    if errors:
+        raise SkillDataValidationError(errors)
+    data: dict[str, Any] = {
+        CONF_NAME: name,
+        CONF_SKILL_CONTENT: content,
+        CONF_SKILL_REFERENCES: [],
+    }
+    if description:
+        data[CONF_DESCRIPTION] = description
+    return data
 
 
 def _model_profile_schema(
@@ -1763,8 +1760,6 @@ def _model_settings_from_options(options: Mapping[str, Any]) -> dict[str, Any]:
 def _conversation_data_from_user_input(
     user_input: Mapping[str, Any],
     options: Mapping[str, Any],
-    *,
-    available_skills: list[AvailableSkill] | None = None,
 ) -> dict[str, Any]:
     """Return conversation fields with model profile references."""
     user_input = _flatten_section_data(
@@ -1785,23 +1780,9 @@ def _conversation_data_from_user_input(
         data.pop(CONF_WEB_FETCH_ENABLED, None)
     if not data.get(CONF_FALLBACK_MODEL_REFS):
         data.pop(CONF_FALLBACK_MODEL_REFS, None)
-    if (
-        data.get(CONF_ENABLE_SKILLS)
-        and CONF_SKILLS in user_input
-        and available_skills is not None
-    ):
-        data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
-            user_input, options, available_skills
-        )
-    elif (
-        data.get(CONF_ENABLE_SKILLS)
-        and CONF_SKILLS not in user_input
-        and options.get(CONF_SKILLS)
-    ):
+    if CONF_SKILLS not in user_input and options.get(CONF_SKILLS):
         data[CONF_SKILLS] = options[CONF_SKILLS]
-    if not data.get(CONF_SKILLS):
-        data.pop(CONF_SKILLS, None)
-    _normalise_skill_settings(data)
+    _normalise_skill_selection(data)
     return data
 
 
@@ -1845,7 +1826,6 @@ def _ai_task_data_schema(
     hass: HomeAssistant,
     options: Mapping[str, Any] | None = None,
     entry: ConfigEntry | None = None,
-    available_skills: list[AvailableSkill] | None = None,
 ) -> vol.Schema:
     """Return the AI task data subentry schema."""
     options = dict(options or {})
@@ -1965,9 +1945,9 @@ def _ai_task_data_schema(
         section(vol.Schema(external_tools_schema), {"collapsed": True})
     )
     skills_schema: VolDictType = {}
-    _append_skill_schema_fields(skills_schema, options, available_skills)
+    _append_skill_schema_fields(skills_schema, options, entry)
     schema[_section_schema_key(_SECTION_SKILLS, skills_schema)] = section(
-        vol.Schema(skills_schema), {"collapsed": True}
+        vol.Schema(skills_schema, extra=vol.REMOVE_EXTRA), {"collapsed": True}
     )
     return vol.Schema(schema)
 
@@ -1975,8 +1955,6 @@ def _ai_task_data_schema(
 def _ai_task_data_from_user_input(
     user_input: Mapping[str, Any],
     options: Mapping[str, Any],
-    *,
-    available_skills: list[AvailableSkill] | None = None,
 ) -> dict[str, Any]:
     """Return AI task subentry data with a selected structured output mode."""
     user_input = _flatten_section_data(
@@ -2003,23 +1981,9 @@ def _ai_task_data_from_user_input(
         data.pop(CONF_TODO_LIST_ENTITY_ID, None)
     if not data.get(CONF_LLM_HASS_API):
         data.pop(CONF_LLM_HASS_API, None)
-    if (
-        data.get(CONF_ENABLE_SKILLS)
-        and CONF_SKILLS in user_input
-        and available_skills is not None
-    ):
-        data[CONF_SKILLS] = _merge_submitted_skills_with_hidden(
-            user_input, options, available_skills
-        )
-    elif (
-        data.get(CONF_ENABLE_SKILLS)
-        and CONF_SKILLS not in user_input
-        and options.get(CONF_SKILLS)
-    ):
+    if CONF_SKILLS not in user_input and options.get(CONF_SKILLS):
         data[CONF_SKILLS] = options[CONF_SKILLS]
-    if not data.get(CONF_SKILLS):
-        data.pop(CONF_SKILLS, None)
-    _normalise_skill_settings(data)
+    _normalise_skill_selection(data)
     return data
 
 

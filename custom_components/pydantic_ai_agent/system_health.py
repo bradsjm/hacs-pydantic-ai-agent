@@ -7,14 +7,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
+    CONF_SKILLS,
     CONF_MODEL_PROFILES,
-    CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_PROVIDER_MODE,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
+    SUBENTRY_TYPE_SKILL,
 )
 from .logfire_support import logfire_enabled
 
@@ -40,6 +41,8 @@ async def system_health_info(hass: HomeAssistant) -> dict[str, Any]:
         "conversation_count": _subentry_count(entries, SUBENTRY_TYPE_CONVERSATION),
         "ai_task_count": _subentry_count(entries, SUBENTRY_TYPE_AI_TASK),
         "mcp_server_count": _subentry_count(entries, SUBENTRY_TYPE_MCP_SERVER),
+        "skill_count": _subentry_count(entries, SUBENTRY_TYPE_SKILL),
+        "selected_skill_count": _selected_skill_count(entries),
         "cached_mcp_server_count": sum(
             len(entry.runtime_data.mcp_tool_cache) for entry in loaded_entries
         ),
@@ -50,14 +53,6 @@ async def system_health_info(hass: HomeAssistant) -> dict[str, Any]:
         ),
         "logfire_enabled_count": sum(
             1 for entry in entries if logfire_enabled(hass, entry)
-        ),
-        "skill_script_execution_count": sum(
-            1
-            for entry in entries
-            for subentry in entry.subentries.values()
-            if subentry.subentry_type
-            in {SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK}
-            and subentry.data.get(CONF_ENABLE_SKILL_SCRIPT_EXECUTION, False)
         ),
     }
 
@@ -93,4 +88,15 @@ def _model_profile_count(entries: list[ConfigEntry]) -> int:
         for subentry in entry.subentries.values()
         if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER
         and isinstance(subentry.data.get(CONF_MODEL_PROFILES), dict)
+    )
+
+
+def _selected_skill_count(entries: list[ConfigEntry]) -> int:
+    """Return total native Skill selections across agents and AI tasks."""
+    return sum(
+        len(skill_ids)
+        for entry in entries
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type in {SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK}
+        and isinstance((skill_ids := subentry.data.get(CONF_SKILLS)), list)
     )

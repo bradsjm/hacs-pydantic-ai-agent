@@ -36,7 +36,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_ENABLED,
-    CONF_ENABLE_SKILLS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
@@ -204,7 +203,6 @@ def _entry(
     if llm_hass_api is not None:
         subentry_data[CONF_LLM_HASS_API] = llm_hass_api
     if skills is not None:
-        subentry_data[CONF_ENABLE_SKILLS] = True
         subentry_data[CONF_SKILLS] = skills
     if mcp_server_ids is not None:
         subentry_data[CONF_MCP_SERVER_IDS] = mcp_server_ids
@@ -873,7 +871,7 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
         )
 
     assert skills_capabilities.call_args.args[0] is hass
-    assert skills_capabilities.call_args.args[1][CONF_ENABLE_SKILLS] is True
+    assert skills_capabilities.call_args.args[1] is entry
     assert skills_capabilities.call_args.args[2] == ["kitchen-skill"]
     capabilities = agent_class.call_args.kwargs["capabilities"]
     assert capability in capabilities

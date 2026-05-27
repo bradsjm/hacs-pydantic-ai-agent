@@ -37,11 +37,14 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROMPT,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    CONF_SKILL_CONTENT,
+    CONF_SKILL_REFERENCES,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
+    SUBENTRY_TYPE_SKILL,
 )
 from custom_components.pydantic_ai_agent.diagnostics import (
     async_get_config_entry_diagnostics,
@@ -135,6 +138,18 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
                 "title": "Filesystem MCP",
                 "unique_id": None,
             },
+            {
+                "data": {
+                    CONF_NAME: "Kitchen Skill",
+                    CONF_SKILL_CONTENT: "Private skill body",
+                    CONF_SKILL_REFERENCES: [
+                        {"title": "Secret Reference", "content": "secret reference"}
+                    ],
+                },
+                "subentry_type": SUBENTRY_TYPE_SKILL,
+                "title": "Kitchen Skill",
+                "unique_id": None,
+            },
         ),
         options={},
         unique_id=None,
@@ -163,6 +178,10 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
     mcp_data = diagnostics["subentries"][2]["data"]
     assert mcp_data[CONF_MCP_URL] == REDACTED
     assert mcp_data[CONF_MCP_HEADERS] == REDACTED
+    skill_data = diagnostics["subentries"][3]["data"]
+    assert skill_data[CONF_NAME] == "Kitchen Skill"
+    assert skill_data[CONF_SKILL_CONTENT] == REDACTED
+    assert skill_data[CONF_SKILL_REFERENCES] == REDACTED
 
 
 async def test_diagnostics_exposes_safe_runtime_mcp_counts(

@@ -7,15 +7,10 @@ from __future__ import annotations
 from .common import (
     Any,
     CONF_AGENT_NAME,
-    CONF_ENABLE_SKILLS,
     CONF_MCP_SERVER_IDS,
     CONF_PRIMARY_MODEL_REF,
-    CONF_SKILLS,
-    CONF_SKILLS_FOLDER,
     ConfigEntryState,
     ConfigSubentryFlow,
-    DEFAULT_SKILLS_FOLDER,
-    ProviderValidationError,
     SOURCE_USER,
     SubentryFlowResult,
     _SECTION_EXTERNAL_TOOLS,
@@ -27,13 +22,9 @@ from .common import (
     _conversation_schema,
     _flatten_section_data,
     _model_profile_select_options,
-    _normalise_skills_folder,
-    _provider_validation_placeholders,
     _selected_mcp_server_error,
     _selected_model_profile_error,
-    _skill_source,
-    _validate_skills_folder,
-    async_available_skills,
+    _selected_skill_error,
     default_conversation_options,
 )
 from ..generated_titles import DEFAULT_AGENT_TITLE_SUFFIX, generated_default_title
@@ -77,8 +68,6 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
             return self.async_abort(reason="entry_not_loaded")
         if not _model_profile_select_options(entry):
             return self.async_abort(reason="no_models_configured")
-        available_skills = await async_available_skills(self.hass, self._options)
-
         if user_input is not None:
             flat_user_input = _flatten_section_data(
                 user_input,
@@ -89,57 +78,9 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                     _SECTION_SKILLS,
                 ),
             )
-            if flat_user_input.get(CONF_ENABLE_SKILLS):
-                try:
-                    _validate_skills_folder(
-                        self.hass,
-                        flat_user_input.get(CONF_SKILLS_FOLDER, DEFAULT_SKILLS_FOLDER),
-                    )
-                except ProviderValidationError as err:
-                    return self.async_show_form(
-                        step_id="init",
-                        data_schema=self.add_suggested_values_to_schema(
-                            _conversation_schema(
-                                self.hass,
-                                self._options | flat_user_input,
-                                entry,
-                                available_skills,
-                            ),
-                            _agent_form_suggested_values(
-                                self._options | flat_user_input, self.hass
-                            ),
-                        ),
-                        errors={"base": err.reason},
-                        description_placeholders=_provider_validation_placeholders(err),
-                    )
-            if _skill_source(flat_user_input) != _skill_source(self._options):
-                refreshed_options = dict(flat_user_input)
-                refreshed_options[CONF_SKILLS_FOLDER] = _normalise_skills_folder(
-                    refreshed_options.get(CONF_SKILLS_FOLDER)
-                )
-                refreshed_options.pop(CONF_SKILLS, None)
-                self._options = refreshed_options
-                refreshed_skills = await async_available_skills(
-                    self.hass, refreshed_options
-                )
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=self.add_suggested_values_to_schema(
-                        _conversation_schema(
-                            self.hass,
-                            refreshed_options,
-                            entry,
-                            refreshed_skills,
-                        ),
-                        _agent_form_suggested_values(refreshed_options, self.hass),
-                    ),
-                    errors={"base": "skills_refreshed"},
-                )
-            available_skills = await async_available_skills(self.hass, flat_user_input)
             data = _conversation_data_from_user_input(
                 flat_user_input,
                 self._options,
-                available_skills=available_skills,
             )
             if model_error := _selected_model_profile_error(self.hass, entry, data):
                 return self.async_show_form(
@@ -149,7 +90,6 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                             self.hass,
                             self._options | data,
                             entry,
-                            available_skills,
                         ),
                         _agent_form_suggested_values(self._options | data, self.hass),
                     ),
@@ -163,18 +103,30 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                             self.hass,
                             self._options | data,
                             entry,
-                            available_skills,
                         ),
                         _agent_form_suggested_values(self._options | data, self.hass),
                     ),
                     errors={CONF_MCP_SERVER_IDS: mcp_error},
+                )
+            if skill_error := _selected_skill_error(entry, data):
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=self.add_suggested_values_to_schema(
+                        _conversation_schema(
+                            self.hass,
+                            self._options | data,
+                            entry,
+                        ),
+                        _agent_form_suggested_values(self._options | data, self.hass),
+                    ),
+                    errors={"base": skill_error},
                 )
             return self._async_finish_conversation_options(data)
 
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                _conversation_schema(self.hass, self._options, entry, available_skills),
+                _conversation_schema(self.hass, self._options, entry),
                 _agent_form_suggested_values(self._options, self.hass),
             ),
         )

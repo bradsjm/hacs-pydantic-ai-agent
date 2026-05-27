@@ -14,7 +14,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_DISCOVERED,
-    CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
     CONF_ENABLED,
     CONF_MCP_HEADERS,
     CONF_MCP_URL,
@@ -22,6 +21,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_PROFILES,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
+    CONF_SKILL_CONTENT,
+    CONF_SKILLS,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
@@ -29,6 +30,7 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
+    SUBENTRY_TYPE_SKILL,
 )
 from custom_components.pydantic_ai_agent.system_health import system_health_info
 
@@ -70,7 +72,7 @@ async def test_system_health_reports_safe_workspace_aggregate_counts(
                 "data": {
                     CONF_AGENT_NAME: "Kitchen Agent",
                     CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
-                    CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
+                    CONF_SKILLS: ["skill-1"],
                 },
                 "subentry_type": SUBENTRY_TYPE_CONVERSATION,
                 "title": "Kitchen Agent",
@@ -80,6 +82,7 @@ async def test_system_health_reports_safe_workspace_aggregate_counts(
                 "data": {
                     CONF_NAME: "Report Task",
                     CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                    CONF_SKILLS: ["skill-1"],
                 },
                 "subentry_type": SUBENTRY_TYPE_AI_TASK,
                 "title": "Report Task",
@@ -94,6 +97,16 @@ async def test_system_health_reports_safe_workspace_aggregate_counts(
                 },
                 "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
                 "title": "Filesystem MCP",
+                "unique_id": None,
+            },
+            {
+                "subentry_id": "skill-1",
+                "data": {
+                    CONF_NAME: "Skill",
+                    CONF_SKILL_CONTENT: "secret skill content",
+                },
+                "subentry_type": SUBENTRY_TYPE_SKILL,
+                "title": "Skill",
                 "unique_id": None,
             },
         ),
@@ -171,7 +184,8 @@ async def test_system_health_reports_safe_workspace_aggregate_counts(
         "cached_mcp_server_count": 1,
         "cached_mcp_tool_count": 1,
         "logfire_enabled_count": 0,
-        "skill_script_execution_count": 1,
+        "skill_count": 1,
+        "selected_skill_count": 2,
     }
     assert "sk-secret" not in str(info)
     assert "provider.example.com" not in str(info)

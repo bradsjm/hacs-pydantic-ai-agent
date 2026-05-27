@@ -34,10 +34,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_DISCOVERED_MODELS,
     CONF_DISCOVERED_MODELS_AT,
     CONF_DISCOVERED_MODELS_CACHE_KEY,
-    CONF_ENABLE_SKILLS,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
-    CONF_DEFAULT_SKILLS_FOLDER,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
@@ -47,14 +45,14 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
-    CONF_SKILLS_FOLDER,
-    DEFAULT_SKILLS_FOLDER,
+    CONF_SKILL_CONTENT,
     DEFAULT_OUTPUT_MODE,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_PROVIDER,
+    SUBENTRY_TYPE_SKILL,
 )
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
     CATALOG_RETRY_PROVIDER_ID,
@@ -225,10 +223,7 @@ async def _loaded_workspace_entry(
         minor_version=0,
         domain=DOMAIN,
         title="Workspace",
-        data={
-            CONF_NAME: "Workspace",
-            CONF_DEFAULT_SKILLS_FOLDER: DEFAULT_SKILLS_FOLDER,
-        },
+        data={CONF_NAME: "Workspace"},
         subentries_data=subentries_data,
         source=config_entries.SOURCE_USER,
         unique_id=None,
@@ -391,7 +386,9 @@ async def test_conversation_reconfigure_assist_round_trips_to_form_section(
     assert result["type"] is FlowResultType.FORM
     assert CONF_LLM_HASS_API not in entry.subentries[conversation_subentry_id].data
     assert _section_default(result["data_schema"], _SECTION_HASS_CONTROL) == {}
-    assert _serialized_section_default(result["data_schema"], _SECTION_HASS_CONTROL) == {}
+    assert (
+        _serialized_section_default(result["data_schema"], _SECTION_HASS_CONTROL) == {}
+    )
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -1343,10 +1340,7 @@ async def test_create_workspace_entry(hass: HomeAssistant) -> None:
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Living Room Workspace"
-    assert result["data"] == {
-        CONF_NAME: "Living Room Workspace",
-        CONF_DEFAULT_SKILLS_FOLDER: DEFAULT_SKILLS_FOLDER,
-    }
+    assert result["data"] == {CONF_NAME: "Living Room Workspace"}
 
 
 async def test_new_workspace_default_title_is_generated(
@@ -1834,16 +1828,53 @@ async def test_conversation_disabled_skills_ignores_invalid_folder(
             CONF_PRIMARY_MODEL_REF: profile_ref,
             "fallback_models": {CONF_FALLBACK_MODEL_REFS: []},
             "skill_settings": {
-                CONF_ENABLE_SKILLS: False,
-                CONF_SKILLS_FOLDER: "/tmp/skills",
+                "enable_skills": False,
+                "skills_folder": "/tmp/skills",
             },
         },
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_PRIMARY_MODEL_REF] == profile_ref
-    assert CONF_ENABLE_SKILLS not in result["data"]
-    assert CONF_SKILLS_FOLDER not in result["data"]
+    assert "enable_skills" not in result["data"]
+    assert "skills_folder" not in result["data"]
+
+
+async def test_skill_subentry_uses_template_editor_and_stores_raw_text(
+    hass: HomeAssistant,
+) -> None:
+    """Test native Skill subentries store raw content from the template editor."""
+    entry = await _loaded_workspace_entry(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_SKILL),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    assert result["type"] is FlowResultType.FORM
+    schema = voluptuous_serialize.convert(
+        result["data_schema"], custom_serializer=cv.custom_serializer
+    )
+    assert isinstance(schema, list)
+    content_field = next(
+        field for field in schema if field["name"] == CONF_SKILL_CONTENT
+    )
+    assert content_field["selector"] == {"template": {}}
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Kitchen Skill",
+            "description": "Kitchen guidance",
+            CONF_SKILL_CONTENT: "Use {{ states('sensor.mode') }} as literal text.",
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Kitchen Skill"
+    assert result["data"][CONF_SKILL_CONTENT] == (
+        "Use {{ states('sensor.mode') }} as literal text."
+    )
+    assert result["data"]["references"] == []
 
 
 async def test_provider_subentry_base_url_endpoint_returns_form_error(

@@ -28,9 +28,9 @@ Implemented capabilities include:
   discovered tools.
 - Optional Web fetch capability for individual conversation agents and AI tasks,
   disabled by default.
-- Optional local `pydantic-ai-skills` selection from `/config/skills` or a
-  subfolder, with script execution disabled unless explicitly enabled on the
-  conversation agent or AI task.
+- Native workspace Skill subentries that selected conversation agents and AI
+  tasks can list and load as raw guidance. Skills do not run scripts or access
+  files.
 - Automatic zero-cost sliding-window context trimming before provider requests,
   while keeping Home Assistant `ChatLog` as the canonical history.
 - Optional Logfire tracing with Home Assistant metadata.
@@ -66,13 +66,14 @@ This integration requires Home Assistant 2026.5.1 or newer.
 4. Enter a custom base URL when needed. OpenAI-compatible providers default to
    `https://api.openai.com/v1`; Anthropic and Google Gemini use their hosted API
    endpoints when no custom base URL is configured.
-5. Add provider, conversation, AI task, and MCP server subentries as needed.
+5. Add provider, conversation, AI task, MCP server, and Skill subentries as
+   needed.
 
-Workspace entries own shared Logfire settings and default skills-folder policy.
-Provider credentials now live on `provider` subentries, while conversation and
-AI task settings remain on their own subentries. Each provider subentry owns a
-stable `model_profiles` map, and conversation/AI task subentries reference
-profiles with workspace-local refs shaped like
+Workspace entries own shared Logfire settings. Provider credentials live on
+`provider` subentries, while conversation, AI task, MCP server, and Skill
+settings remain on their own subentries. Each provider subentry owns a stable
+`model_profiles` map, and conversation/AI task subentries reference profiles
+with workspace-local refs shaped like
 `<provider_subentry_id>:<model_profile_id>`. Anthropic entries also accept
 `anthropic:<model>` identifiers, and Google Gemini entries also accept
 `google:<model>` or `google-gla:<model>` identifiers. A prefixed model ID must
@@ -101,7 +102,9 @@ Conversation agents support:
   allowed tool configured before runtime use.
 - Optional Web fetch URL content fetching. Web fetch is disabled by default and
   can be enabled without selecting any MCP servers.
-- Optional local skill selection from the configured skills folder.
+- Optional workspace Skill selection. Selected Skills are exposed through
+  `list_skills` and `load_skill` tools and are not auto-loaded into every
+  request.
 - Optional model settings including temperature, capability-backed thinking, max
   tokens, max iterations, top P, timeout, parallel tool calls, seed, penalties,
   and extra body fields.
@@ -157,12 +160,20 @@ selects the server and the server has an explicit allowed-tools list.
 
 ### Skills
 
-Conversation agents and AI tasks can select discovered `pydantic-ai-skills`
-from `/config/skills` or one of its subfolders.
+Add a `Workspace Skill` subentry for reusable model guidance. The Skill content
+field uses Home Assistant's template-style editor for a comfortable multiline
+editing experience, but the integration stores and sends the text as raw content;
+it is not rendered as a Home Assistant template.
 
-Skill script execution is disabled by default. Enable `Allow skill script
-execution` only for skills you trust; changing the skills folder or script
-execution setting clears selected skills from existing agent and task subentries.
+Conversation agents and AI tasks can select Skill subentries from the same
+workspace. At runtime, selected Skills are exposed through two Pydantic AI tools:
+`list_skills` returns Skill names and descriptions, and `load_skill` returns the
+raw content for a selected Skill ID. Skill content is user-managed guidance only;
+it cannot override system, Home Assistant, developer, or safety instructions.
+
+Skills do not run scripts, clone repositories, auto-update, or read filesystem
+folders. Reference attachments are reserved for a later phase and are redacted in
+diagnostics.
 
 ### Validation And Repairs
 
@@ -179,15 +190,16 @@ conversation responses stream only when the agent has no configured tool sources
 tool-capable conversations use non-streamed requests.
 
 Diagnostics redact API keys, Logfire tokens, prompts, sensitive model settings,
-provider headers, MCP URLs, and MCP headers. Runtime diagnostics expose only safe
-workspace/provider counts such as configured MCP server count, cached MCP server
-count, and cached tool counts per server. Device diagnostics are scoped to the
-matching agent or AI task subentry and include safe runtime metrics for that
-subentry.
+provider headers, MCP URLs, MCP headers, Skill content, and Skill references.
+Runtime diagnostics expose only safe workspace/provider counts such as configured
+MCP server count, cached MCP server count, and cached tool counts per server.
+Device diagnostics are scoped to the matching agent or AI task subentry and
+include safe runtime metrics for that subentry.
 
 System health reports aggregate, non-secret counts for configured and loaded
 entries, provider modes, model profiles, conversation agents, AI tasks, MCP
-servers and caches, Logfire-enabled entries, and skill-script-execution entries.
+servers and caches, Logfire-enabled entries, workspace Skills, and selected Skill
+references.
 
 Entity unique IDs use the breaking prefixed format
 `pydantic_ai_agent_<subentry_type>_<subentry_id>` for conversation and AI task

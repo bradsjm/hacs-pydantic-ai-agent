@@ -17,6 +17,7 @@ from .common import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
+    SUBENTRY_TYPE_SKILL,
     _base_schema,
     _normalise_workspace_data,
     _provider_form_suggested_values,
@@ -25,6 +26,7 @@ from .common import (
 from .conversation_flow import ConversationSubentryFlowHandler
 from .mcp_server_flow import MCPServerSubentryFlowHandler
 from .provider_flow import ProviderSubentryFlowHandler
+from .skill_flow import SkillSubentryFlowHandler
 from ..generated_titles import (
     DEFAULT_WORKSPACE_TITLE_SUFFIX,
     generated_default_title,
@@ -105,4 +107,5 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
             SUBENTRY_TYPE_CONVERSATION: ConversationSubentryFlowHandler,
             SUBENTRY_TYPE_AI_TASK: AITaskDataSubentryFlowHandler,
             SUBENTRY_TYPE_MCP_SERVER: MCPServerSubentryFlowHandler,
+            SUBENTRY_TYPE_SKILL: SkillSubentryFlowHandler,
         }

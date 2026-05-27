@@ -1318,7 +1318,6 @@ dependencies = [
     { name = "logfire" },
     { name = "markdownify" },
     { name = "names-generator" },
-    { name = "pydantic-ai-skills" },
     { name = "pydantic-ai-slim" },
     { name = "tiktoken" },
 ]
@@ -1349,7 +1348,6 @@ requires-dist = [
     { name = "logfire", specifier = "==4.33.0" },
     { name = "markdownify", specifier = ">=1.2" },
     { name = "names-generator", specifier = "==0.2.0" },
-    { name = "pydantic-ai-skills", specifier = "==0.10.0" },
     { name = "pydantic-ai-slim", specifier = "==1.97.0" },
     { name = "tiktoken", specifier = ">=0.12.0" },
 ]
@@ -2548,20 +2546,6 @@ wheels = [
 [package.optional-dependencies]
 email = [
     { name = "email-validator" },
-]
-
-[[package]]
-name = "pydantic-ai-skills"
-version = "0.10.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "pydantic-ai-slim" },
-    { name = "pyyaml" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/55/6a/52f74c1f954e383e0baa15f32b6320be03ac985231b75176863ac0f0cc3f/pydantic_ai_skills-0.10.0.tar.gz", hash = "sha256:28f2471957331ad8f4607b782e0e6d12fe294a50a19fd6d92d684082cc57dabc", size = 9015728, upload-time = "2026-05-09T00:21:05.762Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/4d/20e559cdf8748bce1794189de5a3a35fe3e339cd2e9198c8132bd41043b2/pydantic_ai_skills-0.10.0-py3-none-any.whl", hash = "sha256:327fbec03e915e674ce1b2b27f30dc8be26132bf626159e810853d95d21df377", size = 55353, upload-time = "2026-05-09T00:21:03.472Z" },
 ]
 
 [[package]]

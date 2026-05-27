@@ -22,8 +22,11 @@ from .const import (
     CONF_PROMPT,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
+    CONF_SKILL_CONTENT,
+    CONF_SKILL_REFERENCES,
     DOMAIN,
     SUBENTRY_TYPE_PROVIDER,
+    SUBENTRY_TYPE_SKILL,
 )
 from .logfire_support import (
     logfire_active_for_entry,
@@ -63,6 +66,11 @@ def _redact(data: dict[str, Any]) -> dict[str, Any]:
 
 def _redact_subentry_data(subentry_type: str, data: dict[str, Any]) -> dict[str, Any]:
     """Return redacted subentry data."""
+    if subentry_type == SUBENTRY_TYPE_SKILL:
+        return redact_data(
+            data,
+            _SENSITIVE_KEYS | {CONF_SKILL_CONTENT, CONF_SKILL_REFERENCES},
+        )
     if subentry_type != SUBENTRY_TYPE_PROVIDER:
         return redact_data(data, _SENSITIVE_KEYS)
     redacted = dict(data)

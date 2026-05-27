@@ -18,6 +18,7 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
     _SECTION_SKILLS,
+    SkillDataValidationError,
     _ai_task_data_from_user_input,
     _ai_task_data_schema,
     _conversation_data_from_user_input,
@@ -32,6 +33,8 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _parse_model_settings,
     _provider_data_matches,
     _provider_model_profiles_for_discovery_mode,
+    _selected_skill_error,
+    _skill_data_from_user_input,
     _validate_provider_data,
 )
 from custom_components.pydantic_ai_agent.provider_validation import (
@@ -46,8 +49,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
+    CONF_DESCRIPTION,
     CONF_DISCOVERED,
-    CONF_ENABLE_SKILLS,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
@@ -59,7 +62,9 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_MODE,
-    CONF_SKILLS_FOLDER,
+    CONF_SKILL_CONTENT,
+    CONF_SKILL_REFERENCES,
+    CONF_SKILLS,
     DOMAIN,
     DEFAULT_OUTPUT_MODE,
     PROVIDER_ANTHROPIC,
@@ -67,6 +72,7 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
+    SUBENTRY_TYPE_SKILL,
 )
 from custom_components.pydantic_ai_agent.mcp import MCPValidationError
 
@@ -300,8 +306,8 @@ def test_agent_schemas_group_fallbacks_and_hass_control(
     assert CONF_LLM_HASS_API not in _schema_key_names(ai_task_schema)
 
 
-def test_sectioned_conversation_input_flattens_and_prunes_disabled_skills() -> None:
-    """Test sectioned conversation form input stores existing flat keys."""
+def test_sectioned_conversation_input_flattens_and_prunes_legacy_skills() -> None:
+    """Test sectioned conversation form input drops legacy skill fields."""
     data = _conversation_data_from_user_input(
         {
             CONF_AGENT_NAME: "Kitchen Agent",
@@ -309,25 +315,26 @@ def test_sectioned_conversation_input_flattens_and_prunes_disabled_skills() -> N
             _SECTION_FALLBACK_MODELS: {CONF_FALLBACK_MODEL_REFS: ["provider:fallback"]},
             _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: ["assist"]},
             _SECTION_SKILLS: {
-                CONF_ENABLE_SKILLS: False,
-                CONF_SKILLS_FOLDER: "/tmp/skills",
+                "enable_skills": False,
+                "skills_folder": "/tmp/skills",
+                CONF_SKILLS: ["skill-1", "skill-1", ""],
             },
         },
         {},
-        available_skills=[],
     )
 
     assert data[CONF_FALLBACK_MODEL_REFS] == ["provider:fallback"]
     assert data[CONF_LLM_HASS_API] == ["assist"]
-    assert CONF_ENABLE_SKILLS not in data
-    assert CONF_SKILLS_FOLDER not in data
+    assert data[CONF_SKILLS] == ["skill-1"]
+    assert "enable_skills" not in data
+    assert "skills_folder" not in data
     assert _SECTION_FALLBACK_MODELS not in data
     assert _SECTION_HASS_CONTROL not in data
     assert _SECTION_SKILLS not in data
 
 
-def test_sectioned_ai_task_input_flattens_and_defaults_enabled_skills() -> None:
-    """Test sectioned AI task input defaults the enabled skills folder."""
+def test_sectioned_ai_task_input_preserves_existing_skills_when_field_omitted() -> None:
+    """Test sectioned AI task input preserves selected Skill IDs on partial saves."""
     data = _ai_task_data_from_user_input(
         {
             CONF_AI_TASK_NAME: "Summary Task",
@@ -335,16 +342,14 @@ def test_sectioned_ai_task_input_flattens_and_defaults_enabled_skills() -> None:
             CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
             _SECTION_FALLBACK_MODELS: {CONF_FALLBACK_MODEL_REFS: ["provider:fallback"]},
             _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: ["assist"]},
-            _SECTION_SKILLS: {CONF_ENABLE_SKILLS: True},
+            _SECTION_SKILLS: {},
         },
-        {},
-        available_skills=[],
+        {CONF_SKILLS: ["skill-1"]},
     )
 
     assert data[CONF_FALLBACK_MODEL_REFS] == ["provider:fallback"]
     assert data[CONF_LLM_HASS_API] == ["assist"]
-    assert data[CONF_ENABLE_SKILLS] is True
-    assert CONF_SKILLS_FOLDER not in data
+    assert data[CONF_SKILLS] == ["skill-1"]
     assert _SECTION_FALLBACK_MODELS not in data
     assert _SECTION_HASS_CONTROL not in data
     assert _SECTION_SKILLS not in data
@@ -360,11 +365,53 @@ def test_sectioned_ai_task_input_prunes_empty_llm_api() -> None:
             _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: []},
         },
         {},
-        available_skills=[],
     )
 
     assert CONF_LLM_HASS_API not in data
     assert _SECTION_HASS_CONTROL not in data
+
+
+def test_selected_skill_error_reports_stale_skill_id() -> None:
+    """Test selected Skill IDs must reference current Skill subentries."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_NAME: "Workspace"},
+        source=config_entries.SOURCE_USER,
+        subentries_data=(
+            {
+                "subentry_id": "skill-1",
+                "subentry_type": SUBENTRY_TYPE_SKILL,
+                "title": "Skill",
+                "unique_id": None,
+                "data": {CONF_NAME: "Skill", CONF_SKILL_CONTENT: "content"},
+            },
+        ),
+    )
+
+    assert _selected_skill_error(entry, {CONF_SKILLS: ["skill-1"]}) is None
+    assert _selected_skill_error(entry, {CONF_SKILLS: ["missing"]}) == "skill_not_found"
+
+
+def test_skill_data_from_user_input_normalizes_and_validates() -> None:
+    """Test native Skill data is raw text with bounded fields."""
+    data = _skill_data_from_user_input(
+        {
+            CONF_NAME: "  Kitchen Skill  ",
+            CONF_DESCRIPTION: "  Helpful guidance  ",
+            CONF_SKILL_CONTENT: "  Use short responses.  ",
+        }
+    )
+
+    assert data == {
+        CONF_NAME: "Kitchen Skill",
+        CONF_DESCRIPTION: "Helpful guidance",
+        CONF_SKILL_CONTENT: "Use short responses.",
+        CONF_SKILL_REFERENCES: [],
+    }
+
+    with pytest.raises(SkillDataValidationError) as err:
+        _skill_data_from_user_input({CONF_NAME: "", CONF_SKILL_CONTENT: ""})
+    assert err.value.errors == {CONF_NAME: "required", CONF_SKILL_CONTENT: "required"}
 
 
 def test_provider_base_url_rejects_endpoint_suffix(hass: HomeAssistant) -> None:

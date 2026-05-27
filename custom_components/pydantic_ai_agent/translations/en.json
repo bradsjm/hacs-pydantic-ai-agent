@@ -21,7 +21,6 @@
       "invalid_model": "{error_message}",
       "invalid_provider_config": "{error_message}",
       "invalid_provider_headers": "{error_message}",
-      "invalid_skills_folder": "{error_message}",
       "model_does_not_support_streaming": "{error_message}",
       "permission_denied": "{error_message}",
       "provider_error": "{error_message}",
@@ -87,7 +86,6 @@
         "invalid_base_url": "{error_message}",
         "invalid_model": "{error_message}",
         "invalid_provider_config": "{error_message}",
-        "invalid_skills_folder": "{error_message}",
         "mcp_server_not_found": "Selected MCP server was not found.",
         "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
         "model_does_not_support_streaming": "{error_message}",
@@ -97,7 +95,7 @@
         "primary_model_in_fallbacks": "The primary language model profile cannot also be selected as a fallback.",
         "provider_error": "{error_message}",
         "rate_limited": "{error_message}",
-        "skills_refreshed": "Skill options were refreshed. Review selected skills and submit again.",
+        "skill_not_found": "Selected workspace Skill was not found.",
         "timeout": "{error_message}",
         "todo_list_not_found": "Selected todo workspace list was not found.",
         "todo_list_unsupported": "Selected todo workspace list must support creating, updating, deleting, and item descriptions.",
@@ -156,16 +154,10 @@
             },
             "skill_settings": {
               "data": {
-                "enable_skill_script_execution": "Allow skill script execution",
-                "enable_skills": "Enable skills",
-                "skills": "Skills",
-                "skills_folder": "Skills folder"
+                "skills": "Workspace Skills"
               },
               "data_description": {
-                "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
-                "enable_skills": "Allow this AI task to load selected local skills.",
-                "skills": "Optional local skills this AI task may load from its configured skills folder.",
-                "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders."
+                "skills": "Optional workspace Skills this AI task may list and load during a run. Create Skills from this workspace first."
               },
               "name": "Skills"
             }
@@ -193,7 +185,6 @@
         "invalid_model": "{error_message}",
         "invalid_number": "Enter a valid number in this field.",
         "invalid_provider_config": "{error_message}",
-        "invalid_skills_folder": "{error_message}",
         "mcp_server_not_found": "Selected MCP server was not found.",
         "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
         "model_does_not_support_streaming": "{error_message}",
@@ -204,7 +195,7 @@
         "primary_model_in_fallbacks": "The primary language model profile cannot also be selected as a fallback.",
         "provider_error": "{error_message}",
         "rate_limited": "{error_message}",
-        "skills_refreshed": "Skill options were refreshed. Review selected skills and submit again.",
+        "skill_not_found": "Selected workspace Skill was not found.",
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the conversation agent. Check Home Assistant logs for details."
       },
@@ -255,16 +246,10 @@
             },
             "skill_settings": {
               "data": {
-                "enable_skill_script_execution": "Allow skill script execution",
-                "enable_skills": "Enable skills",
-                "skills": "Skills",
-                "skills_folder": "Skills folder"
+                "skills": "Workspace Skills"
               },
               "data_description": {
-                "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
-                "enable_skills": "Allow this conversation agent to load selected local skills.",
-                "skills": "Optional local skills this conversation agent may load from its configured skills folder.",
-                "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders."
+                "skills": "Optional workspace Skills this conversation agent may list and load during a run. Create Skills from this workspace first."
               },
               "name": "Skills"
             }
@@ -609,6 +594,37 @@
             }
           },
           "title": "Connect provider"
+        }
+      }
+    },
+    "skill": {
+      "abort": {
+        "entry_not_loaded": "The workspace is not loaded.",
+        "reconfigure_successful": "Skill configuration updated."
+      },
+      "entry_type": "Workspace Skill",
+      "error": {
+        "invalid_skill": "Enter valid Skill details.",
+        "required": "Enter a value in this field.",
+        "string_too_long": "This value is too long."
+      },
+      "initiate_flow": {
+        "reconfigure": "Reconfigure Skill",
+        "user": "Add Skill"
+      },
+      "step": {
+        "init": {
+          "data": {
+            "content": "Skill content",
+            "description": "Description",
+            "name": "Skill name"
+          },
+          "data_description": {
+            "content": "Skill instructions stored as raw text. The template-style editor is only for comfortable editing; this content is not rendered as a Home Assistant template.",
+            "description": "Short summary shown to the model before it decides whether to load the Skill."
+          },
+          "description": "Create a workspace Skill that selected agents and AI tasks can list and load. Skills do not run scripts or access files.",
+          "title": "Configure workspace Skill"
         }
       }
     }

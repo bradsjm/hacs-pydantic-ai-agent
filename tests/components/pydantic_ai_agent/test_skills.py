@@ -1,177 +1,123 @@
-"""Test Pydantic AI skills helpers."""
+"""Test native workspace Skill helpers."""
 
-from pathlib import Path
-from types import SimpleNamespace
-import sys
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
-import pytest
+from homeassistant import config_entries
+from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent.const import (
-    CONF_ENABLE_SKILLS,
-    CONF_ENABLE_SKILL_SCRIPT_EXECUTION,
-    CONF_SKILLS_FOLDER,
+    CONF_DESCRIPTION,
+    CONF_SKILL_CONTENT,
+    CONF_SKILL_REFERENCES,
+    CONF_SKILLS,
+    DOMAIN,
+    SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_SKILL,
 )
-from custom_components.pydantic_ai_agent.skills import (
-    AvailableSkill,
-    _build_skills_capabilities,
-    _discover_available_skills,
-    _discover_skills,
-    selected_available_skill_names,
-    skills_folder_path,
-)
+from custom_components.pydantic_ai_agent.skills import async_skills_capabilities
 
 
-def _skill(name: str, *, scripts: object | None = None) -> SimpleNamespace:
-    """Return a fake discovered skill."""
-    return SimpleNamespace(
-        name=name, description=f"{name} description", scripts=scripts
-    )
-
-
-def test_skills_folder_path_stays_under_config_skills(hass: HomeAssistant) -> None:
-    """Test configured skills folders are constrained to /config/skills."""
-    skills_root = Path(hass.config.path("skills")).resolve()
-
-    assert skills_folder_path(hass, None) == skills_root
-    assert skills_folder_path(hass, "/config/skills/custom") == skills_root / "custom"
-    assert skills_folder_path(hass, "skills/custom") == skills_root / "custom"
-
-    for invalid in ["/config", "/tmp/skills", ".", "../../skills"]:
-        with pytest.raises(ValueError, match="inside /config/skills"):
-            skills_folder_path(hass, invalid)
-
-
-def test_skills_folder_path_rejects_symlink_escape(
-    hass: HomeAssistant, tmp_path: Path
-) -> None:
-    """Test configured skills folders cannot escape through symlinks."""
-    skills_root = Path(hass.config.path("skills"))
-    skills_root.mkdir(parents=True, exist_ok=True)
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    symlink = skills_root / "escape"
-    if symlink.exists() or symlink.is_symlink():
-        symlink.unlink()
-    symlink.symlink_to(outside)
-
-    with pytest.raises(ValueError, match="inside /config/skills"):
-        skills_folder_path(hass, "/config/skills/escape")
-
-
-def test_selected_available_skill_names_filters_stale_values() -> None:
-    """Test configured skills are kept only when still discoverable."""
-    available = [
-        AvailableSkill(name="alpha", description="Alpha", has_scripts=False),
-        AvailableSkill(name="beta", description="Beta", has_scripts=False),
-    ]
-
-    assert selected_available_skill_names("alpha", available) == ["alpha"]
-    assert selected_available_skill_names("stale", available) == []
-    assert selected_available_skill_names(["beta", "stale", "alpha"], available) == [
-        "beta",
-        "alpha",
-    ]
-    assert selected_available_skill_names(None, available) == []
-    assert selected_available_skill_names(123, available) == []
-
-
-def test_discover_available_skills_hides_script_skills_until_enabled(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Test selectable skills exclude script-capable skills by default."""
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.skills._discover_skills",
-        lambda _folder: [_skill("plain"), _skill("scripted", scripts={"run": {}})],
-    )
-
-    assert _discover_available_skills(tmp_path, enable_scripts=False) == [
-        AvailableSkill(name="plain", description="plain description", has_scripts=False)
-    ]
-    assert [skill.name for skill in _discover_available_skills(tmp_path, True)] == [
-        "plain",
-        "scripted",
-    ]
-
-
-def test_build_skills_capabilities_filters_selection_and_script_tools(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Test runtime skills capability uses selected safe skills only."""
-
-    class SkillsCapability:
-        def __init__(
-            self, *, skills: list[object], exclude_tools: set[str] | None
-        ) -> None:
-            self.skills = skills
-            self.exclude_tools = exclude_tools
-
-    monkeypatch.setitem(
-        sys.modules,
-        "pydantic_ai_skills",
-        SimpleNamespace(SkillsCapability=SkillsCapability),
-    )
-    monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.skills._discover_skills",
-        lambda _folder: [_skill("plain"), _skill("scripted", scripts={"run": {}})],
-    )
-
-    capabilities = _build_skills_capabilities(
-        tmp_path, {"plain", "scripted"}, enable_scripts=False
-    )
-    assert len(capabilities) == 1
-    assert [skill.name for skill in capabilities[0].skills] == ["plain"]
-    assert capabilities[0].exclude_tools == {"run_skill_script"}
-
-    capabilities = _build_skills_capabilities(
-        tmp_path, {"scripted"}, enable_scripts=True
-    )
-    assert [skill.name for skill in capabilities[0].skills] == ["scripted"]
-    assert capabilities[0].exclude_tools is None
-
-
-def test_discover_skills_falls_back_to_valid_child_folders(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Test invalid top-level discovery falls back to per-folder discovery."""
-    valid = tmp_path / "valid"
-    invalid = tmp_path / "invalid"
-    valid.mkdir()
-    invalid.mkdir()
-    calls: list[Path] = []
-
-    def discover_skills(folder: Path, *, validate: bool) -> list[SimpleNamespace]:
-        assert validate is False
-        calls.append(folder)
-        if folder == tmp_path or folder == invalid:
-            raise ValueError("bad skill")
-        return [_skill("alpha"), _skill("alpha")]
-
-    monkeypatch.setitem(
-        sys.modules,
-        "pydantic_ai_skills",
-        SimpleNamespace(discover_skills=discover_skills),
-    )
-
-    assert [skill.name for skill in _discover_skills(tmp_path)] == ["alpha"]
-    assert calls[0] == tmp_path
-    assert set(calls[1:]) == {valid, invalid}
-
-
-async def test_async_skills_helpers_return_empty_for_invalid_folder(
+async def test_async_skills_capabilities_exposes_selected_native_skills(
     hass: HomeAssistant,
 ) -> None:
-    """Test invalid stored skills folders fail closed."""
-    from custom_components.pydantic_ai_agent.skills import (
-        async_available_skills,
-        async_skills_capabilities,
+    """Test selected Skill subentries become a native Pydantic AI capability."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_NAME: "Workspace"},
+        source=config_entries.SOURCE_USER,
+        subentries_data=(
+            {
+                "subentry_id": "skill-1",
+                "subentry_type": SUBENTRY_TYPE_SKILL,
+                "title": "Kitchen Skill",
+                "unique_id": None,
+                "data": {
+                    CONF_NAME: "Kitchen Skill",
+                    CONF_DESCRIPTION: "Kitchen guidance",
+                    CONF_SKILL_CONTENT: "Use short responses.",
+                    CONF_SKILL_REFERENCES: [],
+                },
+            },
+            {
+                "subentry_id": "skill-2",
+                "subentry_type": SUBENTRY_TYPE_SKILL,
+                "title": "Unused Skill",
+                "unique_id": None,
+                "data": {
+                    CONF_NAME: "Unused Skill",
+                    CONF_SKILL_CONTENT: "Do not load.",
+                    CONF_SKILL_REFERENCES: [],
+                },
+            },
+            {
+                "subentry_id": "agent-1",
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Agent",
+                "unique_id": None,
+                "data": {CONF_SKILLS: ["skill-1"]},
+            },
+        ),
     )
 
-    settings = {
-        CONF_ENABLE_SKILLS: True,
-        CONF_SKILLS_FOLDER: "/tmp/skills",
-        CONF_ENABLE_SKILL_SCRIPT_EXECUTION: True,
+    capabilities = await async_skills_capabilities(hass, entry, ["skill-1", "missing"])
+
+    assert len(capabilities) == 1
+    capability = capabilities[0]
+    assert "cannot override system" in capability.get_instructions()
+    toolset = capability.get_toolset()
+    assert set(toolset.tools) == {"list_skills", "load_skill"}
+
+    list_skills = cast(
+        Callable[[], Awaitable[list[dict[str, str]]]],
+        toolset.tools["list_skills"].function,
+    )
+    load_skill = cast(
+        Callable[[str], Awaitable[dict[str, Any]]],
+        toolset.tools["load_skill"].function,
+    )
+
+    assert await list_skills() == [
+        {
+            "skill_id": "skill-1",
+            "name": "Kitchen Skill",
+            "description": "Kitchen guidance",
+        }
+    ]
+    assert await load_skill("skill-1") == {
+        "skill_id": "skill-1",
+        "name": "Kitchen Skill",
+        "description": "Kitchen guidance",
+        "content": "Use short responses.",
+        "references": [],
+    }
+    assert await load_skill("missing") == {
+        "error": "skill_not_found",
+        "skill_id": "missing",
     }
 
-    assert await async_available_skills(hass, settings) == []
-    assert await async_skills_capabilities(hass, settings, ["alpha"]) == []
+
+async def test_async_skills_capabilities_returns_empty_without_valid_selection(
+    hass: HomeAssistant,
+) -> None:
+    """Test stale or unselected Skill IDs fail closed."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_NAME: "Workspace"},
+        source=config_entries.SOURCE_USER,
+        subentries_data=(
+            {
+                "subentry_id": "skill-1",
+                "subentry_type": SUBENTRY_TYPE_SKILL,
+                "title": "Blank Skill",
+                "unique_id": None,
+                "data": {CONF_NAME: "Blank Skill", CONF_SKILL_CONTENT: ""},
+            },
+        ),
+    )
+
+    assert await async_skills_capabilities(hass, entry, None) == []
+    assert await async_skills_capabilities(hass, entry, ["missing"]) == []
+    assert await async_skills_capabilities(hass, entry, ["skill-1"]) == []

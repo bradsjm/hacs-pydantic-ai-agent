@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import httpx
 from pydantic_ai import Agent, AgentRunResultEvent
-from pydantic_ai.capabilities import ToolSearch, WebFetch
+from pydantic_ai.capabilities import AbstractCapability, ToolSearch, WebFetch
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
@@ -182,11 +182,13 @@ class PydanticAIBaseLLMEntity:
 
         messages = await chat_log_content_to_model_messages(self.hass, chat_log.content)
         user_prompt, message_history = split_last_user_prompt(messages)
-        capabilities = await async_skills_capabilities(
-            self.hass,
-            self.subentry.data,
-            self.subentry.data.get(CONF_SKILLS),
-        )
+        capabilities: list[AbstractCapability] = [
+            *await async_skills_capabilities(
+                self.hass,
+                self.entry,
+                self.subentry.data.get(CONF_SKILLS),
+            )
+        ]
         if self.subentry.data.get(CONF_WEB_FETCH_ENABLED):
             capabilities.append(WebFetch(local=True))
         capabilities.append(SlidingWindowContextCapability())

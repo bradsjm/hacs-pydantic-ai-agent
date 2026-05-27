@@ -4,7 +4,7 @@
 
 - This is the `pydantic_ai_agent` Home Assistant custom integration, distributed through HACS from `custom_components/pydantic_ai_agent`.
 - Treat `docs/pydantic_ai_agent_spec.md` as the product/architecture direction, not proof that a feature is implemented. Verify against source before documenting or relying on behavior.
-- Runtime dependencies are pinned in both `pyproject.toml` and `manifest.json`: `pydantic-ai-slim==1.97.0`, `anthropic>=0.97.0`, `google-genai>=1.70.0`, `logfire==4.33.0`, `pydantic-ai-skills==0.10.0`, `tiktoken>=0.12.0`, `fastmcp-slim[client,server]>=3.3.0`, and `markdownify>=1.2`; use the in-repo `OpenAICompatibleChatModel`/`OpenAICompatibleResponsesModel`/`OpenAICompatibleProvider` for OpenAI-compatible modes, not the OpenAI SDK-backed Pydantic AI classes. Do not add the OpenAI SDK dependency unless explicitly requested.
+- Runtime dependencies are pinned in both `pyproject.toml` and `manifest.json`: `pydantic-ai-slim==1.97.0`, `anthropic>=0.97.0`, `google-genai>=1.70.0`, `logfire==4.33.0`, `tiktoken>=0.12.0`, `fastmcp-slim[client,server]>=3.3.0`, and `markdownify>=1.2`; use the in-repo `OpenAICompatibleChatModel`/`OpenAICompatibleResponsesModel`/`OpenAICompatibleProvider` for OpenAI-compatible modes, not the OpenAI SDK-backed Pydantic AI classes. Do not add the OpenAI SDK dependency unless explicitly requested.
 - The implemented provider modes are `openai_compatible_completions`, `openai_compatible_responses`, `anthropic`, and `google_gemini`; when `base_url` is omitted the in-repo OpenAI-compatible provider defaults to `https://api.openai.com/v1` without using the OpenAI SDK. Google Gemini support is Gemini Developer API only, not Vertex AI or Google Cloud IAM.
 
 ## Home Assistant Patterns
@@ -24,7 +24,7 @@
 - Keep Logfire and other process-global integrations explicit and HA-owned. Do not add module-level mutable globals or `threading.Lock` state for Home Assistant runtime coordination.
 - Use public Pydantic AI APIs only. For HA LLM tool conversion use documented surfaces such as `Tool.from_schema`; do not import private modules such as `pydantic_ai._*`.
 - Classify provider and network failures with typed exceptions (`ModelHTTPError`, `ModelAPIError`, `httpx` errors, `OSError.errno`, `ssl.SSLError`, etc.). Do not branch on exception class-name strings or localized message text.
-- Use `hass.config.path(...)` for Home Assistant config-relative paths and then enforce the integration's containment rules. For skills, all configured folders must stay under `/config/skills`.
+- Native workspace Skills are Home Assistant config subentries. Do not add filesystem-backed skill folders, script execution, runtime Git, or auto-update behavior unless explicitly requested and designed through HA lifecycle/security patterns.
 - Do not keep production code, tests, or docs for streaming paths unless streaming is actually wired into runtime behavior.
 - Preserve provider reasoning metadata in Pydantic AI message history. DeepSeek-style OpenAI-compatible endpoints require prior assistant `reasoning` / `reasoning_content` fields to be passed back with tool-call follow-up requests.
 
@@ -53,10 +53,10 @@
 - `config_flow.py` owns parent provider config, reauth/reconfigure, `conversation`, `ai_task_data`, and `mcp_server` subentry flows, model settings parsing, skill selection, MCP validation/discovery, structured output configuration, and the async Pydantic AI provider probe.
 - `conversation.py` registers one Home Assistant conversation entity per `conversation` subentry, advertises streaming only for tool-free conversations, and advertises `CONTROL` only when `CONF_LLM_HASS_API` is configured.
 - `ai_task.py` registers one Home Assistant AI task entity per `ai_task_data` subentry for data generation and attachment input; image generation is not implemented.
-- `entity.py` owns the shared Pydantic AI `Agent` runtime, Home Assistant LLM API tool conversion, remote MCP toolsets, selected `pydantic-ai-skills` capabilities, usage limits, live conversation streaming through `run_stream_events()`, and cleanup of MCP HTTP clients.
+- `entity.py` owns the shared Pydantic AI `Agent` runtime, Home Assistant LLM API tool conversion, remote MCP toolsets, native workspace Skill capabilities, usage limits, live conversation streaming through `run_stream_events()`, and cleanup of MCP HTTP clients.
 - `openai_compatible_client/` owns the lightweight async Completions/Responses HTTP client and SSE parsers; `openai_compatible_adapter/` owns the Pydantic AI `Model`/`Provider` adapter and message/usage/error mapping for OpenAI-compatible modes; native Anthropic and Google Gemini models are constructed in `provider.py` with Pydantic AI's public provider/model classes and HA-owned credentials.
 - `mcp.py` supports remote Streamable HTTP MCP server subentries only; stdio, SSE, and local command MCP servers are not implemented.
-- `skills.py` discovers local `pydantic-ai-skills` from `/config/skills` or subfolders and excludes skill script execution unless explicitly enabled on the provider entry.
+- `skills.py` builds a native no-script Pydantic AI capability for selected workspace Skill subentries, exposing only `list_skills` and `load_skill` tools.
 
 ## Testing
 
