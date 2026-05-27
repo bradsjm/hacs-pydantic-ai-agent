@@ -5,6 +5,7 @@
 Build a **local Home Semantic Indexer** inside the integration, then expose it through a small, custom, in-process Home Assistant `llm.API`.
 
 The core principle should be:
+
 > Use semantic memory and retrieval to understand the home.  
 > Use Home Assistant LLM APIs, intents, services, scripts, scenes, and exposure policy to act.
 
@@ -35,8 +36,9 @@ HA intents / services / scripts / scenes
 ## Product goal
 
 For a command like:
+
 > “Turn off bedroom lights”
-The ideal path is:
+> The ideal path is:
 
 ```text
 utterance
@@ -70,7 +72,7 @@ The real scale target matters:
 - rooms with hundreds of entities;
 - useful room/group entities;
 - high-churn logbook/state activity from sensors and thermostats.
-At that scale, the primary abstraction should not be “entity search.” It should be:
+  At that scale, the primary abstraction should not be “entity search.” It should be:
 - areas;
 - floors;
 - devices;
@@ -79,7 +81,7 @@ At that scale, the primary abstraction should not be “entity search.” It sho
 - aliases;
 - routines;
 - user corrections.
-Entities remain necessary, but mostly as implementation details behind those higher-level concepts.
+  Entities remain necessary, but mostly as implementation details behind those higher-level concepts.
 
 ## Implementation recommendation
 
@@ -123,7 +125,7 @@ Inputs:
 - group entities and helper groups;
 - scripts and scenes;
 - safe summaries from recorder/logbook/statistics/traces, if available.
-Outputs:
+  Outputs:
 - floor documents;
 - area documents;
 - device documents;
@@ -134,7 +136,7 @@ Outputs:
 - searchable text;
 - ranking features;
 - optional embedding jobs.
-Example area document:
+  Example area document:
 
 ```json
 {
@@ -229,7 +231,7 @@ Inputs should require a scope:
 - entity IDs;
 - device;
 - capability.
-Never default to all exposed entities.
+  Never default to all exposed entities.
 
 #### `control_home`
 
@@ -259,8 +261,9 @@ The tool should internally prefer:
 
 Optional and explicit.
 Example:
+
 > “When I say bedroom lamp, I mean Jane’s nightstand.”
-This should update the semantic overlay, not mutate HA registry data.
+> This should update the semantic overlay, not mutate HA registry data.
 
 ### 5. Add opt-in semantic context to conversations and AI tasks
 
@@ -283,14 +286,14 @@ Boost:
 - scripts/scenes used successfully;
 - area/device/capability matches;
 - exposed, user-named physical controls.
-Penalize:
+  Penalize:
 - high-churn telemetry;
 - diagnostic entities;
 - hidden/disabled entities;
 - noisy binary sensors;
 - raw sensors unless directly queried;
 - previously ambiguous matches.
-Use capped, typed, time-decayed signals. Do not let logbook volume dominate ranking.
+  Use capped, typed, time-decayed signals. Do not let logbook volume dominate ranking.
 
 ### 7. Keep execution safe
 
@@ -305,14 +308,14 @@ Prefer a constrained tool like `control_home` that validates:
 - exposure;
 - domain safety policy;
 - ambiguity.
-Recommended safety rules:
-| Domain/action type | Default behavior |
-|---|---|
-| lights, media, benign scenes | execute if confidence is high |
-| switches | execute only if exposed and target is unambiguous |
-| covers, climate | allow, but support verification/clarification |
-| locks, alarms, garage doors, security | require stricter confirmation |
-| config/admin/registry/files/add-ons | out of scope |
+  Recommended safety rules:
+  | Domain/action type | Default behavior |
+  |---|---|
+  | lights, media, benign scenes | execute if confidence is high |
+  | switches | execute only if exposed and target is unambiguous |
+  | covers, climate | allow, but support verification/clarification |
+  | locks, alarms, garage doors, security | require stricter confirmation |
+  | config/admin/registry/files/add-ons | out of scope |
 
 ## Latency strategy
 
@@ -324,7 +327,7 @@ Recommended safety rules:
 6. Rebuild index in background on registry/state changes.
 7. Use optional verification, not default verification.
 8. Add a deterministic fast path later for high-confidence common commands.
-The fastest future path is:
+   The fastest future path is:
 
 ```text
 local semantic resolver → high-confidence control → HA action
@@ -377,8 +380,9 @@ with the LLM used when ambiguity, explanation, or multi-step reasoning is needed
 ## Final recommendation
 
 Implement this as:
+
 > **a local, inspectable, device/capability-first Home Semantic Index feeding a constrained Home Assistant execution API.**
-The foundation should be:
+> The foundation should be:
 
 ```text
 local semantic index
