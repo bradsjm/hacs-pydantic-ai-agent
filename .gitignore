@@ -1,5 +1,5 @@
 .DS_Store
-.chunkhound*
+.cocoindex_code/
 .env
 .idea/
 .mypy_cache/
