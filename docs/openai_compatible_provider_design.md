@@ -21,7 +21,7 @@ Implemented source areas:
 | Home Assistant model factory       | `custom_components/pydantic_ai_agent/provider.py`                |
 | Config-flow provider probe         | `custom_components/pydantic_ai_agent/config_flow.py`             |
 | Runtime agent construction         | `custom_components/pydantic_ai_agent/entity.py`                  |
-| Real-provider tests                | `tests/components/pydantic_ai_agent/test_real_server.py`         |
+| Provider integration tests         | `tests/components/pydantic_ai_agent/integration/`               |
 
 ## Rationale
 
@@ -202,9 +202,9 @@ integration:
 - `prompted` output through `response_format: {"type": "json_object"}` when the
   active model profile supports JSON object output.
 
-Structured output support is provider/model dependent. Real-server tests skip
-structured tool-output E2E cases when the configured model rejects that mode with
-a controlled validation error.
+Structured output support is provider/model dependent. Provider integration tests
+skip structured tool-output E2E cases when the configured model rejects that mode
+with a controlled validation error.
 
 ## Streaming
 
@@ -226,7 +226,7 @@ Streaming implementation details:
   non-streamed requests for provider-compatible tool-result follow-up handling;
 - streamed conversation handling does not append final `new_messages()` after
   live deltas, preventing duplicate final assistant text;
-- the real-server probe test drains the event loop after validation to avoid
+- the provider integration probe test drains the event loop after validation to avoid
   racing async-generator finalization.
 
 ## Error Handling

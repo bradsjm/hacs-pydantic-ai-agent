@@ -47,7 +47,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["."]
 markers = [
-  "real_server: calls a real OpenAI-compatible provider",
+  "provider_integration: calls a live OpenAI-compatible provider and optional hosted MCP server",
 ]
 
 [tool.pyright]
