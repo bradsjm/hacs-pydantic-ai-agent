@@ -10,6 +10,7 @@ from ...const import (
     CONF_DISCOVERED,
     CONF_ENABLED,
     CONF_MODEL,
+    CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
@@ -73,6 +74,9 @@ def build_model_profiles(
             CONF_ENABLED: True,
             CONF_DISCOVERED: True,
         }
+        pricing = _model_pricing(model)
+        if pricing:
+            profiles[profile_id][CONF_MODEL_PRICING] = pricing
     return profiles
 
 
@@ -91,3 +95,15 @@ def selected_models_by_id(
 def _profile_id() -> str:
     """Return a new model profile ID."""
     return uuid4().hex
+
+
+def _model_pricing(model: CatalogModelOption) -> dict[str, float]:
+    """Return configured catalog pricing for one model profile."""
+    pricing: dict[str, float] = {}
+    if model.input_price is not None:
+        pricing["input"] = model.input_price
+    if model.output_price is not None:
+        pricing["output"] = model.output_price
+    if model.cache_read_price is not None:
+        pricing["cache_read"] = model.cache_read_price
+    return pricing

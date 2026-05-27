@@ -107,6 +107,7 @@ from ..const import (
     CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
     CONF_MODEL,
+    CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
@@ -215,6 +216,9 @@ _MODEL_SETTING_FREQUENCY_PENALTY = "frequency_penalty"
 _MODEL_SETTING_THINKING = "thinking"
 _MODEL_SETTING_EXTRA_BODY = "extra_body"
 _MODEL_SETTING_CHAT_TEMPLATE_KWARGS = CONF_CHAT_TEMPLATE_KWARGS
+_MODEL_PRICING_INPUT = "model_pricing_input"
+_MODEL_PRICING_OUTPUT = "model_pricing_output"
+_MODEL_PRICING_CACHE_READ = "model_pricing_cache_read"
 _MODEL_LIST_CACHE_TTL = timedelta(minutes=10)
 _BASE_URL_ENDPOINT_SUFFIXES = {
     ("audio", "speech"),
@@ -297,6 +301,7 @@ _SECTION_ADVANCED_OPTIONS = "advanced_options"
 _SECTION_EXTERNAL_TOOLS = "external_tools"
 _SECTION_FALLBACK_MODELS = "fallback_models"
 _SECTION_HASS_CONTROL = "hass_control"
+_SECTION_MODEL_PRICING = "model_pricing"
 _SECTION_LOGFIRE = "logfire"
 _SECTION_CUSTOMIZE_MODEL_LIST = "customize_model_list"
 _SECTION_SKILLS = "skill_settings"
@@ -902,6 +907,7 @@ def _model_profile_edit_schema(
     """Return the provider-owned model profile edit schema."""
     options: dict[str, Any] = {
         CONF_NAME: model_profile_display_name(profile),
+        CONF_MODEL_PRICING: profile.get(CONF_MODEL_PRICING, {}),
         CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {}),
     }
     schema: VolDictType = {
@@ -945,6 +951,9 @@ def _model_profile_edit_schema(
     )
     schema[vol.Optional(_SECTION_ADVANCED_MODEL_SETTINGS, default={})] = section(
         _model_settings_schema(options), {"collapsed": True}
+    )
+    schema[vol.Optional(_SECTION_MODEL_PRICING, default={})] = section(
+        _model_pricing_schema(options), {"collapsed": True}
     )
     return vol.Schema(schema)
 
@@ -1502,6 +1511,36 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
     )
 
 
+def _model_pricing_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
+    """Return the model pricing schema."""
+    options = dict(options or {})
+    pricing = options.get(CONF_MODEL_PRICING, {})
+    if not isinstance(pricing, Mapping):
+        pricing = {}
+    return vol.Schema(
+        {
+            vol.Optional(
+                _MODEL_PRICING_INPUT,
+                description={"suggested_value": pricing.get("input")},
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
+            ),
+            vol.Optional(
+                _MODEL_PRICING_OUTPUT,
+                description={"suggested_value": pricing.get("output")},
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
+            ),
+            vol.Optional(
+                _MODEL_PRICING_CACHE_READ,
+                description={"suggested_value": pricing.get("cache_read")},
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
+            ),
+        }
+    )
+
+
 def _format_key_value_json_setting(value: object) -> str:
     """Return a key/value JSON setting as one ``key: value`` line each."""
     if value is None:
@@ -1565,6 +1604,14 @@ def _parse_positive_float_setting(value: object) -> float:
     """Return a positive float model setting from user input."""
     parsed = _parse_float_setting(value)
     if parsed <= 0:
+        raise ValueError
+    return parsed
+
+
+def _parse_non_negative_float_setting(value: object) -> float:
+    """Return a non-negative float setting from user input."""
+    parsed = _parse_float_setting(value)
+    if parsed < 0:
         raise ValueError
     return parsed
 
@@ -1722,6 +1769,37 @@ def _parse_model_settings(
     return settings, errors, cleared
 
 
+def _parse_model_pricing(
+    user_input: Mapping[str, Any], pricing_keys: set[str]
+) -> tuple[dict[str, float], dict[str, str], set[str]]:
+    """Return parsed pricing, field errors, and explicitly cleared pricing keys."""
+    pricing: dict[str, float] = {}
+    errors: dict[str, str] = {}
+    cleared: set[str] = set()
+    for field_key in pricing_keys:
+        if field_key not in user_input:
+            continue
+        pricing_key = _pricing_storage_key(field_key)
+        value = user_input[field_key]
+        if _is_blank(value):
+            cleared.add(pricing_key)
+            continue
+        try:
+            pricing[pricing_key] = _parse_non_negative_float_setting(value)
+        except ValueError:
+            errors[field_key] = "non_negative_number"
+    return pricing, errors, cleared
+
+
+def _pricing_storage_key(field_key: str) -> str:
+    """Return stored pricing key for one form field."""
+    return {
+        _MODEL_PRICING_INPUT: "input",
+        _MODEL_PRICING_OUTPUT: "output",
+        _MODEL_PRICING_CACHE_READ: "cache_read",
+    }[field_key]
+
+
 def _model_setting_error(key: str, detail: str) -> str:
     """Return a translation key for a model setting validation error."""
     if detail in {
@@ -1801,6 +1879,17 @@ def _merge_model_settings(
     return merged
 
 
+def _merge_model_pricing(
+    existing: Mapping[str, Any], parsed: Mapping[str, float], cleared: set[str]
+) -> dict[str, float]:
+    """Return pricing with parsed values applied and cleared keys removed."""
+    merged = _model_pricing_from_options({CONF_MODEL_PRICING: existing})
+    for key in cleared:
+        merged.pop(key, None)
+    merged.update(parsed)
+    return merged
+
+
 def _store_model_settings(
     data: dict[str, Any], model_settings: Mapping[str, Any]
 ) -> None:
@@ -1811,6 +1900,27 @@ def _store_model_settings(
         data.pop(CONF_MODEL_SETTINGS, None)
 
 
+def _store_model_pricing(data: dict[str, Any], model_pricing: Mapping[str, float]) -> None:
+    """Store profile pricing, including an empty mapping after explicit clears."""
+    data[CONF_MODEL_PRICING] = dict(model_pricing)
+
+
+def _model_pricing_from_options(options: Mapping[str, Any]) -> dict[str, float]:
+    """Return valid stored model pricing from subentry options."""
+    pricing = options.get(CONF_MODEL_PRICING)
+    if not isinstance(pricing, Mapping):
+        return {}
+    parsed: dict[str, float] = {}
+    for key in ("input", "output", "cache_read"):
+        value = pricing.get(key)
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            continue
+        price = float(value)
+        if price >= 0:
+            parsed[key] = price
+    return parsed
+
+
 def _model_profile_data_from_user_input(
     user_input: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1818,7 +1928,10 @@ def _model_profile_data_from_user_input(
     return {
         key: value
         for key, value in user_input.items()
-        if key not in _MAIN_MODEL_SETTING_KEYS | _ADVANCED_MODEL_SETTING_KEYS
+        if key
+        not in _MAIN_MODEL_SETTING_KEYS
+        | _ADVANCED_MODEL_SETTING_KEYS
+        | {_MODEL_PRICING_INPUT, _MODEL_PRICING_OUTPUT, _MODEL_PRICING_CACHE_READ}
     }
 
 

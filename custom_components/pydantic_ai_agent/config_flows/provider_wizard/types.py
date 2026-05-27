@@ -34,6 +34,9 @@ class CatalogModelOption:
     context_limit: int
     output_limit: int
     status: str | None
+    input_price: float | None = None
+    output_price: float | None = None
+    cache_read_price: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

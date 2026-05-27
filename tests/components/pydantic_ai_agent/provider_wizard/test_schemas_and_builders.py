@@ -42,6 +42,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_DISCOVERED,
     CONF_ENABLED,
     CONF_MODEL,
+    CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
@@ -244,6 +245,27 @@ def test_build_model_profiles_enables_selected_models() -> None:
     }
 
 
+def test_build_model_profiles_seeds_catalog_pricing() -> None:
+    """Test guided selected models store catalog USD-per-million pricing."""
+    profiles = build_model_profiles(
+        (
+            _model(
+                "gpt-4.1-mini",
+                input_price=0.4,
+                output_price=1.6,
+                cache_read_price=0.1,
+            ),
+        ),
+        profile_id_factory=lambda: "p1",
+    )
+
+    assert profiles["p1"][CONF_MODEL_PRICING] == {
+        "input": 0.4,
+        "output": 1.6,
+        "cache_read": 0.1,
+    }
+
+
 def test_build_provider_data_uses_runtime_provider_schema() -> None:
     """Test guided provider data matches the runtime provider subentry shape."""
     provider = _provider(
@@ -332,6 +354,9 @@ def _model(
     reasoning: bool = False,
     attachment: bool = False,
     context_limit: int = 0,
+    input_price: float | None = None,
+    output_price: float | None = None,
+    cache_read_price: float | None = None,
 ) -> CatalogModelOption:
     """Return a catalog model option fixture."""
     return CatalogModelOption(
@@ -347,4 +372,7 @@ def _model(
         context_limit=context_limit,
         output_limit=0,
         status=None,
+        input_price=input_price,
+        output_price=output_price,
+        cache_read_price=cache_read_price,
     )

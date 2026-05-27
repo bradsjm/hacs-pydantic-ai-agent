@@ -1,7 +1,7 @@
 """Workspace-local provider-owned model profile helpers."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +18,7 @@ from .const import (
     CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
     CONF_MODEL,
+    CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_PROVIDER_EXTRA_BODY,
@@ -56,6 +57,7 @@ class ResolvedModelProfile:
     provider_mode: str
     model_name: str
     model_settings: dict[str, Any]
+    model_pricing: dict[str, float] = field(default_factory=dict)
 
 
 ModelProfile = ResolvedModelProfile
@@ -159,6 +161,8 @@ def resolve_model_profile(
         raise HomeAssistantError("Configured model profile is missing a model name")
     raw_settings = profile.get(CONF_MODEL_SETTINGS)
     model_settings = dict(raw_settings) if isinstance(raw_settings, Mapping) else {}
+    raw_pricing = profile.get(CONF_MODEL_PRICING)
+    model_pricing = _profile_pricing(raw_pricing)
     return ResolvedModelProfile(
         ref=raw_ref,
         provider_subentry_id=provider_subentry_id,
@@ -167,6 +171,7 @@ def resolve_model_profile(
         provider_title=provider_subentry.title,
         provider_mode=str(provider_subentry.data.get(CONF_PROVIDER_MODE, "")),
         model_name=model_name,
+        model_pricing=model_pricing,
         model_settings=model_settings,
     )
 
@@ -217,6 +222,21 @@ def model_settings(profile: ResolvedModelProfile) -> ModelSettings:
     reject_chat_template_kwargs_in_extra_body(settings.get("extra_body"))
     settings.setdefault("timeout", DEFAULT_TIMEOUT)
     return ModelSettings(**settings)
+
+
+def _profile_pricing(raw_pricing: object) -> dict[str, float]:
+    """Return sanitized USD-per-million-token pricing for one profile."""
+    if not isinstance(raw_pricing, Mapping):
+        return {}
+    pricing: dict[str, float] = {}
+    for key in ("input", "output", "cache_read"):
+        value = raw_pricing.get(key)
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            continue
+        price = float(value)
+        if price >= 0:
+            pricing[key] = price
+    return pricing
 
 
 def provider_extra_body(

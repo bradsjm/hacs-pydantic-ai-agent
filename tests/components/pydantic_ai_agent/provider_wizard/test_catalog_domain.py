@@ -133,6 +133,7 @@ def test_normalize_catalog_keeps_supported_compact_data() -> None:
                         "attachment": True,
                         "modalities": {"output": ["text"]},
                         "limit": {"context": 128000, "output": 16384},
+                        "cost": {"input": 0.4, "output": 1.6, "cache_read": 0.1},
                     }
                 },
             },
@@ -173,6 +174,41 @@ def test_normalize_catalog_keeps_supported_compact_data() -> None:
     assert model.text_output is True
     assert model.context_limit == 128000
     assert model.output_limit == 16384
+    assert model.input_price == 0.4
+    assert model.output_price == 1.6
+    assert model.cache_read_price == 0.1
+
+
+def test_normalize_catalog_ignores_invalid_pricing_values() -> None:
+    """Test catalog pricing keeps only non-negative numeric costs."""
+    catalog = normalize_catalog(
+        {
+            "openai": {
+                "id": "openai",
+                "name": "OpenAI",
+                "npm": "@ai-sdk/openai",
+                "env": ["OPENAI_API_KEY"],
+                "models": {
+                    "gpt-test": {
+                        "name": "GPT Test",
+                        "tool_call": True,
+                        "structured_output": True,
+                        "modalities": {"output": ["text"]},
+                        "cost": {
+                            "input": -1,
+                            "output": "2.0",
+                            "cache_read": False,
+                        },
+                    }
+                },
+            }
+        }
+    )
+
+    model = catalog.models_for_provider("openai")[0]
+    assert model.input_price is None
+    assert model.output_price is None
+    assert model.cache_read_price is None
 
 
 def test_normalize_catalog_uses_openai_compatible_base_url() -> None:

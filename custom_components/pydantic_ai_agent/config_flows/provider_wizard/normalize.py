@@ -90,6 +90,8 @@ def _normalize_models(
         if isinstance(limit, Mapping):
             context_limit = _int(limit.get("context"))
             output_limit = _int(limit.get("output"))
+        cost = raw_model.get("cost")
+        pricing = cost if isinstance(cost, Mapping) else {}
         models.append(
             CatalogModelOption(
                 id=model_id,
@@ -104,6 +106,9 @@ def _normalize_models(
                 context_limit=context_limit,
                 output_limit=output_limit,
                 status=_string(raw_model.get("status")),
+                input_price=_price(pricing.get("input")),
+                output_price=_price(pricing.get("output")),
+                cache_read_price=_price(pricing.get("cache_read")),
             )
         )
     return tuple(sorted(models, key=lambda model: (model.name.casefold(), model.id)))
@@ -159,3 +164,11 @@ def _has_text_output(output_modalities: object) -> bool:
 def _int(value: object) -> int:
     """Return a non-negative int from payload data."""
     return value if isinstance(value, int) and value >= 0 else 0
+
+
+def _price(value: object) -> float | None:
+    """Return a non-negative USD-per-million-token price from catalog data."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    price = float(value)
+    return price if price >= 0 else None

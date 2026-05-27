@@ -15,6 +15,7 @@ from .common import (
     CONF_DISCOVERED_MODELS_CACHE_KEY,
     CONF_ENABLED,
     CONF_MODEL,
+    CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_NAME,
@@ -33,19 +34,26 @@ from .common import (
     _CONF_MODEL_PROFILE_ID,
     _LOGGER,
     _MAIN_MODEL_SETTING_KEYS,
+    _MODEL_PRICING_CACHE_READ,
+    _MODEL_PRICING_INPUT,
+    _MODEL_PRICING_OUTPUT,
     _SECTION_ADVANCED_MODEL_SETTINGS,
+    _SECTION_MODEL_PRICING,
     _cached_provider_model_names,
     _clear_provider_model_cache,
     _flatten_section_data,
     _format_custom_model_names,
     _format_key_value_json_setting,
     _merge_model_settings,
+    _merge_model_pricing,
     _normalise_base_url,
     _model_profile_data_from_user_input,
     _model_profile_edit_schema,
     _model_settings_from_options,
+    _model_pricing_from_options,
     _normalise_provider_data,
     _parse_model_settings,
+    _parse_model_pricing,
     _provider_custom_model_names,
     _provider_data_matches,
     _provider_profile_options,
@@ -54,6 +62,7 @@ from .common import (
     _provider_validation_placeholders,
     _referenced_provider_profile_ids,
     _store_model_settings,
+    _store_model_pricing,
     _store_provider_model_cache,
     _validate_provider_data,
     async_list_provider_model_names,
@@ -123,6 +132,20 @@ def _custom_model_options(model_names: list[str]) -> tuple[CatalogModelOption, .
     )
 
 
+def _catalog_model_pricing(model: CatalogModelOption | None) -> dict[str, float]:
+    """Return stored pricing seeded from one catalog model option."""
+    if model is None:
+        return {}
+    pricing: dict[str, float] = {}
+    if model.input_price is not None:
+        pricing["input"] = model.input_price
+    if model.output_price is not None:
+        pricing["output"] = model.output_price
+    if model.cache_read_price is not None:
+        pricing["cache_read"] = model.cache_read_price
+    return pricing
+
+
 def _catalog_provider_metadata_still_valid(
     existing_data: Mapping[str, Any], storage_data: Mapping[str, Any]
 ) -> bool:
@@ -162,6 +185,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
     _pending_step_id: str
     _selected_profile_id: str | None
     _pending_model_settings: dict[str, Any]
+    _pending_model_pricing: dict[str, float]
     _pending_profile_data: dict[str, Any]
     _pending_profile_error: tuple[str, dict[str, str]] | None
     _profile_flow_data: dict[str, Any]
@@ -901,6 +925,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             profiles = {}
         selected_model_ids = {model.id for model in selected_models}
         managed_model_ids = {model.id for model in managed_models}
+        managed_models_by_id = {model.id: model for model in managed_models}
         referenced_profile_ids = _referenced_provider_profile_ids(
             self._get_entry(), self._get_reconfigure_subentry().subentry_id
         )
@@ -914,6 +939,12 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                 continue
             profile_data = dict(profile)
             profile_data["id"] = profile_id
+            if CONF_MODEL_PRICING not in profile_data:
+                model_pricing = _catalog_model_pricing(
+                    managed_models_by_id.get(model_name)
+                )
+                if model_pricing:
+                    profile_data[CONF_MODEL_PRICING] = model_pricing
             if model_name in selected_model_ids:
                 profile_data[CONF_ENABLED] = True
                 selected_existing_model_ids.add(model_name)
@@ -1021,13 +1052,26 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             return self.async_abort(reason="model_profile_not_found")
         if user_input is not None:
             flat_user_input = _flatten_section_data(
-                user_input, (_SECTION_ADVANCED_MODEL_SETTINGS,)
+                user_input,
+                (_SECTION_ADVANCED_MODEL_SETTINGS, _SECTION_MODEL_PRICING),
             )
             parsed_settings, errors, cleared = _parse_model_settings(
                 self.hass,
                 flat_user_input,
                 _MAIN_MODEL_SETTING_KEYS | _ADVANCED_MODEL_SETTING_KEYS,
             )
+            pricing_field_keys = {
+                _MODEL_PRICING_INPUT,
+                _MODEL_PRICING_OUTPUT,
+                _MODEL_PRICING_CACHE_READ,
+            }
+            parsed_pricing, pricing_errors, pricing_cleared = _parse_model_pricing(
+                flat_user_input, pricing_field_keys
+            )
+            pricing_submitted = any(
+                key in flat_user_input for key in pricing_field_keys
+            )
+            errors.update(pricing_errors)
             data = _model_profile_data_from_user_input(flat_user_input)
             existing_settings = _model_settings_from_options(
                 {CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {})}
@@ -1035,20 +1079,36 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             model_settings = _merge_model_settings(
                 existing_settings, parsed_settings, cleared
             )
+            existing_pricing = _model_pricing_from_options(
+                {CONF_MODEL_PRICING: profile.get(CONF_MODEL_PRICING, {})}
+            )
+            model_pricing = _merge_model_pricing(
+                existing_pricing, parsed_pricing, pricing_cleared
+            )
             if errors:
                 return self.async_show_form(
                     step_id="edit_model_profile",
                     data_schema=_model_profile_edit_schema(
-                        profile | data | {CONF_MODEL_SETTINGS: model_settings}
+                        profile
+                        | data
+                        | {
+                            CONF_MODEL_SETTINGS: model_settings,
+                            CONF_MODEL_PRICING: model_pricing,
+                        }
                     ),
                     errors=errors,
                 )
             self._pending_profile_data = dict(profile) | data
             self._pending_model_settings = dict(model_settings)
+            self._pending_model_pricing = dict(model_pricing)
             self._pending_profile_error = None
             _store_model_settings(
                 self._pending_profile_data, self._pending_model_settings
             )
+            if CONF_MODEL_PRICING in profile or pricing_submitted:
+                _store_model_pricing(
+                    self._pending_profile_data, self._pending_model_pricing
+                )
             return await self.async_step_model_profile_finish()
         return self.async_show_form(
             step_id="edit_model_profile",

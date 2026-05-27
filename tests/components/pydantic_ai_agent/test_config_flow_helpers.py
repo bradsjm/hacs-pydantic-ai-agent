@@ -17,6 +17,9 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
     _SECTION_SKILLS,
+    _MODEL_PRICING_CACHE_READ,
+    _MODEL_PRICING_INPUT,
+    _MODEL_PRICING_OUTPUT,
     SkillDataValidationError,
     _ai_task_data_from_user_input,
     _ai_task_data_schema,
@@ -28,8 +31,10 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _mcp_url_identity,
     _model_settings_from_options,
     _model_settings_schema,
+    _model_pricing_from_options,
     _normalise_provider_model_profiles,
     _parse_model_settings,
+    _parse_model_pricing,
     _provider_data_matches,
     _provider_model_profiles_for_discovery_mode,
     _selected_skill_error,
@@ -55,6 +60,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_ITERATIONS,
     CONF_MCP_URL,
     CONF_MODEL,
+    CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
@@ -250,6 +256,22 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
     assert cleared == {"seed"}
 
 
+def test_parse_model_pricing_validates_and_clears_fields() -> None:
+    """Test model pricing accepts non-negative floats and blank clears values."""
+    pricing, errors, cleared = _parse_model_pricing(
+        {
+            _MODEL_PRICING_INPUT: "0.4",
+            _MODEL_PRICING_OUTPUT: "-1",
+            _MODEL_PRICING_CACHE_READ: "",
+        },
+        {_MODEL_PRICING_INPUT, _MODEL_PRICING_OUTPUT, _MODEL_PRICING_CACHE_READ},
+    )
+
+    assert pricing == {"input": 0.4}
+    assert errors == {_MODEL_PRICING_OUTPUT: "non_negative_number"}
+    assert cleared == {"cache_read"}
+
+
 def test_model_settings_from_options_sanitizes_persisted_settings() -> None:
     """Test model profile edits keep only supported persisted model settings."""
     assert _model_settings_from_options(
@@ -261,6 +283,20 @@ def test_model_settings_from_options_sanitizes_persisted_settings() -> None:
             }
         }
     ) == {"temperature": 0.2}
+
+
+def test_model_pricing_from_options_sanitizes_persisted_pricing() -> None:
+    """Test model profile edits keep only valid persisted model pricing."""
+    assert _model_pricing_from_options(
+        {
+            CONF_MODEL_PRICING: {
+                "input": 0.4,
+                "output": -1,
+                "cache_read": False,
+                "ignored": 2,
+            }
+        }
+    ) == {"input": 0.4}
 
 
 def test_agent_schemas_group_fallbacks_and_hass_control(

@@ -23,6 +23,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MODEL,
+    CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_HEADERS,
@@ -84,6 +85,7 @@ def _workspace_entry() -> MockConfigEntry:
             "id": "primary-profile",
             CONF_NAME: "Fast GPT",
             CONF_MODEL: "gpt-test",
+            CONF_MODEL_PRICING: {"input": 0.4, "output": 1.6, "cache_read": 0.1},
             CONF_ENABLED: True,
             CONF_DISCOVERED: True,
         },
@@ -151,6 +153,7 @@ def test_resolve_model_profile_reads_provider_owned_profile() -> None:
     assert profile.title == "Fast GPT"
     assert profile.provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS
     assert profile.model_name == "gpt-test"
+    assert profile.model_pricing == {"input": 0.4, "output": 1.6, "cache_read": 0.1}
     assert model_profile_exists(entry, profile.ref) is True
 
 

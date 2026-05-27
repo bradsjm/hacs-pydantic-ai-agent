@@ -105,6 +105,7 @@ class AgentRunOutcome:
     usage: Any
     duration: float
     model_profile: str
+    model_pricing: dict[str, float]
 
 
 @dataclass
@@ -315,6 +316,7 @@ class PydanticAIBaseLLMEntity:
                             usage=result.usage,
                             duration=duration,
                             model_profile=profile.title,
+                            model_pricing=profile.model_pricing,
                         )
 
                     if not has_structure:
@@ -335,6 +337,7 @@ class PydanticAIBaseLLMEntity:
                             usage=result.usage,
                             duration=duration,
                             model_profile=profile.title,
+                            model_pricing=profile.model_pricing,
                         )
 
                     result = await agent.run(
@@ -362,6 +365,7 @@ class PydanticAIBaseLLMEntity:
                         usage=result.usage,
                         duration=duration,
                         model_profile=profile.title,
+                        model_pricing=profile.model_pricing,
                     )
         except Exception:
             _LOGGER.debug("Model profile attempt failed: %s", profile.title)
@@ -424,6 +428,7 @@ class PydanticAIBaseLLMEntity:
             model_profile=outcome.model_profile,
             duration=outcome.duration,
             usage=outcome.usage,
+            model_pricing=outcome.model_pricing,
         )
         fire_integration_event(
             self.hass,

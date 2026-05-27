@@ -184,6 +184,7 @@
         "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",
         "invalid_model": "{error_message}",
         "invalid_number": "Enter a valid number in this field.",
+        "non_negative_number": "Enter zero or a positive number.",
         "invalid_provider_config": "{error_message}",
         "mcp_server_not_found": "Selected MCP server was not found.",
         "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
@@ -344,6 +345,7 @@
         "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",
         "invalid_model": "{error_message}",
         "invalid_number": "Enter a valid number in this field.",
+        "non_negative_number": "Enter zero or a positive number.",
         "invalid_provider_config": "{error_message}",
         "invalid_provider_headers": "{error_message}",
         "model_catalog_unavailable": "The model catalog could not be loaded. Try again or choose custom provider setup.",
@@ -431,6 +433,19 @@
                 "top_p": "Nucleus sampling value. Leave empty to use the provider default."
               },
               "name": "Advanced model settings"
+            },
+            "model_pricing": {
+              "data": {
+                "model_pricing_cache_read": "Cache-read price",
+                "model_pricing_input": "Input price",
+                "model_pricing_output": "Output price"
+              },
+              "data_description": {
+                "model_pricing_cache_read": "USD per 1 million cached input tokens read. Leave empty to clear this price.",
+                "model_pricing_input": "USD per 1 million non-cached input tokens. Leave empty to clear this price.",
+                "model_pricing_output": "USD per 1 million output tokens. Leave empty to clear this price."
+              },
+              "name": "Model pricing"
             }
           },
           "title": "Edit model profile"
