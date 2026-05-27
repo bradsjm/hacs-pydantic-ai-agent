@@ -19,6 +19,7 @@ from homeassistant.helpers.typing import VolDictType
 
 from ...const import (
     CONF_BASE_URL,
+    CONF_CUSTOM_MODEL_NAMES,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     PROVIDER_ANTHROPIC,
@@ -50,6 +51,7 @@ _PROVIDER_EXTRA_BODY_MODES = {
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 }
 _SECTION_ADVANCED_OPTIONS = "advanced_options"
+SECTION_ADVANCED_MODELS = "advanced_models"
 
 
 def provider_selection_schema(
@@ -72,7 +74,9 @@ def driver_selection_schema(provider: CatalogProviderOption) -> vol.Schema:
     """Return an API mode selection schema."""
     return vol.Schema(
         {
-            vol.Required(CONF_DRIVER, default=provider.supported_drivers[0]): SelectSelector(
+            vol.Required(
+                CONF_DRIVER, default=provider.supported_drivers[0]
+            ): SelectSelector(
                 SelectSelectorConfig(
                     options=driver_options(provider),
                     mode=SelectSelectorMode.LIST,
@@ -88,9 +92,9 @@ def connection_schema(
     """Return guided provider connection details schema."""
     data = _flatten_section_data(options, (_SECTION_ADVANCED_OPTIONS,))
     schema: VolDictType = {
-        vol.Required(CONF_NAME, default=data.get(CONF_NAME, provider.name)): TextSelector(
-            TextSelectorConfig()
-        ),
+        vol.Required(
+            CONF_NAME, default=data.get(CONF_NAME, provider.name)
+        ): TextSelector(TextSelectorConfig()),
         vol.Required(CONF_API_KEY, default=data.get(CONF_API_KEY, "")): TextSelector(
             TextSelectorConfig(type=TextSelectorType.PASSWORD)
         ),
@@ -131,7 +135,9 @@ def model_filter_schema(
     return vol.Schema(
         {
             vol.Optional(CONF_FAMILY, default=filters.family or ""): SelectSelector(
-                SelectSelectorConfig(options=family_options, mode=SelectSelectorMode.DROPDOWN)
+                SelectSelectorConfig(
+                    options=family_options, mode=SelectSelectorMode.DROPDOWN
+                )
             ),
             vol.Optional(SECTION_ADVANCED_FILTERS, default={}): section(
                 vol.Schema(
@@ -163,20 +169,33 @@ def model_filter_schema(
 def model_selection_schema(
     models: tuple[CatalogModelOption, ...],
     selected_model_ids: tuple[str, ...] = (),
+    *,
+    custom_model_names: str | None = None,
 ) -> vol.Schema:
     """Return a model multi-select schema."""
     default = list(selected_model_ids or default_selected_model_ids(models))
-    return vol.Schema(
-        {
-            vol.Required(CONF_SELECTED_MODEL_IDS, default=default): SelectSelector(
-                SelectSelectorConfig(
-                    options=model_options(models),
-                    mode=SelectSelectorMode.DROPDOWN,
-                    multiple=True,
-                )
+    schema: VolDictType = {
+        vol.Required(CONF_SELECTED_MODEL_IDS, default=default): SelectSelector(
+            SelectSelectorConfig(
+                options=model_options(models),
+                mode=SelectSelectorMode.DROPDOWN,
+                multiple=True,
             )
-        }
-    )
+        )
+    }
+    if custom_model_names is not None:
+        schema[vol.Optional(SECTION_ADVANCED_MODELS, default={})] = section(
+            vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_CUSTOM_MODEL_NAMES,
+                        default=custom_model_names,
+                    ): TextSelector(TextSelectorConfig(multiline=True))
+                }
+            ),
+            {"collapsed": True},
+        )
+    return vol.Schema(schema)
 
 
 def provider_options(
@@ -188,7 +207,9 @@ def provider_options(
     options = []
     if include_retry:
         options.append(
-            SelectOptionDict(label="Try loading catalog again", value=CATALOG_RETRY_PROVIDER_ID)
+            SelectOptionDict(
+                label="Try loading catalog again", value=CATALOG_RETRY_PROVIDER_ID
+            )
         )
     for provider in providers:
         label = provider.name
@@ -214,7 +235,9 @@ def model_options(models: tuple[CatalogModelOption, ...]) -> list[SelectOptionDi
     duplicate_labels = _duplicate_values(labels_by_id.values())
     return [
         SelectOptionDict(
-            label=_disambiguated_model_label(model, labels_by_id[model.id], duplicate_labels),
+            label=_disambiguated_model_label(
+                model, labels_by_id[model.id], duplicate_labels
+            ),
             value=model.id,
         )
         for model in sorted_models
@@ -237,13 +260,16 @@ def filters_from_user_input(user_input: dict[str, object]) -> ModelFilterOptions
 
 
 def needs_model_filter_step(
-    models: tuple[CatalogModelOption, ...], threshold: int = DEFAULT_MODEL_FILTER_THRESHOLD
+    models: tuple[CatalogModelOption, ...],
+    threshold: int = DEFAULT_MODEL_FILTER_THRESHOLD,
 ) -> bool:
     """Return if model filtering should be shown before model selection."""
     return len(filtered_models(models)) >= threshold
 
 
-def default_selected_model_ids(models: tuple[CatalogModelOption, ...]) -> tuple[str, ...]:
+def default_selected_model_ids(
+    models: tuple[CatalogModelOption, ...],
+) -> tuple[str, ...]:
     """Return model IDs that can be auto-selected."""
     return (models[0].id,) if len(models) == 1 else ()
 

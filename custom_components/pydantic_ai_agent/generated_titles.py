@@ -12,9 +12,7 @@ DEFAULT_WORKSPACE_TITLE_SUFFIX = "Workspace"
 _MAX_TITLE_GENERATION_ATTEMPTS = 5
 
 
-def generated_default_title(
-    suffix: str, existing_titles: Iterable[str] = ()
-) -> str:
+def generated_default_title(suffix: str, existing_titles: Iterable[str] = ()) -> str:
     """Return a capitalized generated title with a fixed suffix."""
     existing = {title.casefold() for title in existing_titles}
     title = ""

@@ -30,6 +30,7 @@ from ..generated_titles import (
     generated_default_title,
 )
 
+
 class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Pydantic AI Agent."""
 

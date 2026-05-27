@@ -106,9 +106,9 @@ def test_filtered_models_can_filter_by_family() -> None:
     """Test family filters narrow model choices."""
     models = (_model("claude", family="claude"), _model("gpt", family="gpt"))
 
-    assert [model.id for model in filtered_models(models, ModelFilterOptions(family="gpt"))] == [
-        "gpt"
-    ]
+    assert [
+        model.id for model in filtered_models(models, ModelFilterOptions(family="gpt"))
+    ] == ["gpt"]
 
 
 def test_normalize_catalog_keeps_supported_compact_data() -> None:
@@ -228,7 +228,10 @@ def test_normalize_catalog_strips_endpoint_shaped_api_url() -> None:
         }
     )
 
-    assert catalog.providers["bailing"].default_base_url == "https://api.tbox.cn/api/llm/v1"
+    assert (
+        catalog.providers["bailing"].default_base_url
+        == "https://api.tbox.cn/api/llm/v1"
+    )
 
 
 def _model(

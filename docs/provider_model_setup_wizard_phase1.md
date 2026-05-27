@@ -198,12 +198,12 @@ Show the step when:
 
 Labels should be user-facing:
 
-| Internal mode                         | Suggested label                         |
-| ------------------------------------- | --------------------------------------- |
-| `openai_compatible_completions`       | Chat Completions                        |
-| `openai_compatible_responses`         | Responses                               |
-| `anthropic`                           | Anthropic                               |
-| `google_gemini`                       | Google Gemini                           |
+| Internal mode                   | Suggested label  |
+| ------------------------------- | ---------------- |
+| `openai_compatible_completions` | Chat Completions |
+| `openai_compatible_responses`   | Responses        |
+| `anthropic`                     | Anthropic        |
+| `google_gemini`                 | Google Gemini    |
 
 For OpenAI, phase 1 may show both Chat Completions and Responses if the
 implementation can produce a clear recommendation. For other OpenAI-compatible
@@ -214,15 +214,15 @@ reliable Responses signal.
 
 Connection details should be prefilled from catalog data when available.
 
-| Field                    | Catalog source or default                                      |
-| ------------------------ | -------------------------------------------------------------- |
-| Provider name            | Provider `name`                                                |
-| Provider mode            | Mapping result from provider and driver selection              |
-| API key                  | Empty password field with hint from provider `env`             |
-| Base URL                 | Provider `api` when compatible and not endpoint-shaped         |
-| Documentation/help text  | Provider `doc`                                                 |
-| Provider headers         | Advanced field, empty by default                               |
-| Provider extra body      | Advanced field, empty by default                               |
+| Field                   | Catalog source or default                              |
+| ----------------------- | ------------------------------------------------------ |
+| Provider name           | Provider `name`                                        |
+| Provider mode           | Mapping result from provider and driver selection      |
+| API key                 | Empty password field with hint from provider `env`     |
+| Base URL                | Provider `api` when compatible and not endpoint-shaped |
+| Documentation/help text | Provider `doc`                                         |
+| Provider headers        | Advanced field, empty by default                       |
+| Provider extra body     | Advanced field, empty by default                       |
 
 When a catalog provider does not need a base URL because the runtime has a native
 default, leave the field empty.
@@ -343,16 +343,16 @@ supported integration drivers.
 
 Phase 1 mapping:
 
-| Catalog condition                                      | Supported mode                         | Notes                                      |
-| ------------------------------------------------------ | -------------------------------------- | ------------------------------------------ |
-| Provider ID `anthropic`                                | `anthropic`                            | Native Anthropic mode only                 |
-| Provider ID `google`                                   | `google_gemini`                        | Gemini Developer API only                  |
-| Provider ID `openai`                                   | `openai_compatible_completions`        | Base URL omitted by default                |
-| Provider ID `openai`                                   | `openai_compatible_responses`          | Explicit choice only                       |
-| `npm == "@ai-sdk/openai-compatible"`                   | `openai_compatible_completions`        | Use provider `api` when valid              |
-| `npm == "@openrouter/ai-sdk-provider"`                 | `openai_compatible_completions`        | Use provider `api` when valid              |
-| Other provider IDs or unsupported SDK/provider shapes  | none                                   | Hide from guided list                      |
-| Custom provider                                        | user-selected supported provider mode  | Manual escape hatch                        |
+| Catalog condition                                     | Supported mode                        | Notes                         |
+| ----------------------------------------------------- | ------------------------------------- | ----------------------------- |
+| Provider ID `anthropic`                               | `anthropic`                           | Native Anthropic mode only    |
+| Provider ID `google`                                  | `google_gemini`                       | Gemini Developer API only     |
+| Provider ID `openai`                                  | `openai_compatible_completions`       | Base URL omitted by default   |
+| Provider ID `openai`                                  | `openai_compatible_responses`         | Explicit choice only          |
+| `npm == "@ai-sdk/openai-compatible"`                  | `openai_compatible_completions`       | Use provider `api` when valid |
+| `npm == "@openrouter/ai-sdk-provider"`                | `openai_compatible_completions`       | Use provider `api` when valid |
+| Other provider IDs or unsupported SDK/provider shapes | none                                  | Hide from guided list         |
+| Custom provider                                       | user-selected supported provider mode | Manual escape hatch           |
 
 Do not expose `npm` or SDK names directly to the user.
 
@@ -547,17 +547,17 @@ provider_wizard/
 
 Responsibilities:
 
-| Module             | Responsibility                                                   |
-| ------------------ | ---------------------------------------------------------------- |
-| `catalog_cache.py` | Shared lazy catalog manager, TTL, cleanup, in-flight task reuse  |
-| `models_dev.py`    | HTTP fetch and raw payload parsing boundary                      |
-| `normalize.py`     | Convert raw catalog data into compact provider/model options     |
-| `mapping.py`       | Map catalog providers to supported integration provider modes    |
-| `filters.py`       | Apply default and advanced model filters                         |
-| `schemas.py`       | Home Assistant form schemas and selector-option construction     |
-| `flow.py`          | Wizard step orchestration and final provider data construction   |
-| `types.py`         | Wizard-only dataclasses and typed structures                     |
-| `const.py`         | Wizard step IDs, cache constants, thresholds, and labels         |
+| Module             | Responsibility                                                  |
+| ------------------ | --------------------------------------------------------------- |
+| `catalog_cache.py` | Shared lazy catalog manager, TTL, cleanup, in-flight task reuse |
+| `models_dev.py`    | HTTP fetch and raw payload parsing boundary                     |
+| `normalize.py`     | Convert raw catalog data into compact provider/model options    |
+| `mapping.py`       | Map catalog providers to supported integration provider modes   |
+| `filters.py`       | Apply default and advanced model filters                        |
+| `schemas.py`       | Home Assistant form schemas and selector-option construction    |
+| `flow.py`          | Wizard step orchestration and final provider data construction  |
+| `types.py`         | Wizard-only dataclasses and typed structures                    |
+| `const.py`         | Wizard step IDs, cache constants, thresholds, and labels        |
 
 Boundary rules:
 

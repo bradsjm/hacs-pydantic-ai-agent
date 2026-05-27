@@ -20,7 +20,10 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import Entity
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pydantic_ai_agent import ProviderRuntimeData, WorkspaceRuntimeData
+from custom_components.pydantic_ai_agent import (
+    ProviderRuntimeData,
+    WorkspaceRuntimeData,
+)
 from custom_components.pydantic_ai_agent.ai_task import (
     PydanticAIAgentAITaskEntity,
     async_setup_entry,

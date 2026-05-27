@@ -128,7 +128,9 @@ def test_catalog_manager_clear_expired_drops_stale_catalog(
     """Test stale compact catalog data is dropped."""
     manager = ProviderWizardCatalogManager(hass)
     manager.catalog = _catalog()
-    manager.loaded_at = dt_util.utcnow() - MODEL_CATALOG_HARD_TTL - MODEL_CATALOG_IDLE_TTL
+    manager.loaded_at = (
+        dt_util.utcnow() - MODEL_CATALOG_HARD_TTL - MODEL_CATALOG_IDLE_TTL
+    )
     manager.last_used_at = dt_util.utcnow() - MODEL_CATALOG_IDLE_TTL
 
     manager.clear_expired()

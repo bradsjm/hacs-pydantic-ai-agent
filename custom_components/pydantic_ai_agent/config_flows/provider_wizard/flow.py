@@ -82,7 +82,9 @@ def selected_models_by_id(
     """Return selected catalog models preserving catalog order."""
     if isinstance(selected_model_ids, str) or not isinstance(selected_model_ids, list):
         return ()
-    selected_ids = {model_id for model_id in selected_model_ids if isinstance(model_id, str)}
+    selected_ids = {
+        model_id for model_id in selected_model_ids if isinstance(model_id, str)
+    }
     return tuple(model for model in models if model.id in selected_ids)
 
 

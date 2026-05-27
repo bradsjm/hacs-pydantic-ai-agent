@@ -61,7 +61,10 @@ async def async_configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bo
     include_content = bool(entry.data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False))
     state = _logfire_state(hass)
     async with state.configure_lock:
-        if state.configured_token is not None and not state.owner_include_content_by_entry_id:
+        if (
+            state.configured_token is not None
+            and not state.owner_include_content_by_entry_id
+        ):
             state.configured_token = None
             state.configured_include_content = False
 

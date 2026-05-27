@@ -28,7 +28,10 @@ from pydantic_ai.capabilities import Thinking, ToolSearch
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
-from custom_components.pydantic_ai_agent import ProviderRuntimeData, WorkspaceRuntimeData
+from custom_components.pydantic_ai_agent import (
+    ProviderRuntimeData,
+    WorkspaceRuntimeData,
+)
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_DEFAULT_MODEL_PROFILE_ID,
@@ -521,11 +524,11 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     ):
         result = await conversation.async_converse(
             hass,
-                "hello",
-                None,
-                Context(),
-                agent_id=garage_entity_id,
-            )
+            "hello",
+            None,
+            Context(),
+            agent_id=garage_entity_id,
+        )
         await hass.async_block_till_done()
 
     assert result.response.speech["plain"]["speech"] == "runtime response"

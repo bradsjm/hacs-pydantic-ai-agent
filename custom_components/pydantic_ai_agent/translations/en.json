@@ -95,11 +95,11 @@
       "error": {
         "cannot_connect": "{error_message}",
         "duplicate_fallback_model": "Select each fallback language model profile only once.",
-        "invalid_skills_folder": "{error_message}",
         "invalid_auth": "{error_message}",
         "invalid_base_url": "{error_message}",
         "invalid_model": "{error_message}",
         "invalid_provider_config": "{error_message}",
+        "invalid_skills_folder": "{error_message}",
         "mcp_server_not_found": "Selected MCP server was not found.",
         "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
         "model_does_not_support_streaming": "{error_message}",
@@ -413,11 +413,11 @@
         "invalid_number": "Enter a valid number in this field.",
         "invalid_provider_config": "{error_message}",
         "invalid_provider_headers": "{error_message}",
-        "model_does_not_support_streaming": "{error_message}",
         "model_catalog_unavailable": "The model catalog could not be loaded. Try again or choose custom provider setup.",
-        "model_required": "Select at least one model.",
+        "model_does_not_support_streaming": "{error_message}",
         "model_list_unavailable": "The provider model list could not be loaded. Enter custom model names or try again.",
         "model_profile_in_use": "A referenced model profile cannot be disabled. Remove it from conversation agents and AI tasks first.",
+        "model_required": "Select at least one model.",
         "no_models_available": "No models match these filters. Adjust filters or choose custom provider setup.",
         "permission_denied": "{error_message}",
         "positive_number": "Enter a number greater than zero.",
@@ -439,7 +439,6 @@
           "data": {
             "api_key": "API key",
             "base_url": "Base URL",
-            "custom_model_names": "Custom model names",
             "name": "Provider name",
             "provider_extra_body": "Extra body",
             "provider_headers": "Provider HTTP headers",
@@ -447,11 +446,10 @@
           },
           "data_description": {
             "base_url": "Optional provider API base URL. Leave empty to use the selected mode's default endpoint.",
-            "custom_model_names": "Optional custom model names, one per line.",
             "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
             "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
           },
-          "description": "Change provider mode, API key, base URL, or custom model list.",
+          "description": "Change provider mode, API key, or base URL.",
           "sections": {
             "advanced_options": {
               "data": {
@@ -463,15 +461,6 @@
                 "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
               },
               "name": "Advanced Options"
-            },
-            "customize_model_list": {
-              "data": {
-                "custom_model_names": "Custom model names (e.g. deepseek-v4-pro)"
-              },
-              "data_description": {
-                "custom_model_names": "One model name per line."
-              },
-              "name": "Override provider model list"
             }
           },
           "title": "Edit provider connection"
@@ -521,7 +510,6 @@
           "data": {
             "api_key": "API key",
             "base_url": "Base URL",
-            "custom_model_names": "Custom model names",
             "name": "Provider name",
             "provider_extra_body": "Extra body",
             "provider_headers": "Provider HTTP headers",
@@ -529,7 +517,6 @@
           },
           "data_description": {
             "base_url": "Optional provider API base URL. Leave empty to use the selected mode's default endpoint.",
-            "custom_model_names": "One model name per line. When set, provider model discovery is disabled.",
             "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
             "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
           },
@@ -545,53 +532,9 @@
                 "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
               },
               "name": "Advanced Options"
-            },
-            "customize_model_list": {
-              "data": {
-                "custom_model_names": "Custom model names"
-              },
-              "data_description": {
-                "custom_model_names": "One model name per line."
-              },
-              "name": "Override provider model list"
             }
           },
           "title": "Configure language model provider"
-        },
-        "model_filters": {
-          "data": {
-            "family": "Model family",
-            "hide_deprecated": "Hide deprecated models",
-            "hide_non_text_output": "Hide models without text output",
-            "hide_without_structured_output": "Hide models known to lack structured output",
-            "hide_without_tool_call": "Hide models without tool calling"
-          },
-          "data_description": {
-            "family": "Limit the model list to one catalog family.",
-            "hide_deprecated": "Deprecated models are hidden by default.",
-            "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
-            "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup.",
-            "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
-          },
-          "description": "In order to reduce the number of models shown, you can select filters to narrow down your model selection in the next step.",
-          "sections": {
-            "advanced_filters": {
-              "data": {
-                "hide_deprecated": "Hide deprecated models",
-                "hide_non_text_output": "Hide models without text output",
-                "hide_without_structured_output": "Hide models known to lack structured output",
-                "hide_without_tool_call": "Hide models without tool calling"
-              },
-              "data_description": {
-                "hide_deprecated": "Deprecated models are hidden by default.",
-                "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
-                "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup.",
-                "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
-              },
-              "name": "Advanced Filters"
-            }
-          },
-          "title": "Filter provider models"
         },
         "manage_model_filters": {
           "data": {
@@ -633,7 +576,53 @@
             "selected_model_ids": "Available models"
           },
           "description": "Select the provider models available to conversation agents and AI tasks.",
+          "sections": {
+            "advanced_models": {
+              "data": {
+                "custom_model_names": "Custom model names"
+              },
+              "data_description": {
+                "custom_model_names": "One model identifier per line. Custom models entered here are managed alongside catalog and discovered models."
+              },
+              "name": "Advanced"
+            }
+          },
           "title": "Manage available models"
+        },
+        "model_filters": {
+          "data": {
+            "family": "Model family",
+            "hide_deprecated": "Hide deprecated models",
+            "hide_non_text_output": "Hide models without text output",
+            "hide_without_structured_output": "Hide models known to lack structured output",
+            "hide_without_tool_call": "Hide models without tool calling"
+          },
+          "data_description": {
+            "family": "Limit the model list to one catalog family.",
+            "hide_deprecated": "Deprecated models are hidden by default.",
+            "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
+            "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup.",
+            "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
+          },
+          "description": "In order to reduce the number of models shown, you can select filters to narrow down your model selection in the next step.",
+          "sections": {
+            "advanced_filters": {
+              "data": {
+                "hide_deprecated": "Hide deprecated models",
+                "hide_non_text_output": "Hide models without text output",
+                "hide_without_structured_output": "Hide models known to lack structured output",
+                "hide_without_tool_call": "Hide models without tool calling"
+              },
+              "data_description": {
+                "hide_deprecated": "Deprecated models are hidden by default.",
+                "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
+                "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup.",
+                "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
+              },
+              "name": "Advanced Filters"
+            }
+          },
+          "title": "Filter provider models"
         },
         "pick_driver": {
           "data": {
@@ -641,6 +630,13 @@
           },
           "description": "Choose how this provider should be called. Chat Completions is the default unless you know the provider supports the Responses API.",
           "title": "Choose provider API mode"
+        },
+        "pick_model_profile": {
+          "data": {
+            "model_profile_id": "Model profile"
+          },
+          "description": "Select an available model profile to customize.",
+          "title": "Select language model"
         },
         "pick_models": {
           "data": {
@@ -655,13 +651,6 @@
           },
           "description": "Choose a provider (from https://models.dev/), or choose custom provider for manual setup.",
           "title": "Choose provider"
-        },
-        "pick_model_profile": {
-          "data": {
-            "model_profile_id": "Model profile"
-          },
-          "description": "Select an available model profile to customize.",
-          "title": "Select language model"
         },
         "reconfigure_menu": {
           "description": "Configure provider connection, available models, and model profile settings.",

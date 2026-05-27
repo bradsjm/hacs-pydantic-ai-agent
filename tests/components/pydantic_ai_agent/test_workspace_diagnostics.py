@@ -57,6 +57,4 @@ async def test_device_diagnostics_resolves_subentry_from_device_identifier(
     diagnostics = await async_get_device_diagnostics(hass, entry, device)
 
     assert diagnostics["device"] == {"subentry_id": subentry_id}
-    assert [item["subentry_id"] for item in diagnostics["subentries"]] == [
-        subentry_id
-    ]
+    assert [item["subentry_id"] for item in diagnostics["subentries"]] == [subentry_id]

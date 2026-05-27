@@ -48,7 +48,9 @@ from custom_components.pydantic_ai_agent.logfire_support import (
 )
 from custom_components.pydantic_ai_agent.metrics import EVENT_MCP_TOOL_REFRESH_COMPLETED
 from custom_components.pydantic_ai_agent.model_profiles import model_profile_ref
-from custom_components.pydantic_ai_agent.provider_validation import ProviderValidationError
+from custom_components.pydantic_ai_agent.provider_validation import (
+    ProviderValidationError,
+)
 from custom_components.pydantic_ai_agent.repairs import model_validation_issue_id
 
 
@@ -314,7 +316,9 @@ async def test_logfire_include_content_is_scoped_per_same_token_owner(
     second_entry.add_to_hass(hass)
 
     with (
-        patch("custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"),
+        patch(
+            "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        ),
         patch.object(
             hass.config_entries,
             "async_forward_entry_setups",
@@ -560,7 +564,9 @@ async def test_setup_entry_model_errors_create_repair_issue(
 ) -> None:
     """Test selected model validation failures create repair issues."""
     profile_ref = model_profile_ref("provider-1", "profile-1")
-    entry = _workspace_entry((_provider_subentry(), _conversation_subentry(profile_ref)))
+    entry = _workspace_entry(
+        (_provider_subentry(), _conversation_subentry(profile_ref))
+    )
     entry.add_to_hass(hass)
 
     with (
@@ -593,7 +599,9 @@ async def test_setup_entry_success_clears_model_validation_repair_issue(
 ) -> None:
     """Test successful setup clears stale model validation repair issues."""
     profile_ref = model_profile_ref("provider-1", "profile-1")
-    entry = _workspace_entry((_provider_subentry(), _conversation_subentry(profile_ref)))
+    entry = _workspace_entry(
+        (_provider_subentry(), _conversation_subentry(profile_ref))
+    )
     entry.add_to_hass(hass)
     issue_id = model_validation_issue_id(entry, profile_ref, {})
     ir.async_create_issue(

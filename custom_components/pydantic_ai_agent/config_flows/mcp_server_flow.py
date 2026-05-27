@@ -30,6 +30,7 @@ from .common import (
     vol,
 )
 
+
 class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing remote MCP server subentries."""
 

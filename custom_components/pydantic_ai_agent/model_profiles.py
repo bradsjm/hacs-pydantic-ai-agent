@@ -252,6 +252,17 @@ def model_display_names(profiles: list[ResolvedModelProfile]) -> list[str]:
     return [f"{profile.provider_title} / {profile.title}" for profile in profiles]
 
 
+def model_profile_display_name(profile: Mapping[str, Any]) -> str:
+    """Return the user-facing display name for one persisted model profile."""
+    name = profile.get(CONF_NAME)
+    if isinstance(name, str) and name.strip():
+        return name
+    model_name = profile.get(CONF_MODEL)
+    if isinstance(model_name, str):
+        return model_name
+    return ""
+
+
 def chat_model_for_profile(
     hass: Any,
     entry: PydanticAIAgentConfigEntry,
@@ -290,7 +301,4 @@ def _profile_enabled(profile: Mapping[str, Any]) -> bool:
 
 def _profile_title(profile: Mapping[str, Any], model_name: str) -> str:
     """Return a human-readable profile title."""
-    name = profile.get(CONF_NAME)
-    if isinstance(name, str) and name.strip():
-        return name
-    return model_name
+    return model_profile_display_name(profile) or model_name

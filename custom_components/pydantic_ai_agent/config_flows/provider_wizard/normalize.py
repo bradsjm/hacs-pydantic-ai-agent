@@ -40,7 +40,9 @@ def normalize_catalog(payload: Mapping[str, object]) -> CompactCatalog:
     providers: dict[str, CatalogProviderOption] = {}
     models_by_provider: dict[str, tuple[CatalogModelOption, ...]] = {}
     for raw_provider_id, raw_provider in payload.items():
-        if not isinstance(raw_provider_id, str) or not isinstance(raw_provider, Mapping):
+        if not isinstance(raw_provider_id, str) or not isinstance(
+            raw_provider, Mapping
+        ):
             continue
         provider_id = _string(raw_provider.get("id")) or raw_provider_id
         supported_drivers = supported_drivers_for_provider(
@@ -130,7 +132,9 @@ def _strip_endpoint_suffix(value: str) -> str:
     for ending in _ENDPOINT_PATH_ENDINGS:
         if path.endswith(ending):
             return urlunparse(parsed._replace(path=parsed.path[: -len(ending)]))
-    segments = tuple(segment for segment in parsed.path.rstrip("/").split("/") if segment)
+    segments = tuple(
+        segment for segment in parsed.path.rstrip("/").split("/") if segment
+    )
     lowered = tuple(segment.lower() for segment in segments)
     for suffix in _ENDPOINT_SUFFIXES:
         if len(lowered) >= len(suffix) and lowered[-len(suffix) :] == suffix:

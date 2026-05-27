@@ -125,12 +125,16 @@ def test_connection_schema_hides_extra_body_for_google() -> None:
 def test_connection_schema_shows_extra_body_for_supported_modes() -> None:
     """Test guided setup shows extra body only for supported provider modes."""
     assert _schema_has_key(
-        connection_schema(_provider("openai"), PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS, {}),
+        connection_schema(
+            _provider("openai"), PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS, {}
+        ),
         CONF_PROVIDER_EXTRA_BODY,
         nested=True,
     )
     assert _schema_has_key(
-        connection_schema(_provider("openai"), PROVIDER_OPENAI_COMPATIBLE_RESPONSES, {}),
+        connection_schema(
+            _provider("openai"), PROVIDER_OPENAI_COMPATIBLE_RESPONSES, {}
+        ),
         CONF_PROVIDER_EXTRA_BODY,
         nested=True,
     )
@@ -242,7 +246,9 @@ def test_build_model_profiles_enables_selected_models() -> None:
 
 def test_build_provider_data_uses_runtime_provider_schema() -> None:
     """Test guided provider data matches the runtime provider subentry shape."""
-    provider = _provider("deepseek", name="DeepSeek", base_url="https://api.deepseek.com")
+    provider = _provider(
+        "deepseek", name="DeepSeek", base_url="https://api.deepseek.com"
+    )
     data = build_provider_data(
         provider,
         provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,

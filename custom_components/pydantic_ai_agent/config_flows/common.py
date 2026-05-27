@@ -156,6 +156,7 @@ from ..mcp import (
 )
 from ..model_profiles import (
     configured_model_profile_exists,
+    model_profile_display_name,
     model_profile_ref,
     parse_model_profile_ref,
     provider_model_profiles,
@@ -466,27 +467,7 @@ def _provider_schema(
 ) -> vol.Schema:
     """Return the provider subentry schema."""
     options = dict(options or {})
-    schema_dict: VolDictType = dict(_provider_connection_schema(options).schema)
-    schema_dict[vol.Optional(_SECTION_CUSTOMIZE_MODEL_LIST, default={})] = section(
-        _provider_model_selection_schema(options),
-        {"collapsed": True},
-    )
-    return vol.Schema(schema_dict)
-
-
-def _provider_model_selection_schema(
-    options: Mapping[str, Any] | None = None,
-) -> vol.Schema:
-    """Return the provider model-selection schema."""
-    options = dict(options or {})
-    return vol.Schema(
-        {
-            vol.Optional(
-                CONF_CUSTOM_MODEL_NAMES,
-                default=_format_custom_model_names(options),
-            ): TextSelector(TextSelectorConfig(multiline=True))
-        }
-    )
+    return _provider_connection_schema(options)
 
 
 def _normalise_base_url(data: Mapping[str, Any]) -> str | None:
@@ -842,12 +823,7 @@ def _provider_profile_options(
             continue
         if model_ids is not None and model_name not in model_ids:
             continue
-        profile_name = profile.get(CONF_NAME)
-        label = (
-            str(profile_name)
-            if isinstance(profile_name, str) and profile_name.strip()
-            else model_name
-        )
+        label = model_profile_display_name(profile)
         if not enabled:
             label = f"{label} (disabled)"
         options.append(SelectOptionDict(label=label, value=profile_id))
@@ -895,7 +871,7 @@ def _model_profile_edit_schema(
 ) -> vol.Schema:
     """Return the provider-owned model profile edit schema."""
     options: dict[str, Any] = {
-        CONF_NAME: profile.get(CONF_NAME, profile.get(CONF_MODEL, "")),
+        CONF_NAME: model_profile_display_name(profile),
         CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {}),
     }
     schema: VolDictType = {
@@ -906,15 +882,6 @@ def _model_profile_edit_schema(
     if not bool(profile.get(CONF_DISCOVERED, False)):
         schema[vol.Required(CONF_MODEL, default=profile.get(CONF_MODEL, ""))] = (
             TextSelector(TextSelectorConfig())
-        )
-    else:
-        schema[vol.Required(CONF_MODEL, default=profile.get(CONF_MODEL, ""))] = (
-            SelectSelector(
-                SelectSelectorConfig(
-                    options=[str(profile.get(CONF_MODEL, ""))],
-                    mode=SelectSelectorMode.DROPDOWN,
-                )
-            )
         )
     schema[
         vol.Optional(
@@ -1007,12 +974,7 @@ def _model_profile_select_options(entry: ConfigEntry | None) -> list[SelectOptio
             model_name = profile.get(CONF_MODEL)
             if not isinstance(model_name, str) or not model_name.strip():
                 continue
-            profile_name = profile.get(CONF_NAME)
-            label = (
-                str(profile_name)
-                if isinstance(profile_name, str) and profile_name.strip()
-                else model_name
-            )
+            label = model_profile_display_name(profile)
             options.append(
                 SelectOptionDict(
                     label=f"{provider_subentry.title} / {label}",
