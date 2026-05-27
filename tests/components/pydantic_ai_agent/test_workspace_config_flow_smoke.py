@@ -138,8 +138,6 @@ def test_provider_edit_connection_translations_cover_rendered_schema() -> None:
         CONF_PROVIDER_MODE,
         CONF_API_KEY,
         CONF_BASE_URL,
-        CONF_PROVIDER_EXTRA_BODY,
-        CONF_PROVIDER_HEADERS,
     }
     assert set(step["sections"]) >= {"advanced_options"}
     assert step["sections"]["advanced_options"]["name"] == "Advanced Options"
@@ -147,6 +145,8 @@ def test_provider_edit_connection_translations_cover_rendered_schema() -> None:
         CONF_PROVIDER_EXTRA_BODY,
         CONF_PROVIDER_HEADERS,
     }
+    assert CONF_PROVIDER_EXTRA_BODY not in step["data"]
+    assert CONF_PROVIDER_HEADERS not in step["data"]
     assert CONF_CUSTOM_MODEL_NAMES not in step["data"]
     assert "customize_model_list" not in step["sections"]
     manage_models = translations["config_subentries"]["provider"]["step"][
