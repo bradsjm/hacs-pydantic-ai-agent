@@ -345,10 +345,26 @@ def _agent_form_suggested_values(
         if hass is not None:
             valid_api_ids = {api.id for api in llm.async_get_apis(hass)}
             llm_hass_api = [api for api in llm_hass_api if api in valid_api_ids]
-        suggested_values[_SECTION_HASS_CONTROL] = {
-            CONF_LLM_HASS_API: llm_hass_api
-        }
+        suggested_values[_SECTION_HASS_CONTROL] = {CONF_LLM_HASS_API: llm_hass_api}
     return suggested_values
+
+
+def _section_defaults(section_schema: VolDictType) -> dict[str, Any]:
+    """Return defaults for an expandable section from its nested fields."""
+    defaults: dict[str, Any] = {}
+    for key in section_schema:
+        if (
+            isinstance(key, vol.Marker)
+            and isinstance(key.schema, str)
+            and not isinstance(key.default, vol.Undefined)
+        ):
+            defaults[key.schema] = key.default()
+    return defaults
+
+
+def _section_schema_key(section_name: str, section_schema: VolDictType) -> vol.Optional:
+    """Return a section marker whose default mirrors its nested schema values."""
+    return vol.Optional(section_name, default=_section_defaults(section_schema))
 
 
 def _parse_provider_headers(value: object) -> dict[str, str]:
@@ -1278,8 +1294,8 @@ def _conversation_schema(
                 translation_key=CONF_FALLBACK_MODEL_REFS,
             )
         )
-        schema[vol.Optional(_SECTION_FALLBACK_MODELS, default={})] = section(
-            vol.Schema(fallback_schema), {"collapsed": True}
+        schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = (
+            section(vol.Schema(fallback_schema), {"collapsed": True})
         )
     api_schema_key = vol.Optional(CONF_LLM_HASS_API)
     if CONF_LLM_HASS_API in options:
@@ -1291,7 +1307,7 @@ def _conversation_schema(
     hass_control_schema[api_schema_key] = SelectSelector(
         SelectSelectorConfig(options=hass_apis, multiple=True)
     )
-    schema[vol.Optional(_SECTION_HASS_CONTROL, default={})] = section(
+    schema[_section_schema_key(_SECTION_HASS_CONTROL, hass_control_schema)] = section(
         vol.Schema(hass_control_schema), {"collapsed": True}
     )
     external_tools_schema: VolDictType = {}
@@ -1319,12 +1335,12 @@ def _conversation_schema(
             default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
         )
     ] = BooleanSelector()
-    schema[vol.Optional(_SECTION_EXTERNAL_TOOLS, default={})] = section(
-        vol.Schema(external_tools_schema), {"collapsed": True}
+    schema[_section_schema_key(_SECTION_EXTERNAL_TOOLS, external_tools_schema)] = (
+        section(vol.Schema(external_tools_schema), {"collapsed": True})
     )
     skills_schema: VolDictType = {}
     _append_skill_schema_fields(skills_schema, options, available_skills)
-    schema[vol.Optional(_SECTION_SKILLS, default={})] = section(
+    schema[_section_schema_key(_SECTION_SKILLS, skills_schema)] = section(
         vol.Schema(skills_schema), {"collapsed": True}
     )
     return vol.Schema(schema)
@@ -1881,8 +1897,8 @@ def _ai_task_data_schema(
                 translation_key=CONF_FALLBACK_MODEL_REFS,
             )
         )
-        schema[vol.Optional(_SECTION_FALLBACK_MODELS, default={})] = section(
-            vol.Schema(fallback_schema), {"collapsed": True}
+        schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = (
+            section(vol.Schema(fallback_schema), {"collapsed": True})
         )
     api_schema_key = vol.Optional(CONF_LLM_HASS_API)
     if CONF_LLM_HASS_API in options:
@@ -1894,7 +1910,7 @@ def _ai_task_data_schema(
     hass_control_schema[api_schema_key] = SelectSelector(
         SelectSelectorConfig(options=hass_apis, multiple=True)
     )
-    schema[vol.Optional(_SECTION_HASS_CONTROL, default={})] = section(
+    schema[_section_schema_key(_SECTION_HASS_CONTROL, hass_control_schema)] = section(
         vol.Schema(hass_control_schema), {"collapsed": True}
     )
     external_tools_schema: VolDictType = {}
@@ -1945,12 +1961,12 @@ def _ai_task_data_schema(
             translation_key=CONF_OUTPUT_MODE,
         )
     )
-    schema[vol.Optional(_SECTION_EXTERNAL_TOOLS, default={})] = section(
-        vol.Schema(external_tools_schema), {"collapsed": True}
+    schema[_section_schema_key(_SECTION_EXTERNAL_TOOLS, external_tools_schema)] = (
+        section(vol.Schema(external_tools_schema), {"collapsed": True})
     )
     skills_schema: VolDictType = {}
     _append_skill_schema_fields(skills_schema, options, available_skills)
-    schema[vol.Optional(_SECTION_SKILLS, default={})] = section(
+    schema[_section_schema_key(_SECTION_SKILLS, skills_schema)] = section(
         vol.Schema(skills_schema), {"collapsed": True}
     )
     return vol.Schema(schema)

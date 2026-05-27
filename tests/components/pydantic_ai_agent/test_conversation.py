@@ -600,6 +600,7 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     assert _state(hass, "sensor.garage_agent_last_error_type") == "unknown"
     assert _state(hass, "binary_sensor.garage_agent_provider_healthy") == "on"
     assert _state(hass, "binary_sensor.garage_agent_last_run_succeeded") == "on"
+    assert _state(hass, "binary_sensor.garage_agent_assist_enabled") == "off"
     garage_subentry = next(
         subentry
         for subentry in entry.subentries.values()

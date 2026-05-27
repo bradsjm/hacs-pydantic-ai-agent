@@ -1,7 +1,6 @@
 """Constants for Pydantic AI Agent."""
 
 from homeassistant.const import CONF_LLM_HASS_API
-from homeassistant.helpers import llm
 
 DOMAIN = "pydantic_ai_agent"
 
@@ -86,7 +85,6 @@ def default_conversation_options() -> dict[str, object]:
     """Return default conversation subentry options."""
     return {
         CONF_AGENT_NAME: DEFAULT_AGENT_NAME,
-        CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
     }
 
 

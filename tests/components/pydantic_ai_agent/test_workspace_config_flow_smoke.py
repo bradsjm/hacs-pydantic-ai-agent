@@ -8,11 +8,13 @@ from typing import Any, cast
 from unittest.mock import patch
 
 import voluptuous as vol
+import voluptuous_serialize
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import config_validation as cv
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -126,6 +128,30 @@ def _section_field_suggested_value(
                 assert field_key.description is not None
                 return field_key.description["suggested_value"]
     raise AssertionError(f"Section field {section_name}.{field} not found")
+
+
+def _section_default(data_schema: vol.Schema | None, section_name: str) -> Any:
+    """Return a section default from a flow schema."""
+    assert data_schema is not None
+    for section_key in data_schema.schema:
+        if section_key.schema == section_name:
+            return section_key.default()
+    raise AssertionError(f"Section {section_name} not found")
+
+
+def _serialized_section_default(
+    data_schema: vol.Schema | None, section_name: str
+) -> Any:
+    """Return the section default serialized for the config-flow frontend."""
+    assert data_schema is not None
+    serialized_schema = voluptuous_serialize.convert(
+        data_schema, custom_serializer=cv.custom_serializer
+    )
+    assert isinstance(serialized_schema, list)
+    for field in serialized_schema:
+        if field["name"] == section_name:
+            return field.get("default")
+    raise AssertionError(f"Serialized section {section_name} not found")
 
 
 def test_provider_edit_connection_translations_cover_rendered_schema() -> None:
@@ -306,24 +332,94 @@ async def test_reconfigure_forms_prefill_llm_hass_api_in_control_section(
     assert _SECTION_HASS_CONTROL in _schema_key_names(
         conversation_result["data_schema"]
     )
-    assert (
-        _section_field_suggested_value(
-            conversation_result["data_schema"],
-            _SECTION_HASS_CONTROL,
-            CONF_LLM_HASS_API,
-        )
-        == ["assist"]
-    )
+    assert _section_default(
+        conversation_result["data_schema"], _SECTION_HASS_CONTROL
+    ) == {CONF_LLM_HASS_API: ["assist"]}
+    assert _serialized_section_default(
+        conversation_result["data_schema"], _SECTION_HASS_CONTROL
+    ) == {CONF_LLM_HASS_API: ["assist"]}
+    assert _section_field_suggested_value(
+        conversation_result["data_schema"],
+        _SECTION_HASS_CONTROL,
+        CONF_LLM_HASS_API,
+    ) == ["assist"]
     assert ai_task_result["type"] is FlowResultType.FORM
     assert _SECTION_HASS_CONTROL in _schema_key_names(ai_task_result["data_schema"])
-    assert (
-        _section_field_suggested_value(
-            ai_task_result["data_schema"],
-            _SECTION_HASS_CONTROL,
-            CONF_LLM_HASS_API,
-        )
-        == ["assist"]
+    assert _section_default(ai_task_result["data_schema"], _SECTION_HASS_CONTROL) == {
+        CONF_LLM_HASS_API: ["assist"]
+    }
+    assert _serialized_section_default(
+        ai_task_result["data_schema"], _SECTION_HASS_CONTROL
+    ) == {CONF_LLM_HASS_API: ["assist"]}
+    assert _section_field_suggested_value(
+        ai_task_result["data_schema"],
+        _SECTION_HASS_CONTROL,
+        CONF_LLM_HASS_API,
+    ) == ["assist"]
+
+
+async def test_conversation_reconfigure_assist_round_trips_to_form_section(
+    hass: HomeAssistant,
+) -> None:
+    """Test enabling Assist in reconfigure remains selected on the next edit."""
+    profile_ref = "provider-1:profile-1"
+    conversation_subentry_id = "conversation-1"
+    entry = await _loaded_workspace_entry(
+        hass,
+        (
+            _provider_subentry_data(),
+            {
+                "subentry_id": conversation_subentry_id,
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Kitchen Agent",
+                "unique_id": None,
+                "data": {
+                    CONF_AGENT_NAME: "Kitchen Agent",
+                    CONF_PRIMARY_MODEL_REF: profile_ref,
+                },
+            },
+        ),
     )
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": conversation_subentry_id,
+        },
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert CONF_LLM_HASS_API not in entry.subentries[conversation_subentry_id].data
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_PRIMARY_MODEL_REF: profile_ref,
+            _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: ["assist"]},
+        },
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert entry.subentries[conversation_subentry_id].data[CONF_LLM_HASS_API] == [
+        "assist"
+    ]
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": conversation_subentry_id,
+        },
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert _section_default(result["data_schema"], _SECTION_HASS_CONTROL) == {
+        CONF_LLM_HASS_API: ["assist"]
+    }
+    assert _serialized_section_default(
+        result["data_schema"], _SECTION_HASS_CONTROL
+    ) == {CONF_LLM_HASS_API: ["assist"]}
 
 
 async def test_provider_edit_connection_preserves_catalog_metadata(
@@ -1651,6 +1747,7 @@ async def test_conversation_entity_streaming_supports_model_profile_ref(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_PRIMARY_MODEL_REF] == profile_ref
+    assert CONF_LLM_HASS_API not in result["data"]
     entry.runtime_data = WorkspaceRuntimeData(
         workspace_name="Workspace",
         providers={
@@ -1687,9 +1784,8 @@ async def test_conversation_entity_streaming_supports_model_profile_ref(
     assert (
         PydanticAIConversationEntity(entry, plain_subentry).supports_streaming is True
     )
-    assert (
-        PydanticAIConversationEntity(entry, tool_subentry).supports_streaming is True
-    )
+    assert PydanticAIConversationEntity(entry, plain_subentry).supported_features == 0
+    assert PydanticAIConversationEntity(entry, tool_subentry).supports_streaming is True
 
 
 async def test_conversation_disabled_skills_ignores_invalid_folder(
