@@ -1,54 +1,31 @@
 """Test Pydantic AI Agent AI task entities."""
 
-from collections.abc import AsyncGenerator, Iterable
-from contextlib import asynccontextmanager
-import json
+from collections.abc import Iterable
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from pydantic_ai import ModelResponse, TextPart, ToolCallPart
+from pydantic_ai import ModelResponse, ToolCallPart
 from pydantic_ai.capabilities import Thinking
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.output import NativeOutput, PromptedOutput, ToolOutput
 import voluptuous as vol
 
-from homeassistant import config_entries
 from homeassistant.components import ai_task
-from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import Entity
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pydantic_ai_agent import (
-    ProviderRuntimeData,
-    WorkspaceRuntimeData,
-)
 from custom_components.pydantic_ai_agent.ai_task import (
     PydanticAIAgentAITaskEntity,
     async_setup_entry,
 )
 from custom_components.pydantic_ai_agent.const import (
-    CONF_AI_TASK_NAME,
-    CONF_DEFAULT_MODEL_PROFILE_ID,
-    CONF_ENABLED,
     CONF_MAX_ITERATIONS,
-    CONF_MODEL,
-    CONF_MODEL_PROFILES,
-    CONF_MODEL_SETTINGS,
-    CONF_OUTPUT_MODE,
-    CONF_PRIMARY_MODEL_REF,
-    CONF_PROVIDER_MODE,
-    CONF_SKILLS,
-    CONF_TODO_LIST_ENTITY_ID,
-    CONF_WEB_FETCH_ENABLED,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
-    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-    SUBENTRY_TYPE_AI_TASK,
-    SUBENTRY_TYPE_PROVIDER,
 )
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
@@ -57,46 +34,21 @@ from custom_components.pydantic_ai_agent.metrics import (
     EVENT_AGENT_RUN_FAILED,
     EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED,
 )
+from tests.components.pydantic_ai_agent.support.builders import (
+    ai_task_subentry_data,
+    provider_runtime_data,
+    provider_subentry_data,
+    workspace_entry,
+    workspace_runtime_data,
+)
+from tests.components.pydantic_ai_agent.support.pydantic_ai import (
+    Agent as _Agent,
+    agent_factory as _agent_factory,
+)
 
 _PROVIDER_SUBENTRY_ID = "provider-1"
 _MODEL_PROFILE_ID = "task-profile"
 _MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
-
-
-class _Usage:
-    """Minimal Pydantic AI usage test double."""
-
-    input_tokens = 20
-    output_tokens = 5
-    total_tokens = 25
-    requests = 2
-    tool_calls = 1
-
-    def opentelemetry_attributes(self) -> dict[str, int]:
-        """Return deterministic token usage attributes."""
-        return {
-            "gen_ai.usage.input_tokens": 20,
-            "gen_ai.usage.output_tokens": 5,
-        }
-
-
-class _TextStream:
-    """Async iterator over text chunks."""
-
-    def __init__(self, *events: object) -> None:
-        """Initialize the event stream."""
-        self._events = iter(events)
-
-    def __aiter__(self) -> "_TextStream":
-        """Return the async iterator."""
-        return self
-
-    async def __anext__(self) -> object:
-        """Return the next stream event."""
-        try:
-            return next(self._events)
-        except StopIteration as err:
-            raise StopAsyncIteration from err
 
 
 def _entry(
@@ -110,68 +62,31 @@ def _entry(
     todo_workspace_entity_id: str | None = None,
 ) -> MockConfigEntry:
     """Return a config entry with one AI task subentry."""
-    subentry_data: dict[str, object] = {
-        CONF_PRIMARY_MODEL_REF: _MODEL_PROFILE_REF,
-    }
-    if include_task_name:
-        subentry_data[CONF_AI_TASK_NAME] = "Report task"
-    if output_mode is not None:
-        subentry_data[CONF_OUTPUT_MODE] = output_mode
-    if skills is not None:
-        subentry_data[CONF_SKILLS] = skills
-    if web_fetch_enabled:
-        subentry_data[CONF_WEB_FETCH_ENABLED] = True
-    if todo_workspace_entity_id is not None:
-        subentry_data[CONF_TODO_LIST_ENTITY_ID] = todo_workspace_entity_id
-    model_profile: dict[str, object] = {
-        "id": _MODEL_PROFILE_ID,
-        CONF_NAME: "Task Model",
-        CONF_MODEL: "task-model",
-        CONF_ENABLED: True,
-    }
-    if model_settings is not None:
-        model_profile[CONF_MODEL_SETTINGS] = model_settings
-
-    entry = MockConfigEntry(
-        version=2,
-        minor_version=0,
-        domain=DOMAIN,
-        title="Workspace",
-        data={CONF_NAME: "Workspace"},
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "data": subentry_data,
-                "subentry_type": SUBENTRY_TYPE_AI_TASK,
-                "title": subentry_title,
-                "unique_id": None,
-            },
-            {
-                "subentry_id": _PROVIDER_SUBENTRY_ID,
-                "data": {
-                    CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-                    CONF_API_KEY: "sk-test",
-                    CONF_MODEL_PROFILES: {_MODEL_PROFILE_ID: model_profile},
-                    CONF_DEFAULT_MODEL_PROFILE_ID: _MODEL_PROFILE_ID,
-                },
-                "subentry_type": SUBENTRY_TYPE_PROVIDER,
-                "title": "Hosted OpenAI",
-                "unique_id": None,
-            },
-        ),
-        options={},
-        unique_id=None,
+    entry = workspace_entry(
+        (
+            ai_task_subentry_data(
+                _MODEL_PROFILE_REF,
+                title=subentry_title,
+                task_name="Report task" if include_task_name else None,
+                output_mode=output_mode,
+                skills=skills,
+                web_fetch_enabled=web_fetch_enabled,
+                todo_workspace_entity_id=todo_workspace_entity_id,
+            ),
+            provider_subentry_data(
+                subentry_id=_PROVIDER_SUBENTRY_ID,
+                title="Hosted OpenAI",
+                profile_id=_MODEL_PROFILE_ID,
+                profile_name="Task Model",
+                model="task-model",
+                model_settings=model_settings,
+            ),
+        )
     )
-    entry.runtime_data = WorkspaceRuntimeData(
-        workspace_name="Workspace",
+    entry.runtime_data = workspace_runtime_data(
         providers={
-            _PROVIDER_SUBENTRY_ID: ProviderRuntimeData(
-                provider_subentry_id=_PROVIDER_SUBENTRY_ID,
-                name="Hosted OpenAI",
-                api_key="sk-test",
-                provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-                base_url=None,
+            _PROVIDER_SUBENTRY_ID: provider_runtime_data(
+                subentry_id=_PROVIDER_SUBENTRY_ID, name="Hosted OpenAI"
             )
         },
     )
@@ -207,102 +122,6 @@ async def _setup_ai_task_entity(
     entity_ids = [state.entity_id for state in hass.states.async_all("ai_task")]
     assert len(entity_ids) == 1
     return entity_ids[0]
-
-
-class _StreamResult:
-    """Minimal Agent streamed result for AI task tests."""
-
-    def __init__(self, text: str) -> None:
-        """Initialize the streamed result."""
-        self._text = text
-
-    def stream_text(self, *, delta: bool = False) -> _TextStream:
-        """Return streamed text chunks."""
-        del delta
-        return _TextStream(self._text)
-
-    def get_output(self) -> str:
-        """Return final output."""
-        return self._text
-
-    def new_messages(self) -> list[ModelResponse]:
-        """Return final Agent messages."""
-        return [ModelResponse(parts=[TextPart(content=self._text)])]
-
-
-class _RunResult:
-    """Minimal Agent run result for AI task tests."""
-
-    def __init__(
-        self, output: object, messages: list[ModelResponse] | None = None
-    ) -> None:
-        """Initialize the run result."""
-        self.output = output
-        self._messages = messages
-        self.usage = _Usage()
-
-    def new_messages(self) -> list[ModelResponse]:
-        """Return final Agent messages."""
-        if self._messages is not None:
-            return self._messages
-        content = (
-            self.output if isinstance(self.output, str) else json.dumps(self.output)
-        )
-        return [ModelResponse(parts=[TextPart(content=content)])]
-
-
-class _Agent:
-    """Minimal async-context Agent test double."""
-
-    def __init__(
-        self,
-        *,
-        stream_text: str = "",
-        output: object = None,
-        messages: list[ModelResponse] | None = None,
-    ) -> None:
-        """Initialize the agent."""
-        self._stream_text = stream_text
-        self._output = output
-        self._messages = messages
-        self.run_kwargs: dict[str, object] = {}
-
-    async def __aenter__(self) -> "_Agent":
-        """Enter the agent context."""
-        return self
-
-    async def __aexit__(self, *_args: object) -> None:
-        """Exit the agent context."""
-
-    @asynccontextmanager
-    async def run_stream(
-        self, *_args: object, **_kwargs: object
-    ) -> AsyncGenerator[_StreamResult]:
-        """Return a deterministic streamed result."""
-        yield _StreamResult(self._stream_text)
-
-    async def run(self, *_args: object, **kwargs: object) -> _RunResult:
-        """Return a deterministic run result."""
-        self.run_kwargs = kwargs
-        return _RunResult(self._output, self._messages)
-
-
-def _agent_factory(
-    *,
-    stream_text: str = "",
-    output: object = None,
-    messages: list[ModelResponse] | None = None,
-):
-    """Return an Agent constructor test double."""
-
-    def factory(*_args: object, **_kwargs: object) -> _Agent:
-        return _Agent(
-            stream_text=stream_text,
-            output=stream_text if output is None else output,
-            messages=messages,
-        )
-
-    return factory
 
 
 def _assert_context_management_capability(capabilities: list[object]) -> None:

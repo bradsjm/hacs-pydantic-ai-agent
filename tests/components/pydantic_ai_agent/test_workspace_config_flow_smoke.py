@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
-import voluptuous as vol
 import voluptuous_serialize
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigSubentry
@@ -79,6 +78,14 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types impo
 from custom_components.pydantic_ai_agent.config_flows.common import (
     _SECTION_HASS_CONTROL,
 )
+from tests.components.pydantic_ai_agent.support.schemas import (
+    schema_default as _schema_default,
+    schema_key_names as _schema_key_names,
+    schema_select_options as _schema_select_options,
+    section_default as _section_default,
+    section_field_suggested_value as _section_field_suggested_value,
+    serialized_section_default as _serialized_section_default,
+)
 
 _TRANSLATIONS_PATH = (
     Path(__file__).parents[3]
@@ -87,70 +94,6 @@ _TRANSLATIONS_PATH = (
     / "translations"
     / "en.json"
 )
-
-
-def _schema_default(data_schema: vol.Schema | None, field: str) -> Any:
-    """Return a voluptuous top-level field default from a flow schema."""
-    assert data_schema is not None
-    for key in data_schema.schema:
-        if key.schema == field:
-            return key.default()
-    raise AssertionError(f"Schema field {field} not found")
-
-
-def _schema_select_options(data_schema: vol.Schema | None, field: str) -> list[Any]:
-    """Return selector options for a voluptuous top-level field."""
-    assert data_schema is not None
-    for key, selector in data_schema.schema.items():
-        if key.schema == field:
-            return list(selector.config["options"])
-    raise AssertionError(f"Schema field {field} not found")
-
-
-def _schema_key_names(data_schema: vol.Schema | None) -> set[str]:
-    """Return top-level field names from a flow schema."""
-    assert data_schema is not None
-    return {key.schema for key in data_schema.schema}
-
-
-def _section_field_suggested_value(
-    data_schema: vol.Schema | None, section_name: str, field: str
-) -> Any:
-    """Return a sectioned field suggested value from a flow schema."""
-    assert data_schema is not None
-    for section_key, section_value in data_schema.schema.items():
-        if section_key.schema != section_name:
-            continue
-        for field_key in section_value.schema.schema:
-            if field_key.schema == field:
-                assert field_key.description is not None
-                return field_key.description["suggested_value"]
-    raise AssertionError(f"Section field {section_name}.{field} not found")
-
-
-def _section_default(data_schema: vol.Schema | None, section_name: str) -> Any:
-    """Return a section default from a flow schema."""
-    assert data_schema is not None
-    for section_key in data_schema.schema:
-        if section_key.schema == section_name:
-            return section_key.default()
-    raise AssertionError(f"Section {section_name} not found")
-
-
-def _serialized_section_default(
-    data_schema: vol.Schema | None, section_name: str
-) -> Any:
-    """Return the section default serialized for the config-flow frontend."""
-    assert data_schema is not None
-    serialized_schema = voluptuous_serialize.convert(
-        data_schema, custom_serializer=cv.custom_serializer
-    )
-    assert isinstance(serialized_schema, list)
-    for field in serialized_schema:
-        if field["name"] == section_name:
-            return field.get("default")
-    raise AssertionError(f"Serialized section {section_name} not found")
-
 
 def test_provider_edit_connection_translations_cover_rendered_schema() -> None:
     """Test edit-connection fields and sections have translations."""

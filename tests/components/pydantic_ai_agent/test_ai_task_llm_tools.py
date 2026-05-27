@@ -4,28 +4,23 @@ from typing import Any, cast
 
 import pytest
 
-from homeassistant import config_entries
 from homeassistant.components import ai_task, conversation
 from homeassistant.components.ai_task.const import (
     DEFAULT_SYSTEM_PROMPT,
     DOMAIN as AI_TASK_DOMAIN,
 )
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
+from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.helpers import llm
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent.ai_task import PydanticAIAgentAITaskEntity
 from custom_components.pydantic_ai_agent.const import (
-    CONF_AI_TASK_NAME,
-    CONF_ENABLED,
-    CONF_MODEL,
-    CONF_MODEL_PROFILES,
-    CONF_PRIMARY_MODEL_REF,
-    CONF_PROVIDER_MODE,
-    DOMAIN,
-    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_AI_TASK,
-    SUBENTRY_TYPE_PROVIDER,
+)
+from tests.components.pydantic_ai_agent.support.builders import (
+    ai_task_subentry_data,
+    provider_subentry_data,
+    workspace_entry,
 )
 
 _PROVIDER_SUBENTRY_ID = "provider"
@@ -65,49 +60,24 @@ class _ChatLog:
 
 def _entry(llm_hass_api: list[str] | None = None) -> MockConfigEntry:
     """Return a config entry with one provider and one AI task subentry."""
-    task_data: dict[str, object] = {
-        CONF_AI_TASK_NAME: "Report task",
-        CONF_PRIMARY_MODEL_REF: _MODEL_PROFILE_REF,
-    }
+    extra_data: dict[str, object] = {}
     if llm_hass_api is not None:
-        task_data[CONF_LLM_HASS_API] = llm_hass_api
-
-    return MockConfigEntry(
-        version=2,
-        minor_version=0,
-        domain=DOMAIN,
-        title="Workspace",
-        data={CONF_NAME: "Workspace"},
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "subentry_id": _PROVIDER_SUBENTRY_ID,
-                "data": {
-                    CONF_NAME: "Provider",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-                    CONF_API_KEY: "sk-test",
-                    CONF_MODEL_PROFILES: {
-                        _MODEL_PROFILE_ID: {
-                            "id": _MODEL_PROFILE_ID,
-                            CONF_NAME: "Primary",
-                            CONF_MODEL: "gpt-test",
-                            CONF_ENABLED: True,
-                        }
-                    },
-                },
-                "subentry_type": SUBENTRY_TYPE_PROVIDER,
-                "title": "Provider",
-                "unique_id": None,
-            },
-            {
-                "data": task_data,
-                "subentry_type": SUBENTRY_TYPE_AI_TASK,
-                "title": "Report task",
-                "unique_id": None,
-            },
-        ),
-        options={},
-        unique_id=None,
+        extra_data[CONF_LLM_HASS_API] = llm_hass_api
+    return workspace_entry(
+        (
+            provider_subentry_data(
+                subentry_id=_PROVIDER_SUBENTRY_ID,
+                title="Provider",
+                profile_id=_MODEL_PROFILE_ID,
+                profile_name="Primary",
+            ),
+            ai_task_subentry_data(
+                _MODEL_PROFILE_REF,
+                title="Report task",
+                task_name="Report task",
+                extra_data=extra_data,
+            ),
+        )
     )
 
 

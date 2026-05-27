@@ -1,57 +1,35 @@
 """Test Pydantic AI Agent conversation entities."""
 
-from collections.abc import AsyncGenerator, AsyncIterator, Iterable
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterable
 import sys
 from types import SimpleNamespace
-from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from homeassistant import config_entries
 from homeassistant.components import conversation
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME, __version__
+from homeassistant.const import CONF_NAME, __version__
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers import llm
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pydantic_ai import (
-    AgentRunResultEvent,
     FunctionToolset,
     ModelRequest,
     ModelResponse,
-    PartStartEvent,
     TextPart,
 )
 from pydantic_ai.capabilities import Thinking, ToolSearch
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
-from custom_components.pydantic_ai_agent import (
-    ProviderRuntimeData,
-    WorkspaceRuntimeData,
-)
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
-    CONF_DEFAULT_MODEL_PROFILE_ID,
-    CONF_ENABLED,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
-    CONF_MCP_SERVER_IDS,
-    CONF_MODEL,
-    CONF_MODEL_PROFILES,
-    CONF_MODEL_SETTINGS,
-    CONF_PRIMARY_MODEL_REF,
-    CONF_PROVIDER_MODE,
-    CONF_SKILLS,
-    CONF_WEB_FETCH_ENABLED,
     DOMAIN,
     OUTPUT_MODE_TOOL,
-    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-    SUBENTRY_TYPE_CONVERSATION,
-    SUBENTRY_TYPE_PROVIDER,
 )
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
@@ -61,130 +39,21 @@ from custom_components.pydantic_ai_agent.conversation import (
     async_setup_entry,
 )
 from custom_components.pydantic_ai_agent.metrics import EVENT_AGENT_RUN_COMPLETED
+from tests.components.pydantic_ai_agent.support.builders import (
+    conversation_subentry_data,
+    model_profile_data,
+    provider_runtime_data,
+    provider_subentry_data,
+    workspace_entry,
+    workspace_runtime_data,
+)
+from tests.components.pydantic_ai_agent.support.pydantic_ai import (
+    ConversationAgent as _Agent,
+)
 
 _PROVIDER_SUBENTRY_ID = "provider-1"
 _MODEL_PROFILE_ID = "model-profile-1"
 _MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
-
-
-class _TextStream:
-    """Async iterator over text chunks."""
-
-    def __init__(self, text: str) -> None:
-        """Initialize the event stream."""
-        self._events = iter((text,))
-
-    def __aiter__(self) -> "_TextStream":
-        """Return the async iterator."""
-        return self
-
-    async def __anext__(self) -> object:
-        """Return the next stream event."""
-        try:
-            return next(self._events)
-        except StopIteration as err:
-            raise StopAsyncIteration from err
-
-
-class _EventStream:
-    """Async iterator over Pydantic AI stream events."""
-
-    def __init__(self, events: Iterable[object]) -> None:
-        """Initialize the event stream."""
-        self._events = iter(events)
-
-    def __aiter__(self) -> "_EventStream":
-        """Return the async iterator."""
-        return self
-
-    async def __anext__(self) -> object:
-        """Return the next stream event."""
-        try:
-            return next(self._events)
-        except StopIteration as err:
-            raise StopAsyncIteration from err
-
-
-class _Usage:
-    """Minimal Pydantic AI usage test double."""
-
-    input_tokens = 10
-    output_tokens = 2
-    total_tokens = 12
-    requests = 1
-    tool_calls = 3
-
-    def opentelemetry_attributes(self) -> dict[str, int]:
-        """Return deterministic token usage attributes."""
-        return {
-            "gen_ai.usage.input_tokens": 10,
-            "gen_ai.usage.output_tokens": 2,
-        }
-
-
-class _StreamResult:
-    """Minimal Agent streamed result for conversation tests."""
-
-    output = "runtime response"
-    usage = _Usage()
-
-    def stream_text(self, *, delta: bool = False) -> _TextStream:
-        """Return streamed text chunks."""
-        del delta
-        return _TextStream("runtime response")
-
-    def get_output(self) -> str:
-        """Return final output."""
-        return "runtime response"
-
-    def new_messages(self) -> list[ModelResponse]:
-        """Return final Agent messages."""
-        return [ModelResponse(parts=[TextPart(content="runtime response")])]
-
-
-class _Agent:
-    """Minimal async-context Agent test double."""
-
-    def __init__(self) -> None:
-        """Initialize recorded run state."""
-        self.run_kwargs: dict[str, object] = {}
-        self.run_calls = 0
-        self.run_stream_events_calls = 0
-
-    async def __aenter__(self) -> "_Agent":
-        """Enter the agent context."""
-        return self
-
-    async def __aexit__(self, *_args: object) -> None:
-        """Exit the agent context."""
-
-    @asynccontextmanager
-    async def run_stream_events(
-        self, *_args: object, **kwargs: object
-    ) -> AsyncGenerator[_EventStream]:
-        """Return deterministic streamed Agent events."""
-        self.run_stream_events_calls += 1
-        self.run_kwargs = kwargs
-        result = _StreamResult()
-        yield _EventStream(
-            (
-                PartStartEvent(index=0, part=TextPart(content="runtime response")),
-                AgentRunResultEvent(cast(Any, result)),
-            )
-        )
-
-    @asynccontextmanager
-    async def run_stream(
-        self, *_args: object, **_kwargs: object
-    ) -> AsyncGenerator[_StreamResult]:
-        """Return a deterministic streamed result."""
-        yield _StreamResult()
-
-    async def run(self, *_args: object, **kwargs: object) -> _StreamResult:
-        """Return a deterministic run result."""
-        self.run_calls += 1
-        self.run_kwargs = kwargs
-        return _StreamResult()
 
 
 def _entry(
@@ -196,68 +65,27 @@ def _entry(
     model_settings: dict[str, object] | None = None,
 ) -> MockConfigEntry:
     """Return a config entry with one conversation subentry."""
-    subentry_data: dict[str, object] = {
-        CONF_AGENT_NAME: "Kitchen Agent",
-        CONF_PRIMARY_MODEL_REF: _MODEL_PROFILE_REF,
-    }
-    if llm_hass_api is not None:
-        subentry_data[CONF_LLM_HASS_API] = llm_hass_api
-    if skills is not None:
-        subentry_data[CONF_SKILLS] = skills
-    if mcp_server_ids is not None:
-        subentry_data[CONF_MCP_SERVER_IDS] = mcp_server_ids
-    if web_fetch_enabled:
-        subentry_data[CONF_WEB_FETCH_ENABLED] = True
-
-    model_profile: dict[str, object] = {
-        "id": _MODEL_PROFILE_ID,
-        CONF_NAME: "Fast GPT",
-        CONF_MODEL: "gpt-test",
-        CONF_ENABLED: True,
-    }
-    if model_settings is not None:
-        model_profile[CONF_MODEL_SETTINGS] = model_settings
-
-    entry = MockConfigEntry(
-        version=2,
-        minor_version=0,
-        domain=DOMAIN,
-        title="Workspace",
-        data={CONF_NAME: "Workspace"},
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "data": subentry_data,
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-            {
-                "subentry_id": _PROVIDER_SUBENTRY_ID,
-                "data": {
-                    CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-                    CONF_API_KEY: "sk-test",
-                    CONF_MODEL_PROFILES: {_MODEL_PROFILE_ID: model_profile},
-                    CONF_DEFAULT_MODEL_PROFILE_ID: _MODEL_PROFILE_ID,
-                },
-                "subentry_type": SUBENTRY_TYPE_PROVIDER,
-                "title": "Hosted OpenAI",
-                "unique_id": None,
-            },
-        ),
-        options={},
-        unique_id=None,
+    entry = workspace_entry(
+        (
+            conversation_subentry_data(
+                _MODEL_PROFILE_REF,
+                llm_hass_api=llm_hass_api,
+                skills=skills,
+                mcp_server_ids=mcp_server_ids,
+                web_fetch_enabled=web_fetch_enabled,
+            ),
+            provider_subentry_data(
+                subentry_id=_PROVIDER_SUBENTRY_ID,
+                title="Hosted OpenAI",
+                profile_id=_MODEL_PROFILE_ID,
+                model_settings=model_settings,
+            ),
+        )
     )
-    entry.runtime_data = WorkspaceRuntimeData(
-        workspace_name="Workspace",
+    entry.runtime_data = workspace_runtime_data(
         providers={
-            _PROVIDER_SUBENTRY_ID: ProviderRuntimeData(
-                provider_subentry_id=_PROVIDER_SUBENTRY_ID,
-                name="Hosted OpenAI",
-                api_key="sk-test",
-                provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-                base_url=None,
+            _PROVIDER_SUBENTRY_ID: provider_runtime_data(
+                subentry_id=_PROVIDER_SUBENTRY_ID, name="Hosted OpenAI"
             )
         },
     )
@@ -272,71 +100,42 @@ def _entry_with_conversation_subentries(*, logfire: bool = False) -> MockConfigE
         data[CONF_LOGFIRE_INCLUDE_CONTENT] = True
     kitchen_profile_id = "kitchen-model"
     garage_profile_id = "garage-model"
-    entry = MockConfigEntry(
-        version=2,
-        minor_version=0,
-        domain=DOMAIN,
-        title="Workspace",
-        data=data,
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Kitchen Agent",
-                    CONF_PRIMARY_MODEL_REF: f"{_PROVIDER_SUBENTRY_ID}:{kitchen_profile_id}",
+    entry = workspace_entry(
+        (
+            conversation_subentry_data(
+                f"{_PROVIDER_SUBENTRY_ID}:{kitchen_profile_id}",
+                title="Kitchen Agent",
+                agent_name="Kitchen Agent",
+            ),
+            conversation_subentry_data(
+                f"{_PROVIDER_SUBENTRY_ID}:{garage_profile_id}",
+                title="Garage Agent",
+                agent_name="Garage Agent",
+            ),
+            provider_subentry_data(
+                subentry_id=_PROVIDER_SUBENTRY_ID,
+                title="Hosted OpenAI",
+                model_profiles={
+                    kitchen_profile_id: model_profile_data(
+                        profile_id=kitchen_profile_id,
+                        name="Kitchen Model",
+                        model="gpt-kitchen",
+                    ),
+                    garage_profile_id: model_profile_data(
+                        profile_id=garage_profile_id,
+                        name="Garage Model",
+                        model="gpt-garage",
+                    ),
                 },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Kitchen Agent",
-                "unique_id": None,
-            },
-            {
-                "data": {
-                    CONF_AGENT_NAME: "Garage Agent",
-                    CONF_PRIMARY_MODEL_REF: f"{_PROVIDER_SUBENTRY_ID}:{garage_profile_id}",
-                },
-                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-                "title": "Garage Agent",
-                "unique_id": None,
-            },
-            {
-                "subentry_id": _PROVIDER_SUBENTRY_ID,
-                "data": {
-                    CONF_NAME: "Hosted OpenAI",
-                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-                    CONF_API_KEY: "sk-test",
-                    CONF_MODEL_PROFILES: {
-                        kitchen_profile_id: {
-                            "id": kitchen_profile_id,
-                            CONF_NAME: "Kitchen Model",
-                            CONF_MODEL: "gpt-kitchen",
-                            CONF_ENABLED: True,
-                        },
-                        garage_profile_id: {
-                            "id": garage_profile_id,
-                            CONF_NAME: "Garage Model",
-                            CONF_MODEL: "gpt-garage",
-                            CONF_ENABLED: True,
-                        },
-                    },
-                    CONF_DEFAULT_MODEL_PROFILE_ID: kitchen_profile_id,
-                },
-                "subentry_type": SUBENTRY_TYPE_PROVIDER,
-                "title": "Hosted OpenAI",
-                "unique_id": None,
-            },
+                default_model_profile_id=kitchen_profile_id,
+            ),
         ),
-        options={},
-        unique_id=None,
+        data=data,
     )
-    entry.runtime_data = WorkspaceRuntimeData(
-        workspace_name="Workspace",
+    entry.runtime_data = workspace_runtime_data(
         providers={
-            _PROVIDER_SUBENTRY_ID: ProviderRuntimeData(
-                provider_subentry_id=_PROVIDER_SUBENTRY_ID,
-                name="Hosted OpenAI",
-                api_key="sk-test",
-                provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-                base_url=None,
+            _PROVIDER_SUBENTRY_ID: provider_runtime_data(
+                subentry_id=_PROVIDER_SUBENTRY_ID, name="Hosted OpenAI"
             )
         },
         logfire_enabled=logfire,

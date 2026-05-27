@@ -7,7 +7,6 @@ import ssl
 import httpx
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 import pytest
-import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
@@ -75,6 +74,9 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_SKILL,
 )
 from custom_components.pydantic_ai_agent.mcp import MCPValidationError
+from tests.components.pydantic_ai_agent.support.schemas import (
+    schema_key_names as _schema_key_names,
+)
 
 
 def test_http_error_formats_redacted_compact_metadata() -> None:
@@ -259,11 +261,6 @@ def test_model_settings_from_options_sanitizes_persisted_settings() -> None:
             }
         }
     ) == {"temperature": 0.2}
-
-
-def _schema_key_names(data_schema: vol.Schema) -> set[str]:
-    """Return top-level voluptuous schema key names."""
-    return {key.schema for key in data_schema.schema}
 
 
 def test_agent_schemas_group_fallbacks_and_hass_control(

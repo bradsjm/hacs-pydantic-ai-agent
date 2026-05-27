@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from unittest.mock import AsyncMock, call, patch
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_NAME, Platform
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 import pytest
@@ -20,26 +20,10 @@ from custom_components.pydantic_ai_agent import (
     async_unload_entry,
 )
 from custom_components.pydantic_ai_agent.const import (
-    CONF_AGENT_NAME,
-    CONF_DEFAULT_MODEL_PROFILE_ID,
-    CONF_DISCOVERED,
-    CONF_ENABLED,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
-    CONF_MCP_URL,
-    CONF_MODEL,
-    CONF_MODEL_PROFILES,
-    CONF_MODEL_SETTINGS,
-    CONF_OUTPUT_MODE,
-    CONF_PRIMARY_MODEL_REF,
-    CONF_PROVIDER_MODE,
     DOMAIN,
     OUTPUT_MODE_TOOL,
-    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-    SUBENTRY_TYPE_AI_TASK,
-    SUBENTRY_TYPE_CONVERSATION,
-    SUBENTRY_TYPE_MCP_SERVER,
-    SUBENTRY_TYPE_PROVIDER,
 )
 from custom_components.pydantic_ai_agent.logfire_support import (
     async_release_logfire,
@@ -52,6 +36,13 @@ from custom_components.pydantic_ai_agent.provider_validation import (
     ProviderValidationError,
 )
 from custom_components.pydantic_ai_agent.repairs import model_validation_issue_id
+from tests.components.pydantic_ai_agent.support.builders import (
+    ai_task_subentry_data,
+    conversation_subentry_data,
+    mcp_server_subentry_data,
+    provider_subentry_data,
+    workspace_entry,
+)
 
 
 def _provider_subentry(
@@ -61,89 +52,41 @@ def _provider_subentry(
     model: str = "gpt-test",
     model_settings: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Return a provider subentry with one embedded model profile."""
-    profile: dict[str, object] = {
-        "id": profile_id,
-        CONF_NAME: "Fast GPT",
-        CONF_MODEL: model,
-        CONF_ENABLED: True,
-        CONF_DISCOVERED: True,
-    }
-    if model_settings is not None:
-        profile[CONF_MODEL_SETTINGS] = dict(model_settings)
-    return {
-        "subentry_id": subentry_id,
-        "subentry_type": SUBENTRY_TYPE_PROVIDER,
-        "title": "OpenAI-compatible",
-        "unique_id": None,
-        "data": {
-            CONF_NAME: "OpenAI-compatible",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-            CONF_API_KEY: "sk-test",
-            CONF_MODEL_PROFILES: {profile_id: profile},
-            CONF_DEFAULT_MODEL_PROFILE_ID: profile_id,
-        },
-    }
+    """Return a provider subentry with setup-specific defaults."""
+    return provider_subentry_data(
+        subentry_id=subentry_id,
+        profile_id=profile_id,
+        model=model,
+        model_settings=model_settings,
+        discovered=True,
+    )
 
 
 def _conversation_subentry(profile_ref: str) -> dict[str, object]:
-    """Return a conversation subentry using a model profile ref."""
-    return {
-        "subentry_id": "conversation-1",
-        "subentry_type": SUBENTRY_TYPE_CONVERSATION,
-        "title": "Kitchen Agent",
-        "unique_id": None,
-        "data": {CONF_AGENT_NAME: "Kitchen Agent", CONF_PRIMARY_MODEL_REF: profile_ref},
-    }
+    """Return a conversation subentry using setup-specific defaults."""
+    return conversation_subentry_data(profile_ref, subentry_id="conversation-1")
 
 
 def _ai_task_subentry(profile_ref: str) -> dict[str, object]:
-    """Return an AI task subentry using a model profile ref."""
-    return {
-        "subentry_id": "ai-task-1",
-        "subentry_type": SUBENTRY_TYPE_AI_TASK,
-        "title": "Report task",
-        "unique_id": None,
-        "data": {
-            CONF_PRIMARY_MODEL_REF: profile_ref,
-            CONF_OUTPUT_MODE: OUTPUT_MODE_TOOL,
-        },
-    }
+    """Return an AI task subentry using setup-specific defaults."""
+    return ai_task_subentry_data(
+        profile_ref,
+        subentry_id="ai-task-1",
+        output_mode=OUTPUT_MODE_TOOL,
+    )
 
 
 def _mcp_server_subentry() -> dict[str, object]:
-    """Return an MCP server subentry."""
-    return {
-        "subentry_id": "mcp-server-1",
-        "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
-        "title": "Filesystem MCP",
-        "unique_id": None,
-        "data": {
-            CONF_NAME: "Filesystem MCP",
-            CONF_MCP_URL: "https://mcp.example.com/mcp",
-        },
-    }
+    """Return an MCP server subentry using setup-specific defaults."""
+    return mcp_server_subentry_data()
 
 
 def _workspace_entry(
     subentries_data: tuple[dict[str, object], ...] = (),
     data: Mapping[str, object] | None = None,
 ) -> MockConfigEntry:
-    """Return a workspace config entry."""
-    entry_data: dict[str, object] = {CONF_NAME: "Workspace"}
-    if data is not None:
-        entry_data.update(data)
-    return MockConfigEntry(
-        domain=DOMAIN,
-        title="Workspace",
-        data=entry_data,
-        source=config_entries.SOURCE_USER,
-        subentries_data=subentries_data,
-        options={},
-        unique_id=None,
-        version=2,
-        minor_version=0,
-    )
+    """Return a workspace config entry using setup-specific defaults."""
+    return workspace_entry(subentries_data, data=data)
 
 
 def test_platforms_include_conversation_ai_task_and_diagnostics() -> None:
