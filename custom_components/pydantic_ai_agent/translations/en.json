@@ -32,13 +32,7 @@
     "step": {
       "reconfigure": {
         "data": {
-          "logfire_include_content": "Include prompt and response content in Logfire",
-          "logfire_token": "Logfire token",
           "name": "Workspace name"
-        },
-        "data_description": {
-          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
-          "logfire_token": "Optional Logfire (https://pydantic.dev/logfire) write token for Pydantic AI traces. Leave blank to disable Logfire for this workspace."
         },
         "description": "Update workspace settings for providers, agents, AI tasks, and MCP servers.",
         "sections": {
@@ -58,13 +52,7 @@
       },
       "user": {
         "data": {
-          "logfire_include_content": "Include prompt and response content in Logfire",
-          "logfire_token": "Logfire token",
           "name": "Workspace name"
-        },
-        "data_description": {
-          "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
-          "logfire_token": "Optional Logfire (https://pydantic.dev/logfire) write token for Pydantic AI traces. Leave blank to disable Logfire for this workspace."
         },
         "description": "Create a workspace for providers, conversation agents, AI tasks, and MCP servers.",
         "sections": {
@@ -127,29 +115,11 @@
         "init": {
           "data": {
             "ai_task_name": "Task name",
-            "enable_skill_script_execution": "Allow skill script execution",
-            "enable_skills": "Enable skills",
-            "fallback_model_refs": "Fallback language model profiles",
-            "llm_hass_api": "Control Home Assistant",
-            "mcp_server_ids": "MCP servers",
             "output_mode": "Structured output mode",
-            "primary_model_ref": "Primary language model profile",
-            "skills": "Skills",
-            "skills_folder": "Skills folder",
-            "todo_list_entity_id": "Todo workspace list",
-            "web_fetch_enabled": "Web fetch"
+            "primary_model_ref": "Primary language model profile"
           },
           "data_description": {
-            "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
-            "enable_skills": "Allow this AI task to load selected local skills.",
-            "fallback_model_refs": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure.",
-            "llm_hass_api": "Select which tools the model can use to interact with your devices and entities.",
-            "mcp_server_ids": "Optional MCP servers this AI task may use. Only enabled tools will be made available.",
-            "output_mode": "Tool output is the default and works with providers that support tool calls. Native uses the provider's JSON schema support. Prompted asks for JSON in the prompt and validates the result.",
-            "skills": "Optional local skills this AI task may load from its configured skills folder.",
-            "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
-            "todo_list_entity_id": "Optional dedicated todo list for model planning. When set, this list is cleared before every AI task run and the model can only manage items in this list.",
-            "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
+            "output_mode": "Tool output is the default and works with providers that support tool calls. Native uses the provider's JSON schema support. Prompted asks for JSON in the prompt and validates the result."
           },
           "description": "Name this AI task and choose its language model profile for Home Assistant data generation.",
           "sections": {
@@ -246,27 +216,11 @@
         "init": {
           "data": {
             "agent_name": "Agent name",
-            "enable_skill_script_execution": "Allow skill script execution",
-            "enable_skills": "Enable skills",
-            "fallback_model_refs": "Fallback language model profiles",
-            "llm_hass_api": "Control Home Assistant",
-            "mcp_server_ids": "MCP servers",
             "primary_model_ref": "Primary language model profile",
-            "prompt": "Instructions",
-            "skills": "Skills",
-            "skills_folder": "Skills folder",
-            "web_fetch_enabled": "Web fetch"
+            "prompt": "Instructions"
           },
           "data_description": {
-            "enable_skill_script_execution": "Warning: enabling this lets selected skills run local scripts from the skills folder. Only enable it for skills you trust.",
-            "enable_skills": "Allow this conversation agent to load selected local skills.",
-            "fallback_model_refs": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure.",
-            "llm_hass_api": "Select which tools the model can use to interact with your devices and entities.",
-            "mcp_server_ids": "Optional MCP servers this conversation agent may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
-            "prompt": "System instructions for the language model. Supports Home Assistant templates.",
-            "skills": "Optional local skills this conversation agent may load from its configured skills folder.",
-            "skills_folder": "Local folder containing pydantic-ai-skills directories. Use /config/skills or one of its subfolders.",
-            "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
+            "prompt": "System instructions for the language model. Supports Home Assistant templates."
           },
           "description": "Choose the language model profile and Home Assistant tool access for this conversation agent.",
           "sections": {
@@ -347,16 +301,10 @@
       "step": {
         "init": {
           "data": {
-            "mcp_deferred_loading": "Defer tool loading",
-            "mcp_headers": "HTTP headers",
-            "mcp_include_return_schema": "Include tool return schemas",
             "mcp_url": "MCP server URL",
             "name": "Server name"
           },
           "data_description": {
-            "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools.",
-            "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
-            "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility.",
             "mcp_url": "HTTP or HTTPS URL for the remote Streamable HTTP MCP endpoint. HTTPS is recommended when using headers or sensitive tool data."
           },
           "description": "Add a remote Streamable HTTP MCP server. Once added, you can assign it to conversation agents or AI tasks.",
@@ -440,14 +388,10 @@
             "api_key": "API key",
             "base_url": "Base URL",
             "name": "Provider name",
-            "provider_extra_body": "Extra body",
-            "provider_headers": "Provider HTTP headers",
             "provider_mode": "Provider mode"
           },
           "data_description": {
-            "base_url": "Optional provider API base URL. Leave empty to use the selected mode's default endpoint.",
-            "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
-            "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+            "base_url": "Optional provider API base URL. Leave empty to use the selected mode's default endpoint."
           },
           "description": "Change provider mode, API key, or base URL.",
           "sections": {
@@ -457,7 +401,7 @@
                 "provider_headers": "Provider HTTP headers"
               },
               "data_description": {
-                "provider_extra_body": "Provider-specific request body fields sent with every model request for this provider.",
+                "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
                 "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
               },
               "name": "Advanced Options"
@@ -511,14 +455,10 @@
             "api_key": "API key",
             "base_url": "Base URL",
             "name": "Provider name",
-            "provider_extra_body": "Extra body",
-            "provider_headers": "Provider HTTP headers",
             "provider_mode": "Provider mode"
           },
           "data_description": {
-            "base_url": "Optional provider API base URL. Leave empty to use the selected mode's default endpoint.",
-            "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
-            "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+            "base_url": "Optional provider API base URL. Leave empty to use the selected mode's default endpoint."
           },
           "description": "Configure a provider connection. Once configured, use the menu option to enable the desired models.",
           "sections": {
@@ -528,7 +468,7 @@
                 "provider_headers": "Provider HTTP headers"
               },
               "data_description": {
-                "provider_extra_body": "Provider-specific request body fields sent with every model request for this provider.",
+                "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
                 "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
               },
               "name": "Advanced Options"
@@ -538,18 +478,10 @@
         },
         "manage_model_filters": {
           "data": {
-            "family": "Model family",
-            "hide_deprecated": "Hide deprecated models",
-            "hide_non_text_output": "Hide models without text output",
-            "hide_without_structured_output": "Hide models known to lack structured output",
-            "hide_without_tool_call": "Hide models without tool calling"
+            "family": "Model family filter (optional)"
           },
           "data_description": {
-            "family": "Limit the model list to one catalog family.",
-            "hide_deprecated": "Deprecated models are hidden by default.",
-            "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
-            "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup.",
-            "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
+            "family": "Limit the model list to a specific family."
           },
           "description": "Filter models before selecting which ones are available to agents and tasks.",
           "sections": {
@@ -563,7 +495,7 @@
               "data_description": {
                 "hide_deprecated": "Deprecated models are hidden by default.",
                 "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
-                "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup..",
+                "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup.",
                 "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
               },
               "name": "Advanced Filters"
@@ -587,22 +519,14 @@
               "name": "Advanced"
             }
           },
-          "title": "Manage available models"
+          "title": "Add or remove enabled models"
         },
         "model_filters": {
           "data": {
-            "family": "Model family",
-            "hide_deprecated": "Hide deprecated models",
-            "hide_non_text_output": "Hide models without text output",
-            "hide_without_structured_output": "Hide models known to lack structured output",
-            "hide_without_tool_call": "Hide models without tool calling"
+            "family": "Model family filter (optional)"
           },
           "data_description": {
-            "family": "Limit the model list to one catalog family.",
-            "hide_deprecated": "Deprecated models are hidden by default.",
-            "hide_non_text_output": "Models without text output are hidden by default because conversation and AI task responses require text.",
-            "hide_without_structured_output": "Models known to lack native structured output are hidden by default for reliable AI task setup.",
-            "hide_without_tool_call": "Models without tool calling are hidden by default because Home Assistant control and tool output require tools."
+            "family": "Limit the model list to a specific family."
           },
           "description": "In order to reduce the number of models shown, you can select filters to narrow down your model selection in the next step.",
           "sections": {
@@ -655,9 +579,9 @@
         "reconfigure_menu": {
           "description": "Configure provider connection, available models, and model profile settings.",
           "menu_options": {
-            "customize_model_profile": "Edit available model",
+            "customize_model_profile": "Edit model configuration",
             "edit_connection": "Edit provider connection",
-            "manage_models": "Manage available models"
+            "manage_models": "Add or remove enabled models"
           },
           "title": "Configure models and provider"
         },
@@ -665,14 +589,10 @@
           "data": {
             "api_key": "API key",
             "base_url": "Base URL",
-            "name": "Provider name",
-            "provider_extra_body": "Extra body",
-            "provider_headers": "Provider HTTP headers"
+            "name": "Provider name"
           },
           "data_description": {
-            "base_url": "Optional provider API base URL. Catalog providers prefill this when available.",
-            "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted.",
-            "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+            "base_url": "Optional provider API base URL. Catalog providers prefill this when available."
           },
           "description": "Enter credentials and connection details for the selected provider.",
           "sections": {
@@ -682,7 +602,7 @@
                 "provider_headers": "Provider HTTP headers"
               },
               "data_description": {
-                "provider_extra_body": "Provider-specific request body fields sent with every model request for this provider.",
+                "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted.",
                 "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
               },
               "name": "Advanced Options"
