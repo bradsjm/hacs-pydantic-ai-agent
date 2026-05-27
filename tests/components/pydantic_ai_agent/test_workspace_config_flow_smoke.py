@@ -1688,7 +1688,7 @@ async def test_conversation_entity_streaming_supports_model_profile_ref(
         PydanticAIConversationEntity(entry, plain_subentry).supports_streaming is True
     )
     assert (
-        PydanticAIConversationEntity(entry, tool_subentry).supports_streaming is False
+        PydanticAIConversationEntity(entry, tool_subentry).supports_streaming is True
     )
 
 

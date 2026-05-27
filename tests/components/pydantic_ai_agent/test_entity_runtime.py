@@ -11,6 +11,8 @@ import httpx
 import pytest
 from pydantic_ai import (
     AgentRunResultEvent,
+    FunctionToolCallEvent,
+    FunctionToolResultEvent,
     ModelRequest,
     ModelResponse,
     PartDeltaEvent,
@@ -302,6 +304,48 @@ async def test_agent_events_to_chat_deltas_does_not_replay_final_result() -> Non
     )
 
     assert deltas == [{"role": "assistant"}, {"content": "hel"}, {"content": "lo"}]
+    assert final_result is result
+
+
+async def test_agent_events_to_chat_deltas_streams_tool_call_sequence() -> None:
+    """Test live tool call and result events are forwarded in stream order."""
+    result = object()
+    deltas, final_result = await _collect_event_deltas(
+        [
+            PartStartEvent(index=0, part=TextPart(content="turning ")),
+            FunctionToolCallEvent(
+                ToolCallPart(
+                    tool_name="HassTurnOn",
+                    args={"name": "Kitchen"},
+                    tool_call_id="tool-1",
+                )
+            ),
+            FunctionToolResultEvent(
+                ToolReturnPart(
+                    tool_name="HassTurnOn",
+                    content={"success": True},
+                    tool_call_id="tool-1",
+                )
+            ),
+            PartStartEvent(index=0, part=TextPart(content="done")),
+            AgentRunResultEvent(cast(Any, result)),
+        ]
+    )
+
+    tool_call = deltas[2]["tool_calls"][0]
+    assert deltas[0] == {"role": "assistant"}
+    assert deltas[1] == {"content": "turning "}
+    assert tool_call.tool_name == "HassTurnOn"
+    assert tool_call.tool_args == {"name": "Kitchen"}
+    assert tool_call.id == "tool-1"
+    assert tool_call.external is True
+    assert deltas[3] == {
+        "role": "tool_result",
+        "tool_call_id": "tool-1",
+        "tool_name": "HassTurnOn",
+        "tool_result": {"success": True},
+    }
+    assert deltas[4:] == [{"role": "assistant"}, {"content": "done"}]
     assert final_result is result
 
 

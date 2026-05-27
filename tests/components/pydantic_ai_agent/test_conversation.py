@@ -40,6 +40,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
+    CONF_MCP_SERVER_IDS,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
@@ -148,6 +149,8 @@ class _Agent:
     def __init__(self) -> None:
         """Initialize recorded run state."""
         self.run_kwargs: dict[str, object] = {}
+        self.run_calls = 0
+        self.run_stream_events_calls = 0
 
     async def __aenter__(self) -> "_Agent":
         """Enter the agent context."""
@@ -161,6 +164,7 @@ class _Agent:
         self, *_args: object, **kwargs: object
     ) -> AsyncGenerator[_EventStream]:
         """Return deterministic streamed Agent events."""
+        self.run_stream_events_calls += 1
         self.run_kwargs = kwargs
         result = _StreamResult()
         yield _EventStream(
@@ -179,6 +183,7 @@ class _Agent:
 
     async def run(self, *_args: object, **kwargs: object) -> _StreamResult:
         """Return a deterministic run result."""
+        self.run_calls += 1
         self.run_kwargs = kwargs
         return _StreamResult()
 
@@ -187,6 +192,7 @@ def _entry(
     llm_hass_api: list[str] | None,
     skills: list[str] | None = None,
     *,
+    mcp_server_ids: list[str] | None = None,
     web_fetch_enabled: bool = False,
     model_settings: dict[str, object] | None = None,
 ) -> MockConfigEntry:
@@ -200,6 +206,8 @@ def _entry(
     if skills is not None:
         subentry_data[CONF_ENABLE_SKILLS] = True
         subentry_data[CONF_SKILLS] = skills
+    if mcp_server_ids is not None:
+        subentry_data[CONF_MCP_SERVER_IDS] = mcp_server_ids
     if web_fetch_enabled:
         subentry_data[CONF_WEB_FETCH_ENABLED] = True
 
@@ -409,6 +417,49 @@ def test_conversation_entity_advertises_streaming() -> None:
     entity = PydanticAIConversationEntity(entry, subentry)
 
     assert entity.supports_streaming is True
+
+
+@pytest.mark.parametrize(
+    (
+        "llm_hass_api",
+        "mcp_server_ids",
+        "web_fetch_enabled",
+        "skills",
+        "supported_features",
+    ),
+    [
+        (
+            [llm.LLM_API_ASSIST],
+            None,
+            False,
+            None,
+            conversation.ConversationEntityFeature.CONTROL,
+        ),
+        (None, ["mcp-server-1"], False, None, 0),
+        (None, None, True, None, 0),
+        (None, None, False, ["kitchen-skill"], 0),
+    ],
+)
+def test_conversation_entity_advertises_streaming_for_tool_sources(
+    llm_hass_api: list[str] | None,
+    mcp_server_ids: list[str] | None,
+    web_fetch_enabled: bool,
+    skills: list[str] | None,
+    supported_features: conversation.ConversationEntityFeature | int,
+) -> None:
+    """Test tool-capable conversations still advertise streaming."""
+    entry = _entry(
+        llm_hass_api,
+        skills=skills,
+        mcp_server_ids=mcp_server_ids,
+        web_fetch_enabled=web_fetch_enabled,
+    )
+    subentry = next(iter(entry.subentries.values()))
+
+    entity = PydanticAIConversationEntity(entry, subentry)
+
+    assert entity.supports_streaming is True
+    assert entity.supported_features == supported_features
 
 
 def test_conversation_entity_without_llm_api_has_no_control() -> None:
@@ -783,6 +834,7 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
     entry = _entry(None, skills=["kitchen-skill"])
     entry.add_to_hass(hass)
     capability = object()
+    agent = _Agent()
 
     with patch(
         "custom_components.pydantic_ai_agent.async_probe_model",
@@ -808,7 +860,7 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
         ) as skills_capabilities,
         patch(
             "custom_components.pydantic_ai_agent.entity.Agent",
-            return_value=_Agent(),
+            return_value=agent,
         ) as agent_class,
     ):
         await conversation.async_converse(
@@ -825,6 +877,8 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
     capabilities = agent_class.call_args.kwargs["capabilities"]
     assert capability in capabilities
     _assert_context_management_capability(capabilities)
+    assert agent.run_stream_events_calls == 1
+    assert agent.run_calls == 0
 
 
 async def test_conversation_runtime_adds_web_fetch_capability(

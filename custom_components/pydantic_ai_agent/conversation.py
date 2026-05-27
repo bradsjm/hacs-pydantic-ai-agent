@@ -11,8 +11,6 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import PydanticAIAgentConfigEntry
 from .const import (
     CONF_AGENT_NAME,
-    CONF_ENABLE_SKILLS,
-    CONF_MCP_SERVER_IDS,
     CONF_PROMPT,
     CONF_WEB_FETCH_ENABLED,
     DOMAIN,
@@ -58,7 +56,7 @@ class PydanticAIConversationEntity(
         super().__init__(
             entry, subentry, name=name, device_name=f"{name} Configuration"
         )
-        self._attr_supports_streaming = not _conversation_can_use_tools(subentry)
+        self._attr_supports_streaming = True
         if subentry.data.get(CONF_LLM_HASS_API):
             # CONTROL means the agent can call HA tools/services, which is only
             # true when an HA LLM API is attached to this subentry.
@@ -105,16 +103,6 @@ class PydanticAIConversationEntity(
 
         await self._async_handle_chat_log(
             chat_log,
-            stream=not _conversation_can_use_tools(self.subentry),
+            stream=True,
         )
         return conversation.async_get_result_from_chat_log(user_input, chat_log)
-
-
-def _conversation_can_use_tools(subentry: ConfigSubentry) -> bool:
-    """Return if a conversation subentry can trigger tool follow-up requests."""
-    return bool(
-        subentry.data.get(CONF_LLM_HASS_API)
-        or subentry.data.get(CONF_MCP_SERVER_IDS)
-        or subentry.data.get(CONF_WEB_FETCH_ENABLED)
-        or subentry.data.get(CONF_ENABLE_SKILLS)
-    )
