@@ -44,6 +44,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
     CONF_DEFAULT_MODEL_PROFILE_ID,
+    CONF_DESCRIPTION,
     CONF_DISCOVERED,
     CONF_ENABLED,
     CONF_MCP_ALLOWED_TOOLS,
@@ -55,6 +56,9 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
+    CONF_SKILL_CONTENT,
+    CONF_SKILL_REFERENCES,
+    CONF_SKILLS,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
@@ -64,6 +68,7 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
+    SUBENTRY_TYPE_SKILL,
 )
 from custom_components.pydantic_ai_agent.provider import (
     openai_compatible_completions_model_from_config,
@@ -87,8 +92,12 @@ _AI_TASK_STRUCTURED_SENTINEL = "PAI_E2E_AI_TASK_STRUCTURED_OK"
 _STREAM_SENTINEL = "PAI_E2E_STREAM_OK"
 _TOOL_SENTINEL = "PAI_E2E_TOOL_OK"
 _MCP_SENTINEL = "PAI_E2E_MCP_TOOL_OK"
+_MCP_SECOND_SENTINEL = "PAI_E2E_MCP_TOOL_SECOND_OK"
+_SKILL_SENTINEL = "PAI_E2E_SKILL_OK"
 _TEST_LLM_API_ID = "pydantic-ai-agent-real-test"
 _MCP_ECHO_SERVER_ID = "pydantic_ai_agent_real_mcp_echo"
+_WORKSPACE_SKILL_ID = "pydantic_ai_agent_real_skill"
+_UNSELECTED_WORKSPACE_SKILL_ID = "pydantic_ai_agent_real_unselected_skill"
 _MCP_ECHO_URL_ENV = "MCP_ECHO_SERVER_URL"
 _MCP_ECHO_URL = "https://mcpplaygroundonline.com/mcp-echo-server"
 _REAL_SERVER_TIMEOUT = 60.0
@@ -467,6 +476,7 @@ def _conversation_subentry(
     real_server: RealServerConfig,
     llm_hass_api: list[str] | None = None,
     mcp_server_ids: list[str] | None = None,
+    skill_ids: list[str] | None = None,
 ) -> dict[str, object]:
     """Return a real-server conversation subentry."""
     data: dict[str, object] = {
@@ -477,6 +487,8 @@ def _conversation_subentry(
         data[CONF_LLM_HASS_API] = llm_hass_api
     if mcp_server_ids is not None:
         data[CONF_MCP_SERVER_IDS] = mcp_server_ids
+    if skill_ids is not None:
+        data[CONF_SKILLS] = skill_ids
 
     return {
         "data": data,
@@ -531,6 +543,41 @@ def _mcp_echo_subentry(mcp_echo_url: str) -> dict[str, object]:
         "subentry_id": _MCP_ECHO_SERVER_ID,
         "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
         "title": "Hosted MCP Echo",
+        "unique_id": None,
+    }
+
+
+def _skill_subentry() -> dict[str, object]:
+    """Return a native workspace Skill subentry."""
+    return {
+        "data": {
+            CONF_NAME: "Real E2E Skill",
+            CONF_DESCRIPTION: "Provides the E2E Skill token.",
+            CONF_SKILL_CONTENT: (
+                "Workspace Skill token: PAI_E2E_SKILL_OK\n"
+                "When asked for the workspace Skill token, reply exactly with it."
+            ),
+            CONF_SKILL_REFERENCES: [],
+        },
+        "subentry_id": _WORKSPACE_SKILL_ID,
+        "subentry_type": SUBENTRY_TYPE_SKILL,
+        "title": "Real E2E Skill",
+        "unique_id": None,
+    }
+
+
+def _unselected_skill_subentry() -> dict[str, object]:
+    """Return an unselected native workspace Skill subentry."""
+    return {
+        "data": {
+            CONF_NAME: "Unselected Real E2E Skill",
+            CONF_DESCRIPTION: "Must not be exposed to this E2E agent.",
+            CONF_SKILL_CONTENT: "This unselected Skill must not be loaded.",
+            CONF_SKILL_REFERENCES: [],
+        },
+        "subentry_id": _UNSELECTED_WORKSPACE_SKILL_ID,
+        "subentry_type": SUBENTRY_TYPE_SKILL,
+        "title": "Unselected Real E2E Skill",
         "unique_id": None,
     }
 
@@ -608,6 +655,28 @@ async def _conversation_entity_id(
     await _setup_entry(
         hass,
         _entry(real_server, *subentries),
+    )
+    entity_ids = [
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    ]
+    assert len(entity_ids) == 1
+    return entity_ids[0]
+
+
+async def _skill_conversation_entity_id(
+    hass: HomeAssistant, real_server: RealServerConfig
+) -> str:
+    """Set up a real conversation agent with a selected workspace Skill."""
+    await _setup_entry(
+        hass,
+        _entry(
+            real_server,
+            _conversation_subentry(real_server, skill_ids=[_WORKSPACE_SKILL_ID]),
+            _skill_subentry(),
+            _unselected_skill_subentry(),
+        ),
     )
     entity_ids = [
         state.entity_id
@@ -771,22 +840,39 @@ async def test_real_server_conversation_uses_hosted_mcp_echo_tool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test a real provider can call a hosted MCP echo tool through Agent."""
-    captured_messages: list[object] = []
-    original_append = agent_entity_module._append_agent_messages
+    captured_tool_names: list[str] = []
+    tool_result_seen = False
+    second_turn_tool_call_seen = False
+    original_agent_events_to_chat_deltas = (
+        agent_entity_module._agent_events_to_chat_deltas
+    )
 
-    async def capture_agent_messages(
-        chat_log: Any,
-        agent_id: str,
-        messages: list[Any],
-        output_tool_names: set[str] | None = None,
-    ) -> None:
-        captured_messages.extend(messages)
-        await original_append(chat_log, agent_id, messages, output_tool_names)
+    async def capture_agent_events_to_chat_deltas(
+        events: Any,
+        output_tool_names: set[str],
+        state: Any,
+    ) -> Any:
+        nonlocal second_turn_tool_call_seen, tool_result_seen
+        async for delta in original_agent_events_to_chat_deltas(
+            events, output_tool_names, state
+        ):
+            if tool_calls := delta.get("tool_calls"):
+                for tool_input in tool_calls:
+                    tool_name = tool_input.tool_name
+                    captured_tool_names.append(tool_name)
+                    if tool_result_seen and tool_name.endswith("echo"):
+                        second_turn_tool_call_seen = True
+            if delta.get("role") == "tool_result":
+                tool_name = str(delta["tool_name"])
+                captured_tool_names.append(tool_name)
+                if tool_name.endswith("echo"):
+                    tool_result_seen = True
+            yield delta
 
     monkeypatch.setattr(
         agent_entity_module,
-        "_append_agent_messages",
-        capture_agent_messages,
+        "_agent_events_to_chat_deltas",
+        capture_agent_events_to_chat_deltas,
     )
     entity_id = await _conversation_entity_id(
         hass,
@@ -797,9 +883,10 @@ async def test_real_server_conversation_uses_hosted_mcp_echo_tool(
     result = await conversation.async_converse(
         hass,
         (
-            "Use the available MCP echo tool with message "
-            f"{_MCP_SENTINEL}. Reply with exactly the tool result. "
-            "Do not answer without calling the MCP tool."
+            "Use the available MCP echo tool twice. First call it with message "
+            f"{_MCP_SENTINEL}. After that tool result returns, call the same "
+            f"tool a second time with message {_MCP_SECOND_SENTINEL}. Reply "
+            "with exactly both tool results. Do not answer without both tool calls."
         ),
         None,
         Context(),
@@ -808,8 +895,79 @@ async def test_real_server_conversation_uses_hosted_mcp_echo_tool(
 
     await _drain_stream_cleanup(hass)
     speech = result.response.speech["plain"]["speech"]
-    assert any(name.endswith("echo") for name in _tool_part_names(captured_messages))
+    assert sum(name.endswith("echo") for name in captured_tool_names) >= 4, (
+        f"captured tools={captured_tool_names!r}; speech={speech!r}"
+    )
+    assert second_turn_tool_call_seen, captured_tool_names
     assert _MCP_SENTINEL in speech
+    assert _MCP_SECOND_SENTINEL in speech
+
+
+async def test_real_server_conversation_uses_workspace_skill(
+    hass: HomeAssistant,
+    real_server: RealServerConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test a real provider can list and load a selected workspace Skill."""
+    captured_tool_names: list[str] = []
+    listed_skill_ids: list[str] = []
+    original_agent_events_to_chat_deltas = (
+        agent_entity_module._agent_events_to_chat_deltas
+    )
+
+    async def capture_agent_events_to_chat_deltas(
+        events: Any,
+        output_tool_names: set[str],
+        state: Any,
+    ) -> Any:
+        async for delta in original_agent_events_to_chat_deltas(
+            events, output_tool_names, state
+        ):
+            if tool_calls := delta.get("tool_calls"):
+                captured_tool_names.extend(
+                    tool_input.tool_name for tool_input in tool_calls
+                )
+            if delta.get("role") == "tool_result":
+                tool_name = str(delta["tool_name"])
+                captured_tool_names.append(tool_name)
+                if tool_name == "list_skills" and isinstance(
+                    skill_results := delta.get("tool_result"), list
+                ):
+                    listed_skill_ids.extend(
+                        str(skill["skill_id"])
+                        for skill in skill_results
+                        if isinstance(skill, Mapping) and "skill_id" in skill
+                    )
+            yield delta
+
+    monkeypatch.setattr(
+        agent_entity_module,
+        "_agent_events_to_chat_deltas",
+        capture_agent_events_to_chat_deltas,
+    )
+    entity_id = await _skill_conversation_entity_id(hass, real_server)
+
+    result = await conversation.async_converse(
+        hass,
+        (
+            "Use the selected workspace Skill. First list the available Skills, "
+            "then load the relevant Skill, then reply exactly with the workspace "
+            "Skill token from the loaded Skill. Do not answer without loading "
+            "the Skill."
+        ),
+        None,
+        Context(),
+        agent_id=entity_id,
+    )
+
+    await _drain_stream_cleanup(hass)
+    speech = result.response.speech["plain"]["speech"]
+    assert listed_skill_ids == [_WORKSPACE_SKILL_ID], listed_skill_ids
+    assert "list_skills" in captured_tool_names, captured_tool_names
+    assert "load_skill" in captured_tool_names, (
+        f"captured tools={captured_tool_names!r}; speech={speech!r}"
+    )
+    assert _SKILL_SENTINEL in speech, speech
 
 
 async def test_real_server_ai_task_plain_generation(

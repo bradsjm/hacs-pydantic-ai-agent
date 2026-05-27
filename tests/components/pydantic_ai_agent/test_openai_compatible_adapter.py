@@ -447,6 +447,80 @@ async def test_tool_result_follow_up_uses_empty_assistant_content() -> None:
     await http_client.aclose()
 
 
+async def test_streamed_tool_follow_up_preserves_reasoning_content() -> None:
+    """Test streamed tool-call history preserves provider reasoning metadata."""
+    captured_bodies: list[dict[str, object]] = []
+    stream_body = "".join(
+        [
+            'data: {"id":"chatcmpl-1","model":"test-model","choices":[{"index":0,"delta":{"reasoning_content":"I should call the echo tool."}}]}\n\n',
+            'data: {"id":"chatcmpl-1","model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"echo","arguments":"{\\"token\\":\\"ok\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
+            "data: [DONE]\n\n",
+        ]
+    )
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured_bodies.append(json.loads(request.content))
+        if len(captured_bodies) == 1:
+            return httpx.Response(
+                200,
+                content=stream_body,
+                headers={"content-type": "text/event-stream"},
+            )
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-2",
+                "model": "test-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "done"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+
+    model, http_client = _model_with_transport(httpx.MockTransport(handler))
+    request_parameters = ModelRequestParameters(
+        function_tools=[
+            ToolDefinition(
+                name="echo",
+                parameters_json_schema={"type": "object", "properties": {}},
+            )
+        ]
+    )
+    async with model.request_stream(
+        [ModelRequest(parts=[UserPromptPart("Call echo")])], {}, request_parameters
+    ) as stream:
+        _ = [event async for event in stream]
+        first_response = stream.get()
+
+    follow_up = await model.request(
+        [
+            ModelRequest(parts=[UserPromptPart("Call echo")]),
+            first_response,
+            ModelRequest(parts=[ToolReturnPart("echo", "ok", tool_call_id="call-1")]),
+        ],
+        {},
+        request_parameters,
+    )
+
+    assert any(
+        isinstance(part, ThinkingPart) and part.id == "reasoning_content"
+        for part in first_response.parts
+    )
+    messages = cast(list[dict[str, object]], captured_bodies[1]["messages"])
+    assistant_message = messages[1]
+    assert isinstance(assistant_message, dict)
+    assert assistant_message["role"] == "assistant"
+    assert assistant_message["content"] == ""
+    assert assistant_message["reasoning_content"] == "I should call the echo tool."
+    assert "reasoning" not in assistant_message
+    assert follow_up.text == "done"
+    await http_client.aclose()
+
+
 async def test_request_stream_yields_text_and_usage() -> None:
     """Test streamed text deltas are exposed as Pydantic AI stream events."""
     body = "".join(

@@ -67,9 +67,9 @@ class OpenAICompatibleStreamedResponse(StreamedResponse):
                 continue
             if reasoning := _first_text(delta, "reasoning", "reasoning_content"):
                 for event in self._parts_manager.handle_thinking_delta(
-                    vendor_part_id="reasoning",
-                    id="reasoning",
-                    content=reasoning,
+                    vendor_part_id=reasoning[0],
+                    id=reasoning[0],
+                    content=reasoning[1],
                     provider_name=self.provider_name,
                 ):
                     yield event
@@ -121,10 +121,10 @@ class OpenAICompatibleStreamedResponse(StreamedResponse):
         return self._timestamp
 
 
-def _first_text(data: Any, *names: str) -> str | None:
-    """Return the first string attribute found on a chunk delta."""
+def _first_text(data: Any, *names: str) -> tuple[str, str] | None:
+    """Return the first string attribute name and value found on a chunk delta."""
     for name in names:
         value = getattr(data, name, None)
         if isinstance(value, str) and value:
-            return value
+            return name, value
     return None
