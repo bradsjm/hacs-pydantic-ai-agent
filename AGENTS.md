@@ -77,7 +77,7 @@
 
 - Pre-commit runs Ruff check, Ruff format, JSON/YAML checks, yamllint, markdownlint, end-of-file fixing, and trailing-whitespace cleanup.
 - CI also runs HACS validation and Hassfest; treat manifest, translations, services, and integration structure as first-class validation surfaces, not just Python tests.
-- Do not create new permanent docs or instruction files unless they are clearly needed; update `AGENTS.md`, `README.md`, or `docs/pydantic_ai_agent_spec.md` in place when possible.
+- Do not create new permanent docs or instruction files unless they are clearly needed; update `AGENTS.md`, `README.md` or other existing documents in place when possible.
 - Do not amend, squash, or rebase commits that have already been pushed to a PR branch; reviewers need incremental history.
 
 ## References
