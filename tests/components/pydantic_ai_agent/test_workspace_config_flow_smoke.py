@@ -390,6 +390,8 @@ async def test_conversation_reconfigure_assist_round_trips_to_form_section(
     )
     assert result["type"] is FlowResultType.FORM
     assert CONF_LLM_HASS_API not in entry.subentries[conversation_subentry_id].data
+    assert _section_default(result["data_schema"], _SECTION_HASS_CONTROL) == {}
+    assert _serialized_section_default(result["data_schema"], _SECTION_HASS_CONTROL) == {}
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -404,6 +406,7 @@ async def test_conversation_reconfigure_assist_round_trips_to_form_section(
     assert entry.subentries[conversation_subentry_id].data[CONF_LLM_HASS_API] == [
         "assist"
     ]
+    assert _SECTION_HASS_CONTROL not in entry.subentries[conversation_subentry_id].data
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
