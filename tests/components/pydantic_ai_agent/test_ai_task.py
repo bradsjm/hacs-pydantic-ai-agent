@@ -1,6 +1,7 @@
 """Test Pydantic AI Agent AI task entities."""
 
 from collections.abc import Iterable
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,6 +23,7 @@ from custom_components.pydantic_ai_agent.ai_task import (
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_ITERATIONS,
+    CONF_VIRTUAL_WORKSPACE_ENABLED,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
@@ -57,9 +59,11 @@ def _entry(
     *,
     include_task_name: bool = True,
     subentry_title: str = "AI task subentry title",
+    virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
     model_settings: dict[str, object] | None = None,
     todo_workspace_entity_id: str | None = None,
+    extra_data: dict[str, object] | None = None,
 ) -> MockConfigEntry:
     """Return a config entry with one AI task subentry."""
     entry = workspace_entry(
@@ -70,8 +74,10 @@ def _entry(
                 task_name="Report task" if include_task_name else None,
                 output_mode=output_mode,
                 skills=skills,
+                virtual_workspace_enabled=virtual_workspace_enabled,
                 web_fetch_enabled=web_fetch_enabled,
                 todo_workspace_entity_id=todo_workspace_entity_id,
+                extra_data=extra_data,
             ),
             provider_subentry_data(
                 subentry_id=_PROVIDER_SUBENTRY_ID,
@@ -98,6 +104,7 @@ async def _setup_ai_task_entity(
     output_mode: str | None = None,
     skills: list[str] | None = None,
     *,
+    virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
     model_settings: dict[str, object] | None = None,
     todo_workspace_entity_id: str | None = None,
@@ -106,6 +113,7 @@ async def _setup_ai_task_entity(
     entry = _entry(
         output_mode,
         skills,
+        virtual_workspace_enabled=virtual_workspace_enabled,
         web_fetch_enabled=web_fetch_enabled,
         model_settings=model_settings,
         todo_workspace_entity_id=todo_workspace_entity_id,
@@ -206,6 +214,26 @@ def test_ai_task_entity_features() -> None:
     assert ai_task.AITaskEntityFeature.GENERATE_DATA in entity.supported_features
     assert ai_task.AITaskEntityFeature.SUPPORT_ATTACHMENTS in entity.supported_features
     assert ai_task.AITaskEntityFeature.GENERATE_IMAGE not in entity.supported_features
+
+
+def test_ai_task_entity_reports_virtual_workspace_attribute() -> None:
+    """Test AI task attributes expose virtual workspace state."""
+    entry = _entry(virtual_workspace_enabled=True)
+    subentry = next(iter(entry.subentries.values()))
+
+    entity = PydanticAIAgentAITaskEntity(entry, subentry)
+
+    assert entity.extra_state_attributes["virtual_workspace_enabled"] is True
+
+
+def test_ai_task_entity_requires_literal_virtual_workspace_true() -> None:
+    """Test truthy persisted values do not report virtual workspace enabled."""
+    entry = _entry(extra_data={CONF_VIRTUAL_WORKSPACE_ENABLED: "true"})
+    subentry = next(iter(entry.subentries.values()))
+
+    entity = PydanticAIAgentAITaskEntity(entry, subentry)
+
+    assert entity.extra_state_attributes["virtual_workspace_enabled"] is False
 
 
 async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
@@ -322,6 +350,76 @@ async def test_ai_task_runtime_adds_todo_workspace_tools(
     assert calls == ["prepare", "read"]
     assert agent_class.call_args.kwargs["toolsets"] == [fake_toolset]
     assert agent_class.call_args.kwargs["instructions"].startswith("todo instructions")
+
+
+async def test_ai_task_runtime_composes_virtual_workspace_and_todo_tools(
+    hass: HomeAssistant,
+) -> None:
+    """Test AI tasks compose virtual workspace before todo tools/instructions."""
+    entity_id = await _setup_ai_task_entity(
+        hass,
+        virtual_workspace_enabled=True,
+        todo_workspace_entity_id="todo.ai_workspace",
+    )
+    virtual_toolset = object()
+    todo_toolset = object()
+
+    class FakeTodoWorkspace:
+        """Minimal todo workspace test double."""
+
+        def __init__(self, hass: HomeAssistant, entity_id: str) -> None:
+            """Initialize fake workspace."""
+            self.hass = hass
+            self.entity_id = entity_id
+
+        async def prepare_run(self) -> str:
+            """Prepare the fake workspace."""
+            return "cleared"
+
+        async def read_items(self) -> str:
+            """Return initial workspace state."""
+            return "Summary: 0 completed, 0 in progress, 0 pending"
+
+        def toolset(self) -> object:
+            """Return fake toolset."""
+            return todo_toolset
+
+        def instructions(self, initial_state: str) -> str:
+            """Return fake instructions."""
+            return f"todo instructions: {initial_state}"
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.ai_task.TodoWorkspace",
+            FakeTodoWorkspace,
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.virtual_workspace_parts",
+            return_value=SimpleNamespace(
+                toolsets=(virtual_toolset,), instructions="virtual instructions"
+            ),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(stream_text="plain result"),
+        ) as agent_class,
+    ):
+        await ai_task.async_generate_data(
+            hass,
+            task_name="Plain task",
+            entity_id=entity_id,
+            instructions="Generate text",
+        )
+
+    assert agent_class.call_args.kwargs["toolsets"] == [virtual_toolset, todo_toolset]
+    assert agent_class.call_args.kwargs["instructions"] == (
+        "virtual instructions\n\ntodo instructions: "
+        "Summary: 0 completed, 0 in progress, 0 pending"
+    )
 
 
 async def test_structured_data_task_fires_output_event(hass: HomeAssistant) -> None:

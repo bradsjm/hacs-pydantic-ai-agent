@@ -125,11 +125,13 @@
               "data": {
                 "mcp_server_ids": "MCP servers",
                 "todo_list_entity_id": "Todo workspace list",
+                "virtual_workspace_enabled": "Virtual workspace tools",
                 "web_fetch_enabled": "Web fetch"
               },
               "data_description": {
                 "mcp_server_ids": "Optional MCP servers this AI task may use. Only enabled tools will be made available.",
                 "todo_list_entity_id": "Optional dedicated todo list for model planning. When set, this list is cleared before every AI task run and the model can only manage items in this list.",
+                "virtual_workspace_enabled": "Allow this AI task to use a temporary in-memory bash and file workspace during each AI task run. The workspace is discarded after the response.",
                 "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
               },
               "name": "External tools and data"
@@ -219,10 +221,12 @@
             "external_tools": {
               "data": {
                 "mcp_server_ids": "MCP servers",
+                "virtual_workspace_enabled": "Virtual workspace tools",
                 "web_fetch_enabled": "Web fetch"
               },
               "data_description": {
                 "mcp_server_ids": "Optional MCP servers this conversation agent may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
+                "virtual_workspace_enabled": "Allow this conversation agent to use a temporary in-memory bash and file workspace during each model run. The workspace is discarded after the response.",
                 "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
               },
               "name": "External tools and data"

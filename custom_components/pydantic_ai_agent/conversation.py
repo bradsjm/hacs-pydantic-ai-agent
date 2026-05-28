@@ -18,6 +18,7 @@ from .const import (
 )
 from .entity import PydanticAIBaseLLMEntity
 from .model_profiles import model_display_names, model_profile_chain
+from .virtual_workspace import virtual_workspace_enabled
 
 
 async def async_setup_entry(
@@ -83,6 +84,7 @@ class PydanticAIConversationEntity(
             "web_fetch_enabled": bool(
                 self.subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
             ),
+            "virtual_workspace_enabled": virtual_workspace_enabled(self.subentry.data),
         }
 
     async def _async_handle_message(

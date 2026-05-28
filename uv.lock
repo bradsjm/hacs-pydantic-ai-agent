@@ -386,6 +386,21 @@ wheels = [
 ]
 
 [[package]]
+name = "bashkit"
+version = "0.7.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/1d/1a83a65663974f8250a03b1310408504b4b5817d2f17535730ff534fead6/bashkit-0.7.2.tar.gz", hash = "sha256:5060f0900a6ae063ecc99ce13c893efd5540f35b4a4fb10bf36a28ebaa9a29e0", size = 1490302, upload-time = "2026-05-27T01:30:49.209Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c0/1f/a02aad4b0c9addd3d8cf9b040e0cc5d9f31066c86978bbfa7416534d7911/bashkit-0.7.2-cp314-cp314-macosx_10_12_x86_64.whl", hash = "sha256:be12c19fc2aec4588c2360e5343c44a9c240b600de4dcffbb57bea628f019a3d", size = 11843351, upload-time = "2026-05-27T01:30:19.926Z" },
+    { url = "https://files.pythonhosted.org/packages/a1/86/e2bd4d81d9d7729f983c25542685c8c90414d9d0e397be97ab7b64bce752/bashkit-0.7.2-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:0307263eebd50c568c307de9223e60d4611ec36a213245d9d4505067a5913cd4", size = 10891939, upload-time = "2026-05-27T01:30:26.543Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/ea/0d8b06b132b1a15d3484979606e208d34ead8e82ab13ac7d3146918f95a7/bashkit-0.7.2-cp314-cp314-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:c1572c90ec2c0225d086a15b2d9d48c75463c3fa47efa735539b69bb8a8c7a52", size = 11667688, upload-time = "2026-05-27T01:30:50.842Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/6d/d48dbbe88df1dceaeb230626a865c2491f8f4a601af1c38f5b5631d5f055/bashkit-0.7.2-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2829ea0c6dfc11835853cd691029d1affd23cfdda4e713a7424f7ef102221c72", size = 12327534, upload-time = "2026-05-27T01:30:16.007Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/ad/ff2a00b9e725c8b98416c9d55ab589fadc07b9b3defe27ecb07881ff59ff/bashkit-0.7.2-cp314-cp314-musllinux_1_1_aarch64.whl", hash = "sha256:7af6f66c548a6941513aaec700a96591cbbeda7267a483d14002cdd892677934", size = 11630695, upload-time = "2026-05-27T01:30:24.669Z" },
+    { url = "https://files.pythonhosted.org/packages/42/77/495f30034aae28a10d22c6bd47352f187c4f5115388b231990b09467833d/bashkit-0.7.2-cp314-cp314-musllinux_1_1_x86_64.whl", hash = "sha256:3f96873e21d2f5a6cdc99fa03737fba09dddcc391c94ae90fad66b0ff1f37973", size = 12444079, upload-time = "2026-05-27T01:31:36.579Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/09/3fd05bb22c234d7d14035298e15f4e723ab7fd75a08de49c86be68fef21f/bashkit-0.7.2-cp314-cp314-win_amd64.whl", hash = "sha256:274e4aeff986c7ea3e123ddc362235c40ef90eb782a576e09272ab6e40551f43", size = 12757570, upload-time = "2026-05-27T01:30:42.163Z" },
+]
+
+[[package]]
 name = "bcrypt"
 version = "5.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1313,6 +1328,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
+    { name = "bashkit" },
     { name = "fastmcp-slim", extra = ["client", "server"] },
     { name = "google-genai" },
     { name = "logfire" },
@@ -1343,6 +1359,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.97.0" },
+    { name = "bashkit", specifier = "==0.7.2" },
     { name = "fastmcp-slim", extras = ["client", "server"], specifier = ">=3.3.0" },
     { name = "google-genai", specifier = ">=1.70.0" },
     { name = "logfire", specifier = "==4.33.0" },

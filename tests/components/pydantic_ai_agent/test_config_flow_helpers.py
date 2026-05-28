@@ -7,6 +7,7 @@ import ssl
 import httpx
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 import pytest
+import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
@@ -14,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent.config_flows.common import (
+    _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
     _SECTION_SKILLS,
@@ -70,6 +72,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
+    CONF_VIRTUAL_WORKSPACE_ENABLED,
+    CONF_WEB_FETCH_ENABLED,
     DOMAIN,
     DEFAULT_OUTPUT_MODE,
     PROVIDER_ANTHROPIC,
@@ -83,6 +87,14 @@ from custom_components.pydantic_ai_agent.mcp import MCPValidationError
 from tests.components.pydantic_ai_agent.support.schemas import (
     schema_key_names as _schema_key_names,
 )
+
+
+def _section_key_names(data_schema: vol.Schema, section_name: str) -> set[str]:
+    """Return field names from a sectioned flow schema."""
+    for section_key, section_value in data_schema.schema.items():
+        if section_key.schema == section_name:
+            return {key.schema for key in section_value.schema.schema}
+    raise AssertionError(f"Section {section_name} not found")
 
 
 def test_http_error_formats_redacted_compact_metadata() -> None:
@@ -331,10 +343,18 @@ def test_agent_schemas_group_fallbacks_and_hass_control(
 
     assert _SECTION_FALLBACK_MODELS in _schema_key_names(conversation_schema)
     assert _SECTION_HASS_CONTROL in _schema_key_names(conversation_schema)
+    assert _SECTION_EXTERNAL_TOOLS in _schema_key_names(conversation_schema)
+    assert CONF_VIRTUAL_WORKSPACE_ENABLED in _section_key_names(
+        conversation_schema, _SECTION_EXTERNAL_TOOLS
+    )
     assert CONF_FALLBACK_MODEL_REFS not in _schema_key_names(conversation_schema)
     assert CONF_LLM_HASS_API not in _schema_key_names(conversation_schema)
     assert _SECTION_FALLBACK_MODELS in _schema_key_names(ai_task_schema)
     assert _SECTION_HASS_CONTROL in _schema_key_names(ai_task_schema)
+    assert _SECTION_EXTERNAL_TOOLS in _schema_key_names(ai_task_schema)
+    assert CONF_VIRTUAL_WORKSPACE_ENABLED in _section_key_names(
+        ai_task_schema, _SECTION_EXTERNAL_TOOLS
+    )
     assert CONF_FALLBACK_MODEL_REFS not in _schema_key_names(ai_task_schema)
     assert CONF_LLM_HASS_API not in _schema_key_names(ai_task_schema)
 
@@ -345,6 +365,10 @@ def test_sectioned_conversation_input_flattens_and_prunes_legacy_skills() -> Non
         {
             CONF_AGENT_NAME: "Kitchen Agent",
             CONF_PRIMARY_MODEL_REF: "provider:primary",
+            _SECTION_EXTERNAL_TOOLS: {
+                CONF_VIRTUAL_WORKSPACE_ENABLED: False,
+                CONF_WEB_FETCH_ENABLED: False,
+            },
             _SECTION_FALLBACK_MODELS: {CONF_FALLBACK_MODEL_REFS: ["provider:fallback"]},
             _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: ["assist"]},
             _SECTION_SKILLS: {
@@ -361,9 +385,40 @@ def test_sectioned_conversation_input_flattens_and_prunes_legacy_skills() -> Non
     assert data[CONF_SKILLS] == ["skill-1"]
     assert "enable_skills" not in data
     assert "skills_folder" not in data
+    assert CONF_VIRTUAL_WORKSPACE_ENABLED not in data
+    assert CONF_WEB_FETCH_ENABLED not in data
+    assert _SECTION_EXTERNAL_TOOLS not in data
     assert _SECTION_FALLBACK_MODELS not in data
     assert _SECTION_HASS_CONTROL not in data
     assert _SECTION_SKILLS not in data
+
+
+def test_sectioned_conversation_input_preserves_literal_virtual_workspace_true() -> None:
+    """Test virtual workspace is stored only when explicitly enabled."""
+    data = _conversation_data_from_user_input(
+        {
+            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_PRIMARY_MODEL_REF: "provider:primary",
+            _SECTION_EXTERNAL_TOOLS: {CONF_VIRTUAL_WORKSPACE_ENABLED: True},
+        },
+        {},
+    )
+
+    assert data[CONF_VIRTUAL_WORKSPACE_ENABLED] is True
+
+
+def test_sectioned_conversation_input_prunes_truthy_virtual_workspace_values() -> None:
+    """Test truthy non-bool values cannot opt into virtual workspace tools."""
+    data = _conversation_data_from_user_input(
+        {
+            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_PRIMARY_MODEL_REF: "provider:primary",
+            _SECTION_EXTERNAL_TOOLS: {CONF_VIRTUAL_WORKSPACE_ENABLED: "true"},
+        },
+        {},
+    )
+
+    assert CONF_VIRTUAL_WORKSPACE_ENABLED not in data
 
 
 def test_sectioned_ai_task_input_preserves_existing_skills_when_field_omitted() -> None:
@@ -395,13 +450,50 @@ def test_sectioned_ai_task_input_prunes_empty_llm_api() -> None:
             CONF_AI_TASK_NAME: "Summary Task",
             CONF_PRIMARY_MODEL_REF: "provider:primary",
             CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+            _SECTION_EXTERNAL_TOOLS: {
+                CONF_VIRTUAL_WORKSPACE_ENABLED: False,
+                CONF_WEB_FETCH_ENABLED: False,
+            },
             _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: []},
         },
         {},
     )
 
     assert CONF_LLM_HASS_API not in data
+    assert CONF_VIRTUAL_WORKSPACE_ENABLED not in data
+    assert CONF_WEB_FETCH_ENABLED not in data
+    assert _SECTION_EXTERNAL_TOOLS not in data
     assert _SECTION_HASS_CONTROL not in data
+
+
+def test_sectioned_ai_task_input_preserves_literal_virtual_workspace_true() -> None:
+    """Test AI task virtual workspace is stored only when explicitly enabled."""
+    data = _ai_task_data_from_user_input(
+        {
+            CONF_AI_TASK_NAME: "Summary Task",
+            CONF_PRIMARY_MODEL_REF: "provider:primary",
+            CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+            _SECTION_EXTERNAL_TOOLS: {CONF_VIRTUAL_WORKSPACE_ENABLED: True},
+        },
+        {},
+    )
+
+    assert data[CONF_VIRTUAL_WORKSPACE_ENABLED] is True
+
+
+def test_sectioned_ai_task_input_prunes_truthy_virtual_workspace_values() -> None:
+    """Test AI task truthy non-bool values do not enable virtual workspace."""
+    data = _ai_task_data_from_user_input(
+        {
+            CONF_AI_TASK_NAME: "Summary Task",
+            CONF_PRIMARY_MODEL_REF: "provider:primary",
+            CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+            _SECTION_EXTERNAL_TOOLS: {CONF_VIRTUAL_WORKSPACE_ENABLED: 1},
+        },
+        {},
+    )
+
+    assert CONF_VIRTUAL_WORKSPACE_ENABLED not in data
 
 
 def test_selected_skill_error_reports_stale_skill_id() -> None:

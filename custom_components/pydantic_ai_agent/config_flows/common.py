@@ -121,6 +121,7 @@ from ..const import (
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
     CONF_TODO_LIST_ENTITY_ID,
+    CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
     DEFAULT_AGENT_NAME,
     DEFAULT_AI_TASK_NAME,
@@ -1292,6 +1293,12 @@ def _conversation_schema(
             default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
         )
     ] = BooleanSelector()
+    external_tools_schema[
+        vol.Optional(
+            CONF_VIRTUAL_WORKSPACE_ENABLED,
+            default=options.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is True,
+        )
+    ] = BooleanSelector()
     schema[_section_schema_key(_SECTION_EXTERNAL_TOOLS, external_tools_schema)] = (
         section(vol.Schema(external_tools_schema), {"collapsed": True})
     )
@@ -1856,6 +1863,8 @@ def _conversation_data_from_user_input(
         data.pop(CONF_MCP_SERVER_IDS, None)
     if not data.get(CONF_WEB_FETCH_ENABLED):
         data.pop(CONF_WEB_FETCH_ENABLED, None)
+    if data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is not True:
+        data.pop(CONF_VIRTUAL_WORKSPACE_ENABLED, None)
     if not data.get(CONF_FALLBACK_MODEL_REFS):
         data.pop(CONF_FALLBACK_MODEL_REFS, None)
     if CONF_SKILLS not in user_input and options.get(CONF_SKILLS):
@@ -2040,6 +2049,12 @@ def _ai_task_data_schema(
             default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
         )
     ] = BooleanSelector()
+    external_tools_schema[
+        vol.Optional(
+            CONF_VIRTUAL_WORKSPACE_ENABLED,
+            default=options.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is True,
+        )
+    ] = BooleanSelector()
     schema[
         vol.Required(
             CONF_OUTPUT_MODE,
@@ -2088,6 +2103,8 @@ def _ai_task_data_from_user_input(
         data.pop(CONF_MCP_SERVER_IDS, None)
     if not data.get(CONF_WEB_FETCH_ENABLED):
         data.pop(CONF_WEB_FETCH_ENABLED, None)
+    if data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is not True:
+        data.pop(CONF_VIRTUAL_WORKSPACE_ENABLED, None)
     if not data.get(CONF_FALLBACK_MODEL_REFS):
         data.pop(CONF_FALLBACK_MODEL_REFS, None)
     if not data.get(CONF_TODO_LIST_ENTITY_ID):

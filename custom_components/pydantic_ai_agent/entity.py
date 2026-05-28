@@ -93,6 +93,7 @@ from .structured_output import (
     structured_output_mode,
     structured_output_name,
 )
+from .virtual_workspace import virtual_workspace_enabled, virtual_workspace_parts
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -114,6 +115,12 @@ class _StreamRunState:
 
     result: Any | None = None
     emitted_deltas: bool = False
+
+
+def _join_instructions(*parts: str | None) -> str | None:
+    """Join optional instruction blocks for one agent run."""
+    instructions = [part.strip() for part in parts if part and part.strip()]
+    return "\n\n".join(instructions) if instructions else None
 
 
 class PydanticAIBaseLLMEntity:
@@ -193,9 +200,17 @@ class PydanticAIBaseLLMEntity:
         if self.subentry.data.get(CONF_WEB_FETCH_ENABLED):
             capabilities.append(WebFetch(local=True))
         capabilities.append(SlidingWindowContextCapability())
+        use_virtual_workspace = virtual_workspace_enabled(self.subentry.data)
         errors: list[BaseException] = []
         for index, profile in enumerate(profiles):
             try:
+                virtual_toolsets: Sequence[AbstractToolset[Any]] = ()
+                virtual_instructions: str | None = None
+                if use_virtual_workspace:
+                    parts = virtual_workspace_parts()
+                    virtual_toolsets = parts.toolsets
+                    virtual_instructions = parts.instructions
+                instructions = _join_instructions(virtual_instructions, extra_instructions)
                 settings = model_settings(profile)
                 settings = _model_settings_with_provider_extra_body(
                     self.entry, profile, settings
@@ -211,7 +226,7 @@ class PydanticAIBaseLLMEntity:
                     self.entry,
                     self.subentry.data.get(CONF_MCP_SERVER_IDS),
                 )
-                toolsets = [*mcp_toolsets, *extra_toolsets]
+                toolsets = [*mcp_toolsets, *virtual_toolsets, *extra_toolsets]
                 run_capabilities = list(capabilities)
                 if any(
                     isinstance(toolset, DeferredLoadingToolset) for toolset in toolsets
@@ -227,7 +242,7 @@ class PydanticAIBaseLLMEntity:
                 agent = Agent(
                     chat_model_for_profile(self.hass, self.entry, profile),
                     output_type=cast(Any, agent_output_type),
-                    instructions=extra_instructions,
+                    instructions=instructions,
                     model_settings=settings,
                     tool_retries=0,
                     output_retries=2,

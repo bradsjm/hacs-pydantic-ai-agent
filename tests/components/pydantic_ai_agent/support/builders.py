@@ -39,6 +39,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
     CONF_TODO_LIST_ENTITY_ID,
+    CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
@@ -143,6 +144,7 @@ def conversation_subentry_data(
     llm_hass_api: Sequence[str] | None = None,
     skills: Sequence[str] | None = None,
     mcp_server_ids: Sequence[str] | None = None,
+    virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
     extra_data: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
@@ -158,6 +160,8 @@ def conversation_subentry_data(
         data[CONF_MCP_SERVER_IDS] = list(mcp_server_ids)
     if web_fetch_enabled:
         data[CONF_WEB_FETCH_ENABLED] = True
+    if virtual_workspace_enabled:
+        data[CONF_VIRTUAL_WORKSPACE_ENABLED] = True
     if extra_data is not None:
         data.update(extra_data)
     payload: dict[str, object] = {
@@ -179,6 +183,7 @@ def ai_task_subentry_data(
     task_name: str | None = None,
     output_mode: str | None = None,
     skills: Sequence[str] | None = None,
+    virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
     todo_workspace_entity_id: str | None = None,
     extra_data: Mapping[str, object] | None = None,
@@ -193,6 +198,8 @@ def ai_task_subentry_data(
         data[CONF_SKILLS] = list(skills)
     if web_fetch_enabled:
         data[CONF_WEB_FETCH_ENABLED] = True
+    if virtual_workspace_enabled:
+        data[CONF_VIRTUAL_WORKSPACE_ENABLED] = True
     if todo_workspace_entity_id is not None:
         data[CONF_TODO_LIST_ENTITY_ID] = todo_workspace_entity_id
     if extra_data is not None:

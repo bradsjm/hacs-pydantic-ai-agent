@@ -25,9 +25,11 @@ from pydantic_ai.models.test import TestModel
 
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
+    CONF_FALLBACK_MODEL_REFS,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
+    CONF_VIRTUAL_WORKSPACE_ENABLED,
     DOMAIN,
     OUTPUT_MODE_TOOL,
 )
@@ -61,8 +63,10 @@ def _entry(
     skills: list[str] | None = None,
     *,
     mcp_server_ids: list[str] | None = None,
+    virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
     model_settings: dict[str, object] | None = None,
+    extra_data: dict[str, object] | None = None,
 ) -> MockConfigEntry:
     """Return a config entry with one conversation subentry."""
     entry = workspace_entry(
@@ -72,7 +76,9 @@ def _entry(
                 llm_hass_api=llm_hass_api,
                 skills=skills,
                 mcp_server_ids=mcp_server_ids,
+                virtual_workspace_enabled=virtual_workspace_enabled,
                 web_fetch_enabled=web_fetch_enabled,
+                extra_data=extra_data,
             ),
             provider_subentry_data(
                 subentry_id=_PROVIDER_SUBENTRY_ID,
@@ -204,6 +210,7 @@ def test_conversation_entity_controls_home_assistant_with_llm_api() -> None:
     assert entity.extra_state_attributes["ha_tools_enabled"] is True
     assert entity.extra_state_attributes["ha_llm_api"] == [llm.LLM_API_ASSIST]
     assert entity.extra_state_attributes["web_fetch_enabled"] is False
+    assert entity.extra_state_attributes["virtual_workspace_enabled"] is False
 
 
 def test_conversation_entity_advertises_streaming() -> None:
@@ -220,6 +227,7 @@ def test_conversation_entity_advertises_streaming() -> None:
     (
         "llm_hass_api",
         "mcp_server_ids",
+        "virtual_workspace_enabled",
         "web_fetch_enabled",
         "skills",
         "supported_features",
@@ -229,17 +237,20 @@ def test_conversation_entity_advertises_streaming() -> None:
             [llm.LLM_API_ASSIST],
             None,
             False,
+            False,
             None,
             conversation.ConversationEntityFeature.CONTROL,
         ),
-        (None, ["mcp-server-1"], False, None, 0),
-        (None, None, True, None, 0),
-        (None, None, False, ["kitchen-skill"], 0),
+        (None, ["mcp-server-1"], False, False, None, 0),
+        (None, None, True, False, None, 0),
+        (None, None, False, True, None, 0),
+        (None, None, False, False, ["kitchen-skill"], 0),
     ],
 )
 def test_conversation_entity_advertises_streaming_for_tool_sources(
     llm_hass_api: list[str] | None,
     mcp_server_ids: list[str] | None,
+    virtual_workspace_enabled: bool,
     web_fetch_enabled: bool,
     skills: list[str] | None,
     supported_features: conversation.ConversationEntityFeature | int,
@@ -249,6 +260,7 @@ def test_conversation_entity_advertises_streaming_for_tool_sources(
         llm_hass_api,
         skills=skills,
         mcp_server_ids=mcp_server_ids,
+        virtual_workspace_enabled=virtual_workspace_enabled,
         web_fetch_enabled=web_fetch_enabled,
     )
     subentry = next(iter(entry.subentries.values()))
@@ -270,6 +282,17 @@ def test_conversation_entity_without_llm_api_has_no_control() -> None:
     assert entity.extra_state_attributes["ha_tools_enabled"] is False
     assert entity.extra_state_attributes["ha_llm_api"] is None
     assert entity.extra_state_attributes["web_fetch_enabled"] is False
+    assert entity.extra_state_attributes["virtual_workspace_enabled"] is False
+
+
+def test_conversation_entity_requires_literal_virtual_workspace_true() -> None:
+    """Test truthy persisted values do not report virtual workspace enabled."""
+    entry = _entry(None, extra_data={CONF_VIRTUAL_WORKSPACE_ENABLED: "true"})
+    subentry = next(iter(entry.subentries.values()))
+
+    entity = PydanticAIConversationEntity(entry, subentry)
+
+    assert entity.extra_state_attributes["virtual_workspace_enabled"] is False
 
 
 async def test_conversation_subentries_add_separate_entity_agents(
@@ -725,6 +748,158 @@ async def test_conversation_runtime_adds_web_fetch_capability(
     capabilities = agent_class.call_args.kwargs["capabilities"]
     assert web_fetch_capability in capabilities
     _assert_context_management_capability(capabilities)
+
+
+async def test_conversation_runtime_adds_virtual_workspace_tools(
+    hass: HomeAssistant,
+) -> None:
+    """Test virtual workspace-enabled conversations add tools/instructions."""
+    entry = _entry(None, virtual_workspace_enabled=True)
+    entry.add_to_hass(hass)
+    fake_toolset = object()
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.virtual_workspace_parts",
+            return_value=SimpleNamespace(
+                toolsets=(fake_toolset,), instructions="virtual instructions"
+            ),
+        ) as workspace_parts,
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=_Agent(),
+        ) as agent_class,
+    ):
+        await conversation.async_converse(
+            hass,
+            "use a workspace",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    workspace_parts.assert_called_once_with()
+    assert agent_class.call_args.kwargs["toolsets"] == [fake_toolset]
+    assert agent_class.call_args.kwargs["instructions"] == "virtual instructions"
+
+
+async def test_conversation_runtime_recreates_virtual_workspace_for_fallback(
+    hass: HomeAssistant,
+) -> None:
+    """Test fallback model attempts do not reuse a failed workspace."""
+    primary_ref = f"{_PROVIDER_SUBENTRY_ID}:primary-model"
+    fallback_ref = f"{_PROVIDER_SUBENTRY_ID}:fallback-model"
+    entry = workspace_entry(
+        (
+            conversation_subentry_data(
+                primary_ref,
+                virtual_workspace_enabled=True,
+                extra_data={CONF_FALLBACK_MODEL_REFS: [fallback_ref]},
+            ),
+            provider_subentry_data(
+                subentry_id=_PROVIDER_SUBENTRY_ID,
+                title="Hosted OpenAI",
+                default_model_profile_id="primary-model",
+                model_profiles={
+                    "primary-model": model_profile_data(
+                        profile_id="primary-model",
+                        name="Primary",
+                        model="primary-model",
+                    ),
+                    "fallback-model": model_profile_data(
+                        profile_id="fallback-model",
+                        name="Fallback",
+                        model="fallback-model",
+                    ),
+                },
+            ),
+        )
+    )
+    entry.runtime_data = workspace_runtime_data(
+        providers={
+            _PROVIDER_SUBENTRY_ID: provider_runtime_data(
+                subentry_id=_PROVIDER_SUBENTRY_ID, name="Hosted OpenAI"
+            )
+        },
+    )
+    entry.add_to_hass(hass)
+
+    class FailingAgent:
+        async def __aenter__(self) -> "FailingAgent":
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        def run_stream_events(self, *_args: object, **_kwargs: object) -> object:
+            class FailingEvents:
+                async def __aenter__(self) -> object:
+                    raise TimeoutError
+
+                async def __aexit__(self, *_args: object) -> None:
+                    return None
+
+            return FailingEvents()
+
+    first_toolset = object()
+    second_toolset = object()
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.virtual_workspace_parts",
+            side_effect=[
+                SimpleNamespace(toolsets=(first_toolset,), instructions="first"),
+                SimpleNamespace(toolsets=(second_toolset,), instructions="second"),
+            ],
+        ) as workspace_parts,
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=[FailingAgent(), _Agent()],
+        ) as agent_class,
+    ):
+        await conversation.async_converse(
+            hass,
+            "use a workspace",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert workspace_parts.call_count == 2
+    assert agent_class.call_args_list[0].kwargs["toolsets"] == [first_toolset]
+    assert agent_class.call_args_list[1].kwargs["toolsets"] == [second_toolset]
 
 
 async def test_conversation_runtime_adds_keyword_tool_search_for_deferred_mcp(
