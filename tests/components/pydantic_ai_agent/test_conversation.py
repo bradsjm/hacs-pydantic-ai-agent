@@ -8,11 +8,13 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from homeassistant.components import conversation
+from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME, __version__
 from homeassistant.core import Context, HomeAssistant
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers import llm
+from homeassistant.util import slugify
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pydantic_ai import (
     FunctionToolset,
@@ -44,6 +46,7 @@ from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
     async_setup_entry,
 )
+from custom_components.pydantic_ai_agent.entity import unique_id_for_subentry_entity
 from custom_components.pydantic_ai_agent.metrics import (
     EVENT_AGENT_RUN_COMPLETED,
     EVENT_AGENT_RUN_FAILED,
@@ -206,6 +209,25 @@ def _state(hass: HomeAssistant, entity_id: str) -> str:
     return state.state
 
 
+def _enable_diagnostic_entities(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    subentry: ConfigSubentry,
+    entity_domain: str,
+    keys: tuple[str, ...],
+) -> None:
+    """Pre-enable diagnostic entities that default disabled."""
+    entity_registry = er.async_get(hass)
+    name = str(subentry.data[CONF_AGENT_NAME])
+    for key in keys:
+        entity_registry.async_get_or_create(
+            entity_domain,
+            DOMAIN,
+            unique_id_for_subentry_entity(entry, subentry, key),
+            suggested_object_id=slugify(f"{name} {key}"),
+        )
+
+
 def test_conversation_entity_controls_home_assistant_with_llm_api() -> None:
     """Test LLM API selection enables Home Assistant control support."""
     entry = _entry([llm.LLM_API_ASSIST])
@@ -363,6 +385,37 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     """Test conversation entity IDs are valid Assist agent IDs."""
     entry = _entry_with_conversation_subentries()
     entry.add_to_hass(hass)
+    garage_subentry = next(
+        subentry
+        for subentry in entry.subentries.values()
+        if subentry.data.get(CONF_AGENT_NAME) == "Garage Agent"
+    )
+    _enable_diagnostic_entities(
+        hass,
+        entry,
+        garage_subentry,
+        "sensor",
+        (
+            "last_run_model_profile",
+            "last_run_input_tokens",
+            "last_run_output_tokens",
+            "last_run_total_tokens",
+            "last_run_model_request_count",
+            "last_run_tool_use_count",
+            "cumulative_input_tokens",
+            "cumulative_output_tokens",
+            "cumulative_total_tokens",
+            "consecutive_failures",
+            "last_error_type",
+        ),
+    )
+    _enable_diagnostic_entities(
+        hass,
+        entry,
+        garage_subentry,
+        "binary_sensor",
+        ("provider_healthy", "last_run_succeeded", "assist_enabled"),
+    )
 
     with patch(
         "custom_components.pydantic_ai_agent.async_probe_model",
@@ -428,11 +481,6 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     assert _state(hass, "binary_sensor.garage_agent_provider_healthy") == "on"
     assert _state(hass, "binary_sensor.garage_agent_last_run_succeeded") == "on"
     assert _state(hass, "binary_sensor.garage_agent_assist_enabled") == "off"
-    garage_subentry = next(
-        subentry
-        for subentry in entry.subentries.values()
-        if subentry.data.get(CONF_AGENT_NAME) == "Garage Agent"
-    )
     assert events == [
         {
             "config_entry_id": entry.entry_id,
@@ -441,6 +489,33 @@ async def test_conversation_entity_id_dispatches_assist_agent(
             "model_profile": "Garage Model",
         }
     ]
+
+
+async def test_diagnostic_entities_are_disabled_by_default(
+    hass: HomeAssistant,
+) -> None:
+    """Test per-agent diagnostic entities are registry-disabled by default."""
+    entry = _entry(None)
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    for entity_id in (
+        "sensor.kitchen_agent_last_run_model_profile",
+        "sensor.kitchen_agent_primary_language_model",
+        "binary_sensor.kitchen_agent_provider_healthy",
+        "binary_sensor.kitchen_agent_assist_enabled",
+    ):
+        registry_entry = entity_registry.async_get(entity_id)
+        assert registry_entry is not None
+        assert registry_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+        assert hass.states.get(entity_id) is None
 
 
 async def test_conversation_runtime_uses_configured_max_iterations(
@@ -490,6 +565,21 @@ async def test_streaming_iteration_failure_updates_chat_and_sensors(
     """Test streaming usage-limit failures stay actionable after partial output."""
     entry = _entry(None, extra_data={CONF_MAX_ITERATIONS: 24})
     entry.add_to_hass(hass)
+    subentry = next(iter(entry.subentries.values()))
+    _enable_diagnostic_entities(
+        hass,
+        entry,
+        subentry,
+        "sensor",
+        ("consecutive_failures", "last_error_type"),
+    )
+    _enable_diagnostic_entities(
+        hass,
+        entry,
+        subentry,
+        "binary_sensor",
+        ("provider_healthy", "last_run_succeeded"),
+    )
 
     class FailingAfterPartialAgent(_Agent):
         @asynccontextmanager

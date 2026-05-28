@@ -35,6 +35,7 @@ class PydanticAIMetricBinarySensorDescription(BinarySensorEntityDescription):
     """Description for one Pydantic AI metric binary sensor."""
 
     value_fn: Callable[[AgentRunMetrics], bool | None]
+    entity_registry_enabled_default: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -42,6 +43,7 @@ class PydanticAIConfigBinarySensorDescription(BinarySensorEntityDescription):
     """Description for one Pydantic AI configuration binary sensor."""
 
     value_fn: Callable[[ConfigSubentry], bool]
+    entity_registry_enabled_default: bool = False
     subentry_types: tuple[str, ...] = (
         SUBENTRY_TYPE_CONVERSATION,
         SUBENTRY_TYPE_AI_TASK,

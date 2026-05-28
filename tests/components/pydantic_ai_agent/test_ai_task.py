@@ -12,9 +12,12 @@ from pydantic_ai.output import NativeOutput, PromptedOutput, ToolOutput
 import voluptuous as vol
 
 from homeassistant.components import ai_task
+from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import Entity
+from homeassistant.util import slugify
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent.ai_task import (
@@ -22,6 +25,7 @@ from custom_components.pydantic_ai_agent.ai_task import (
     async_setup_entry,
 )
 from custom_components.pydantic_ai_agent.const import (
+    CONF_AI_TASK_NAME,
     CONF_MAX_ITERATIONS,
     CONF_THINKING,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
@@ -33,6 +37,7 @@ from custom_components.pydantic_ai_agent.const import (
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
 )
+from custom_components.pydantic_ai_agent.entity import unique_id_for_subentry_entity
 from custom_components.pydantic_ai_agent.metrics import (
     EVENT_AGENT_RUN_FAILED,
     EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED,
@@ -110,6 +115,7 @@ async def _setup_ai_task_entity(
     model_settings: dict[str, object] | None = None,
     todo_workspace_entity_id: str | None = None,
     extra_data: dict[str, object] | None = None,
+    enable_diagnostics: bool = False,
 ) -> str:
     """Set up an AI task config entry and return its entity ID."""
     entry = _entry(
@@ -122,6 +128,22 @@ async def _setup_ai_task_entity(
         extra_data=extra_data,
     )
     entry.add_to_hass(hass)
+    if enable_diagnostics:
+        subentry = next(iter(entry.subentries.values()))
+        _enable_diagnostic_entities(
+            hass,
+            entry,
+            subentry,
+            "sensor",
+            ("last_error_type",),
+        )
+        _enable_diagnostic_entities(
+            hass,
+            entry,
+            subentry,
+            "binary_sensor",
+            ("provider_healthy", "last_run_succeeded"),
+        )
 
     with patch(
         "custom_components.pydantic_ai_agent.async_probe_model",
@@ -155,6 +177,25 @@ def _state(hass: HomeAssistant, entity_id: str) -> str:
     state = hass.states.get(entity_id)
     assert state is not None
     return state.state
+
+
+def _enable_diagnostic_entities(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    subentry: ConfigSubentry,
+    entity_domain: str,
+    keys: tuple[str, ...],
+) -> None:
+    """Pre-enable diagnostic entities that default disabled."""
+    entity_registry = er.async_get(hass)
+    name = str(subentry.data.get(CONF_AI_TASK_NAME, subentry.title))
+    for key in keys:
+        entity_registry.async_get_or_create(
+            entity_domain,
+            DOMAIN,
+            unique_id_for_subentry_entity(entry, subentry, key),
+            suggested_object_id=slugify(f"{name} {key}"),
+        )
 
 
 async def test_ai_task_subentries_add_separate_entities(
@@ -462,7 +503,7 @@ async def test_structured_data_task_validation_failure_records_failed_run(
     hass: HomeAssistant,
 ) -> None:
     """Test structured validation failures update health metrics and events."""
-    entity_id = await _setup_ai_task_entity(hass)
+    entity_id = await _setup_ai_task_entity(hass, enable_diagnostics=True)
     events: list[dict[str, object]] = []
     hass.bus.async_listen(
         f"{DOMAIN}_{EVENT_AGENT_RUN_FAILED}",

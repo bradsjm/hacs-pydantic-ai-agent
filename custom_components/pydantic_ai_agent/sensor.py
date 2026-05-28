@@ -39,6 +39,7 @@ class PydanticAIMetricSensorDescription(SensorEntityDescription):
     """Description for one Pydantic AI metric sensor."""
 
     value_fn: Callable[[AgentRunMetrics], int | float | str | None]
+    entity_registry_enabled_default: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -46,6 +47,7 @@ class PydanticAIConfigSensorDescription(SensorEntityDescription):
     """Description for one Pydantic AI configuration sensor."""
 
     value_fn: Callable[[PydanticAIAgentConfigEntry, ConfigSubentry], int | str | None]
+    entity_registry_enabled_default: bool = False
     subentry_types: tuple[str, ...] = (
         SUBENTRY_TYPE_CONVERSATION,
         SUBENTRY_TYPE_AI_TASK,
