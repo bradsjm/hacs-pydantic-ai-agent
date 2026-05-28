@@ -261,7 +261,7 @@ hardware.
 | Entity marked unavailable when appropriate                    | N/A     | Entities are LLM-driven, not device status; diagnostic sensors expose `None` when no data is available                                                                                                                                                        |
 | Log once when service becomes unavailable and again when back | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) — MCP tool refresh failures logged at warning; provider validation failures logged at warning                                                                                                |
 | Parallel update concurrency specified                         | N/A     | No `DataUpdateCoordinator`; agent runs are serialized per entity with `max_concurrency=1`                                                                                                                                                                     |
-| Above 95% test coverage                                       | Partial | [`tests/components/pydantic_ai_agent/`](tests/components/pydantic_ai_agent/) — active coverage exists for helpers, model profiles, diagnostics, system health, runtime pieces, and provider integration paths; legacy flow/entity modules still need workspace rewrite |
+| Above 95% test coverage                                       | Partial | [`tests/components/pydantic_ai_agent/`](tests/components/pydantic_ai_agent/) — active coverage exists for helpers, model profiles, diagnostics, system health, runtime pieces, and provider integration paths                                                 |
 
 ### Gold (partial)
 
