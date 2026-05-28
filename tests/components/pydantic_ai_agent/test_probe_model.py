@@ -23,6 +23,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
     CONF_MAX_ITERATIONS,
+    CONF_THINKING,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_MODE,
     OUTPUT_MODE_NATIVE,
@@ -363,13 +364,19 @@ async def test_probe_model_merges_configured_model_settings(
             hass,
             _provider_data(),
             "gpt-test",
-            {"temperature": 0.7, "timeout": 30.0, CONF_MAX_ITERATIONS: 20},
+            {
+                "temperature": 0.7,
+                "timeout": 30.0,
+                CONF_MAX_ITERATIONS: 20,
+                CONF_THINKING: "high",
+            },
         )
 
     assert model_request_stream.call_args.kwargs["model_settings"] == {
         "temperature": 0.7,
         "timeout": 30.0,
     }
+    assert model_request_stream.call_args.kwargs["model_request_parameters"].thinking == "high"
 
 
 async def test_probe_model_renders_chat_template_kwargs(hass: HomeAssistant) -> None:

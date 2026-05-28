@@ -32,6 +32,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
+    CONF_THINKING,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     DOMAIN,
     OUTPUT_MODE_TOOL,
@@ -445,8 +446,8 @@ async def test_conversation_entity_id_dispatches_assist_agent(
 async def test_conversation_runtime_uses_configured_max_iterations(
     hass: HomeAssistant,
 ) -> None:
-    """Test conversation runs use the model profile iteration limit."""
-    entry = _entry(None, model_settings={CONF_MAX_ITERATIONS: 24})
+    """Test conversation runs use the configured run iteration limit."""
+    entry = _entry(None, extra_data={CONF_MAX_ITERATIONS: 24})
     entry.add_to_hass(hass)
     agent = _Agent()
 
@@ -487,7 +488,7 @@ async def test_streaming_iteration_failure_updates_chat_and_sensors(
     hass: HomeAssistant,
 ) -> None:
     """Test streaming usage-limit failures stay actionable after partial output."""
-    entry = _entry(None, model_settings={CONF_MAX_ITERATIONS: 24})
+    entry = _entry(None, extra_data={CONF_MAX_ITERATIONS: 24})
     entry.add_to_hass(hass)
 
     class FailingAfterPartialAgent(_Agent):
@@ -560,7 +561,7 @@ async def test_conversation_runtime_uses_thinking_capability(
     hass: HomeAssistant,
 ) -> None:
     """Test configured thinking is represented as a Pydantic AI capability."""
-    entry = _entry(None, model_settings={"thinking": "high"})
+    entry = _entry(None, extra_data={CONF_THINKING: "high"})
     entry.add_to_hass(hass)
     agent = _Agent()
 

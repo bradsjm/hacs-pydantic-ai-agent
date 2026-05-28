@@ -23,6 +23,7 @@ from custom_components.pydantic_ai_agent.ai_task import (
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_ITERATIONS,
+    CONF_THINKING,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
@@ -108,6 +109,7 @@ async def _setup_ai_task_entity(
     web_fetch_enabled: bool = False,
     model_settings: dict[str, object] | None = None,
     todo_workspace_entity_id: str | None = None,
+    extra_data: dict[str, object] | None = None,
 ) -> str:
     """Set up an AI task config entry and return its entity ID."""
     entry = _entry(
@@ -117,6 +119,7 @@ async def _setup_ai_task_entity(
         web_fetch_enabled=web_fetch_enabled,
         model_settings=model_settings,
         todo_workspace_entity_id=todo_workspace_entity_id,
+        extra_data=extra_data,
     )
     entry.add_to_hass(hass)
 
@@ -263,7 +266,7 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
 
 async def test_plain_data_task_uses_thinking_capability(hass: HomeAssistant) -> None:
     """Test configured AI task thinking is passed as a capability."""
-    entity_id = await _setup_ai_task_entity(hass, model_settings={"thinking": False})
+    entity_id = await _setup_ai_task_entity(hass, extra_data={CONF_THINKING: False})
 
     with (
         patch(
@@ -496,9 +499,9 @@ async def test_structured_data_task_validation_failure_records_failed_run(
 async def test_ai_task_runtime_uses_configured_max_iterations(
     hass: HomeAssistant,
 ) -> None:
-    """Test AI task runs use the model profile iteration limit."""
+    """Test AI task runs use the configured run iteration limit."""
     entity_id = await _setup_ai_task_entity(
-        hass, model_settings={CONF_MAX_ITERATIONS: 26}
+        hass, extra_data={CONF_MAX_ITERATIONS: 26}
     )
     agent = _Agent(stream_text="plain result", output="plain result")
 

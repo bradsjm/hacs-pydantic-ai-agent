@@ -77,7 +77,7 @@ from .mcp import MCPValidationError, async_runtime_mcp_toolsets
 from .model_profiles import (
     ModelProfile,
     chat_model_for_profile,
-    max_iterations as profile_max_iterations,
+    max_iterations as run_max_iterations,
     model_display_names,
     model_profile_chain,
     model_settings,
@@ -237,7 +237,7 @@ class PydanticAIBaseLLMEntity:
         errors: list[BaseException] = []
         for index, profile in enumerate(profiles):
             usage_limits = UsageLimits(
-                request_limit=profile_max_iterations(profile, max_iterations),
+                request_limit=run_max_iterations(self.subentry.data, max_iterations),
             )
             try:
                 virtual_toolsets: Sequence[AbstractToolset[Any]] = ()
@@ -247,7 +247,7 @@ class PydanticAIBaseLLMEntity:
                     virtual_toolsets = parts.toolsets
                     virtual_instructions = parts.instructions
                 instructions = _join_instructions(virtual_instructions, extra_instructions)
-                settings = model_settings(profile)
+                settings = model_settings(profile, self.subentry.data)
                 settings = _model_settings_with_provider_extra_body(
                     self.entry, profile, settings
                 )
@@ -270,7 +270,7 @@ class PydanticAIBaseLLMEntity:
                         if not isinstance(capability, ToolSearch)
                     ]
                     run_capabilities.append(ToolSearch(strategy="keywords"))
-                if thinking := thinking_capability(profile):
+                if thinking := thinking_capability(self.subentry.data):
                     run_capabilities.append(thinking)
                 agent = Agent(
                     chat_model_for_profile(self.hass, self.entry, profile),
@@ -664,13 +664,13 @@ def _classify_run_failure(
         if request_limit is not None:
             message = (
                 f"{prefix}the model exceeded the configured maximum of "
-                f"{request_limit} iterations. Increase the model profile max "
+                f"{request_limit} iterations. Increase the run max "
                 "iterations or fix repeated tool failures."
             )
         else:
             message = (
                 f"{prefix}the model exceeded a configured usage limit. "
-                "Increase the relevant model profile limit or reduce the request."
+                "Increase the relevant run limit or reduce the request."
             )
         return _AgentRunFailure(
             error_type=error_type,

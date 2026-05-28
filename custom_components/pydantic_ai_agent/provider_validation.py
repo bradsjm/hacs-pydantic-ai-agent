@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import AsyncIterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import httpx
@@ -38,6 +38,8 @@ from .const import (
     CONF_BASE_URL,
     CONF_CHAT_TEMPLATE_KWARGS,
     CONF_MAX_ITERATIONS,
+    CONF_THINKING,
+    CONF_TIMEOUT,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
@@ -80,7 +82,8 @@ _HTTP_STATUS_LABELS = {
     504: "timeout",
 }
 _MODEL_SETTING_MAX_ITERATIONS = CONF_MAX_ITERATIONS
-_MODEL_SETTING_TIMEOUT = "timeout"
+_MODEL_SETTING_TIMEOUT = CONF_TIMEOUT
+_MODEL_SETTING_THINKING = CONF_THINKING
 _MODEL_SETTING_EXTRA_BODY = "extra_body"
 _MODEL_SETTING_CHAT_TEMPLATE_KWARGS = CONF_CHAT_TEMPLATE_KWARGS
 _PROVIDER_EXTRA_BODY_MODES = {
@@ -282,6 +285,7 @@ async def async_probe_model(
         settings = dict(model_settings or {})
         settings.pop(_MODEL_SETTING_MAX_ITERATIONS, None)
         settings.pop(_MODEL_SETTING_EXTRA_BODY, None)
+        thinking = settings.pop(_MODEL_SETTING_THINKING, None)
         provider_extra_body = data.get(CONF_PROVIDER_EXTRA_BODY)
         if isinstance(provider_extra_body, Mapping) and provider_extra_body:
             if not provider_extra_body_supported(data):
@@ -305,6 +309,12 @@ async def async_probe_model(
         if structured_output_mode is not None:
             output_mode = normalise_structured_output_mode(structured_output_mode)
             model_request_parameters = _structured_probe_request_parameters(output_mode)
+        if thinking is not None:
+            model_request_parameters = (
+                ModelRequestParameters(thinking=thinking)
+                if model_request_parameters is None
+                else replace(model_request_parameters, thinking=thinking)
+            )
         messages = [
             ModelRequest.user_text_prompt(
                 (

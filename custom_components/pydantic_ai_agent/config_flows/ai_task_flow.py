@@ -11,13 +11,18 @@ from .common import (
     CONF_MCP_SERVER_IDS,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
+    CONF_MAX_ITERATIONS,
+    CONF_MAX_TOKENS,
     CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
+    CONF_THINKING,
+    CONF_TIMEOUT,
     CONF_TODO_LIST_ENTITY_ID,
     ConfigEntryState,
     ConfigSubentryFlow,
     Mapping,
     ProviderValidationError,
+    RunSettingsValidationError,
     SOURCE_USER,
     SUBENTRY_TYPE_PROVIDER,
     SubentryFlowResult,
@@ -25,6 +30,7 @@ from .common import (
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
+    _SECTION_RUN_SETTINGS,
     _SECTION_SKILLS,
     _agent_form_suggested_values,
     _ai_task_data_from_user_input,
@@ -43,6 +49,16 @@ from .common import (
     provider_model_profiles,
 )
 from ..generated_titles import DEFAULT_AI_TASK_TITLE_SUFFIX, generated_default_title
+
+
+_RUN_VALIDATION_SETTING_KEYS = {CONF_MAX_TOKENS, CONF_THINKING, CONF_TIMEOUT}
+_REMOVED_PROFILE_MODEL_SETTING_KEYS = {
+    CONF_MAX_ITERATIONS,
+    CONF_MAX_TOKENS,
+    CONF_THINKING,
+    CONF_TIMEOUT,
+    "extra_body",
+}
 
 
 class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
@@ -98,13 +114,28 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                     _SECTION_EXTERNAL_TOOLS,
                     _SECTION_FALLBACK_MODELS,
                     _SECTION_HASS_CONTROL,
+                    _SECTION_RUN_SETTINGS,
                     _SECTION_SKILLS,
                 ),
             )
-            data = _ai_task_data_from_user_input(
-                flat_user_input,
-                self._options,
-            )
+            try:
+                data = _ai_task_data_from_user_input(
+                    flat_user_input,
+                    self._options,
+                )
+            except RunSettingsValidationError as err:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=self.add_suggested_values_to_schema(
+                        _ai_task_data_schema(
+                            self.hass, self._options | flat_user_input, entry
+                        ),
+                        _agent_form_suggested_values(
+                            self._options | flat_user_input, self.hass
+                        ),
+                    ),
+                    errors=err.errors,
+                )
             if model_error := _selected_model_profile_error(self.hass, entry, data):
                 return self.async_show_form(
                     step_id="init",
@@ -205,12 +236,18 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 if not isinstance(profile, Mapping):
                     return "base", "model_profile_not_found", {}
                 settings = profile.get(CONF_MODEL_SETTINGS)
+                model_settings = dict(settings) if isinstance(settings, Mapping) else {}
+                for key in _REMOVED_PROFILE_MODEL_SETTING_KEYS:
+                    model_settings.pop(key, None)
+                for key in _RUN_VALIDATION_SETTING_KEYS:
+                    if key in data:
+                        model_settings[key] = data[key]
                 current_model = str(profile[CONF_MODEL])
                 await async_probe_model(
                     self.hass,
                     provider_subentry.data,
                     current_model,
-                    dict(settings) if isinstance(settings, Mapping) else {},
+                    model_settings,
                     structured_output_mode=data[CONF_OUTPUT_MODE],
                 )
         except ProviderValidationError as err:

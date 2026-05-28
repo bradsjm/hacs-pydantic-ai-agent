@@ -100,6 +100,7 @@ from ..const import (
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
+    CONF_MAX_TOKENS,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
@@ -120,6 +121,8 @@ from ..const import (
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
+    CONF_THINKING,
+    CONF_TIMEOUT,
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
@@ -205,16 +208,16 @@ _HTTP_STATUS_LABELS = {
     504: "timeout",
 }
 
-_MODEL_SETTING_MAX_TOKENS = "max_tokens"
+_MODEL_SETTING_MAX_TOKENS = CONF_MAX_TOKENS
 _MODEL_SETTING_MAX_ITERATIONS = CONF_MAX_ITERATIONS
 _MODEL_SETTING_TEMPERATURE = "temperature"
 _MODEL_SETTING_TOP_P = "top_p"
-_MODEL_SETTING_TIMEOUT = "timeout"
+_MODEL_SETTING_TIMEOUT = CONF_TIMEOUT
 _MODEL_SETTING_PARALLEL_TOOL_CALLS = "parallel_tool_calls"
 _MODEL_SETTING_SEED = "seed"
 _MODEL_SETTING_PRESENCE_PENALTY = "presence_penalty"
 _MODEL_SETTING_FREQUENCY_PENALTY = "frequency_penalty"
-_MODEL_SETTING_THINKING = "thinking"
+_MODEL_SETTING_THINKING = CONF_THINKING
 _MODEL_SETTING_EXTRA_BODY = "extra_body"
 _MODEL_SETTING_CHAT_TEMPLATE_KWARGS = CONF_CHAT_TEMPLATE_KWARGS
 _MODEL_PRICING_INPUT = "model_pricing_input"
@@ -263,20 +266,26 @@ _SENSITIVE_METADATA_KEYS = {
 
 _MAIN_MODEL_SETTING_KEYS = {
     _MODEL_SETTING_TEMPERATURE,
-    _MODEL_SETTING_THINKING,
 }
 _ADVANCED_MODEL_SETTING_KEYS = {
-    _MODEL_SETTING_MAX_TOKENS,
-    _MODEL_SETTING_MAX_ITERATIONS,
     _MODEL_SETTING_TOP_P,
-    _MODEL_SETTING_TIMEOUT,
     _MODEL_SETTING_PARALLEL_TOOL_CALLS,
     _MODEL_SETTING_SEED,
     _MODEL_SETTING_PRESENCE_PENALTY,
     _MODEL_SETTING_FREQUENCY_PENALTY,
     _MODEL_SETTING_CHAT_TEMPLATE_KWARGS,
 }
-_REMOVED_MODEL_SETTING_KEYS = {"extra_headers", _MODEL_SETTING_EXTRA_BODY}
+_RUN_SETTING_KEYS = {
+    _MODEL_SETTING_MAX_TOKENS,
+    _MODEL_SETTING_MAX_ITERATIONS,
+    _MODEL_SETTING_TIMEOUT,
+    _MODEL_SETTING_THINKING,
+}
+_REMOVED_MODEL_SETTING_KEYS = {
+    "extra_headers",
+    _MODEL_SETTING_EXTRA_BODY,
+    *_RUN_SETTING_KEYS,
+}
 _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "xhigh")
 _OUTPUT_MODE_OPTIONS = tuple(
     SelectOptionDict(value=value, label=value) for value in STRUCTURED_OUTPUT_MODES
@@ -295,6 +304,15 @@ class SkillDataValidationError(ValueError):
         self.errors = errors
 
 
+class RunSettingsValidationError(ValueError):
+    """Error raised when conversation/task run settings are invalid."""
+
+    def __init__(self, errors: dict[str, str]) -> None:
+        """Initialize the error with Home Assistant form error keys."""
+        super().__init__("invalid_run_settings")
+        self.errors = errors
+
+
 _CONF_MODEL_PROFILE_ID = "model_profile_id"
 _SECTION_ADVANCED_MCP = "advanced_mcp"
 _SECTION_ADVANCED_MODEL_SETTINGS = "advanced_model_settings"
@@ -305,6 +323,7 @@ _SECTION_HASS_CONTROL = "hass_control"
 _SECTION_MODEL_PRICING = "model_pricing"
 _SECTION_LOGFIRE = "logfire"
 _SECTION_CUSTOMIZE_MODEL_LIST = "customize_model_list"
+_SECTION_RUN_SETTINGS = "run_settings"
 _SECTION_SKILLS = "skill_settings"
 _TODO_WORKSPACE_REQUIRED_FEATURES = (
     TodoListEntityFeature.CREATE_TODO_ITEM
@@ -353,6 +372,9 @@ def _agent_form_suggested_values(
 ) -> dict[str, Any]:
     """Return per-agent suggested values matching the sectioned form schema."""
     suggested_values = dict(options)
+    suggested_values[_SECTION_RUN_SETTINGS] = {
+        key: options[key] for key in _RUN_SETTING_KEYS if key in options
+    }
     if CONF_LLM_HASS_API in options:
         llm_hass_api = options[CONF_LLM_HASS_API]
         if hass is not None:
@@ -932,24 +954,6 @@ def _model_profile_edit_schema(
             },
         )
     ] = NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1))
-    schema[
-        vol.Optional(
-            _MODEL_SETTING_THINKING,
-            description={
-                "suggested_value": _format_thinking_value(
-                    options[CONF_MODEL_SETTINGS]
-                    if isinstance(options[CONF_MODEL_SETTINGS], Mapping)
-                    else {}
-                )
-            },
-        )
-    ] = SelectSelector(
-        SelectSelectorConfig(
-            options=list(_THINKING_OPTIONS),
-            mode=SelectSelectorMode.DROPDOWN,
-            translation_key=_MODEL_SETTING_THINKING,
-        )
-    )
     schema[vol.Optional(_SECTION_ADVANCED_MODEL_SETTINGS, default={})] = section(
         _model_settings_schema(options), {"collapsed": True}
     )
@@ -1255,6 +1259,10 @@ def _conversation_schema(
         schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = (
             section(vol.Schema(fallback_schema), {"collapsed": True})
         )
+    run_settings_schema = _run_settings_schema(options, default_max_iterations=10)
+    schema[_section_schema_key(_SECTION_RUN_SETTINGS, run_settings_schema.schema)] = (
+        section(run_settings_schema, {"collapsed": True})
+    )
     api_schema_key = vol.Optional(CONF_LLM_HASS_API)
     if CONF_LLM_HASS_API in options:
         api_schema_key = vol.Optional(
@@ -1402,16 +1410,6 @@ def _model_profile_schema(
             ): NumberSelector(
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
             ),
-            vol.Optional(
-                _MODEL_SETTING_THINKING,
-                description={"suggested_value": _format_thinking_value(model_settings)},
-            ): SelectSelector(
-                SelectSelectorConfig(
-                    options=list(_THINKING_OPTIONS),
-                    mode=SelectSelectorMode.DROPDOWN,
-                    translation_key=_MODEL_SETTING_THINKING,
-                )
-            ),
             vol.Optional(_SECTION_ADVANCED_MODEL_SETTINGS, default={}): section(
                 _model_settings_schema(options), {"collapsed": True}
             ),
@@ -1435,33 +1433,9 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
         {
             parallel_tool_calls_key: BooleanSelector(),
             vol.Optional(
-                _MODEL_SETTING_MAX_TOKENS,
-                description={
-                    "suggested_value": model_settings.get(_MODEL_SETTING_MAX_TOKENS)
-                },
-            ): NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
-            ),
-            vol.Optional(
-                _MODEL_SETTING_MAX_ITERATIONS,
-                description={
-                    "suggested_value": model_settings.get(_MODEL_SETTING_MAX_ITERATIONS)
-                },
-            ): NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
-            ),
-            vol.Optional(
                 _MODEL_SETTING_TOP_P,
                 description={
                     "suggested_value": model_settings.get(_MODEL_SETTING_TOP_P)
-                },
-            ): NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
-            ),
-            vol.Optional(
-                _MODEL_SETTING_TIMEOUT,
-                description={
-                    "suggested_value": model_settings.get(_MODEL_SETTING_TIMEOUT)
                 },
             ): NumberSelector(
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
@@ -1512,6 +1486,51 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
                             "required": True,
                         },
                     },
+                )
+            ),
+        }
+    )
+
+
+def _run_settings_schema(
+    options: Mapping[str, Any] | None = None,
+    *,
+    default_max_iterations: int,
+) -> vol.Schema:
+    """Return per-conversation/task run settings schema."""
+    options = dict(options or {})
+    return vol.Schema(
+        {
+            vol.Optional(
+                _MODEL_SETTING_MAX_TOKENS,
+                description={
+                    "suggested_value": options.get(_MODEL_SETTING_MAX_TOKENS)
+                },
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
+            ),
+            vol.Required(
+                _MODEL_SETTING_MAX_ITERATIONS,
+                default=options.get(
+                    _MODEL_SETTING_MAX_ITERATIONS, default_max_iterations
+                ),
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
+            ),
+            vol.Required(
+                _MODEL_SETTING_TIMEOUT,
+                default=options.get(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT),
+            ): NumberSelector(
+                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
+            ),
+            vol.Optional(
+                _MODEL_SETTING_THINKING,
+                default=_format_thinking_value(options),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=list(_THINKING_OPTIONS),
+                    mode=SelectSelectorMode.DROPDOWN,
+                    translation_key=_MODEL_SETTING_THINKING,
                 )
             ),
         }
@@ -1776,6 +1795,40 @@ def _parse_model_settings(
     return settings, errors, cleared
 
 
+def _normalise_run_settings(data: dict[str, Any]) -> None:
+    """Normalize conversation/task run settings stored directly on subentries."""
+    errors: dict[str, str] = {}
+    for key in (_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_THINKING):
+        if _is_blank(data.get(key)):
+            data.pop(key, None)
+    for key in (_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_MAX_ITERATIONS):
+        if key in data:
+            try:
+                data[key] = _parse_positive_int_setting(data[key])
+            except ValueError as err:
+                errors[key] = _model_setting_error(key, str(err))
+    if _MODEL_SETTING_TIMEOUT in data:
+        try:
+            data[_MODEL_SETTING_TIMEOUT] = _parse_positive_float_setting(
+                data[_MODEL_SETTING_TIMEOUT]
+            )
+        except ValueError as err:
+            errors[_MODEL_SETTING_TIMEOUT] = _model_setting_error(
+                _MODEL_SETTING_TIMEOUT, str(err)
+            )
+    if _MODEL_SETTING_THINKING in data:
+        try:
+            data[_MODEL_SETTING_THINKING] = _parse_thinking_setting(
+                data[_MODEL_SETTING_THINKING]
+            )
+        except ValueError as err:
+            errors[_MODEL_SETTING_THINKING] = _model_setting_error(
+                _MODEL_SETTING_THINKING, str(err)
+            )
+    if errors:
+        raise RunSettingsValidationError(errors)
+
+
 def _parse_model_pricing(
     user_input: Mapping[str, Any], pricing_keys: set[str]
 ) -> tuple[dict[str, float], dict[str, str], set[str]]:
@@ -1853,6 +1906,7 @@ def _conversation_data_from_user_input(
             _SECTION_EXTERNAL_TOOLS,
             _SECTION_FALLBACK_MODELS,
             _SECTION_HASS_CONTROL,
+            _SECTION_RUN_SETTINGS,
             _SECTION_SKILLS,
         ),
     )
@@ -1869,6 +1923,7 @@ def _conversation_data_from_user_input(
         data.pop(CONF_FALLBACK_MODEL_REFS, None)
     if CONF_SKILLS not in user_input and options.get(CONF_SKILLS):
         data[CONF_SKILLS] = options[CONF_SKILLS]
+    _normalise_run_settings(data)
     _normalise_skill_selection(data)
     return data
 
@@ -1940,6 +1995,7 @@ def _model_profile_data_from_user_input(
         if key
         not in _MAIN_MODEL_SETTING_KEYS
         | _ADVANCED_MODEL_SETTING_KEYS
+        | _RUN_SETTING_KEYS
         | {_MODEL_PRICING_INPUT, _MODEL_PRICING_OUTPUT, _MODEL_PRICING_CACHE_READ}
     }
 
@@ -2002,6 +2058,10 @@ def _ai_task_data_schema(
         schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = (
             section(vol.Schema(fallback_schema), {"collapsed": True})
         )
+    run_settings_schema = _run_settings_schema(options, default_max_iterations=30)
+    schema[_section_schema_key(_SECTION_RUN_SETTINGS, run_settings_schema.schema)] = (
+        section(run_settings_schema, {"collapsed": True})
+    )
     api_schema_key = vol.Optional(CONF_LLM_HASS_API)
     if CONF_LLM_HASS_API in options:
         api_schema_key = vol.Optional(
@@ -2091,6 +2151,7 @@ def _ai_task_data_from_user_input(
             _SECTION_EXTERNAL_TOOLS,
             _SECTION_FALLBACK_MODELS,
             _SECTION_HASS_CONTROL,
+            _SECTION_RUN_SETTINGS,
             _SECTION_SKILLS,
         ),
     )
@@ -2113,6 +2174,7 @@ def _ai_task_data_from_user_input(
         data.pop(CONF_LLM_HASS_API, None)
     if CONF_SKILLS not in user_input and options.get(CONF_SKILLS):
         data[CONF_SKILLS] = options[CONF_SKILLS]
+    _normalise_run_settings(data)
     _normalise_skill_selection(data)
     return data
 

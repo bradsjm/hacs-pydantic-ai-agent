@@ -22,12 +22,16 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_DISCOVERED,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
+    CONF_MAX_ITERATIONS,
+    CONF_MAX_TOKENS,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    CONF_THINKING,
+    CONF_TIMEOUT,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_PROVIDER,
@@ -215,8 +219,8 @@ def test_model_profile_chain_keeps_primary_then_ordered_fallback() -> None:
     ]
 
 
-def test_thinking_capability_reads_model_setting() -> None:
-    """Test thinking model settings become Pydantic AI capabilities."""
+def test_run_settings_override_legacy_profile_run_settings() -> None:
+    """Test run settings own operational request controls."""
     profile = ModelProfile(
         ref=model_profile_ref("provider-1", "profile-1"),
         provider_subentry_id="provider-1",
@@ -225,31 +229,31 @@ def test_thinking_capability_reads_model_setting() -> None:
         provider_title="Provider",
         provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         model_name="gpt-test",
-        model_settings={"temperature": 0.7, "thinking": "high"},
+        model_settings={
+            "temperature": 0.7,
+            CONF_MAX_ITERATIONS: 5,
+            CONF_MAX_TOKENS: 99,
+            CONF_THINKING: "low",
+            CONF_TIMEOUT: 20.0,
+        },
     )
 
-    settings = model_settings(profile)
-    thinking = thinking_capability(profile)
+    settings = model_settings(
+        profile,
+        {CONF_MAX_TOKENS: 256, CONF_THINKING: "high", CONF_TIMEOUT: 12.5},
+    )
+    thinking = thinking_capability({CONF_THINKING: "high"})
 
     assert settings["temperature"] == 0.7
+    assert settings[CONF_MAX_TOKENS] == 256
+    assert settings[CONF_TIMEOUT] == 12.5
     assert thinking is not None
     assert thinking.effort == "high"
 
 
 def test_thinking_capability_keeps_explicit_false() -> None:
     """Test explicit thinking=False creates a capability."""
-    profile = ModelProfile(
-        ref=model_profile_ref("provider-1", "profile-1"),
-        provider_subentry_id="provider-1",
-        profile_id="profile-1",
-        title="Fast GPT",
-        provider_title="Provider",
-        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-        model_name="gpt-test",
-        model_settings={"thinking": False},
-    )
-
-    thinking = thinking_capability(profile)
+    thinking = thinking_capability({CONF_THINKING: False})
 
     assert thinking is not None
     assert thinking.effort is False
@@ -257,15 +261,4 @@ def test_thinking_capability_keeps_explicit_false() -> None:
 
 def test_thinking_capability_absent_when_unconfigured() -> None:
     """Test absent thinking means no Thinking capability."""
-    profile = ModelProfile(
-        ref=model_profile_ref("provider-1", "profile-1"),
-        provider_subentry_id="provider-1",
-        profile_id="profile-1",
-        title="Fast GPT",
-        provider_title="Provider",
-        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-        model_name="gpt-test",
-        model_settings={},
-    )
-
-    assert thinking_capability(profile) is None
+    assert thinking_capability({}) is None

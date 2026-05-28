@@ -18,10 +18,12 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
+    _SECTION_RUN_SETTINGS,
     _SECTION_SKILLS,
     _MODEL_PRICING_CACHE_READ,
     _MODEL_PRICING_INPUT,
     _MODEL_PRICING_OUTPUT,
+    RunSettingsValidationError,
     SkillDataValidationError,
     _ai_task_data_from_user_input,
     _ai_task_data_schema,
@@ -60,6 +62,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
+    CONF_MAX_TOKENS,
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PRICING,
@@ -72,6 +75,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
+    CONF_THINKING,
+    CONF_TIMEOUT,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
     DOMAIN,
@@ -234,9 +239,7 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
     settings, errors, cleared = _parse_model_settings(
         hass,
         {
-            "max_tokens": "1024",
-            CONF_MAX_ITERATIONS: "0",
-            "timeout": "30.5",
+            "top_p": "0.8",
             CONF_CHAT_TEMPLATE_KWARGS: [
                 {
                     CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
@@ -244,19 +247,18 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
                 }
             ],
             "seed": "",
+            "frequency_penalty": "invalid",
         },
         {
-            "max_tokens",
-            CONF_MAX_ITERATIONS,
-            "timeout",
+            "top_p",
             CONF_CHAT_TEMPLATE_KWARGS,
             "seed",
+            "frequency_penalty",
         },
     )
 
     assert settings == {
-        "max_tokens": 1024,
-        "timeout": 30.5,
+        "top_p": 0.8,
         CONF_CHAT_TEMPLATE_KWARGS: [
             {
                 CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
@@ -264,7 +266,7 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
             }
         ],
     }
-    assert errors == {CONF_MAX_ITERATIONS: "invalid_integer"}
+    assert errors == {"frequency_penalty": "invalid_number"}
     assert cleared == {"seed"}
 
 
@@ -292,6 +294,10 @@ def test_model_settings_from_options_sanitizes_persisted_settings() -> None:
                 "temperature": 0.2,
                 "extra_body": {"old": True},
                 "extra_headers": {"X-Old": "value"},
+                CONF_MAX_ITERATIONS: 20,
+                CONF_MAX_TOKENS: 1024,
+                CONF_THINKING: "high",
+                CONF_TIMEOUT: 30.0,
             }
         }
     ) == {"temperature": 0.2}
@@ -344,6 +350,13 @@ def test_agent_schemas_group_fallbacks_and_hass_control(
     assert _SECTION_FALLBACK_MODELS in _schema_key_names(conversation_schema)
     assert _SECTION_HASS_CONTROL in _schema_key_names(conversation_schema)
     assert _SECTION_EXTERNAL_TOOLS in _schema_key_names(conversation_schema)
+    assert _SECTION_RUN_SETTINGS in _schema_key_names(conversation_schema)
+    assert {
+        CONF_MAX_ITERATIONS,
+        CONF_MAX_TOKENS,
+        CONF_THINKING,
+        CONF_TIMEOUT,
+    } <= _section_key_names(conversation_schema, _SECTION_RUN_SETTINGS)
     assert CONF_VIRTUAL_WORKSPACE_ENABLED in _section_key_names(
         conversation_schema, _SECTION_EXTERNAL_TOOLS
     )
@@ -352,6 +365,13 @@ def test_agent_schemas_group_fallbacks_and_hass_control(
     assert _SECTION_FALLBACK_MODELS in _schema_key_names(ai_task_schema)
     assert _SECTION_HASS_CONTROL in _schema_key_names(ai_task_schema)
     assert _SECTION_EXTERNAL_TOOLS in _schema_key_names(ai_task_schema)
+    assert _SECTION_RUN_SETTINGS in _schema_key_names(ai_task_schema)
+    assert {
+        CONF_MAX_ITERATIONS,
+        CONF_MAX_TOKENS,
+        CONF_THINKING,
+        CONF_TIMEOUT,
+    } <= _section_key_names(ai_task_schema, _SECTION_RUN_SETTINGS)
     assert CONF_VIRTUAL_WORKSPACE_ENABLED in _section_key_names(
         ai_task_schema, _SECTION_EXTERNAL_TOOLS
     )
@@ -371,6 +391,12 @@ def test_sectioned_conversation_input_flattens_and_prunes_legacy_skills() -> Non
             },
             _SECTION_FALLBACK_MODELS: {CONF_FALLBACK_MODEL_REFS: ["provider:fallback"]},
             _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: ["assist"]},
+            _SECTION_RUN_SETTINGS: {
+                CONF_MAX_ITERATIONS: 12,
+                CONF_MAX_TOKENS: "2048",
+                CONF_THINKING: "high",
+                CONF_TIMEOUT: "11.5",
+            },
             _SECTION_SKILLS: {
                 "enable_skills": False,
                 "skills_folder": "/tmp/skills",
@@ -382,6 +408,10 @@ def test_sectioned_conversation_input_flattens_and_prunes_legacy_skills() -> Non
 
     assert data[CONF_FALLBACK_MODEL_REFS] == ["provider:fallback"]
     assert data[CONF_LLM_HASS_API] == ["assist"]
+    assert data[CONF_MAX_ITERATIONS] == 12
+    assert data[CONF_MAX_TOKENS] == 2048
+    assert data[CONF_THINKING] == "high"
+    assert data[CONF_TIMEOUT] == 11.5
     assert data[CONF_SKILLS] == ["skill-1"]
     assert "enable_skills" not in data
     assert "skills_folder" not in data
@@ -390,7 +420,59 @@ def test_sectioned_conversation_input_flattens_and_prunes_legacy_skills() -> Non
     assert _SECTION_EXTERNAL_TOOLS not in data
     assert _SECTION_FALLBACK_MODELS not in data
     assert _SECTION_HASS_CONTROL not in data
+    assert _SECTION_RUN_SETTINGS not in data
     assert _SECTION_SKILLS not in data
+
+
+def test_sectioned_conversation_input_reports_run_setting_errors() -> None:
+    """Test invalid conversation run settings surface field errors."""
+    with pytest.raises(RunSettingsValidationError) as err:
+        _conversation_data_from_user_input(
+            {
+                CONF_AGENT_NAME: "Kitchen Agent",
+                CONF_PRIMARY_MODEL_REF: "provider:primary",
+                _SECTION_RUN_SETTINGS: {
+                    CONF_MAX_ITERATIONS: 0,
+                    CONF_MAX_TOKENS: "invalid",
+                    CONF_THINKING: "unsupported",
+                    CONF_TIMEOUT: -1,
+                },
+            },
+            {},
+        )
+
+    assert err.value.errors == {
+        CONF_MAX_ITERATIONS: "invalid_integer",
+        CONF_MAX_TOKENS: "invalid_integer",
+        CONF_THINKING: "invalid_number",
+        CONF_TIMEOUT: "positive_number",
+    }
+
+
+def test_sectioned_ai_task_input_reports_run_setting_errors() -> None:
+    """Test invalid AI task run settings surface field errors."""
+    with pytest.raises(RunSettingsValidationError) as err:
+        _ai_task_data_from_user_input(
+            {
+                CONF_AI_TASK_NAME: "Summary Task",
+                CONF_PRIMARY_MODEL_REF: "provider:primary",
+                CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
+                _SECTION_RUN_SETTINGS: {
+                    CONF_MAX_ITERATIONS: 0,
+                    CONF_MAX_TOKENS: "invalid",
+                    CONF_THINKING: "unsupported",
+                    CONF_TIMEOUT: -1,
+                },
+            },
+            {},
+        )
+
+    assert err.value.errors == {
+        CONF_MAX_ITERATIONS: "invalid_integer",
+        CONF_MAX_TOKENS: "invalid_integer",
+        CONF_THINKING: "invalid_number",
+        CONF_TIMEOUT: "positive_number",
+    }
 
 
 def test_sectioned_conversation_input_preserves_literal_virtual_workspace_true() -> None:
@@ -430,6 +512,10 @@ def test_sectioned_ai_task_input_preserves_existing_skills_when_field_omitted() 
             CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
             _SECTION_FALLBACK_MODELS: {CONF_FALLBACK_MODEL_REFS: ["provider:fallback"]},
             _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: ["assist"]},
+            _SECTION_RUN_SETTINGS: {
+                CONF_MAX_ITERATIONS: 30,
+                CONF_TIMEOUT: 10.0,
+            },
             _SECTION_SKILLS: {},
         },
         {CONF_SKILLS: ["skill-1"]},
@@ -437,9 +523,12 @@ def test_sectioned_ai_task_input_preserves_existing_skills_when_field_omitted() 
 
     assert data[CONF_FALLBACK_MODEL_REFS] == ["provider:fallback"]
     assert data[CONF_LLM_HASS_API] == ["assist"]
+    assert data[CONF_MAX_ITERATIONS] == 30
+    assert data[CONF_TIMEOUT] == 10.0
     assert data[CONF_SKILLS] == ["skill-1"]
     assert _SECTION_FALLBACK_MODELS not in data
     assert _SECTION_HASS_CONTROL not in data
+    assert _SECTION_RUN_SETTINGS not in data
     assert _SECTION_SKILLS not in data
 
 

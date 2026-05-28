@@ -181,7 +181,7 @@ def test_has_connection_failure_stops_on_cycles() -> None:
         (
             UsageLimitExceeded("too many"),
             "Terminated because the model exceeded a configured usage limit. "
-            "Increase the relevant model profile limit or reduce the request.",
+            "Increase the relevant run limit or reduce the request.",
         ),
         (
             MCPValidationError("invalid", "MCP failed"),
@@ -223,7 +223,7 @@ def test_classify_run_failure_uses_configured_iteration_limit() -> None:
     assert failure.partial_response is True
     assert str(failure.user_message) == (
         "Terminated after a partial response because the model exceeded the "
-        "configured maximum of 24 iterations. Increase the model profile max "
+        "configured maximum of 24 iterations. Increase the run max "
         "iterations or fix repeated tool failures."
     )
 

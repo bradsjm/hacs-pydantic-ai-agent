@@ -17,6 +17,7 @@ from .const import (
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
+    CONF_MAX_TOKENS,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
@@ -24,6 +25,8 @@ from .const import (
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
+    CONF_THINKING,
+    CONF_TIMEOUT,
     DEFAULT_TIMEOUT,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
@@ -41,7 +44,7 @@ from .provider import (
 if TYPE_CHECKING:
     from . import PydanticAIAgentConfigEntry
 
-_MODEL_SETTING_THINKING = "thinking"
+_RUN_SETTING_KEYS = {CONF_MAX_TOKENS, CONF_MAX_ITERATIONS, CONF_TIMEOUT, CONF_THINKING}
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -161,6 +164,8 @@ def resolve_model_profile(
         raise HomeAssistantError("Configured model profile is missing a model name")
     raw_settings = profile.get(CONF_MODEL_SETTINGS)
     model_settings = dict(raw_settings) if isinstance(raw_settings, Mapping) else {}
+    for key in _RUN_SETTING_KEYS:
+        model_settings.pop(key, None)
     raw_pricing = profile.get(CONF_MODEL_PRICING)
     model_pricing = _profile_pricing(raw_pricing)
     return ResolvedModelProfile(
@@ -212,15 +217,22 @@ def model_profile_chain(
     return profiles
 
 
-def model_settings(profile: ResolvedModelProfile) -> ModelSettings:
+def model_settings(
+    profile: ResolvedModelProfile, run_settings: Mapping[str, Any] | None = None
+) -> ModelSettings:
     """Return Pydantic AI model settings for one profile."""
     settings = dict(profile.model_settings)
-    settings.pop(CONF_MAX_ITERATIONS, None)
+    for key in _RUN_SETTING_KEYS:
+        settings.pop(key, None)
     settings.pop(CONF_CHAT_TEMPLATE_KWARGS, None)
-    settings.pop(_MODEL_SETTING_THINKING, None)
     settings.pop("extra_body", None)
     reject_chat_template_kwargs_in_extra_body(settings.get("extra_body"))
-    settings.setdefault("timeout", DEFAULT_TIMEOUT)
+    if run_settings is not None:
+        if CONF_MAX_TOKENS in run_settings:
+            settings[CONF_MAX_TOKENS] = run_settings[CONF_MAX_TOKENS]
+        if CONF_TIMEOUT in run_settings:
+            settings[CONF_TIMEOUT] = run_settings[CONF_TIMEOUT]
+    settings.setdefault(CONF_TIMEOUT, DEFAULT_TIMEOUT)
     return ModelSettings(**settings)
 
 
@@ -252,16 +264,16 @@ def provider_extra_body(
     return dict(extra_body)
 
 
-def thinking_capability(profile: ResolvedModelProfile) -> Thinking | None:
-    """Return the configured Thinking capability for one profile."""
-    if _MODEL_SETTING_THINKING not in profile.model_settings:
+def thinking_capability(run_settings: Mapping[str, Any]) -> Thinking | None:
+    """Return the configured Thinking capability for one agent/task run."""
+    if CONF_THINKING not in run_settings:
         return None
-    return Thinking(effort=profile.model_settings[_MODEL_SETTING_THINKING])
+    return Thinking(effort=run_settings[CONF_THINKING])
 
 
-def max_iterations(profile: ResolvedModelProfile, default: int) -> int:
-    """Return the configured agent iteration limit for one profile."""
-    value = profile.model_settings.get(CONF_MAX_ITERATIONS)
+def max_iterations(run_settings: Mapping[str, Any], default: int) -> int:
+    """Return the configured agent iteration limit for one agent/task run."""
+    value = run_settings.get(CONF_MAX_ITERATIONS)
     if type(value) is int and value > 0:
         return value
     return default

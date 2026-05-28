@@ -84,14 +84,18 @@
         "duplicate_fallback_model": "Select each fallback language model profile only once.",
         "invalid_auth": "{error_message}",
         "invalid_base_url": "{error_message}",
+        "invalid_integer": "Enter an integer value in this field.",
         "invalid_model": "{error_message}",
+        "invalid_number": "Enter a valid number in this field.",
         "invalid_provider_config": "{error_message}",
         "mcp_server_not_found": "Selected MCP server was not found.",
         "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
         "model_does_not_support_streaming": "{error_message}",
         "model_profile_not_found": "Selected language model profile was not found.",
         "model_profile_required": "Select a primary language model profile.",
+        "non_negative_number": "Enter zero or a positive number.",
         "permission_denied": "{error_message}",
+        "positive_number": "Enter a number greater than zero.",
         "primary_model_in_fallbacks": "The primary language model profile cannot also be selected as a fallback.",
         "provider_error": "{error_message}",
         "rate_limited": "{error_message}",
@@ -144,6 +148,21 @@
                 "fallback_model_refs": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure."
               },
               "name": "Fallback language models"
+            },
+            "run_settings": {
+              "data": {
+                "max_iterations": "Max iterations",
+                "max_tokens": "Max tokens",
+                "thinking": "Thinking (Reasoning) Mode",
+                "timeout": "Timeout"
+              },
+              "data_description": {
+                "max_iterations": "Maximum Pydantic AI agent request iterations for one AI task run. Default: 30.",
+                "max_tokens": "Maximum tokens the model may generate per response. Leave empty to use the provider/model default.",
+                "thinking": "Optional reasoning effort for this AI task if supported by the model. Leave empty to use the provider/model default.",
+                "timeout": "Provider request timeout in seconds. Default: 10.0."
+              },
+              "name": "Run settings"
             },
             "hass_control": {
               "data": {
@@ -239,6 +258,21 @@
                 "fallback_model_refs": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure."
               },
               "name": "Fallback language models"
+            },
+            "run_settings": {
+              "data": {
+                "max_iterations": "Max iterations",
+                "max_tokens": "Max tokens",
+                "thinking": "Thinking (Reasoning) Mode",
+                "timeout": "Timeout"
+              },
+              "data_description": {
+                "max_iterations": "Maximum Pydantic AI agent request iterations for one conversation turn. Default: 10.",
+                "max_tokens": "Maximum tokens the model may generate per response. Leave empty to use the provider/model default.",
+                "thinking": "Optional reasoning effort for this conversation agent if supported by the model. Leave empty to use the provider/model default.",
+                "timeout": "Provider request timeout in seconds. Default: 10.0."
+              },
+              "name": "Run settings"
             },
             "hass_control": {
               "data": {
@@ -404,36 +438,28 @@
           "data": {
             "model": "Language Model identifier",
             "name": "Language Model name",
-            "temperature": "Custom Model Temperature",
-            "thinking": "Thinking (Reasoning) Mode"
+            "temperature": "Custom Model Temperature"
           },
           "data_description": {
             "model": "Model name from the provider.",
-            "temperature": "Controls response randomness. Leave empty to use the provider or model default.",
-            "thinking": "Optional reasoning effort if supported by the model (levels map to the closest available value)."
+            "temperature": "Controls response randomness. Leave empty to use the provider or model default."
           },
           "sections": {
             "advanced_model_settings": {
               "data": {
                 "chat_template_kwargs": "Chat template arguments",
                 "frequency_penalty": "Frequency penalty",
-                "max_iterations": "Max iterations",
-                "max_tokens": "Max tokens",
                 "parallel_tool_calls": "Parallel tool calls",
                 "presence_penalty": "Presence penalty",
                 "seed": "Seed",
-                "timeout": "Timeout",
                 "top_p": "Top P"
               },
               "data_description": {
                 "chat_template_kwargs": "Optional chat template keyword arguments rendered from Home Assistant templates and sent as extra_body.chat_template_kwargs.",
                 "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
-                "max_iterations": "Maximum Pydantic AI agent request iterations for one run. Must be a positive integer. Leave empty to use the conversation or AI task default.",
-                "max_tokens": "Maximum tokens the model may generate per response. Must be a positive integer.",
                 "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
                 "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
                 "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
-                "timeout": "Request timeout in seconds. Must be positive. If empty, validation uses the integration default timeout.",
                 "top_p": "Nucleus sampling value. Leave empty to use the provider default."
               },
               "name": "Advanced model settings"

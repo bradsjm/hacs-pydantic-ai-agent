@@ -16,7 +16,9 @@ from .common import (
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
+    _SECTION_RUN_SETTINGS,
     _SECTION_SKILLS,
+    RunSettingsValidationError,
     _agent_form_suggested_values,
     _conversation_data_from_user_input,
     _conversation_schema,
@@ -75,13 +77,30 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                     _SECTION_EXTERNAL_TOOLS,
                     _SECTION_FALLBACK_MODELS,
                     _SECTION_HASS_CONTROL,
+                    _SECTION_RUN_SETTINGS,
                     _SECTION_SKILLS,
                 ),
             )
-            data = _conversation_data_from_user_input(
-                flat_user_input,
-                self._options,
-            )
+            try:
+                data = _conversation_data_from_user_input(
+                    flat_user_input,
+                    self._options,
+                )
+            except RunSettingsValidationError as err:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=self.add_suggested_values_to_schema(
+                        _conversation_schema(
+                            self.hass,
+                            self._options | flat_user_input,
+                            entry,
+                        ),
+                        _agent_form_suggested_values(
+                            self._options | flat_user_input, self.hass
+                        ),
+                    ),
+                    errors=err.errors,
+                )
             if model_error := _selected_model_profile_error(self.hass, entry, data):
                 return self.async_show_form(
                     step_id="init",

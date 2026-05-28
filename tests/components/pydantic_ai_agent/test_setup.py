@@ -21,6 +21,9 @@ from custom_components.pydantic_ai_agent import (
 from custom_components.pydantic_ai_agent.const import (
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
+    CONF_MAX_TOKENS,
+    CONF_THINKING,
+    CONF_TIMEOUT,
     DOMAIN,
     OUTPUT_MODE_TOOL,
 )
@@ -61,17 +64,24 @@ def _provider_subentry(
     )
 
 
-def _conversation_subentry(profile_ref: str) -> dict[str, object]:
+def _conversation_subentry(
+    profile_ref: str, extra_data: Mapping[str, object] | None = None
+) -> dict[str, object]:
     """Return a conversation subentry using setup-specific defaults."""
-    return conversation_subentry_data(profile_ref, subentry_id="conversation-1")
+    return conversation_subentry_data(
+        profile_ref, subentry_id="conversation-1", extra_data=extra_data
+    )
 
 
-def _ai_task_subentry(profile_ref: str) -> dict[str, object]:
+def _ai_task_subentry(
+    profile_ref: str, extra_data: Mapping[str, object] | None = None
+) -> dict[str, object]:
     """Return an AI task subentry using setup-specific defaults."""
     return ai_task_subentry_data(
         profile_ref,
         subentry_id="ai-task-1",
         output_mode=OUTPUT_MODE_TOOL,
+        extra_data=extra_data,
     )
 
 
@@ -445,16 +455,22 @@ async def test_setup_entry_validates_selected_model_setting_combinations(
             _provider_subentry(
                 profile_id="first-profile",
                 model="shared-model",
-                model_settings={"timeout": 20.0},
+                model_settings={CONF_TIMEOUT: 99.0, CONF_MAX_TOKENS: 99},
             ),
             _provider_subentry(
                 subentry_id="provider-2",
                 profile_id="second-profile",
                 model="shared-model",
-                model_settings={"timeout": 20.0},
+                model_settings={CONF_TIMEOUT: 99.0, CONF_THINKING: "low"},
             ),
-            _conversation_subentry(first_ref),
-            _ai_task_subentry(second_ref),
+            _conversation_subentry(
+                first_ref,
+                extra_data={CONF_TIMEOUT: 20.0, CONF_MAX_TOKENS: 512},
+            ),
+            _ai_task_subentry(
+                second_ref,
+                extra_data={CONF_TIMEOUT: 30.0, CONF_THINKING: "high"},
+            ),
         )
     )
     entry.add_to_hass(hass)
@@ -476,14 +492,65 @@ async def test_setup_entry_validates_selected_model_setting_combinations(
                 hass,
                 entry.subentries["provider-1"].data,
                 "shared-model",
-                {"timeout": 20.0},
+                {CONF_MAX_TOKENS: 512, CONF_TIMEOUT: 20.0},
             ),
             call(
                 hass,
                 entry.subentries["provider-2"].data,
                 "shared-model",
-                {"timeout": 20.0},
+                {CONF_THINKING: "high", CONF_TIMEOUT: 30.0},
                 structured_output_mode=OUTPUT_MODE_TOOL,
+            ),
+        ],
+        any_order=True,
+    )
+    assert probe_model.await_count == 2
+
+
+async def test_setup_entry_probes_distinct_subentry_run_settings(
+    hass: HomeAssistant,
+) -> None:
+    """Test setup keeps same-model probes distinct by subentry run settings."""
+    profile_ref = model_profile_ref("provider-1", "profile-1")
+    entry = _workspace_entry(
+        (
+            _provider_subentry(model="shared-model"),
+            conversation_subentry_data(
+                profile_ref,
+                subentry_id="conversation-1",
+                extra_data={CONF_TIMEOUT: 20.0},
+            ),
+            conversation_subentry_data(
+                profile_ref,
+                subentry_id="conversation-2",
+                title="Second Agent",
+                agent_name="Second Agent",
+                extra_data={CONF_THINKING: "high", CONF_TIMEOUT: 20.0},
+            ),
+        )
+    )
+    entry.add_to_hass(hass)
+    provider_data = entry.subentries["provider-1"].data
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.async_probe_model",
+            new_callable=AsyncMock,
+        ) as probe_model,
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    probe_model.assert_has_awaits(
+        [
+            call(hass, provider_data, "shared-model", {CONF_TIMEOUT: 20.0}),
+            call(
+                hass,
+                provider_data,
+                "shared-model",
+                {CONF_THINKING: "high", CONF_TIMEOUT: 20.0},
             ),
         ],
         any_order=True,
