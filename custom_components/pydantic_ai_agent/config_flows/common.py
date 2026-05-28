@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from hashlib import sha256
 from typing import Any
-from urllib.parse import parse_qsl, urlparse
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import httpx
@@ -90,23 +90,15 @@ from ..const import (
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
     CONF_CUSTOM_MODEL_NAMES,
-    CONF_DESCRIPTION,
     CONF_DISCOVERED,
     CONF_DISCOVERED_MODELS,
     CONF_DISCOVERED_MODELS_AT,
     CONF_DISCOVERED_MODELS_CACHE_KEY,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
-    CONF_LOGFIRE_INCLUDE_CONTENT,
-    CONF_LOGFIRE_TOKEN,
     CONF_MAX_ITERATIONS,
     CONF_MAX_TOKENS,
-    CONF_MCP_ALLOWED_TOOLS,
-    CONF_MCP_DEFERRED_LOADING,
-    CONF_MCP_HEADERS,
-    CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SERVER_IDS,
-    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
@@ -118,8 +110,6 @@ from ..const import (
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
-    CONF_SKILL_CONTENT,
-    CONF_SKILL_REFERENCES,
     CONF_SKILLS,
     CONF_THINKING,
     CONF_TIMEOUT,
@@ -130,9 +120,7 @@ from ..const import (
     DEFAULT_AI_TASK_NAME,
     DEFAULT_OUTPUT_MODE,
     DEFAULT_SERVICE_NAME,
-    DEFAULT_SKILL_NAME,
     DEFAULT_TIMEOUT,
-    DEFAULT_WORKSPACE_NAME,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
@@ -151,11 +139,6 @@ from ..const import (
     default_conversation_options,
 )
 from ..mcp import (
-    MCPValidationError,
-    async_discover_mcp_tools_from_config,
-    async_validate_mcp_url,
-    normalise_mcp_url,
-    parse_allowed_tools,
     parse_mcp_headers,
 )
 from ..model_profiles import (
@@ -188,6 +171,11 @@ from ..model_settings import (
     REMOVED_PROFILE_MODEL_SETTING_KEYS,
     RUN_SETTING_KEYS,
 )
+from .helpers import _flatten_section_data, _section_schema_key
+from .skill_helpers import (
+    _append_skill_schema_fields,
+    _normalise_skill_selection,
+)
 from ..structured_output import (
     structured_model_request_parameters,
     structured_output_name,
@@ -197,8 +185,6 @@ from ..structured_output import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-_MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH = 80
 
 _HTTP_STATUS_LABELS = {
     400: "invalid request",
@@ -289,20 +275,6 @@ _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "x
 _OUTPUT_MODE_OPTIONS = tuple(
     SelectOptionDict(value=value, label=value) for value in STRUCTURED_OUTPUT_MODES
 )
-_SKILL_NAME_MAX_LENGTH = 80
-_SKILL_DESCRIPTION_MAX_LENGTH = 500
-_SKILL_CONTENT_MAX_LENGTH = 20000
-
-
-class SkillDataValidationError(ValueError):
-    """Error raised when native workspace Skill form data is invalid."""
-
-    def __init__(self, errors: dict[str, str]) -> None:
-        """Initialize the error with Home Assistant form error keys."""
-        super().__init__("invalid_skill")
-        self.errors = errors
-
-
 class RunSettingsValidationError(ValueError):
     """Error raised when conversation/task run settings are invalid."""
 
@@ -313,14 +285,12 @@ class RunSettingsValidationError(ValueError):
 
 
 _CONF_MODEL_PROFILE_ID = "model_profile_id"
-_SECTION_ADVANCED_MCP = "advanced_mcp"
 _SECTION_ADVANCED_MODEL_SETTINGS = "advanced_model_settings"
 _SECTION_ADVANCED_OPTIONS = "advanced_options"
 _SECTION_EXTERNAL_TOOLS = "external_tools"
 _SECTION_FALLBACK_MODELS = "fallback_models"
 _SECTION_HASS_CONTROL = "hass_control"
 _SECTION_MODEL_PRICING = "model_pricing"
-_SECTION_LOGFIRE = "logfire"
 _SECTION_CUSTOMIZE_MODEL_LIST = "customize_model_list"
 _SECTION_RUN_SETTINGS = "run_settings"
 _SECTION_SKILLS = "skill_settings"
@@ -352,20 +322,6 @@ def _format_http_headers(headers: object) -> str:
     return "\n".join(f"{name}: {headers[name]}" for name in sorted(headers))
 
 
-def _flatten_section_data(
-    data: Mapping[str, Any], section_keys: Iterable[str]
-) -> dict[str, Any]:
-    """Return form data with HA section namespaces flattened."""
-    flattened = dict(data)
-    for key in section_keys:
-        value = flattened.pop(key, None)
-        if isinstance(value, Mapping):
-            flattened.update(value)
-        elif value is not None:
-            flattened[key] = value
-    return flattened
-
-
 def _agent_form_suggested_values(
     options: Mapping[str, Any], hass: HomeAssistant | None = None
 ) -> dict[str, Any]:
@@ -383,25 +339,6 @@ def _agent_form_suggested_values(
     return suggested_values
 
 
-def _section_defaults(section_schema: VolDictType) -> dict[str, Any]:
-    """Return defaults for an expandable section from its nested fields."""
-    defaults: dict[str, Any] = {}
-    for key in section_schema:
-        key_default = getattr(key, "default", vol.Undefined)
-        if (
-            isinstance(key, vol.Marker)
-            and isinstance(key.schema, str)
-            and not isinstance(key_default, vol.Undefined)
-        ):
-            defaults[key.schema] = key_default()
-    return defaults
-
-
-def _section_schema_key(section_name: str, section_schema: VolDictType) -> vol.Optional:
-    """Return a section marker whose default mirrors its nested schema values."""
-    return vol.Optional(section_name, default=_section_defaults(section_schema))
-
-
 def _parse_provider_headers(value: object) -> dict[str, str]:
     """Return provider HTTP headers from form input."""
     try:
@@ -411,37 +348,6 @@ def _parse_provider_headers(value: object) -> dict[str, str]:
             "invalid_provider_headers",
             "Enter HTTP headers one per line using 'Header-Name: value'.",
         ) from err
-
-
-def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
-    """Return the workspace schema."""
-    data = _flatten_section_data(user_input or {}, (_SECTION_LOGFIRE,))
-    schema: VolDictType = {
-        vol.Required(
-            CONF_NAME,
-            default=data.get(CONF_NAME, DEFAULT_WORKSPACE_NAME),
-        ): TextSelector(TextSelectorConfig()),
-    }
-    schema[vol.Optional(_SECTION_LOGFIRE, default={})] = section(
-        vol.Schema(
-            {
-                vol.Optional(CONF_LOGFIRE_TOKEN): TextSelector(
-                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
-                ),
-                vol.Optional(
-                    CONF_LOGFIRE_INCLUDE_CONTENT,
-                    default=bool(data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False)),
-                ): BooleanSelector(),
-            }
-        ),
-        {"collapsed": True},
-    )
-    return vol.Schema(schema)
-
-
-def _provider_form_suggested_values(data: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Return workspace form suggested values."""
-    return dict(data or {})
 
 
 def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
@@ -675,14 +581,6 @@ def _provider_validation_placeholders(
     return placeholders
 
 
-def _mcp_validation_placeholders(err: MCPValidationError) -> dict[str, str]:
-    """Return translation placeholders for MCP validation errors."""
-    placeholders = {"error_message": err.message}
-    if err.status_code is not None:
-        placeholders["status_code"] = str(err.status_code)
-    return placeholders
-
-
 def _log_provider_validation_failure(
     *, step: str, model_name: str, err: ProviderValidationError
 ) -> None:
@@ -705,23 +603,6 @@ def _log_provider_validation_failure(
         err.reason,
         err.status_code,
     )
-
-
-def _normalise_workspace_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
-    """Return normalized workspace data for storage."""
-    data = _flatten_section_data(user_input, (_SECTION_LOGFIRE,))
-    token = data.get(CONF_LOGFIRE_TOKEN)
-    if isinstance(token, str):
-        token = token.strip()
-    if token:
-        data[CONF_LOGFIRE_TOKEN] = token
-        data[CONF_LOGFIRE_INCLUDE_CONTENT] = bool(
-            data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False)
-        )
-    else:
-        data.pop(CONF_LOGFIRE_TOKEN, None)
-        data.pop(CONF_LOGFIRE_INCLUDE_CONTENT, None)
-    return data
 
 
 def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
@@ -1081,98 +962,6 @@ def _selected_model_profile_error(
     return None
 
 
-def _normalise_selected_skill_ids(raw_skill_ids: object) -> list[str]:
-    """Return selected Skill subentry IDs in storage order without duplicates."""
-    if isinstance(raw_skill_ids, str):
-        raw_values: Iterable[object] = (raw_skill_ids,)
-    elif isinstance(raw_skill_ids, Iterable):
-        raw_values = raw_skill_ids
-    else:
-        return []
-    skill_ids: list[str] = []
-    seen: set[str] = set()
-    for raw_value in raw_values:
-        if not isinstance(raw_value, str):
-            continue
-        skill_id = raw_value.strip()
-        if not skill_id or skill_id in seen:
-            continue
-        seen.add(skill_id)
-        skill_ids.append(skill_id)
-    return skill_ids
-
-
-def _skill_select_options(
-    entry: ConfigEntry | None, selected_skill_ids: object = None
-) -> list[SelectOptionDict]:
-    """Return workspace Skill subentries as select options."""
-    if entry is None:
-        return []
-    options = [
-        SelectOptionDict(label=subentry.title, value=subentry.subentry_id)
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == SUBENTRY_TYPE_SKILL
-    ]
-    configured_ids = {str(option["value"]) for option in options if "value" in option}
-    for skill_id in _normalise_selected_skill_ids(selected_skill_ids):
-        if skill_id not in configured_ids:
-            options.append(
-                SelectOptionDict(label=f"Unavailable / {skill_id}", value=skill_id)
-            )
-    return options
-
-
-def _append_skill_schema_fields(
-    schema: VolDictType,
-    options: Mapping[str, Any],
-    entry: ConfigEntry | None,
-) -> None:
-    """Append per-agent workspace Skill selection controls to a subentry form."""
-    skill_options = _skill_select_options(entry, options.get(CONF_SKILLS))
-    if not skill_options:
-        return
-    schema[
-        vol.Optional(
-            CONF_SKILLS,
-            default=_normalise_selected_skill_ids(options.get(CONF_SKILLS)),
-        )
-    ] = SelectSelector(SelectSelectorConfig(options=skill_options, multiple=True))
-
-
-def _selected_skill_error(entry: ConfigEntry, data: Mapping[str, Any]) -> str | None:
-    """Return a form error for selected Skills that no longer exist."""
-    for skill_id in _normalise_selected_skill_ids(data.get(CONF_SKILLS)):
-        subentry = entry.subentries.get(skill_id)
-        if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_SKILL:
-            return "skill_not_found"
-    return None
-
-
-def _normalise_skill_selection(data: dict[str, Any]) -> None:
-    """Store only current native Skill subentry IDs on agents and tasks."""
-    data.pop("enable_skills", None)
-    data.pop("skills_folder", None)
-    data.pop("enable_skill_script_execution", None)
-    skill_ids = _normalise_selected_skill_ids(data.get(CONF_SKILLS))
-    if skill_ids:
-        data[CONF_SKILLS] = skill_ids
-    else:
-        data.pop(CONF_SKILLS, None)
-
-
-def _selected_mcp_server_error(
-    entry: ConfigEntry, data: Mapping[str, Any]
-) -> str | None:
-    """Return a form error for selected MCP servers that cannot run."""
-    for server_id in data.get(CONF_MCP_SERVER_IDS, []):
-        subentry = entry.subentries.get(server_id)
-        if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_MCP_SERVER:
-            return "mcp_server_not_found"
-        if not parse_allowed_tools(subentry.data.get(CONF_MCP_ALLOWED_TOOLS)):
-            return "mcp_tools_not_allowlisted"
-    return None
-
-
 def _selected_todo_workspace_error(
     hass: HomeAssistant, data: Mapping[str, Any]
 ) -> str | None:
@@ -1315,55 +1104,6 @@ def _conversation_schema(
         vol.Schema(skills_schema, extra=vol.REMOVE_EXTRA), {"collapsed": True}
     )
     return vol.Schema(schema)
-
-
-def _skill_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
-    """Return the native workspace Skill subentry schema."""
-    options = dict(options or {})
-    return vol.Schema(
-        {
-            vol.Required(
-                CONF_NAME,
-                default=options.get(CONF_NAME, DEFAULT_SKILL_NAME),
-            ): TextSelector(TextSelectorConfig()),
-            vol.Optional(
-                CONF_DESCRIPTION,
-                default=options.get(CONF_DESCRIPTION, ""),
-            ): TextSelector(TextSelectorConfig(multiline=True)),
-            vol.Required(
-                CONF_SKILL_CONTENT,
-                default=options.get(CONF_SKILL_CONTENT, ""),
-            ): TemplateSelector(),
-        }
-    )
-
-
-def _skill_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
-    """Return normalized native workspace Skill data."""
-    name = str(user_input[CONF_NAME]).strip()
-    description = str(user_input.get(CONF_DESCRIPTION, "")).strip()
-    content = str(user_input.get(CONF_SKILL_CONTENT, "")).strip()
-    errors: dict[str, str] = {}
-    if not name:
-        errors[CONF_NAME] = "required"
-    elif len(name) > _SKILL_NAME_MAX_LENGTH:
-        errors[CONF_NAME] = "string_too_long"
-    if len(description) > _SKILL_DESCRIPTION_MAX_LENGTH:
-        errors[CONF_DESCRIPTION] = "string_too_long"
-    if not content:
-        errors[CONF_SKILL_CONTENT] = "required"
-    elif len(content) > _SKILL_CONTENT_MAX_LENGTH:
-        errors[CONF_SKILL_CONTENT] = "string_too_long"
-    if errors:
-        raise SkillDataValidationError(errors)
-    data: dict[str, Any] = {
-        CONF_NAME: name,
-        CONF_SKILL_CONTENT: content,
-        CONF_SKILL_REFERENCES: [],
-    }
-    if description:
-        data[CONF_DESCRIPTION] = description
-    return data
 
 
 def _model_profile_schema(
@@ -2176,159 +1916,3 @@ def _ai_task_data_from_user_input(
     _normalise_run_settings(data)
     _normalise_skill_selection(data)
     return data
-
-
-def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
-    """Return the remote MCP server subentry schema."""
-    options = _flatten_section_data(options or {}, (_SECTION_ADVANCED_MCP,))
-    return vol.Schema(
-        {
-            vol.Required(CONF_NAME, default=options.get(CONF_NAME, "")): TextSelector(
-                TextSelectorConfig()
-            ),
-            vol.Required(
-                CONF_MCP_URL,
-                default=options.get(CONF_MCP_URL, ""),
-            ): TextSelector(TextSelectorConfig()),
-            vol.Optional(_SECTION_ADVANCED_MCP, default={}): section(
-                vol.Schema(
-                    {
-                        vol.Optional(
-                            CONF_MCP_HEADERS,
-                            default=_format_mcp_headers(options.get(CONF_MCP_HEADERS)),
-                        ): TextSelector(TextSelectorConfig(multiline=True)),
-                        vol.Optional(
-                            CONF_MCP_INCLUDE_RETURN_SCHEMA,
-                            default=options.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True),
-                        ): BooleanSelector(),
-                        vol.Optional(
-                            CONF_MCP_DEFERRED_LOADING,
-                            default=options.get(CONF_MCP_DEFERRED_LOADING, False),
-                        ): BooleanSelector(),
-                    }
-                ),
-                {"collapsed": True},
-            ),
-        }
-    )
-
-
-def _format_mcp_headers(headers: object) -> str:
-    """Return headers as one HTTP header per line for the config form."""
-    if headers is None:
-        return ""
-    if isinstance(headers, str):
-        return headers
-    if not isinstance(headers, Mapping):
-        return ""
-    return "\n".join(f"{name}: {headers[name]}" for name in sorted(headers))
-
-
-def _truncate_mcp_tool_description(description: str) -> str:
-    """Return a compact single-line MCP tool description for selector labels."""
-    description = " ".join(description.split())
-    if len(description) <= _MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH:
-        return description
-    return f"{description[: _MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH - 3].rstrip()}..."
-
-
-def _mcp_tool_options(
-    tools: Iterable[Mapping[str, Any]],
-    extra_tool_names: Iterable[str] = (),
-) -> list[SelectOptionDict]:
-    """Return sorted MCP tool selector options from discovered metadata."""
-    options_by_name: dict[str, SelectOptionDict] = {}
-    for tool in tools:
-        name = str(tool.get("name", "")).strip()
-        if not name or name in options_by_name:
-            continue
-        description = _truncate_mcp_tool_description(
-            str(tool.get("description", "")).strip()
-        )
-        label = f"{name} ({description})" if description else name
-        options_by_name[name] = SelectOptionDict(label=label, value=name)
-    for name in extra_tool_names:
-        if name and name not in options_by_name:
-            options_by_name[name] = SelectOptionDict(label=name, value=name)
-    return [options_by_name[name] for name in sorted(options_by_name)]
-
-
-def _mcp_tools_schema(
-    tool_options: list[SelectOptionDict], default_tool_names: list[str]
-) -> vol.Schema:
-    """Return the MCP discovered tools selection schema."""
-    return vol.Schema(
-        {
-            vol.Required(
-                CONF_MCP_ALLOWED_TOOLS,
-                default=default_tool_names,
-            ): SelectSelector(
-                SelectSelectorConfig(
-                    options=tool_options,
-                    multiple=True,
-                )
-            )
-        }
-    )
-
-
-def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
-    """Return normalized remote MCP server subentry data."""
-    user_input = _flatten_section_data(user_input, (_SECTION_ADVANCED_MCP,))
-    data: dict[str, Any] = {
-        CONF_NAME: str(user_input[CONF_NAME]).strip(),
-        CONF_MCP_URL: normalise_mcp_url(user_input[CONF_MCP_URL]),
-        CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
-            user_input.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
-        ),
-        CONF_MCP_DEFERRED_LOADING: bool(
-            user_input.get(CONF_MCP_DEFERRED_LOADING, False)
-        ),
-    }
-    headers = parse_mcp_headers(user_input.get(CONF_MCP_HEADERS))
-    if headers:
-        data[CONF_MCP_HEADERS] = headers
-    allowed_tools = parse_allowed_tools(user_input.get(CONF_MCP_ALLOWED_TOOLS))
-    if allowed_tools:
-        data[CONF_MCP_ALLOWED_TOOLS] = allowed_tools
-    return data
-
-
-def _mcp_url_already_configured(
-    entry: ConfigEntry,
-    url: str,
-    current_subentry_id: str | None = None,
-) -> bool:
-    """Return if another MCP server subentry already uses this URL."""
-    url_identity = _mcp_url_identity(url)
-    for subentry in entry.subentries.values():
-        if subentry.subentry_id == current_subentry_id:
-            continue
-        if subentry.subentry_type != SUBENTRY_TYPE_MCP_SERVER:
-            continue
-        try:
-            existing_identity = _mcp_url_identity(subentry.data.get(CONF_MCP_URL))
-        except MCPValidationError:
-            _LOGGER.warning(
-                "Ignoring invalid stored MCP URL while checking duplicates for subentry %s",
-                subentry.subentry_id,
-            )
-            continue
-        if existing_identity == url_identity:
-            return True
-    return False
-
-
-def _mcp_url_identity(
-    url: object,
-) -> tuple[str, str, int, str, tuple[tuple[str, str], ...]]:
-    """Return a canonical identity for duplicate MCP URL checks."""
-    parsed = urlparse(normalise_mcp_url(url))
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    return (
-        parsed.scheme,
-        (parsed.hostname or "").lower().rstrip("."),
-        port,
-        parsed.path or "/",
-        tuple(sorted(parse_qsl(parsed.query, keep_blank_values=True))),
-    )

@@ -41,7 +41,6 @@ from .common import (
     _SECTION_MODEL_PRICING,
     _cached_provider_model_names,
     _clear_provider_model_cache,
-    _flatten_section_data,
     _format_custom_model_names,
     _format_key_value_json_setting,
     _merge_model_settings,
@@ -75,6 +74,7 @@ from .common import (
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     vol,
 )
+from .helpers import _flatten_section_data
 from .provider_wizard.catalog_cache import catalog_manager
 from .provider_wizard.const import (
     CATALOG_RETRY_PROVIDER_ID,

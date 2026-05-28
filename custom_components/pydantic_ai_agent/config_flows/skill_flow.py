@@ -10,8 +10,10 @@ from .common import (
     ConfigEntryState,
     ConfigSubentryFlow,
     SOURCE_USER,
-    SkillDataValidationError,
     SubentryFlowResult,
+)
+from .skill_helpers import (
+    SkillDataValidationError,
     _skill_data_from_user_input,
     _skill_schema,
 )

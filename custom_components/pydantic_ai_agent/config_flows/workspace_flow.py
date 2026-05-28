@@ -18,15 +18,17 @@ from .common import (
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
-    _base_schema,
-    _normalise_workspace_data,
-    _provider_form_suggested_values,
     callback,
 )
 from .conversation_flow import ConversationSubentryFlowHandler
 from .mcp_server_flow import MCPServerSubentryFlowHandler
 from .provider_flow import ProviderSubentryFlowHandler
 from .skill_flow import SkillSubentryFlowHandler
+from .workspace_helpers import (
+    _base_schema,
+    _normalise_workspace_data,
+    _provider_form_suggested_values,
+)
 from ..generated_titles import (
     DEFAULT_WORKSPACE_TITLE_SUFFIX,
     generated_default_title,
