@@ -1,39 +1,12 @@
 """Shared Pydantic AI entity runtime."""
 
-from collections.abc import AsyncIterable, AsyncIterator, Mapping, Sequence
-from dataclasses import dataclass
-import json
+from collections.abc import AsyncIterable, Sequence
 import logging
 from typing import Any, cast
 
-import httpx
-from pydantic_ai import Agent, AgentRunResultEvent
+from pydantic_ai import Agent
 from pydantic_ai.capabilities import AbstractCapability, ToolSearch, WebFetch
-from pydantic_ai.exceptions import (
-    ModelAPIError,
-    ModelHTTPError,
-    UnexpectedModelBehavior,
-    UserError,
-    UsageLimitExceeded,
-)
-from pydantic_ai.messages import (
-    FunctionToolCallEvent,
-    FunctionToolResultEvent,
-    OutputToolCallEvent,
-    OutputToolResultEvent,
-    PartDeltaEvent,
-    PartStartEvent,
-    ModelMessage,
-    ModelRequest,
-    ModelResponse,
-    RetryPromptPart,
-    TextPart,
-    TextPartDelta,
-    ThinkingPart,
-    ThinkingPartDelta,
-    ToolCallPart,
-    ToolReturnPart,
-)
+from pydantic_ai.messages import ModelMessage
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.toolsets import AbstractToolset, DeferredLoadingToolset
 from pydantic_ai.usage import UsageLimits
@@ -47,22 +20,20 @@ from homeassistant.helpers import device_registry as dr, llm
 
 from . import PydanticAIAgentConfigEntry
 from .const import (
-    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_MCP_SERVER_IDS,
     CONF_OUTPUT_MODE,
     CONF_SKILLS,
     CONF_WEB_FETCH_ENABLED,
     DOMAIN,
-    PROVIDER_ANTHROPIC,
-    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
-from .chat_template_kwargs import (
-    reject_chat_template_kwargs_in_extra_body,
-    render_chat_template_kwargs,
+from .chat_deltas import (
+    _agent_events_to_chat_deltas,
+    _agent_messages_to_chat_deltas as _agent_messages_to_chat_deltas,
+    _append_agent_messages,
+    _append_text,
+    _json_output,
 )
 from .context_management import SlidingWindowContextCapability
-from .error_classification import has_connection_failure
 from .ha_toolset import tool_definitions_from_llm_api, tools_from_llm_api
 from .history import chat_log_content_to_model_messages, split_last_user_prompt
 from .logfire_support import agent_run_span, instrument_agent
@@ -73,7 +44,11 @@ from .metrics import (
     record_run_failure,
     record_run_success,
 )
-from .mcp import MCPValidationError, async_runtime_mcp_toolsets
+from .mcp import async_runtime_mcp_toolsets
+from .model_request_settings import (
+    _model_settings_with_chat_template_kwargs,
+    _model_settings_with_provider_extra_body,
+)
 from .model_profiles import (
     ModelProfile,
     chat_model_for_profile,
@@ -82,9 +57,17 @@ from .model_profiles import (
     model_profile_chain,
     model_settings,
     primary_model_profile,
-    provider_extra_body,
     thinking_capability,
 )
+from .run_failures import (
+    _AgentRunFailed,
+    _AgentRunFailure,
+    _classify_run_failure,
+    _has_connection_failure as _has_connection_failure,
+    _home_assistant_error as _home_assistant_error,
+    _should_fallback,
+)
+from .run_state import AgentRunOutcome, _StreamRunState
 from .skills import async_skills_capabilities
 from .structured_output import (
     default_structure_serializer,
@@ -95,59 +78,8 @@ from .structured_output import (
     structured_output_name,
 )
 from .virtual_workspace import virtual_workspace_enabled, virtual_workspace_parts
-from .virtual_workspace.const import TOOL_RETURN_METADATA_SOURCE
 
 _LOGGER = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, kw_only=True)
-class AgentRunOutcome:
-    """Successful agent run data needed for metrics after validation."""
-
-    output: object | None
-    usage: Any
-    duration: float
-    model_profile: str
-    model_pricing: dict[str, float]
-
-
-@dataclass
-class _StreamRunState:
-    """Mutable state shared with the ChatLog streaming delta generator."""
-
-    result: Any | None = None
-    emitted_deltas: bool = False
-    latest_tool_problem: "_ToolProblem | None" = None
-
-
-@dataclass(frozen=True, kw_only=True)
-class _ToolProblem:
-    """Safe summary of a tool result problem."""
-
-    tool_name: str | None
-    tool_call_id: str | None
-    outcome: str
-    reason: str | None = None
-
-
-@dataclass(frozen=True, kw_only=True)
-class _AgentRunFailure:
-    """Single classified source for terminal agent run failures."""
-
-    error_type: str
-    user_message: str
-    log_message: str
-    partial_response: bool = False
-    tool_problem: _ToolProblem | None = None
-
-
-class _AgentRunFailed(HomeAssistantError):
-    """Home Assistant error carrying classified run-failure details."""
-
-    def __init__(self, failure: _AgentRunFailure) -> None:
-        """Initialize the error with the safe user-facing message."""
-        super().__init__(failure.user_message)
-        self.failure = failure
 
 
 def _join_instructions(*parts: str | None) -> str | None:
@@ -581,206 +513,6 @@ def device_identifier_for_subentry(
     )
 
 
-def _model_settings_with_chat_template_kwargs(
-    hass: HomeAssistant, profile: ModelProfile, settings: ModelSettings
-) -> ModelSettings:
-    """Return request settings with rendered chat-template kwargs injected."""
-    rendered_kwargs = render_chat_template_kwargs(
-        hass, profile.model_settings.get(CONF_CHAT_TEMPLATE_KWARGS)
-    )
-    if not rendered_kwargs:
-        reject_chat_template_kwargs_in_extra_body(settings.get("extra_body"))
-        return settings
-
-    request_settings = dict(settings)
-    extra_body = request_settings.get("extra_body")
-    reject_chat_template_kwargs_in_extra_body(extra_body)
-    request_extra_body = dict(extra_body) if isinstance(extra_body, Mapping) else {}
-    request_extra_body[CONF_CHAT_TEMPLATE_KWARGS] = rendered_kwargs
-    request_settings["extra_body"] = request_extra_body
-    return ModelSettings(**cast(Any, request_settings))
-
-
-def _model_settings_with_provider_extra_body(
-    entry: PydanticAIAgentConfigEntry, profile: ModelProfile, settings: ModelSettings
-) -> ModelSettings:
-    """Return request settings with provider-level extra body merged."""
-    extra_body = provider_extra_body(entry, profile)
-    if not extra_body:
-        return settings
-    if profile.provider_mode not in {
-        PROVIDER_ANTHROPIC,
-        PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-        PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
-    }:
-        raise HomeAssistantError(
-            "Provider extra body is only supported by OpenAI-compatible and Anthropic provider modes"
-        )
-    reject_chat_template_kwargs_in_extra_body(extra_body)
-    request_settings = dict(settings)
-    request_settings["extra_body"] = extra_body
-    return ModelSettings(**cast(Any, request_settings))
-
-
-def _format_http_error(err: ModelHTTPError) -> str:
-    """Return a user-facing provider HTTP error message."""
-    return f'The provider returned HTTP {err.status_code} for model "{err.model_name}".'
-
-
-def _format_api_error(err: ModelAPIError) -> str:
-    """Return a user-facing provider API error message."""
-    return f'The provider returned an API error for model "{err.model_name}".'
-
-
-def _run_failure_cause(err: BaseException) -> BaseException:
-    """Return the underlying failure cause for classified run errors."""
-    if isinstance(err, _AgentRunFailed) and err.__cause__ is not None:
-        return err.__cause__
-    return err
-
-
-def _classify_run_failure(
-    err: BaseException,
-    *,
-    usage_limits: UsageLimits | None = None,
-    partial_response: bool = False,
-    tool_problem: _ToolProblem | None = None,
-) -> _AgentRunFailure:
-    """Classify a run failure into safe user, log, event, and metric details."""
-    if isinstance(err, _AgentRunFailed):
-        return err.failure
-
-    cause = _run_failure_cause(err)
-    error_type = type(cause).__name__
-    context = _tool_problem_context(tool_problem)
-    prefix = (
-        "Terminated after a partial response because "
-        if partial_response
-        else "Terminated because "
-    )
-
-    if isinstance(cause, UsageLimitExceeded):
-        request_limit = usage_limits.request_limit if usage_limits is not None else None
-        if request_limit is not None:
-            message = (
-                f"{prefix}the model exceeded the configured maximum of "
-                f"{request_limit} iterations. Increase the run max "
-                "iterations or fix repeated tool failures."
-            )
-        else:
-            message = (
-                f"{prefix}the model exceeded a configured usage limit. "
-                "Increase the relevant run limit or reduce the request."
-            )
-        return _AgentRunFailure(
-            error_type=error_type,
-            user_message=message + context,
-            log_message=message + context,
-            partial_response=partial_response,
-            tool_problem=tool_problem,
-        )
-
-    if isinstance(cause, ModelHTTPError):
-        message = _http_failure_message(cause, prefix)
-    elif isinstance(cause, ModelAPIError):
-        if _has_connection_failure(cause):
-            message = (
-                f'{prefix}the provider connection failed for model '
-                f'"{cause.model_name}". Check network connectivity and provider '
-                "availability."
-            )
-        else:
-            message = _format_api_error(cause)
-    elif isinstance(cause, UnexpectedModelBehavior):
-        message = (
-            f"{prefix}the provider returned an unexpected response. Check "
-            "model/provider compatibility or try a different model profile."
-        )
-    elif isinstance(cause, TimeoutError | httpx.TimeoutException):
-        message = (
-            f"{prefix}the provider request timed out. Check network "
-            "connectivity or try again later."
-        )
-    elif isinstance(cause, MCPValidationError):
-        message = cause.message
-    elif isinstance(cause, NotImplementedError | UserError):
-        message = f"Invalid provider configuration: {cause}"
-    elif isinstance(cause, HomeAssistantError):
-        message = str(cause)
-    else:
-        message = str(cause) or error_type
-
-    return _AgentRunFailure(
-        error_type=error_type,
-        user_message=message + context,
-        log_message=message + context,
-        partial_response=partial_response,
-        tool_problem=tool_problem,
-    )
-
-
-def _http_failure_message(err: ModelHTTPError, prefix: str) -> str:
-    """Return an actionable HTTP provider failure message."""
-    if err.status_code == 429:
-        return (
-            f'{prefix}the provider quota or rate limit was reached for model '
-            f'"{err.model_name}". Check provider quota/rate limits or try '
-            "again later."
-        )
-    if err.status_code in {401, 403}:
-        return (
-            f'{prefix}the provider rejected credentials or permissions for '
-            f'model "{err.model_name}". Check the provider API key and '
-            "account access."
-        )
-    if 500 <= err.status_code <= 599:
-        return (
-            f'{prefix}the provider service returned HTTP {err.status_code} '
-            f'for model "{err.model_name}". Try again later or use a fallback '
-            "model profile."
-        )
-    return _format_http_error(err)
-
-
-def _tool_problem_context(tool_problem: _ToolProblem | None) -> str:
-    """Return safe user-facing context for the latest tool problem."""
-    if tool_problem is None:
-        return ""
-    name = tool_problem.tool_name or "unknown tool"
-    if tool_problem.reason:
-        return f" Last tool failure: {name} reported {tool_problem.reason}."
-    return f" Last tool failure: {name} returned {tool_problem.outcome}."
-
-
-def _home_assistant_error(err: Exception) -> HomeAssistantError:
-    """Convert provider/runtime failures into HA-facing errors."""
-    if isinstance(err, _AgentRunFailed):
-        return err
-    if isinstance(err, HomeAssistantError):
-        return err
-    return HomeAssistantError(_classify_run_failure(err).user_message)
-
-
-def _should_fallback(err: Exception) -> bool:
-    """Return if a failed model attempt should try the next profile."""
-    if isinstance(err, _AgentRunFailed):
-        return not err.failure.partial_response and _should_fallback(
-            cast(Exception, _run_failure_cause(err))
-        )
-    if isinstance(err, ModelHTTPError):
-        return err.status_code in {408, 409, 429} or 500 <= err.status_code <= 599
-    if isinstance(err, TimeoutError | httpx.TimeoutException | UsageLimitExceeded):
-        return True
-    if isinstance(err, ModelAPIError):
-        return _has_connection_failure(err)
-    return False
-
-
-def _has_connection_failure(err: BaseException) -> bool:
-    """Return if an exception cause chain indicates transport failure."""
-    return has_connection_failure(err)
-
-
 def _set_span_usage_attributes(span: Any, result: Any) -> None:
     """Copy aggregate Pydantic AI usage to the wrapper span without blocking runs."""
     try:
@@ -789,277 +521,3 @@ def _set_span_usage_attributes(span: Any, result: Any) -> None:
             span.set_attributes(usage_attributes)
     except Exception:
         _LOGGER.exception("Failed to add usage attributes to Logfire span")
-
-
-async def _append_agent_messages(
-    chat_log: conversation.ChatLog,
-    agent_id: str,
-    messages: list[ModelMessage],
-    output_tool_names: set[str] | None = None,
-) -> None:
-    """Append Agent-produced assistant/tool messages to the Home Assistant log."""
-    async for _content in chat_log.async_add_delta_content_stream(
-        agent_id,
-        cast(
-            AsyncIterable[Any],
-            _agent_messages_to_chat_deltas(messages, output_tool_names or set()),
-        ),
-    ):
-        pass
-
-
-async def _append_text(
-    chat_log: conversation.ChatLog,
-    agent_id: str,
-    text: str,
-) -> None:
-    """Append one assistant text response to the Home Assistant log."""
-    async for _content in chat_log.async_add_delta_content_stream(
-        agent_id,
-        cast(AsyncIterable[Any], _text_stream_to_chat_deltas(_single_text(text))),
-    ):
-        pass
-
-
-async def _text_stream_to_chat_deltas(
-    text_stream: AsyncIterable[str],
-) -> AsyncIterator[dict[str, str]]:
-    """Yield ChatLog text deltas from a Pydantic AI text stream."""
-    async for chunk in text_stream:
-        if chunk:
-            yield {"content": chunk}
-
-
-async def _single_text(text: str) -> AsyncIterator[str]:
-    """Yield one text chunk as an async iterator."""
-    yield text
-
-
-async def _agent_events_to_chat_deltas(
-    events: AsyncIterable[Any],
-    output_tool_names: set[str],
-    state: _StreamRunState,
-) -> AsyncIterator[dict[str, Any]]:
-    """Yield HA ChatLog deltas from live Pydantic AI Agent events."""
-    assistant_open = False
-    emitted_tool_call_ids: set[str] = set()
-    async for event in events:
-        if isinstance(event, AgentRunResultEvent):
-            state.result = event.result
-            continue
-        if isinstance(event, PartStartEvent):
-            if event.index == 0:
-                state.emitted_deltas = True
-                yield {"role": "assistant"}
-                assistant_open = True
-            async for delta in _part_start_to_chat_deltas(event, output_tool_names):
-                state.emitted_deltas = True
-                yield delta
-            continue
-        if isinstance(event, PartDeltaEvent):
-            if not assistant_open:
-                state.emitted_deltas = True
-                yield {"role": "assistant"}
-                assistant_open = True
-            async for delta in _part_delta_to_chat_deltas(event):
-                state.emitted_deltas = True
-                yield delta
-            continue
-        if isinstance(event, FunctionToolCallEvent | OutputToolCallEvent):
-            if not assistant_open:
-                state.emitted_deltas = True
-                yield {"role": "assistant"}
-                assistant_open = True
-            async for delta in _tool_call_event_to_chat_deltas(
-                event.part,
-                output_tool_names,
-                emitted_tool_call_ids,
-            ):
-                state.emitted_deltas = True
-                yield delta
-            continue
-        if isinstance(event, FunctionToolResultEvent | OutputToolResultEvent):
-            if event.part is None:
-                continue
-            tool_problem = _tool_problem_from_part(event.part)
-            if tool_problem is not None:
-                state.latest_tool_problem = tool_problem
-                _log_tool_problem(tool_problem)
-            state.emitted_deltas = True
-            yield {
-                "role": "tool_result",
-                "tool_call_id": event.part.tool_call_id,
-                "tool_name": event.part.tool_name,
-                "tool_result": event.part.content,
-            }
-            assistant_open = False
-
-
-def _tool_problem_from_part(
-    part: ToolReturnPart | RetryPromptPart,
-) -> _ToolProblem | None:
-    """Return a safe tool problem summary from a Pydantic AI tool result part."""
-    if isinstance(part, RetryPromptPart):
-        return _ToolProblem(
-            tool_name=part.tool_name,
-            tool_call_id=part.tool_call_id,
-            outcome="retry",
-            reason=_safe_tool_result_reason(part.content, getattr(part, "metadata", None)),
-        )
-    outcome = getattr(part, "outcome", "success")
-    reason = _safe_tool_result_reason(part.content, part.metadata)
-    if outcome != "success":
-        return _ToolProblem(
-            tool_name=part.tool_name,
-            tool_call_id=part.tool_call_id,
-            outcome=outcome,
-            reason=reason,
-        )
-    if isinstance(part.content, Mapping) and part.content.get("success") is False:
-        return _ToolProblem(
-            tool_name=part.tool_name,
-            tool_call_id=part.tool_call_id,
-            outcome="failed",
-            reason=reason,
-        )
-    return None
-
-
-def _safe_tool_result_reason(content: object, metadata: object) -> str | None:
-    """Extract a short safe reason from structured tool failure content."""
-    if not (
-        isinstance(metadata, Mapping)
-        and metadata.get("source") == TOOL_RETURN_METADATA_SOURCE
-    ):
-        return None
-    reason: object | None = None
-    if isinstance(content, Mapping):
-        errors = content.get("errors")
-        if isinstance(errors, Sequence) and not isinstance(errors, str | bytes):
-            reason = next((item for item in errors if isinstance(item, str)), None)
-        if reason is None:
-            for key in ("error", "message"):
-                value = content.get(key)
-                if isinstance(value, str):
-                    reason = value
-                    break
-    elif isinstance(content, str):
-        reason = content
-    if not isinstance(reason, str) or not reason:
-        return None
-    return reason[:200]
-
-
-def _log_tool_problem(problem: _ToolProblem) -> None:
-    """Log a non-terminal tool problem without exposing tool arguments."""
-    _LOGGER.warning(
-        'Pydantic AI tool "%s" returned %s for call "%s": %s',
-        problem.tool_name or "unknown",
-        problem.outcome,
-        problem.tool_call_id or "unknown",
-        problem.reason or "no safe detail provided",
-    )
-
-
-async def _part_start_to_chat_deltas(
-    event: PartStartEvent,
-    output_tool_names: set[str],
-) -> AsyncIterator[dict[str, Any]]:
-    """Yield initial HA deltas for a Pydantic AI part-start event."""
-    part = event.part
-    if isinstance(part, TextPart) and part.content:
-        yield {"content": part.content}
-    elif isinstance(part, ThinkingPart) and part.content:
-        yield {"thinking_content": part.content}
-    elif isinstance(part, ToolCallPart) and part.tool_name in output_tool_names:
-        yield {"content": json.dumps(part.args_as_dict())}
-
-
-async def _part_delta_to_chat_deltas(
-    event: PartDeltaEvent,
-) -> AsyncIterator[dict[str, Any]]:
-    """Yield incremental HA deltas for a Pydantic AI part-delta event."""
-    delta = event.delta
-    if isinstance(delta, TextPartDelta) and delta.content_delta:
-        yield {"content": delta.content_delta}
-    elif isinstance(delta, ThinkingPartDelta) and delta.content_delta:
-        yield {"thinking_content": delta.content_delta}
-
-
-async def _tool_call_event_to_chat_deltas(
-    part: ToolCallPart,
-    output_tool_names: set[str],
-    emitted_tool_call_ids: set[str],
-) -> AsyncIterator[dict[str, Any]]:
-    """Yield a HA tool-call delta when Pydantic AI starts executing a tool."""
-    if part.tool_name in output_tool_names:
-        yield {"content": json.dumps(part.args_as_dict())}
-        return
-    if part.tool_call_id in emitted_tool_call_ids:
-        return
-    emitted_tool_call_ids.add(part.tool_call_id)
-    yield {
-        "tool_calls": [
-            llm.ToolInput(
-                id=part.tool_call_id,
-                tool_name=part.tool_name,
-                tool_args=part.args_as_dict(),
-                external=True,
-            )
-        ]
-    }
-
-
-def _json_output(output: object) -> str:
-    """Return a JSON string for structured Agent output."""
-    if isinstance(output, str):
-        return output
-    return json.dumps(output)
-
-
-async def _agent_messages_to_chat_deltas(
-    messages: list[ModelMessage],
-    output_tool_names: set[str],
-) -> AsyncIterator[dict[str, Any]]:
-    """Yield ChatLog deltas from Agent messages without re-executing tools."""
-    for message in messages:
-        if isinstance(message, ModelResponse):
-            content = ""
-            thinking_content = ""
-            tool_calls: list[llm.ToolInput] = []
-            for part in message.parts:
-                if isinstance(part, TextPart):
-                    content += part.content
-                elif isinstance(part, ThinkingPart):
-                    thinking_content += part.content
-                elif isinstance(part, ToolCallPart):
-                    if part.tool_name in output_tool_names:
-                        content += json.dumps(part.args_as_dict())
-                        continue
-                    tool_calls.append(
-                        llm.ToolInput(
-                            id=part.tool_call_id,
-                            tool_name=part.tool_name,
-                            tool_args=part.args_as_dict(),
-                            external=True,
-                        )
-                    )
-            if content or thinking_content or tool_calls:
-                yield {
-                    "role": "assistant",
-                    "content": content,
-                    "thinking_content": thinking_content,
-                    "tool_calls": tool_calls,
-                }
-        elif isinstance(message, ModelRequest):
-            for part in message.parts:
-                if isinstance(part, ToolReturnPart | RetryPromptPart):
-                    tool_problem = _tool_problem_from_part(part)
-                    if tool_problem is not None:
-                        _log_tool_problem(tool_problem)
-                    yield {
-                        "role": "tool_result",
-                        "tool_call_id": part.tool_call_id,
-                        "tool_name": part.tool_name,
-                        "tool_result": part.content,
-                    }
