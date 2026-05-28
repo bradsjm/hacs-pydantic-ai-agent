@@ -2,7 +2,6 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-import json
 import logging
 from typing import Any
 
@@ -17,8 +16,6 @@ from .const import (
     CONF_BASE_URL,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
-    CONF_MAX_ITERATIONS,
-    CONF_MAX_TOKENS,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
     CONF_MCP_URL,
@@ -29,8 +26,6 @@ from .const import (
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
-    CONF_THINKING,
-    CONF_TIMEOUT,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -48,6 +43,10 @@ from .metrics import (
     EVENT_MCP_TOOL_REFRESH_FAILED,
     MetricsStore,
     fire_integration_event,
+)
+from .model_settings import (
+    normalise_applied_model_settings,
+    validation_probe_model_settings,
 )
 from .mcp import (
     MCPValidationError,
@@ -78,14 +77,6 @@ from .home_semantic.llm_api import HomeSemanticAPI
 _LOGGER = logging.getLogger(__name__)
 
 _MODEL_VALIDATION_OUTPUT_MODE_KEY = "_pydantic_ai_agent_output_mode"
-_RUN_VALIDATION_SETTING_KEYS = {CONF_MAX_TOKENS, CONF_THINKING, CONF_TIMEOUT}
-_REMOVED_PROFILE_MODEL_SETTING_KEYS = {
-    CONF_MAX_ITERATIONS,
-    CONF_MAX_TOKENS,
-    CONF_THINKING,
-    CONF_TIMEOUT,
-    "extra_body",
-}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -363,32 +354,6 @@ async def _async_mcp_tools_service(
     }
 
 
-def _normalise_model_settings(settings: Mapping[str, Any]) -> str:
-    """Return a stable representation of model settings for de-duplication."""
-    provider_settings = dict(settings)
-    for key in _REMOVED_PROFILE_MODEL_SETTING_KEYS:
-        provider_settings.pop(key, None)
-    return json.dumps(provider_settings, sort_keys=True, separators=(",", ":"))
-
-
-def _normalise_probe_model_settings(settings: Mapping[str, Any]) -> str:
-    """Return stable setup-probe settings after run settings are applied."""
-    return json.dumps(dict(settings), sort_keys=True, separators=(",", ":"))
-
-
-def _probe_model_settings(
-    profile_settings: Mapping[str, Any], subentry_data: Mapping[str, Any]
-) -> dict[str, Any]:
-    """Return setup-probe model settings with subentry run settings applied."""
-    settings = dict(profile_settings)
-    for key in _REMOVED_PROFILE_MODEL_SETTING_KEYS:
-        settings.pop(key, None)
-    for key in _RUN_VALIDATION_SETTING_KEYS:
-        if key in subentry_data:
-            settings[key] = subentry_data[key]
-    return settings
-
-
 def _provider_runtimes(
     entry: PydanticAIAgentConfigEntry,
 ) -> dict[str, ProviderRuntimeData]:
@@ -482,13 +447,13 @@ def _configured_subentry_models(
         if not isinstance(model, str) or not model:
             return
         settings = profile.get(CONF_MODEL_SETTINGS)
-        model_settings = _probe_model_settings(
+        model_settings = validation_probe_model_settings(
             settings if isinstance(settings, Mapping) else {}, subentry_data
         )
         dedupe_key = (
             provider_subentry.subentry_id,
             model,
-            _normalise_probe_model_settings(model_settings),
+            normalise_applied_model_settings(model_settings),
             output_mode,
         )
         # Several subentries can target the same model/settings pair, so probe

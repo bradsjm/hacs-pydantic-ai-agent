@@ -9,15 +9,12 @@ from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME
 from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai.capabilities import Thinking
-from pydantic_ai.settings import ModelSettings
+from pydantic_ai.settings import ModelSettings as PydanticAIModelSettings
 
-from .chat_template_kwargs import reject_chat_template_kwargs_in_extra_body
 from .const import (
-    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
-    CONF_MAX_TOKENS,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
@@ -34,6 +31,7 @@ from .const import (
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     SUBENTRY_TYPE_PROVIDER,
 )
+from .model_settings import profile_model_settings, runtime_model_settings_data
 from .provider import (
     anthropic_model,
     google_gemini_model,
@@ -44,7 +42,6 @@ from .provider import (
 if TYPE_CHECKING:
     from . import PydanticAIAgentConfigEntry
 
-_RUN_SETTING_KEYS = {CONF_MAX_TOKENS, CONF_MAX_ITERATIONS, CONF_TIMEOUT, CONF_THINKING}
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -163,9 +160,9 @@ def resolve_model_profile(
     if not isinstance(model_name, str) or not model_name.strip():
         raise HomeAssistantError("Configured model profile is missing a model name")
     raw_settings = profile.get(CONF_MODEL_SETTINGS)
-    model_settings = dict(raw_settings) if isinstance(raw_settings, Mapping) else {}
-    for key in _RUN_SETTING_KEYS:
-        model_settings.pop(key, None)
+    model_settings = profile_model_settings(
+        raw_settings if isinstance(raw_settings, Mapping) else None
+    )
     raw_pricing = profile.get(CONF_MODEL_PRICING)
     model_pricing = _profile_pricing(raw_pricing)
     return ResolvedModelProfile(
@@ -219,21 +216,11 @@ def model_profile_chain(
 
 def model_settings(
     profile: ResolvedModelProfile, run_settings: Mapping[str, Any] | None = None
-) -> ModelSettings:
+) -> PydanticAIModelSettings:
     """Return Pydantic AI model settings for one profile."""
-    settings = dict(profile.model_settings)
-    for key in _RUN_SETTING_KEYS:
-        settings.pop(key, None)
-    settings.pop(CONF_CHAT_TEMPLATE_KWARGS, None)
-    settings.pop("extra_body", None)
-    reject_chat_template_kwargs_in_extra_body(settings.get("extra_body"))
-    if run_settings is not None:
-        if CONF_MAX_TOKENS in run_settings:
-            settings[CONF_MAX_TOKENS] = run_settings[CONF_MAX_TOKENS]
-        if CONF_TIMEOUT in run_settings:
-            settings[CONF_TIMEOUT] = run_settings[CONF_TIMEOUT]
+    settings = runtime_model_settings_data(profile.model_settings, run_settings)
     settings.setdefault(CONF_TIMEOUT, DEFAULT_TIMEOUT)
-    return ModelSettings(**settings)
+    return PydanticAIModelSettings(**settings)
 
 
 def _profile_pricing(raw_pricing: object) -> dict[str, float]:

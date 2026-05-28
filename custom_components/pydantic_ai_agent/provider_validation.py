@@ -37,7 +37,6 @@ from .chat_template_kwargs import (
 from .const import (
     CONF_BASE_URL,
     CONF_CHAT_TEMPLATE_KWARGS,
-    CONF_MAX_ITERATIONS,
     CONF_THINKING,
     CONF_TIMEOUT,
     CONF_PROVIDER_EXTRA_BODY,
@@ -53,6 +52,11 @@ from .const import (
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
 from .error_classification import connection_failure_message
+from .model_settings import (
+    MODEL_SETTING_EXTRA_BODY,
+    PROBE_STRIPPED_MODEL_SETTING_KEYS,
+    strip_model_settings,
+)
 from .provider import (
     anthropic_model,
     google_gemini_model,
@@ -81,10 +85,9 @@ _HTTP_STATUS_LABELS = {
     429: "rate limit",
     504: "timeout",
 }
-_MODEL_SETTING_MAX_ITERATIONS = CONF_MAX_ITERATIONS
 _MODEL_SETTING_TIMEOUT = CONF_TIMEOUT
 _MODEL_SETTING_THINKING = CONF_THINKING
-_MODEL_SETTING_EXTRA_BODY = "extra_body"
+_MODEL_SETTING_EXTRA_BODY = MODEL_SETTING_EXTRA_BODY
 _MODEL_SETTING_CHAT_TEMPLATE_KWARGS = CONF_CHAT_TEMPLATE_KWARGS
 _PROVIDER_EXTRA_BODY_MODES = {
     PROVIDER_ANTHROPIC,
@@ -282,10 +285,12 @@ async def async_probe_model(
 ) -> None:
     """Probe model access with the same streaming path used at runtime."""
     try:
-        settings = dict(model_settings or {})
-        settings.pop(_MODEL_SETTING_MAX_ITERATIONS, None)
-        settings.pop(_MODEL_SETTING_EXTRA_BODY, None)
-        thinking = settings.pop(_MODEL_SETTING_THINKING, None)
+        settings = strip_model_settings(
+            model_settings, PROBE_STRIPPED_MODEL_SETTING_KEYS
+        )
+        thinking = (
+            None if model_settings is None else model_settings.get(_MODEL_SETTING_THINKING)
+        )
         provider_extra_body = data.get(CONF_PROVIDER_EXTRA_BODY)
         if isinstance(provider_extra_body, Mapping) and provider_extra_body:
             if not provider_extra_body_supported(data):

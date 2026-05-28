@@ -11,12 +11,8 @@ from .common import (
     CONF_MCP_SERVER_IDS,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
-    CONF_MAX_ITERATIONS,
-    CONF_MAX_TOKENS,
     CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
-    CONF_THINKING,
-    CONF_TIMEOUT,
     CONF_TODO_LIST_ENTITY_ID,
     ConfigEntryState,
     ConfigSubentryFlow,
@@ -49,16 +45,7 @@ from .common import (
     provider_model_profiles,
 )
 from ..generated_titles import DEFAULT_AI_TASK_TITLE_SUFFIX, generated_default_title
-
-
-_RUN_VALIDATION_SETTING_KEYS = {CONF_MAX_TOKENS, CONF_THINKING, CONF_TIMEOUT}
-_REMOVED_PROFILE_MODEL_SETTING_KEYS = {
-    CONF_MAX_ITERATIONS,
-    CONF_MAX_TOKENS,
-    CONF_THINKING,
-    CONF_TIMEOUT,
-    "extra_body",
-}
+from ..model_settings import validation_probe_model_settings
 
 
 class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
@@ -236,12 +223,9 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 if not isinstance(profile, Mapping):
                     return "base", "model_profile_not_found", {}
                 settings = profile.get(CONF_MODEL_SETTINGS)
-                model_settings = dict(settings) if isinstance(settings, Mapping) else {}
-                for key in _REMOVED_PROFILE_MODEL_SETTING_KEYS:
-                    model_settings.pop(key, None)
-                for key in _RUN_VALIDATION_SETTING_KEYS:
-                    if key in data:
-                        model_settings[key] = data[key]
+                model_settings = validation_probe_model_settings(
+                    settings if isinstance(settings, Mapping) else None, data
+                )
                 current_model = str(profile[CONF_MODEL])
                 await async_probe_model(
                     self.hass,

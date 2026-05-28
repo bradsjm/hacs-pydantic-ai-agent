@@ -183,6 +183,11 @@ from ..provider_validation import (
     async_list_provider_model_names,
     async_probe_model,
 )
+from ..model_settings import (
+    MODEL_SETTING_EXTRA_BODY,
+    REMOVED_PROFILE_MODEL_SETTING_KEYS,
+    RUN_SETTING_KEYS,
+)
 from ..structured_output import (
     structured_model_request_parameters,
     structured_output_name,
@@ -218,7 +223,7 @@ _MODEL_SETTING_SEED = "seed"
 _MODEL_SETTING_PRESENCE_PENALTY = "presence_penalty"
 _MODEL_SETTING_FREQUENCY_PENALTY = "frequency_penalty"
 _MODEL_SETTING_THINKING = CONF_THINKING
-_MODEL_SETTING_EXTRA_BODY = "extra_body"
+_MODEL_SETTING_EXTRA_BODY = MODEL_SETTING_EXTRA_BODY
 _MODEL_SETTING_CHAT_TEMPLATE_KWARGS = CONF_CHAT_TEMPLATE_KWARGS
 _MODEL_PRICING_INPUT = "model_pricing_input"
 _MODEL_PRICING_OUTPUT = "model_pricing_output"
@@ -275,16 +280,10 @@ _ADVANCED_MODEL_SETTING_KEYS = {
     _MODEL_SETTING_FREQUENCY_PENALTY,
     _MODEL_SETTING_CHAT_TEMPLATE_KWARGS,
 }
-_RUN_SETTING_KEYS = {
-    _MODEL_SETTING_MAX_TOKENS,
-    _MODEL_SETTING_MAX_ITERATIONS,
-    _MODEL_SETTING_TIMEOUT,
-    _MODEL_SETTING_THINKING,
-}
+_RUN_SETTING_KEYS = RUN_SETTING_KEYS
 _REMOVED_MODEL_SETTING_KEYS = {
     "extra_headers",
-    _MODEL_SETTING_EXTRA_BODY,
-    *_RUN_SETTING_KEYS,
+    *REMOVED_PROFILE_MODEL_SETTING_KEYS,
 }
 _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "xhigh")
 _OUTPUT_MODE_OPTIONS = tuple(
