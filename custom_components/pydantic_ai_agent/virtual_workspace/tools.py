@@ -2,11 +2,11 @@
 
 from typing import Any
 
-from pydantic_ai import Tool
+from pydantic_ai import Tool, ToolReturn
 from pydantic_ai.toolsets import FunctionToolset
 
 from .patch import apply_patch
-from .const import MAX_COMMAND_BYTES
+from .const import MAX_COMMAND_BYTES, TOOL_RETURN_METADATA_SOURCE
 from .workspace import VirtualWorkspace
 
 
@@ -142,10 +142,13 @@ def _move(workspace: VirtualWorkspace) -> Any:
 
 def _apply_patch(workspace: VirtualWorkspace) -> Any:
     def execute(**tool_args: Any) -> Any:
-        return apply_patch(
-            workspace,
-            _string_arg(tool_args, "patch"),
-            confirm=_bool_arg(tool_args, "confirm"),
+        return ToolReturn(
+            apply_patch(
+                workspace,
+                _string_arg(tool_args, "patch"),
+                confirm=_bool_arg(tool_args, "confirm"),
+            ),
+            metadata={"source": TOOL_RETURN_METADATA_SOURCE},
         )
 
     return execute

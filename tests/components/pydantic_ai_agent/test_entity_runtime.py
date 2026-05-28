@@ -1,6 +1,7 @@
 """Test shared entity runtime helper behavior."""
 
 import errno
+import logging
 import socket
 import ssl
 from collections.abc import AsyncIterator
@@ -17,6 +18,7 @@ from pydantic_ai import (
     ModelResponse,
     PartDeltaEvent,
     PartStartEvent,
+    RetryPromptPart,
     TextPart,
     TextPartDelta,
     ThinkingPart,
@@ -31,6 +33,7 @@ from pydantic_ai.exceptions import (
     UserError,
 )
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai.usage import UsageLimits
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -44,9 +47,11 @@ from custom_components.pydantic_ai_agent.const import (
 )
 
 from custom_components.pydantic_ai_agent.entity import (
+    PydanticAIBaseLLMEntity,
     _StreamRunState,
     _agent_events_to_chat_deltas,
     _agent_messages_to_chat_deltas,
+    _classify_run_failure,
     _has_connection_failure,
     _home_assistant_error,
     _model_settings_with_chat_template_kwargs,
@@ -60,6 +65,9 @@ from custom_components.pydantic_ai_agent.metrics import (
 )
 from custom_components.pydantic_ai_agent.mcp import MCPValidationError
 from custom_components.pydantic_ai_agent.model_profiles import ModelProfile
+from custom_components.pydantic_ai_agent.virtual_workspace.const import (
+    TOOL_RETURN_METADATA_SOURCE,
+)
 
 
 async def _collect_deltas(
@@ -148,16 +156,33 @@ def test_has_connection_failure_stops_on_cycles() -> None:
     [
         (
             ModelHTTPError(status_code=429, model_name="gpt-test", body=None),
-            'The provider returned HTTP 429 for model "gpt-test".',
+            "Terminated because the provider quota or rate limit was reached for "
+            'model "gpt-test". Check provider quota/rate limits or try again later.',
         ),
         (
             ModelAPIError("gpt-test", "failed"),
             'The provider returned an API error for model "gpt-test".',
         ),
-        (UnexpectedModelBehavior("bad"), "Provider returned an unexpected response"),
-        (TimeoutError(), "Provider request timed out"),
-        (httpx.ReadTimeout("timeout"), "Provider request timed out"),
-        (UsageLimitExceeded("too many"), "Model requested too many tool iterations"),
+        (
+            UnexpectedModelBehavior("bad"),
+            "Terminated because the provider returned an unexpected response. Check "
+            "model/provider compatibility or try a different model profile.",
+        ),
+        (
+            TimeoutError(),
+            "Terminated because the provider request timed out. Check network "
+            "connectivity or try again later.",
+        ),
+        (
+            httpx.ReadTimeout("timeout"),
+            "Terminated because the provider request timed out. Check network "
+            "connectivity or try again later.",
+        ),
+        (
+            UsageLimitExceeded("too many"),
+            "Terminated because the model exceeded a configured usage limit. "
+            "Increase the relevant model profile limit or reduce the request.",
+        ),
         (
             MCPValidationError("invalid", "MCP failed"),
             "MCP failed",
@@ -186,6 +211,23 @@ def test_home_assistant_error_preserves_existing_ha_errors() -> None:
     assert _home_assistant_error(err) is err
 
 
+def test_classify_run_failure_uses_configured_iteration_limit() -> None:
+    """Test usage-limit failures include the configured max iterations."""
+    failure = _classify_run_failure(
+        UsageLimitExceeded("The next request would exceed the request_limit of 24"),
+        usage_limits=UsageLimits(request_limit=24),
+        partial_response=True,
+    )
+
+    assert failure.error_type == "UsageLimitExceeded"
+    assert failure.partial_response is True
+    assert str(failure.user_message) == (
+        "Terminated after a partial response because the model exceeded the "
+        "configured maximum of 24 iterations. Increase the model profile max "
+        "iterations or fix repeated tool failures."
+    )
+
+
 def test_record_run_failure_updates_health_metrics(hass: HomeAssistant) -> None:
     """Test failed runs update native health metric state."""
     store = MetricsStore()
@@ -203,6 +245,58 @@ def test_record_run_failure_updates_health_metrics(hass: HomeAssistant) -> None:
     assert record.consecutive_failures == 1
     assert record.provider_healthy is False
     assert record.last_run_succeeded is False
+
+
+def test_record_run_failure_uses_classified_error_type(hass: HomeAssistant) -> None:
+    """Test failed runs can store classified error types for sensors."""
+    store = MetricsStore()
+
+    record_run_failure(
+        hass,
+        "entry-1",
+        store,
+        "subentry-1",
+        error=HomeAssistantError("wrapped"),
+        error_type="UsageLimitExceeded",
+    )
+
+    record = store.record_for("subentry-1")
+    assert record.last_error_type == "UsageLimitExceeded"
+    assert record.consecutive_failures == 1
+
+
+def test_record_agent_run_failure_logs_safe_message(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test terminal failure logs do not include raw provider response bodies."""
+    store = MetricsStore()
+    entity = SimpleNamespace(
+        hass=hass,
+        entry=SimpleNamespace(
+            entry_id="entry-1",
+            runtime_data=SimpleNamespace(metrics=store),
+        ),
+        subentry=SimpleNamespace(subentry_id="subentry-1"),
+        entity_id="conversation.test_agent",
+    )
+    err = ModelHTTPError(
+        status_code=500,
+        model_name="gpt-test",
+        body="raw provider body with prompt-adjacent content",
+    )
+
+    with caplog.at_level(logging.ERROR):
+        PydanticAIBaseLLMEntity._record_agent_run_failure(
+            cast(Any, entity),
+            err,
+            model_profile="GPT Test",
+        )
+
+    assert "raw provider body" not in caplog.text
+    assert "ModelHTTPError" in caplog.text
+    assert 'provider service returned HTTP 500 for model "gpt-test"' in caplog.text
+    assert store.record_for("subentry-1").last_error_type == "ModelHTTPError"
 
 
 def test_record_run_success_tracks_priced_costs(hass: HomeAssistant) -> None:
@@ -489,6 +583,112 @@ async def test_agent_events_to_chat_deltas_streams_tool_call_sequence() -> None:
     }
     assert deltas[4:] == [{"role": "assistant"}, {"content": "done"}]
     assert final_result is result
+
+
+async def test_agent_events_to_chat_deltas_logs_tool_failures(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test failed tool result payloads are logged and tracked as context."""
+
+    async def stream() -> AsyncIterator[Any]:
+        yield FunctionToolResultEvent(
+            ToolReturnPart(
+                tool_name="applyPatch",
+                content={
+                    "success": False,
+                    "errors": ["patch must start with *** Begin Patch"],
+                },
+                tool_call_id="tool-1",
+                metadata={"source": TOOL_RETURN_METADATA_SOURCE},
+            )
+        )
+
+    state = _StreamRunState()
+
+    with caplog.at_level(logging.WARNING):
+        deltas = [
+            delta
+            async for delta in _agent_events_to_chat_deltas(stream(), set(), state)
+        ]
+
+    assert deltas == [
+        {
+            "role": "tool_result",
+            "tool_call_id": "tool-1",
+            "tool_name": "applyPatch",
+            "tool_result": {
+                "success": False,
+                "errors": ["patch must start with *** Begin Patch"],
+            },
+        }
+    ]
+    assert state.latest_tool_problem is not None
+    assert state.latest_tool_problem.tool_name == "applyPatch"
+    assert state.latest_tool_problem.reason == "patch must start with *** Begin Patch"
+    assert "Pydantic AI tool \"applyPatch\" returned failed" in caplog.text
+
+
+async def test_agent_events_to_chat_deltas_redacts_untrusted_tool_failure_reason(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test arbitrary tool error payloads are not copied into HA logs."""
+
+    async def stream() -> AsyncIterator[Any]:
+        yield FunctionToolResultEvent(
+            ToolReturnPart(
+                tool_name="applyPatch",
+                content={
+                    "success": False,
+                    "error": "raw provider body with private data",
+                },
+                tool_call_id="tool-1",
+            )
+        )
+
+    state = _StreamRunState()
+
+    with caplog.at_level(logging.WARNING):
+        deltas = [
+            delta
+            async for delta in _agent_events_to_chat_deltas(stream(), set(), state)
+        ]
+
+    assert deltas[0]["tool_name"] == "applyPatch"
+    assert state.latest_tool_problem is not None
+    assert state.latest_tool_problem.reason is None
+    assert "applyPatch" in caplog.text
+    assert "no safe detail provided" in caplog.text
+    assert "raw provider body" not in caplog.text
+
+
+async def test_agent_events_to_chat_deltas_tracks_retry_prompts(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test retry prompt parts are logged as non-terminal tool problems."""
+
+    async def stream() -> AsyncIterator[Any]:
+        yield FunctionToolResultEvent(
+            RetryPromptPart(
+                tool_name="applyPatch",
+                tool_call_id="tool-1",
+                content="patch content must follow a file header",
+            )
+        )
+
+    state = _StreamRunState()
+
+    with caplog.at_level(logging.WARNING):
+        deltas = [
+            delta
+            async for delta in _agent_events_to_chat_deltas(stream(), set(), state)
+        ]
+
+    assert deltas[0]["tool_name"] == "applyPatch"
+    assert state.latest_tool_problem is not None
+    assert state.latest_tool_problem.outcome == "retry"
+    assert state.latest_tool_problem.reason is None
+    assert "returned retry" in caplog.text
+    assert "patch content must follow a file header" not in caplog.text
 
 
 async def test_agent_messages_to_chat_deltas_converts_output_tool_to_content() -> None:

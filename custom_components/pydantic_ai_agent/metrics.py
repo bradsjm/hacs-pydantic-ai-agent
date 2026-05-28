@@ -133,10 +133,11 @@ def record_run_failure(
     subentry_id: str,
     *,
     error: BaseException,
+    error_type: str | None = None,
 ) -> None:
     """Record a failed agent run."""
     record = store.record_for(subentry_id)
-    record.last_error_type = type(error).__name__
+    record.last_error_type = error_type or type(error).__name__
     record.consecutive_failures += 1
     record.provider_healthy = False
     record.last_run_succeeded = False

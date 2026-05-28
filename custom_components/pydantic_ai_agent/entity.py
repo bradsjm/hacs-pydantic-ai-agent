@@ -26,6 +26,7 @@ from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    RetryPromptPart,
     TextPart,
     TextPartDelta,
     ThinkingPart,
@@ -94,6 +95,7 @@ from .structured_output import (
     structured_output_name,
 )
 from .virtual_workspace import virtual_workspace_enabled, virtual_workspace_parts
+from .virtual_workspace.const import TOOL_RETURN_METADATA_SOURCE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -115,6 +117,37 @@ class _StreamRunState:
 
     result: Any | None = None
     emitted_deltas: bool = False
+    latest_tool_problem: "_ToolProblem | None" = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class _ToolProblem:
+    """Safe summary of a tool result problem."""
+
+    tool_name: str | None
+    tool_call_id: str | None
+    outcome: str
+    reason: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class _AgentRunFailure:
+    """Single classified source for terminal agent run failures."""
+
+    error_type: str
+    user_message: str
+    log_message: str
+    partial_response: bool = False
+    tool_problem: _ToolProblem | None = None
+
+
+class _AgentRunFailed(HomeAssistantError):
+    """Home Assistant error carrying classified run-failure details."""
+
+    def __init__(self, failure: _AgentRunFailure) -> None:
+        """Initialize the error with the safe user-facing message."""
+        super().__init__(failure.user_message)
+        self.failure = failure
 
 
 def _join_instructions(*parts: str | None) -> str | None:
@@ -203,6 +236,9 @@ class PydanticAIBaseLLMEntity:
         use_virtual_workspace = virtual_workspace_enabled(self.subentry.data)
         errors: list[BaseException] = []
         for index, profile in enumerate(profiles):
+            usage_limits = UsageLimits(
+                request_limit=profile_max_iterations(profile, max_iterations),
+            )
             try:
                 virtual_toolsets: Sequence[AbstractToolset[Any]] = ()
                 virtual_instructions: str | None = None
@@ -217,9 +253,6 @@ class PydanticAIBaseLLMEntity:
                 )
                 settings = _model_settings_with_chat_template_kwargs(
                     self.hass, profile, settings
-                )
-                usage_limits = UsageLimits(
-                    request_limit=profile_max_iterations(profile, max_iterations),
                 )
                 mcp_toolsets = await async_runtime_mcp_toolsets(
                     self.hass,
@@ -271,15 +304,24 @@ class PydanticAIBaseLLMEntity:
                 return outcome
             except Exception as err:
                 if index == len(profiles) - 1 or not _should_fallback(err):
-                    self._record_agent_run_failure(
-                        err, agent_id, model_profile=profile.title
+                    failure = _classify_run_failure(
+                        err,
+                        usage_limits=usage_limits,
                     )
-                    raise _home_assistant_error(err) from err
+                    self._record_agent_run_failure(
+                        err,
+                        agent_id,
+                        model_profile=profile.title,
+                        failure=failure,
+                    )
+                    raise _AgentRunFailed(failure) from err
                 errors.append(err)
+                failure = _classify_run_failure(err, usage_limits=usage_limits)
                 _LOGGER.warning(
-                    'Model profile "%s" failed with a retryable error; trying fallback',
+                    'Model profile "%s" failed with retryable %s; trying fallback: %s',
                     profile.title,
-                    exc_info=err,
+                    failure.error_type,
+                    failure.log_message,
                 )
         raise HomeAssistantError(
             "All configured model profiles failed: "
@@ -420,9 +462,13 @@ class PydanticAIBaseLLMEntity:
                     pass
         except Exception as err:
             if state.emitted_deltas:
-                raise HomeAssistantError(
-                    "Streaming model failed after sending a partial response"
-                ) from err
+                failure = _classify_run_failure(
+                    err,
+                    usage_limits=usage_limits,
+                    partial_response=True,
+                    tool_problem=state.latest_tool_problem,
+                )
+                raise _AgentRunFailed(failure) from err
             raise
         if state.result is None:
             raise HomeAssistantError("Agent stream did not produce a final result")
@@ -462,10 +508,18 @@ class PydanticAIBaseLLMEntity:
         agent_id: str | None = None,
         *,
         model_profile: str | None = None,
+        failure: _AgentRunFailure | None = None,
     ) -> None:
         """Record failed run metrics and fire the failure event."""
+        failure = failure or _classify_run_failure(err)
         entity_id = (
             agent_id or getattr(self, "entity_id", None) or self.subentry.subentry_id
+        )
+        _LOGGER.error(
+            'Pydantic AI agent run failed for model profile "%s" (%s): %s',
+            model_profile or "unknown",
+            failure.error_type,
+            failure.log_message,
         )
         record_run_failure(
             self.hass,
@@ -473,13 +527,19 @@ class PydanticAIBaseLLMEntity:
             self.entry.runtime_data.metrics,
             self.subentry.subentry_id,
             error=err,
+            error_type=failure.error_type,
         )
         event_data: dict[str, object] = {
             "config_entry_id": self.entry.entry_id,
             "subentry_id": self.subentry.subentry_id,
             "entity_id": entity_id,
-            "error_type": type(err).__name__,
+            "error_type": failure.error_type,
+            "error_message": failure.user_message,
+            "partial_response": failure.partial_response,
         }
+        if failure.tool_problem is not None:
+            event_data["tool_name"] = failure.tool_problem.tool_name
+            event_data["tool_call_id"] = failure.tool_problem.tool_call_id
         if model_profile is not None:
             event_data["model_profile"] = model_profile
         fire_integration_event(self.hass, EVENT_AGENT_RUN_FAILED, event_data)
@@ -572,29 +632,141 @@ def _format_api_error(err: ModelAPIError) -> str:
     return f'The provider returned an API error for model "{err.model_name}".'
 
 
+def _run_failure_cause(err: BaseException) -> BaseException:
+    """Return the underlying failure cause for classified run errors."""
+    if isinstance(err, _AgentRunFailed) and err.__cause__ is not None:
+        return err.__cause__
+    return err
+
+
+def _classify_run_failure(
+    err: BaseException,
+    *,
+    usage_limits: UsageLimits | None = None,
+    partial_response: bool = False,
+    tool_problem: _ToolProblem | None = None,
+) -> _AgentRunFailure:
+    """Classify a run failure into safe user, log, event, and metric details."""
+    if isinstance(err, _AgentRunFailed):
+        return err.failure
+
+    cause = _run_failure_cause(err)
+    error_type = type(cause).__name__
+    context = _tool_problem_context(tool_problem)
+    prefix = (
+        "Terminated after a partial response because "
+        if partial_response
+        else "Terminated because "
+    )
+
+    if isinstance(cause, UsageLimitExceeded):
+        request_limit = usage_limits.request_limit if usage_limits is not None else None
+        if request_limit is not None:
+            message = (
+                f"{prefix}the model exceeded the configured maximum of "
+                f"{request_limit} iterations. Increase the model profile max "
+                "iterations or fix repeated tool failures."
+            )
+        else:
+            message = (
+                f"{prefix}the model exceeded a configured usage limit. "
+                "Increase the relevant model profile limit or reduce the request."
+            )
+        return _AgentRunFailure(
+            error_type=error_type,
+            user_message=message + context,
+            log_message=message + context,
+            partial_response=partial_response,
+            tool_problem=tool_problem,
+        )
+
+    if isinstance(cause, ModelHTTPError):
+        message = _http_failure_message(cause, prefix)
+    elif isinstance(cause, ModelAPIError):
+        if _has_connection_failure(cause):
+            message = (
+                f'{prefix}the provider connection failed for model '
+                f'"{cause.model_name}". Check network connectivity and provider '
+                "availability."
+            )
+        else:
+            message = _format_api_error(cause)
+    elif isinstance(cause, UnexpectedModelBehavior):
+        message = (
+            f"{prefix}the provider returned an unexpected response. Check "
+            "model/provider compatibility or try a different model profile."
+        )
+    elif isinstance(cause, TimeoutError | httpx.TimeoutException):
+        message = (
+            f"{prefix}the provider request timed out. Check network "
+            "connectivity or try again later."
+        )
+    elif isinstance(cause, MCPValidationError):
+        message = cause.message
+    elif isinstance(cause, NotImplementedError | UserError):
+        message = f"Invalid provider configuration: {cause}"
+    elif isinstance(cause, HomeAssistantError):
+        message = str(cause)
+    else:
+        message = str(cause) or error_type
+
+    return _AgentRunFailure(
+        error_type=error_type,
+        user_message=message + context,
+        log_message=message + context,
+        partial_response=partial_response,
+        tool_problem=tool_problem,
+    )
+
+
+def _http_failure_message(err: ModelHTTPError, prefix: str) -> str:
+    """Return an actionable HTTP provider failure message."""
+    if err.status_code == 429:
+        return (
+            f'{prefix}the provider quota or rate limit was reached for model '
+            f'"{err.model_name}". Check provider quota/rate limits or try '
+            "again later."
+        )
+    if err.status_code in {401, 403}:
+        return (
+            f'{prefix}the provider rejected credentials or permissions for '
+            f'model "{err.model_name}". Check the provider API key and '
+            "account access."
+        )
+    if 500 <= err.status_code <= 599:
+        return (
+            f'{prefix}the provider service returned HTTP {err.status_code} '
+            f'for model "{err.model_name}". Try again later or use a fallback '
+            "model profile."
+        )
+    return _format_http_error(err)
+
+
+def _tool_problem_context(tool_problem: _ToolProblem | None) -> str:
+    """Return safe user-facing context for the latest tool problem."""
+    if tool_problem is None:
+        return ""
+    name = tool_problem.tool_name or "unknown tool"
+    if tool_problem.reason:
+        return f" Last tool failure: {name} reported {tool_problem.reason}."
+    return f" Last tool failure: {name} returned {tool_problem.outcome}."
+
+
 def _home_assistant_error(err: Exception) -> HomeAssistantError:
     """Convert provider/runtime failures into HA-facing errors."""
+    if isinstance(err, _AgentRunFailed):
+        return err
     if isinstance(err, HomeAssistantError):
         return err
-    if isinstance(err, ModelHTTPError):
-        return HomeAssistantError(_format_http_error(err))
-    if isinstance(err, ModelAPIError):
-        return HomeAssistantError(_format_api_error(err))
-    if isinstance(err, UnexpectedModelBehavior):
-        return HomeAssistantError("Provider returned an unexpected response")
-    if isinstance(err, TimeoutError | httpx.TimeoutException):
-        return HomeAssistantError("Provider request timed out")
-    if isinstance(err, UsageLimitExceeded):
-        return HomeAssistantError("Model requested too many tool iterations")
-    if isinstance(err, MCPValidationError):
-        return HomeAssistantError(err.message)
-    if isinstance(err, NotImplementedError | UserError):
-        return HomeAssistantError(f"Invalid provider configuration: {err}")
-    return HomeAssistantError(str(err))
+    return HomeAssistantError(_classify_run_failure(err).user_message)
 
 
 def _should_fallback(err: Exception) -> bool:
     """Return if a failed model attempt should try the next profile."""
+    if isinstance(err, _AgentRunFailed):
+        return not err.failure.partial_response and _should_fallback(
+            cast(Exception, _run_failure_cause(err))
+        )
     if isinstance(err, ModelHTTPError):
         return err.status_code in {408, 409, 429} or 500 <= err.status_code <= 599
     if isinstance(err, TimeoutError | httpx.TimeoutException | UsageLimitExceeded):
@@ -707,6 +879,12 @@ async def _agent_events_to_chat_deltas(
                 yield delta
             continue
         if isinstance(event, FunctionToolResultEvent | OutputToolResultEvent):
+            if event.part is None:
+                continue
+            tool_problem = _tool_problem_from_part(event.part)
+            if tool_problem is not None:
+                state.latest_tool_problem = tool_problem
+                _log_tool_problem(tool_problem)
             state.emitted_deltas = True
             yield {
                 "role": "tool_result",
@@ -715,6 +893,72 @@ async def _agent_events_to_chat_deltas(
                 "tool_result": event.part.content,
             }
             assistant_open = False
+
+
+def _tool_problem_from_part(
+    part: ToolReturnPart | RetryPromptPart,
+) -> _ToolProblem | None:
+    """Return a safe tool problem summary from a Pydantic AI tool result part."""
+    if isinstance(part, RetryPromptPart):
+        return _ToolProblem(
+            tool_name=part.tool_name,
+            tool_call_id=part.tool_call_id,
+            outcome="retry",
+            reason=_safe_tool_result_reason(part.content, getattr(part, "metadata", None)),
+        )
+    outcome = getattr(part, "outcome", "success")
+    reason = _safe_tool_result_reason(part.content, part.metadata)
+    if outcome != "success":
+        return _ToolProblem(
+            tool_name=part.tool_name,
+            tool_call_id=part.tool_call_id,
+            outcome=outcome,
+            reason=reason,
+        )
+    if isinstance(part.content, Mapping) and part.content.get("success") is False:
+        return _ToolProblem(
+            tool_name=part.tool_name,
+            tool_call_id=part.tool_call_id,
+            outcome="failed",
+            reason=reason,
+        )
+    return None
+
+
+def _safe_tool_result_reason(content: object, metadata: object) -> str | None:
+    """Extract a short safe reason from structured tool failure content."""
+    if not (
+        isinstance(metadata, Mapping)
+        and metadata.get("source") == TOOL_RETURN_METADATA_SOURCE
+    ):
+        return None
+    reason: object | None = None
+    if isinstance(content, Mapping):
+        errors = content.get("errors")
+        if isinstance(errors, Sequence) and not isinstance(errors, str | bytes):
+            reason = next((item for item in errors if isinstance(item, str)), None)
+        if reason is None:
+            for key in ("error", "message"):
+                value = content.get(key)
+                if isinstance(value, str):
+                    reason = value
+                    break
+    elif isinstance(content, str):
+        reason = content
+    if not isinstance(reason, str) or not reason:
+        return None
+    return reason[:200]
+
+
+def _log_tool_problem(problem: _ToolProblem) -> None:
+    """Log a non-terminal tool problem without exposing tool arguments."""
+    _LOGGER.warning(
+        'Pydantic AI tool "%s" returned %s for call "%s": %s',
+        problem.tool_name or "unknown",
+        problem.outcome,
+        problem.tool_call_id or "unknown",
+        problem.reason or "no safe detail provided",
+    )
 
 
 async def _part_start_to_chat_deltas(
@@ -809,7 +1053,10 @@ async def _agent_messages_to_chat_deltas(
                 }
         elif isinstance(message, ModelRequest):
             for part in message.parts:
-                if isinstance(part, ToolReturnPart):
+                if isinstance(part, ToolReturnPart | RetryPromptPart):
+                    tool_problem = _tool_problem_from_part(part)
+                    if tool_problem is not None:
+                        _log_tool_problem(tool_problem)
                     yield {
                         "role": "tool_result",
                         "tool_call_id": part.tool_call_id,

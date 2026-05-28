@@ -1,6 +1,7 @@
 """Test Pydantic AI Agent conversation entities."""
 
 from collections.abc import AsyncIterator, Iterable
+from contextlib import asynccontextmanager
 import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -17,11 +18,13 @@ from pydantic_ai import (
     FunctionToolset,
     ModelRequest,
     ModelResponse,
+    PartStartEvent,
     TextPart,
 )
 from pydantic_ai.capabilities import Thinking, ToolSearch
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
+from pydantic_ai.exceptions import UsageLimitExceeded
 
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
@@ -40,7 +43,10 @@ from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
     async_setup_entry,
 )
-from custom_components.pydantic_ai_agent.metrics import EVENT_AGENT_RUN_COMPLETED
+from custom_components.pydantic_ai_agent.metrics import (
+    EVENT_AGENT_RUN_COMPLETED,
+    EVENT_AGENT_RUN_FAILED,
+)
 from tests.components.pydantic_ai_agent.support.builders import (
     conversation_subentry_data,
     model_profile_data,
@@ -475,6 +481,79 @@ async def test_conversation_runtime_uses_configured_max_iterations(
         )
 
     assert getattr(agent.run_kwargs["usage_limits"], "request_limit") == 24
+
+
+async def test_streaming_iteration_failure_updates_chat_and_sensors(
+    hass: HomeAssistant,
+) -> None:
+    """Test streaming usage-limit failures stay actionable after partial output."""
+    entry = _entry(None, model_settings={CONF_MAX_ITERATIONS: 24})
+    entry.add_to_hass(hass)
+
+    class FailingAfterPartialAgent(_Agent):
+        @asynccontextmanager
+        async def run_stream_events(
+            self, *_args: object, **kwargs: object
+        ) -> AsyncIterator[AsyncIterator[object]]:
+            self.run_stream_events_calls += 1
+            self.run_kwargs = kwargs
+
+            async def stream() -> AsyncIterator[object]:
+                yield PartStartEvent(index=0, part=TextPart(content="partial"))
+                raise UsageLimitExceeded(
+                    "The next request would exceed the request_limit of 24"
+                )
+
+            yield stream()
+
+    agent = FailingAfterPartialAgent()
+    events: list[dict[str, object]] = []
+    hass.bus.async_listen(
+        f"{DOMAIN}_{EVENT_AGENT_RUN_FAILED}",
+        lambda event: events.append(dict(event.data)),
+    )
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ),
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+        await hass.async_block_till_done()
+
+    speech = result.response.speech["plain"]["speech"]
+    assert "configured maximum of 24 iterations" in speech
+    assert "Streaming model failed after sending a partial response" not in speech
+    assert _state(hass, "sensor.kitchen_agent_consecutive_failures") == "1"
+    assert _state(hass, "sensor.kitchen_agent_last_error_type") == "UsageLimitExceeded"
+    assert _state(hass, "binary_sensor.kitchen_agent_provider_healthy") == "off"
+    assert _state(hass, "binary_sensor.kitchen_agent_last_run_succeeded") == "off"
+    assert events[-1]["error_type"] == "UsageLimitExceeded"
+    assert events[-1]["partial_response"] is True
+    assert "configured maximum of 24 iterations" in str(events[-1]["error_message"])
 
 
 async def test_conversation_runtime_uses_thinking_capability(
