@@ -231,6 +231,7 @@ async def test_diagnostics_exposes_safe_runtime_mcp_counts(
         "configured_mcp_server_count": 1,
         "cached_mcp_server_count": 1,
         "cached_mcp_tool_counts": {mcp_subentry_id: 2},
+        "home_semantic_index": {"loaded": False},
     }
     assert "mcp.example.com" not in str(diagnostics["runtime"])
     assert "secret_tool" not in str(diagnostics["runtime"])

@@ -34,6 +34,7 @@ from .logfire_support import (
     logfire_include_content,
     logfire_token_conflict,
 )
+from .home_semantic.diagnostics import semantic_manager_diagnostics
 
 _SENSITIVE_KEYS = {
     CONF_API_KEY,
@@ -199,6 +200,7 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
             server_id: len(tools)
             for server_id, tools in runtime_data.mcp_tool_cache.items()
         },
+        "home_semantic_index": semantic_manager_diagnostics(runtime_data.home_semantic),
     }
 
 

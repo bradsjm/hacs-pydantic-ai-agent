@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_NAME, Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import llm
 import voluptuous as vol
 
 from .const import (
@@ -68,6 +69,8 @@ from .repairs import (
     model_validation_issue_id,
 )
 from .structured_output import structured_output_mode
+from .home_semantic import HomeSemanticIndexManager
+from .home_semantic.llm_api import HomeSemanticAPI
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -142,6 +145,7 @@ class WorkspaceRuntimeData:
     model_profiles: dict[str, ResolvedModelProfile] = field(default_factory=dict)
     mcp_tool_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     metrics: MetricsStore = field(default_factory=MetricsStore)
+    home_semantic: HomeSemanticIndexManager | None = None
     logfire_enabled: bool = False
     logfire_include_content: bool = False
 
@@ -184,6 +188,7 @@ async def async_setup_entry(
     provider_runtimes = _provider_runtimes(entry)
     mcp_runtime = _mcp_server_runtimes(entry)
     model_profiles = _resolved_model_profiles(entry, provider_runtimes)
+    home_semantic = HomeSemanticIndexManager(hass, entry)
     await async_configure_logfire(hass, entry)
     try:
         entry.runtime_data = WorkspaceRuntimeData(
@@ -191,6 +196,7 @@ async def async_setup_entry(
             providers=provider_runtimes,
             mcp_servers=mcp_runtime,
             model_profiles=model_profiles,
+            home_semantic=home_semantic,
             logfire_enabled=logfire_enabled(hass, entry),
             logfire_include_content=logfire_include_content(hass, entry),
         )
@@ -205,6 +211,9 @@ async def async_setup_entry(
     except BaseException:
         await async_release_logfire(hass, entry)
         raise
+    entry.async_on_unload(llm.async_register_api(hass, HomeSemanticAPI(hass, entry)))
+    home_semantic.async_start()
+    entry.async_on_unload(home_semantic.async_stop)
     entry.async_on_unload(entry.add_update_listener(async_update_entry))
     return True
 
