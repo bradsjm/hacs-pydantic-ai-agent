@@ -1,6 +1,6 @@
 """Diagnostic binary sensors for Pydantic AI Agent metrics."""
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
 from homeassistant.components.binary_sensor import (
@@ -16,16 +16,18 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
+from .agent_subentries import ValidAgentSubentry, iter_valid_agent_subentries
 from .const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
     CONF_WEB_FETCH_ENABLED,
+    DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
 from .metrics import AgentRunMetrics, metric_bool, metrics_signal
 from .entity import device_identifier_for_subentry, unique_id_for_subentry_entity
-from .model_profiles import primary_model_profile
+from .model_profiles import ModelProfile, primary_model_profile
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -90,7 +92,8 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Pydantic AI Agent metric binary sensors."""
-    for subentry in _agent_subentries(config_entry):
+    for valid in _agent_subentries(config_entry):
+        subentry = valid.subentry
         async_add_entities(
             [
                 PydanticAIMetricBinarySensor(config_entry, subentry, description)
@@ -193,19 +196,22 @@ class PydanticAIConfigBinarySensor(BinarySensorEntity):
         return self.entity_description.value_fn(self.subentry)
 
 
-def _agent_subentries(entry: PydanticAIAgentConfigEntry) -> Iterable[ConfigSubentry]:
+def _agent_subentries(
+    entry: PydanticAIAgentConfigEntry,
+) -> Iterator[ValidAgentSubentry[ModelProfile]]:
     """Yield configured conversation and AI task subentries with valid models."""
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type not in (
-            SUBENTRY_TYPE_CONVERSATION,
-            SUBENTRY_TYPE_AI_TASK,
-        ):
-            continue
-        try:
-            primary_model_profile(entry, subentry)
-        except Exception:
-            continue
-        yield subentry
+    yield from iter_valid_agent_subentries(
+        entry,
+        subentry_type=SUBENTRY_TYPE_CONVERSATION,
+        platform=DOMAIN,
+        resolver=primary_model_profile,
+    )
+    yield from iter_valid_agent_subentries(
+        entry,
+        subentry_type=SUBENTRY_TYPE_AI_TASK,
+        platform=DOMAIN,
+        resolver=primary_model_profile,
+    )
 
 
 def _subentry_name(subentry: ConfigSubentry) -> str:

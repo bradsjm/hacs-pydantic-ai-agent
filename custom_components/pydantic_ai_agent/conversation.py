@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
+from .agent_subentries import iter_valid_agent_subentries
 from .const import (
     CONF_AGENT_NAME,
     CONF_PROMPT,
@@ -27,16 +28,15 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up conversation entities."""
-    for subentry_id, subentry in config_entry.subentries.items():
-        if subentry.subentry_type != SUBENTRY_TYPE_CONVERSATION:
-            continue
-        try:
-            model_profile_chain(config_entry, subentry)
-        except Exception:
-            continue
+    for valid in iter_valid_agent_subentries(
+        config_entry,
+        subentry_type=SUBENTRY_TYPE_CONVERSATION,
+        platform=conversation.DOMAIN,
+        resolver=model_profile_chain,
+    ):
         async_add_entities(
-            [PydanticAIConversationEntity(config_entry, subentry)],
-            config_subentry_id=subentry_id,
+            [PydanticAIConversationEntity(config_entry, valid.subentry)],
+            config_subentry_id=valid.subentry.subentry_id,
         )
 
 

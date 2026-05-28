@@ -17,6 +17,7 @@ from homeassistant.helpers import llm
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
+from .agent_subentries import iter_valid_agent_subentries
 from .const import (
     CONF_AI_TASK_NAME,
     CONF_OUTPUT_MODE,
@@ -38,16 +39,15 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up AI task entities."""
-    for subentry_id, subentry in config_entry.subentries.items():
-        if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
-            continue
-        try:
-            model_profile_chain(config_entry, subentry)
-        except Exception:
-            continue
+    for valid in iter_valid_agent_subentries(
+        config_entry,
+        subentry_type=SUBENTRY_TYPE_AI_TASK,
+        platform=AI_TASK_DOMAIN,
+        resolver=model_profile_chain,
+    ):
         async_add_entities(
-            [PydanticAIAgentAITaskEntity(config_entry, subentry)],
-            config_subentry_id=subentry_id,
+            [PydanticAIAgentAITaskEntity(config_entry, valid.subentry)],
+            config_subentry_id=valid.subentry.subentry_id,
         )
 
 
