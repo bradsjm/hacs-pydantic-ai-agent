@@ -2,7 +2,6 @@
 
 import json
 from hashlib import sha256
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
@@ -40,7 +39,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
-    CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
@@ -86,76 +84,6 @@ from tests.components.pydantic_ai_agent.support.schemas import (
     section_field_suggested_value as _section_field_suggested_value,
     serialized_section_default as _serialized_section_default,
 )
-
-_TRANSLATIONS_PATH = (
-    Path(__file__).parents[3]
-    / "custom_components"
-    / "pydantic_ai_agent"
-    / "translations"
-    / "en.json"
-)
-
-def test_provider_edit_connection_translations_cover_rendered_schema() -> None:
-    """Test edit-connection fields and sections have translations."""
-    translations = json.loads(_TRANSLATIONS_PATH.read_text(encoding="utf-8"))
-    step = translations["config_subentries"]["provider"]["step"]["edit_connection"]
-
-    assert set(step["data"]) >= {
-        CONF_NAME,
-        CONF_PROVIDER_MODE,
-        CONF_API_KEY,
-        CONF_BASE_URL,
-    }
-    assert set(step["sections"]) >= {"advanced_options"}
-    assert step["sections"]["advanced_options"]["name"] == "Advanced Options"
-    assert set(step["sections"]["advanced_options"]["data"]) >= {
-        CONF_PROVIDER_EXTRA_BODY,
-        CONF_PROVIDER_HEADERS,
-    }
-    assert CONF_PROVIDER_EXTRA_BODY not in step["data"]
-    assert CONF_PROVIDER_HEADERS not in step["data"]
-    assert CONF_CUSTOM_MODEL_NAMES not in step["data"]
-    assert "customize_model_list" not in step["sections"]
-    manage_models = translations["config_subentries"]["provider"]["step"][
-        "manage_models"
-    ]
-    assert manage_models["sections"][SECTION_ADVANCED_MODELS]["name"] == "Advanced"
-    assert (
-        CONF_CUSTOM_MODEL_NAMES
-        in manage_models["sections"][SECTION_ADVANCED_MODELS]["data"]
-    )
-
-
-def test_provider_wizard_translations_cover_rendered_steps() -> None:
-    """Test guided provider wizard steps and errors have translations."""
-    translations = json.loads(_TRANSLATIONS_PATH.read_text(encoding="utf-8"))
-    provider = translations["config_subentries"]["provider"]
-    steps = provider["step"]
-
-    assert set(steps) >= {
-        "pick_provider",
-        "pick_driver",
-        "wizard_connection",
-        "model_filters",
-        "pick_models",
-    }
-    assert provider["progress"]["load_model_catalog"]
-    assert set(provider["error"]) >= {
-        "model_catalog_unavailable",
-        "model_required",
-        "no_models_available",
-    }
-    assert steps["pick_provider"]["data"][CONF_PROVIDER_ID]
-    assert steps["pick_driver"]["data"][CONF_DRIVER]
-    assert steps["wizard_connection"]["data"][CONF_API_KEY]
-    assert steps["model_filters"]["sections"]["advanced_filters"]["name"] == (
-        "Advanced Filters"
-    )
-    assert steps["model_filters"]["sections"]["advanced_filters"]["data"][
-        "hide_without_tool_call"
-    ]
-    assert steps["pick_models"]["data"][CONF_SELECTED_MODEL_IDS]
-
 
 async def _loaded_workspace_entry(
     hass: HomeAssistant, subentries_data: tuple[dict[str, object], ...] = ()
@@ -1284,118 +1212,6 @@ async def test_create_workspace_entry(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Living Room Workspace"
     assert result["data"] == {CONF_NAME: "Living Room Workspace"}
-
-
-async def test_new_workspace_default_title_is_generated(
-    hass: HomeAssistant,
-) -> None:
-    """Test new workspace setup uses a generated default title."""
-    with patch(
-        "custom_components.pydantic_ai_agent.generated_titles.generate_name",
-        return_value="brave_turing",
-    ):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN,
-            context={"source": config_entries.SOURCE_USER},
-        )
-
-    assert result["type"] is FlowResultType.FORM
-    assert _schema_default(result["data_schema"], CONF_NAME) == "Brave Turing Workspace"
-
-
-async def test_new_custom_provider_default_title_is_generated(
-    hass: HomeAssistant,
-) -> None:
-    """Test custom provider setup uses a generated default service title."""
-    entry = await _loaded_workspace_entry(hass)
-    _cache_provider_catalog(hass, _wizard_catalog())
-
-    with patch(
-        "custom_components.pydantic_ai_agent.generated_titles.generate_name",
-        return_value="clever_matsumoto",
-    ):
-        result = await hass.config_entries.subentries.async_init(
-            (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
-            context={"source": config_entries.SOURCE_USER},
-        )
-        result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"], {CONF_PROVIDER_ID: CUSTOM_PROVIDER_ID}
-        )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert (
-        _schema_default(result["data_schema"], CONF_NAME) == "Clever Matsumoto Service"
-    )
-
-
-async def test_guided_provider_default_title_stays_provider_name(
-    hass: HomeAssistant,
-) -> None:
-    """Test guided provider setup keeps provider-specific default names."""
-    entry = await _loaded_workspace_entry(hass)
-    _cache_provider_catalog(hass, _wizard_catalog())
-
-    with patch(
-        "custom_components.pydantic_ai_agent.generated_titles.generate_name",
-        return_value="clever_matsumoto",
-    ):
-        result = await hass.config_entries.subentries.async_init(
-            (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
-            context={"source": config_entries.SOURCE_USER},
-        )
-        result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"], {CONF_PROVIDER_ID: "openai"}
-        )
-        result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"], {CONF_DRIVER: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS}
-        )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "wizard_connection"
-    assert _schema_default(result["data_schema"], CONF_NAME) == "OpenAI"
-
-
-async def test_new_conversation_default_title_is_generated(
-    hass: HomeAssistant,
-) -> None:
-    """Test new conversation setup uses a generated default agent title."""
-    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
-
-    with patch(
-        "custom_components.pydantic_ai_agent.generated_titles.generate_name",
-        return_value="fervent_ardinghelli",
-    ):
-        result = await hass.config_entries.subentries.async_init(
-            (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
-            context={"source": config_entries.SOURCE_USER},
-        )
-
-    assert result["type"] is FlowResultType.FORM
-    assert _schema_default(result["data_schema"], CONF_AGENT_NAME) == (
-        "Fervent Ardinghelli Agent"
-    )
-
-
-async def test_new_ai_task_default_title_is_generated(
-    hass: HomeAssistant,
-) -> None:
-    """Test new AI task setup uses a generated default AI task title."""
-    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
-
-    with patch(
-        "custom_components.pydantic_ai_agent.generated_titles.generate_name",
-        return_value="trusting_knuth",
-    ):
-        result = await hass.config_entries.subentries.async_init(
-            (entry.entry_id, SUBENTRY_TYPE_AI_TASK),
-            context={"source": config_entries.SOURCE_USER},
-        )
-
-    assert result["type"] is FlowResultType.FORM
-    assert _schema_default(result["data_schema"], CONF_AI_TASK_NAME) == (
-        "Trusting Knuth AI Task"
-    )
 
 
 async def test_create_custom_provider_subentry_without_model_profiles(

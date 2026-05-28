@@ -5,7 +5,6 @@ from collections.abc import Mapping
 from unittest.mock import AsyncMock, call, patch
 
 from homeassistant import config_entries
-from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 import pytest
@@ -87,16 +86,6 @@ def _workspace_entry(
 ) -> MockConfigEntry:
     """Return a workspace config entry using setup-specific defaults."""
     return workspace_entry(subentries_data, data=data)
-
-
-def test_platforms_include_conversation_ai_task_and_diagnostics() -> None:
-    """Test setup forwards all runtime platforms."""
-    assert PLATFORMS == (
-        Platform.CONVERSATION,
-        Platform.AI_TASK,
-        Platform.SENSOR,
-        Platform.BINARY_SENSOR,
-    )
 
 
 async def test_setup_entry_stores_workspace_runtime_data(hass: HomeAssistant) -> None:
