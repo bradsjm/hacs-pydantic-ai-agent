@@ -11,6 +11,7 @@ from homeassistant.helpers import llm
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent import (
+    SERVICE_GET_AGENT_RUN_DIAGNOSTICS,
     WorkspaceRuntimeData,
     async_setup,
     async_setup_entry,
@@ -25,9 +26,14 @@ from custom_components.pydantic_ai_agent.home_semantic.builder import (
     build_home_semantic_index,
 )
 from custom_components.pydantic_ai_agent.home_semantic.services import (
+    SERVICE_BENCHMARK_HOME_SEMANTIC_RESOLUTION,
+    SERVICE_GET_HOME_SEMANTIC_DOCUMENT,
     SERVICE_GET_HOME_SEMANTIC_CONTEXT,
     SERVICE_GET_HOME_SEMANTIC_SUMMARY,
+    SERVICE_PLAN_HOME_SEMANTIC_CONTROL,
+    SERVICE_REFRESH_HOME_SEMANTIC_INDEX,
     SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+    SERVICE_TRACE_HOME_SEMANTIC_RESOLUTION,
 )
 from custom_components.pydantic_ai_agent.home_semantic.models import (
     AreaSource,
@@ -37,6 +43,7 @@ from custom_components.pydantic_ai_agent.home_semantic.models import (
 from custom_components.pydantic_ai_agent.ha_toolset import tools_from_llm_api
 from custom_components.pydantic_ai_agent.model_profiles import model_profile_ref
 from tests.components.pydantic_ai_agent.support.builders import (
+    conversation_subentry_data,
     provider_subentry_data,
     workspace_entry,
 )
@@ -166,6 +173,12 @@ async def test_setup_registers_home_semantic_response_services(
     assert hass.services.has_service(DOMAIN, SERVICE_GET_HOME_SEMANTIC_SUMMARY)
     assert hass.services.has_service(DOMAIN, SERVICE_RESOLVE_HOME_SEMANTIC_TARGET)
     assert hass.services.has_service(DOMAIN, SERVICE_GET_HOME_SEMANTIC_CONTEXT)
+    assert hass.services.has_service(DOMAIN, SERVICE_REFRESH_HOME_SEMANTIC_INDEX)
+    assert hass.services.has_service(DOMAIN, SERVICE_TRACE_HOME_SEMANTIC_RESOLUTION)
+    assert hass.services.has_service(DOMAIN, SERVICE_PLAN_HOME_SEMANTIC_CONTROL)
+    assert hass.services.has_service(DOMAIN, SERVICE_GET_HOME_SEMANTIC_DOCUMENT)
+    assert hass.services.has_service(DOMAIN, SERVICE_BENCHMARK_HOME_SEMANTIC_RESOLUTION)
+    assert hass.services.has_service(DOMAIN, SERVICE_GET_AGENT_RUN_DIAGNOSTICS)
 
 
 async def test_home_semantic_summary_service_filters_exposure(
@@ -261,6 +274,327 @@ async def test_home_semantic_services_resolve_and_context(
     assert resolved["target"]["entity_id"] == "light.kitchen"
     assert [entity["entity_id"] for entity in context["entities"]] == [
         "light.kitchen"
+    ]
+
+
+async def test_trace_home_semantic_resolution_reports_rejections(
+    hass: HomeAssistant,
+) -> None:
+    """Test trace service returns ranked candidates and rejection reasons."""
+    hass.states.async_set("light.kitchen", "off")
+    hass.states.async_set("light.hidden", "off")
+    await _expose(hass, "light.kitchen")
+    await _hide(hass, "light.hidden")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            areas=(AreaSource(area_id="kitchen", name="Kitchen"),),
+            entities=(
+                EntitySource(
+                    entity_id="light.kitchen",
+                    name="Kitchen Light",
+                    area_id="kitchen",
+                    domain="light",
+                ),
+                EntitySource(
+                    entity_id="light.hidden",
+                    name="Kitchen Hidden Light",
+                    area_id="kitchen",
+                    domain="light",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    response = await _call_service(
+        hass,
+        SERVICE_TRACE_HOME_SEMANTIC_RESOLUTION,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "kitchen light",
+            "action": "turn_on",
+        },
+    )
+
+    assert response["success"] is True
+    assert response["selected"]["entity_id"] == "light.kitchen"
+    assert "light.hidden" not in str(response["candidates"])
+    assert "not_exposed" not in str(response["candidates"])
+
+
+async def test_plan_home_semantic_control_does_not_call_services(
+    hass: HomeAssistant,
+) -> None:
+    """Test dry-run planning returns service calls without executing them."""
+    calls: list[ServiceCall] = []
+
+    async def async_record_call(call: ServiceCall) -> None:
+        calls.append(call)
+
+    hass.services.async_register("light", "turn_off", async_record_call)
+    hass.states.async_set("light.kitchen", "on")
+    await _expose(hass, "light.kitchen")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            entities=(
+                EntitySource(
+                    entity_id="light.kitchen",
+                    name="Kitchen Light",
+                    domain="light",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    response = await _call_service(
+        hass,
+        SERVICE_PLAN_HOME_SEMANTIC_CONTROL,
+        {
+            "config_entry_id": entry.entry_id,
+            "action": "turn_off",
+            "phrase": "kitchen light",
+        },
+    )
+
+    assert response["allowed"] is True
+    assert response["calls"] == [
+        {
+            "domain": "light",
+            "service": "turn_off",
+            "target": {ATTR_ENTITY_ID: "light.kitchen"},
+        }
+    ]
+    assert calls == []
+
+
+async def test_home_semantic_document_and_benchmark_services(
+    hass: HomeAssistant,
+) -> None:
+    """Test compact document lookup and batch benchmark services."""
+    hass.states.async_set("light.kitchen", "off")
+    await _expose(hass, "light.kitchen")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            areas=(AreaSource(area_id="kitchen", name="Kitchen"),),
+            entities=(
+                EntitySource(
+                    entity_id="light.kitchen",
+                    name="Kitchen Light",
+                    area_id="kitchen",
+                    domain="light",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    document = await _call_service(
+        hass,
+        SERVICE_GET_HOME_SEMANTIC_DOCUMENT,
+        {"config_entry_id": entry.entry_id, "entity_id": "light.kitchen"},
+    )
+    benchmark = await _call_service(
+        hass,
+        SERVICE_BENCHMARK_HOME_SEMANTIC_RESOLUTION,
+        {
+            "config_entry_id": entry.entry_id,
+            "cases": [
+                {
+                    "phrase": "kitchen light",
+                    "action": "turn_on",
+                    "expected_entity_id": "light.kitchen",
+                }
+            ],
+        },
+    )
+
+    assert document["document"]["document_id"] == "entity:light.kitchen"
+    assert document["document"]["exposed"] is True
+    assert benchmark["success"] is True
+    assert benchmark["aggregate"] == {"case_count": 1, "passed": 1, "failed": 0}
+
+
+async def test_home_semantic_document_rejects_unexposed_entity(
+    hass: HomeAssistant,
+) -> None:
+    """Test document lookup does not expose hidden entity details."""
+    hass.states.async_set("light.hidden", "off")
+    await _hide(hass, "light.hidden")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            entities=(
+                EntitySource(
+                    entity_id="light.hidden",
+                    name="Hidden Light",
+                    domain="light",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    document = await _call_service(
+        hass,
+        SERVICE_GET_HOME_SEMANTIC_DOCUMENT,
+        {"config_entry_id": entry.entry_id, "entity_id": "light.hidden"},
+    )
+
+    assert document["success"] is False
+    assert document["errors"][0]["code"] == "not_exposed"
+    assert document["document"] is None
+
+
+async def test_home_semantic_document_rejects_unexposed_area_capability(
+    hass: HomeAssistant,
+) -> None:
+    """Test non-entity document lookup does not expose hidden capabilities."""
+    hass.states.async_set("light.hidden", "off")
+    await _hide(hass, "light.hidden")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            areas=(AreaSource(area_id="kitchen", name="Kitchen"),),
+            entities=(
+                EntitySource(
+                    entity_id="light.hidden",
+                    name="Hidden Light",
+                    area_id="kitchen",
+                    domain="light",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    document = await _call_service(
+        hass,
+        SERVICE_GET_HOME_SEMANTIC_DOCUMENT,
+        {"config_entry_id": entry.entry_id, "document_id": "area:kitchen"},
+    )
+
+    assert document["success"] is False
+    assert document["errors"][0]["code"] == "not_exposed"
+    assert document["document"] is None
+
+
+async def test_home_semantic_document_filters_hidden_only_area_details(
+    hass: HomeAssistant,
+) -> None:
+    """Test area documents derive tokens and relationships from exposed scope."""
+    hass.states.async_set("light.kitchen", "off")
+    hass.states.async_set("switch.hidden", "off")
+    await _expose(hass, "light.kitchen")
+    await _hide(hass, "switch.hidden")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            areas=(AreaSource(area_id="kitchen", name="Kitchen"),),
+            entities=(
+                EntitySource(
+                    entity_id="light.kitchen",
+                    name="Kitchen Light",
+                    area_id="kitchen",
+                    domain="light",
+                ),
+                EntitySource(
+                    entity_id="switch.hidden",
+                    name="Hidden Switch",
+                    area_id="kitchen",
+                    domain="switch",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    document = await _call_service(
+        hass,
+        SERVICE_GET_HOME_SEMANTIC_DOCUMENT,
+        {"config_entry_id": entry.entry_id, "document_id": "area:kitchen"},
+    )
+
+    assert document["success"] is True
+    assert "switch" not in str(document["document"])
+    assert document["document"]["capabilities"] == [
+        {
+            "capability": "lights",
+            "entity_count": 1,
+            "preferred_target": "light.kitchen",
+        }
+    ]
+
+
+async def test_get_agent_run_diagnostics_service_sections(
+    hass: HomeAssistant,
+) -> None:
+    """Test targeted latest-run diagnostics service returns compact sections."""
+    subentry_id = "agent-1"
+    entry = workspace_entry(
+        (
+            conversation_subentry_data(
+                model_profile_ref("provider-1", "profile-1"),
+                subentry_id=subentry_id,
+            ),
+        ),
+        title="Workspace",
+    )
+    entry.add_to_hass(hass)
+    entry.runtime_data = WorkspaceRuntimeData(
+        workspace_name="Workspace",
+        latest_run_diagnostics={
+            subentry_id: {
+                "run_id": "run-1",
+                "status": "success",
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "finished_at": "2026-01-01T00:00:01+00:00",
+                "duration_ms": 1000,
+                "timeline_event_count": 3,
+                "timeline": [
+                    {
+                        "seq": 1,
+                        "phase": "input",
+                        "event": "messages_prepared",
+                        "data": {"llm_tool_definitions": [{"name": "tool"}]},
+                    },
+                    {"seq": 2, "phase": "tool_call", "event": "call_started"},
+                    {"seq": 3, "phase": "tool_call", "event": "call_finished"},
+                ],
+                "summary": {
+                    "output": "ok",
+                    "usage": {"requests": 1},
+                    "model_profile": "Primary",
+                },
+            }
+        },
+    )
+    assert await async_setup(hass, {})
+
+    summary = await _call_service(
+        hass,
+        SERVICE_GET_AGENT_RUN_DIAGNOSTICS,
+        {"config_entry_id": entry.entry_id, "subentry_id": subentry_id},
+    )
+    timeline = await _call_service(
+        hass,
+        SERVICE_GET_AGENT_RUN_DIAGNOSTICS,
+        {
+            "config_entry_id": entry.entry_id,
+            "subentry_id": subentry_id,
+            "section": "timeline",
+            "offset": 1,
+            "limit": 1,
+        },
+    )
+
+    assert summary["run"]["summary"]["usage"] == {"requests": 1}
+    assert summary["run"]["timeline"]["total_count"] == 3
+    assert timeline["run"]["timeline"]["items"] == [
+        {"seq": 2, "phase": "tool_call", "event": "call_started"}
     ]
 
 

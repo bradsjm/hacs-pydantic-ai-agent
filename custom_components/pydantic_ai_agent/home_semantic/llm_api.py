@@ -1,10 +1,8 @@
 """Home Assistant LLM API backed by the local Home Semantic Index."""
 
-from collections import defaultdict
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import llm
 import voluptuous as vol
@@ -12,13 +10,11 @@ import voluptuous as vol
 from .manager import HomeSemanticIndexManager
 from .query import (
     default_assistant_id,
-    error as _error,
     get_home_context,
     get_home_summary,
     is_exposed,
-    phrase_matches_specific_target as _phrase_matches_specific_target,
+    plan_home_control,
     resolve_home_target,
-    service_for_action as _service_for_action,
 )
 
 _API_ID_PREFIX = "pydantic_ai_agent_home_"
@@ -207,7 +203,7 @@ class ControlHomeTool(_SemanticTool):
     ) -> dict[str, Any]:
         """Execute a constrained exposed home control action."""
         action = tool_input.tool_args["action"]
-        target = resolve_home_target(
+        plan = plan_home_control(
             hass,
             self._manager(),
             assistant_id=self._assistant(llm_context),
@@ -215,100 +211,27 @@ class ControlHomeTool(_SemanticTool):
             phrase=tool_input.tool_args.get("phrase"),
             action=action,
         )
-        if isinstance(target, dict):
-            return target
-        if phrase := tool_input.tool_args.get("phrase"):
-            if not _phrase_matches_specific_target(phrase, target.document):
-                return _error(
-                    "ambiguous_target",
-                    "Phrase did not match a specific exposed target.",
-                    alternatives=target.alternatives,
-                )
-        if tool_input.tool_args.get("phrase") and target.confidence < 0.45:
-            return _error(
-                "ambiguous_target",
-                "Target confidence is too low for automatic control.",
-                alternatives=target.alternatives,
+        if isinstance(plan, dict):
+            return plan
+        for call in plan.calls:
+            await hass.services.async_call(
+                call.domain,
+                call.service,
+                call.target,
+                blocking=True,
+                context=llm_context.context,
             )
-        state = hass.states.get(target.entity_id)
-        if state is None:
-            return _error("not_found", "Target entity is unavailable.")
-        service_domain: str
-        service_name: str
-        service_target: dict[str, Any]
-        if state.domain == "group":
-            expanded = self._expand_group(hass, llm_context, target.entity_id, action)
-            if isinstance(expanded, dict):
-                return expanded
-            for service_domain, service_name, entity_ids in expanded:
-                await hass.services.async_call(
-                    service_domain,
-                    service_name,
-                    {ATTR_ENTITY_ID: entity_ids},
-                    blocking=True,
-                    context=llm_context.context,
-                )
+        if len(plan.calls) > 1 or plan.group_expansion is not None:
             return {
                 "status": "ok",
                 "action": action,
-                "calls": [
-                    {
-                        "domain": service_domain,
-                        "service": service_name,
-                        "target": {ATTR_ENTITY_ID: entity_ids},
-                    }
-                    for service_domain, service_name, entity_ids in expanded
-                ],
+                "calls": [call.as_dict() for call in plan.calls],
             }
-        else:
-            service_domain, service_name = _service_for_action(state.domain, action)
-            if service_domain == "":
-                return _error(
-                    "unsupported_domain", "Action is not supported for target."
-                )
-            service_target = {ATTR_ENTITY_ID: target.entity_id}
-        await hass.services.async_call(
-            service_domain,
-            service_name,
-            service_target,
-            blocking=True,
-            context=llm_context.context,
-        )
+        call = plan.calls[0]
         return {
             "status": "ok",
             "action": action,
-            "domain": service_domain,
-            "service": service_name,
-            "target": service_target,
+            "domain": call.domain,
+            "service": call.service,
+            "target": call.target,
         }
-
-    def _expand_group(
-        self,
-        hass: HomeAssistant,
-        llm_context: llm.LLMContext,
-        entity_id: str,
-        action: str,
-    ) -> list[tuple[str, str, list[str]]] | dict[str, Any]:
-        """Expand an exposed HA group into exposed supported member targets."""
-        group_state = hass.states.get(entity_id)
-        if group_state is None:
-            return _error("not_found", "Group entity is unavailable.")
-        raw_members = group_state.attributes.get(ATTR_ENTITY_ID, [])
-        if not isinstance(raw_members, list | tuple):
-            return _error("unsupported_domain", "Group has no entity members.")
-        members = [member for member in raw_members if isinstance(member, str)]
-        targets_by_service: dict[tuple[str, str], list[str]] = defaultdict(list)
-        for member in members:
-            state = hass.states.get(member)
-            if state is None or not self._is_exposed(hass, llm_context, member):
-                continue
-            service_domain, service_name = _service_for_action(state.domain, action)
-            if service_domain == "":
-                continue
-            targets_by_service[(service_domain, service_name)].append(member)
-        if not targets_by_service:
-            return _error("not_exposed", "Group has no exposed supported members.")
-        return [
-            (service_domain, service_name, entity_ids)
-            for (service_domain, service_name), entity_ids in targets_by_service.items()
-        ]

@@ -2,10 +2,12 @@
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from time import monotonic
 from typing import Any
 
 from homeassistant.components import conversation
 from homeassistant.components.homeassistant import async_should_expose
+from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 
 from .index import HomeSemanticIndex, normalize_tokens
@@ -59,6 +61,47 @@ class ResolvedHomeTarget:
     confidence: float
     reason: str
     alternatives: list[dict[str, Any]]
+
+
+@dataclass(frozen=True, kw_only=True)
+class PlannedServiceCall:
+    """One HA service call approved by semantic control planning."""
+
+    domain: str
+    service: str
+    target: dict[str, Any]
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return JSON-serializable call data."""
+        return {
+            "domain": self.domain,
+            "service": self.service,
+            "target": self.target,
+        }
+
+
+@dataclass(frozen=True, kw_only=True)
+class HomeControlPlan:
+    """Approved dry-run plan for a constrained semantic control."""
+
+    action: str
+    target: ResolvedHomeTarget
+    calls: list[PlannedServiceCall]
+    group_expansion: dict[str, Any] | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return JSON-serializable plan data."""
+        data: dict[str, Any] = {
+            "status": "ok",
+            "allowed": True,
+            "reason": "approved",
+            "action": self.action,
+            "target": compact_resolved_target(self.target),
+            "calls": [call.as_dict() for call in self.calls],
+        }
+        if self.group_expansion is not None:
+            data["group_expansion"] = self.group_expansion
+        return data
 
 
 def default_assistant_id(assistant_id: str | None = None) -> str:
@@ -213,6 +256,171 @@ def resolve_home_target(
     )
 
 
+def trace_home_resolution(
+    hass: HomeAssistant,
+    manager: HomeSemanticIndexManager | None,
+    *,
+    assistant_id: str | None = None,
+    phrase: str,
+    action: str | None = None,
+    area_id: str | None = None,
+    domain: str | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Return trace-capable ranking output for one semantic phrase."""
+    started = monotonic()
+    index = _index(manager)
+    if index is None:
+        return error("index_not_ready", "Semantic home index is still warming up.")
+    assistant = default_assistant_id(assistant_id)
+    candidates: list[dict[str, Any]] = []
+    accepted: list[ResolvedHomeTarget] = []
+    for result in index.search(
+        phrase,
+        action=action,
+        document_types=("capability", "entity", "group"),
+        limit=100,
+    ):
+        target_entity_id = result.document.entity_id or result.document.target_entity_id
+        rejection_reasons: list[str] = []
+        state = hass.states.get(target_entity_id) if target_entity_id is not None else None
+        if target_entity_id is None:
+            continue
+        if state is None:
+            rejection_reasons.append("unavailable")
+        if area_id is not None and result.document.area_id != area_id:
+            rejection_reasons.append("wrong_area")
+        if domain is not None and state is not None and state.domain != domain:
+            rejection_reasons.append("unsupported_domain")
+        not_exposed = target_entity_id is not None and not is_exposed(
+            hass, assistant, target_entity_id
+        )
+        if not_exposed:
+            rejection_reasons.append("not_exposed")
+            continue
+        if target_entity_id is not None and not supported_entity(
+            hass, target_entity_id, for_control=True
+        ):
+            rejection_reasons.append("unsupported_domain")
+        if (
+            action is not None
+            and state is not None
+            and state.domain != "group"
+            and service_for_action(state.domain, action)[0] == ""
+        ):
+            rejection_reasons.append("unsupported_action")
+        if not phrase_matches_specific_target(phrase, result.document):
+            rejection_reasons.append("generic_phrase")
+        confidence = min(0.99, max(0.1, result.score / 60))
+        confidence = max(confidence, 0.7)
+        candidate = {
+            "document_id": result.document.document_id,
+            "entity_id": target_entity_id,
+            "name": result.document.name,
+            "domain": None if state is None else state.domain,
+            "area_id": result.document.area_id,
+            "score": round(result.score, 3),
+            "confidence": round(confidence, 2),
+            "matched_tokens": matched_tokens(phrase, result.document),
+            "reasons": list(result.reasons),
+            "rejection_reasons": rejection_reasons,
+        }
+        candidates.append(candidate)
+        if target_entity_id is not None and not rejection_reasons:
+            accepted.append(
+                ResolvedHomeTarget(
+                    entity_id=target_entity_id,
+                    document=result.document,
+                    confidence=confidence,
+                    reason=",".join(result.reasons),
+                    alternatives=[],
+                )
+            )
+    selected: dict[str, Any] | None = None
+    if accepted:
+        selected = compact_resolved_target(accepted[0])
+    return {
+        "status": "ok",
+        "selected": selected,
+        "candidates": candidates[:limit],
+        "candidate_count": len(candidates),
+        "latency_ms": round((monotonic() - started) * 1000, 3),
+    }
+
+
+def plan_home_control(
+    hass: HomeAssistant,
+    manager: HomeSemanticIndexManager | None,
+    *,
+    assistant_id: str | None = None,
+    action: str,
+    phrase: str | None = None,
+    entity_id: str | None = None,
+) -> HomeControlPlan | dict[str, Any]:
+    """Plan constrained exposed home controls without executing them."""
+    if action not in SUPPORTED_ACTIONS:
+        return error("unsupported_action", "Action is not supported.")
+    target = resolve_home_target(
+        hass,
+        manager,
+        assistant_id=assistant_id,
+        entity_id=entity_id,
+        phrase=phrase,
+        action=action,
+    )
+    if isinstance(target, dict):
+        return target
+    if phrase is not None and target.confidence < 0.45:
+        return error(
+            "ambiguous_target",
+            "Target confidence is too low for automatic control.",
+            alternatives=target.alternatives,
+        )
+    state = hass.states.get(target.entity_id)
+    if state is None:
+        return error("not_found", "Target entity is unavailable.")
+    assistant = default_assistant_id(assistant_id)
+    if state.domain == "group":
+        expanded = expand_group_control_calls(hass, assistant, target.entity_id, action)
+        if isinstance(expanded, dict):
+            return expanded
+        calls = [
+            PlannedServiceCall(
+                domain=service_domain,
+                service=service_name,
+                target={ATTR_ENTITY_ID: entity_ids},
+            )
+            for service_domain, service_name, entity_ids in expanded
+        ]
+        return HomeControlPlan(
+            action=action,
+            target=target,
+            calls=calls,
+            group_expansion={
+                "group_entity_id": target.entity_id,
+                "member_entity_ids": [
+                    member
+                    for _service_domain, _service_name, entity_ids in expanded
+                    for member in entity_ids
+                ],
+            },
+        )
+    service_domain, service_name = service_for_action(state.domain, action)
+    if service_domain == "":
+        return error("unsupported_domain", "Action is not supported for target.")
+    return HomeControlPlan(
+        action=action,
+        target=target,
+        calls=[
+            PlannedServiceCall(
+                domain=service_domain,
+                service=service_name,
+                target={ATTR_ENTITY_ID: target.entity_id},
+            )
+        ],
+    )
+
+
 def get_home_context(
     hass: HomeAssistant,
     manager: HomeSemanticIndexManager | None,
@@ -325,6 +533,37 @@ def supported_entity(
     return True
 
 
+def expand_group_control_calls(
+    hass: HomeAssistant,
+    assistant_id: str,
+    entity_id: str,
+    action: str,
+) -> list[tuple[str, str, list[str]]] | dict[str, Any]:
+    """Expand an exposed HA group into exposed supported member targets."""
+    group_state = hass.states.get(entity_id)
+    if group_state is None:
+        return error("not_found", "Group entity is unavailable.")
+    raw_members = group_state.attributes.get(ATTR_ENTITY_ID, [])
+    if not isinstance(raw_members, list | tuple):
+        return error("unsupported_domain", "Group has no entity members.")
+    members = [member for member in raw_members if isinstance(member, str)]
+    targets_by_service: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for member in members:
+        state = hass.states.get(member)
+        if state is None or not is_exposed(hass, assistant_id, member):
+            continue
+        service_domain, service_name = service_for_action(state.domain, action)
+        if service_domain == "":
+            continue
+        targets_by_service[(service_domain, service_name)].append(member)
+    if not targets_by_service:
+        return error("not_exposed", "Group has no exposed supported members.")
+    return [
+        (service_domain, service_name, entity_ids)
+        for (service_domain, service_name), entity_ids in targets_by_service.items()
+    ]
+
+
 def service_for_action(domain: str, action: str) -> tuple[str, str]:
     """Return the HA service domain/name for a constrained action."""
     if action in {"turn_on", "turn_off", "toggle"} and domain in _TOGGLE_DOMAINS:
@@ -347,6 +586,26 @@ def phrase_matches_specific_target(
     for part in document.searchable_parts():
         document_tokens.update(normalize_tokens(part))
     return salient_tokens <= document_tokens
+
+
+def compact_resolved_target(target: ResolvedHomeTarget) -> dict[str, Any]:
+    """Return compact JSON-safe target data."""
+    return {
+        "target_type": "entity",
+        "entity_id": target.entity_id,
+        "confidence": round(target.confidence, 2),
+        "reason": target.reason,
+        "alternatives": target.alternatives,
+    }
+
+
+def matched_tokens(phrase: str, document: HomeSemanticDocument) -> list[str]:
+    """Return normalized query tokens that matched document text."""
+    query_tokens = set(normalize_tokens(phrase))
+    document_tokens: set[str] = set()
+    for part in document.searchable_parts():
+        document_tokens.update(normalize_tokens(part))
+    return sorted(query_tokens & document_tokens)
 
 
 def error(code: str, message: str, **extra: Any) -> dict[str, Any]:

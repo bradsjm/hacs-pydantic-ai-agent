@@ -714,6 +714,37 @@
     }
   },
   "services": {
+    "benchmark_home_semantic_resolution": {
+      "description": "Resolve a small batch of phrases and compare selected targets with expected entity IDs.",
+      "fields": {
+        "assistant_id": {"description": "Optional assistant ID used for exposed-entity filtering.", "name": "Assistant ID"},
+        "cases": {"description": "List of phrase/action/expected target cases to resolve.", "name": "Cases"},
+        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
+        "limit": {"description": "Maximum number of cases to run.", "name": "Limit"}
+      },
+      "name": "Benchmark home semantic resolution"
+    },
+    "get_agent_run_diagnostics": {
+      "description": "Return a compact slice of latest run diagnostics for one conversation or AI task subentry.",
+      "fields": {
+        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
+        "limit": {"description": "Maximum number of timeline or tool-call events to return.", "name": "Limit"},
+        "offset": {"description": "Number of timeline or tool-call events to skip.", "name": "Offset"},
+        "section": {"description": "Optional diagnostic section. Omit for a compact summary.", "name": "Section"},
+        "subentry_id": {"description": "Conversation or AI task subentry ID whose latest run diagnostics should be returned.", "name": "Subentry ID"}
+      },
+      "name": "Get agent run diagnostics"
+    },
+    "get_home_semantic_document": {
+      "description": "Return compact document data for one indexed entity or document ID.",
+      "fields": {
+        "assistant_id": {"description": "Optional assistant ID used for exposure flags.", "name": "Assistant ID"},
+        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
+        "document_id": {"description": "Semantic document ID to fetch.", "name": "Document ID"},
+        "entity_id": {"description": "Entity ID whose semantic document should be returned.", "name": "Entity ID"}
+      },
+      "name": "Get home semantic document"
+    },
     "list_mcp_tools": {
       "description": "List cached MCP tools for a configured server, discovering them if no cache exists.",
       "fields": {
@@ -727,6 +758,26 @@
         }
       },
       "name": "List MCP tools"
+    },
+    "plan_home_semantic_control": {
+      "description": "Dry-run the same safety checks used by the LLM-only control_home tool without executing service calls.",
+      "fields": {
+        "action": {"description": "Control action to plan.", "name": "Action"},
+        "assistant_id": {"description": "Optional assistant ID used for exposed-entity filtering.", "name": "Assistant ID"},
+        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
+        "entity_id": {"description": "Explicit target entity. Provide phrase or entity_id.", "name": "Entity ID"},
+        "phrase": {"description": "Natural-language target phrase. Provide phrase or entity_id.", "name": "Phrase"}
+      },
+      "name": "Plan home semantic control"
+    },
+    "refresh_home_semantic_index": {
+      "description": "Refresh the Home Semantic Index for one workspace and return compact readiness diagnostics.",
+      "fields": {
+        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
+        "reason": {"description": "Optional diagnostic reason stored as the refresh reason.", "name": "Reason"},
+        "wait": {"description": "Wait for the refresh to complete before returning.", "name": "Wait"}
+      },
+      "name": "Refresh home semantic index"
     },
     "get_home_semantic_context": {
       "description": "Return compact exposed live state from the Home Semantic Index for an explicit entity or query scope.",
@@ -811,6 +862,19 @@
         }
       },
       "name": "Resolve home semantic target"
+    },
+    "trace_home_semantic_resolution": {
+      "description": "Trace how a phrase ranks and filters Home Semantic Index candidates.",
+      "fields": {
+        "action": {"description": "Optional intended action used to filter compatible targets.", "name": "Action"},
+        "area_id": {"description": "Optional area ID expected for candidates.", "name": "Area ID"},
+        "assistant_id": {"description": "Optional assistant ID used for exposed-entity filtering.", "name": "Assistant ID"},
+        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
+        "domain": {"description": "Optional entity domain expected for candidates.", "name": "Domain"},
+        "limit": {"description": "Maximum number of ranked candidates to return.", "name": "Limit"},
+        "phrase": {"description": "Natural-language phrase to trace, such as kitchen lights.", "name": "Phrase"}
+      },
+      "name": "Trace home semantic resolution"
     }
   }
 }

@@ -25,6 +25,7 @@ from homeassistant.helpers import (
     floor_registry as fr,
     label_registry as lr,
 )
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
@@ -43,6 +44,11 @@ _INDEXED_STATE_ATTRIBUTES = (
     ATTR_SUPPORTED_FEATURES,
 )
 _HIGH_CHURN_STATE_DOMAINS = {"binary_sensor", "sensor"}
+
+
+def semantic_index_signal(entry_id: str) -> str:
+    """Return the dispatcher signal for semantic index diagnostics."""
+    return f"pydantic_ai_agent_home_semantic_{entry_id}"
 
 
 class HomeSemanticIndexManager:
@@ -182,6 +188,23 @@ class HomeSemanticIndexManager:
             data.update(self.index.diagnostics_summary())
         return data
 
+    async def async_refresh_now(
+        self, *, reason: str, wait: bool = True
+    ) -> dict[str, object]:
+        """Refresh the index immediately and optionally wait for completion."""
+        previous_generation = self.generation
+        if self._stopped:
+            return self._refresh_result(previous_generation)
+        if self._refresh_task is None or self._refresh_task.done():
+            self._cancel_refresh_timer()
+            self._start_refresh_task(reason)
+        if wait and self._refresh_task is not None:
+            try:
+                await self._refresh_task
+            except asyncio.CancelledError:
+                raise
+        return self._refresh_result(previous_generation)
+
     @callback
     def _async_state_changed(self, event: Event[Any]) -> None:
         """Handle state changes using cheap relevance checks."""
@@ -318,10 +341,26 @@ class HomeSemanticIndexManager:
         """Clear task state and run one follow-up pass if changes arrived."""
         if self._refresh_task is task:
             self._refresh_task = None
+        async_dispatcher_send(self._hass, semantic_index_signal(self._entry.entry_id))
         if self._stopped:
             return
         if self._structural_dirty or self._dirty_entity_ids:
             self._schedule_refresh(self._debounce_seconds, "dirty_during_refresh")
+
+    def _refresh_result(self, previous_generation: int) -> dict[str, object]:
+        """Return compact JSON-safe refresh diagnostics."""
+        diagnostics = self.diagnostics()
+        return {
+            "previous_generation": previous_generation,
+            "new_generation": self.generation,
+            "status": self.status,
+            "ready": self.index is not None,
+            "duration_ms": self.last_duration_ms,
+            "document_count": diagnostics.get("document_count", 0),
+            "edge_count": diagnostics.get("edge_count", 0),
+            "last_error_type": self.last_error_type,
+            "last_refresh_reason": self.last_refresh_reason,
+        }
 
     @callback
     def _cancel_refresh_timer(self) -> None:

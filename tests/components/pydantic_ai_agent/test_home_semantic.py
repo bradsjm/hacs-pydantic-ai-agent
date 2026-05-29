@@ -2,8 +2,10 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
+from typing import cast
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers import entity_registry as er, label_registry as lr
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import (
@@ -31,6 +33,8 @@ from custom_components.pydantic_ai_agent.home_semantic.models import (
     HomeSemanticSource,
 )
 from tests.components.pydantic_ai_agent.support.builders import workspace_entry
+from custom_components.pydantic_ai_agent import WorkspaceRuntimeData
+from custom_components.pydantic_ai_agent import binary_sensor, sensor
 
 
 def _index_with_light(entity_id: str = "light.test_light") -> HomeSemanticIndex:
@@ -153,6 +157,64 @@ async def test_manager_coalesces_refresh_requests(
 
     assert calls == ["build"]
     assert manager.generation == 1
+
+    manager.async_stop()
+
+
+async def test_manager_refresh_now_waits_and_returns_json_safe_result(
+    hass: HomeAssistant,
+) -> None:
+    """Test manual refresh waits for completion and returns compact diagnostics."""
+    calls: list[str] = []
+    manager = HomeSemanticIndexManager(
+        hass,
+        _entry(hass),
+        build_index=_counting_builder(calls),
+        initial_delay_seconds=600,
+        initial_jitter_seconds=0,
+    )
+    manager.async_start()
+
+    result = await manager.async_refresh_now(reason="test", wait=True)
+
+    assert calls == ["build"]
+    assert result == {
+        "previous_generation": 0,
+        "new_generation": 1,
+        "status": "ready",
+        "ready": True,
+        "duration_ms": manager.last_duration_ms,
+        "document_count": 3,
+        "edge_count": 2,
+        "last_error_type": None,
+        "last_refresh_reason": "test",
+    }
+
+    manager.async_stop()
+
+
+async def test_manager_refresh_now_reports_errors(hass: HomeAssistant) -> None:
+    """Test manual refresh reports failed refresh diagnostics without raising."""
+
+    async def build() -> HomeSemanticIndex:
+        raise RuntimeError("boom")
+
+    manager = HomeSemanticIndexManager(
+        hass,
+        _entry(hass),
+        build_index=build,
+        initial_delay_seconds=600,
+        initial_jitter_seconds=0,
+    )
+    manager.async_start()
+
+    result = await manager.async_refresh_now(reason="test", wait=True)
+
+    assert result["previous_generation"] == 0
+    assert result["new_generation"] == 0
+    assert result["status"] == "failed"
+    assert result["ready"] is False
+    assert result["last_error_type"] == "RuntimeError"
 
     manager.async_stop()
 
@@ -507,3 +569,44 @@ def test_semantic_index_diagnostics_are_aggregate_and_json_safe() -> None:
     }
     assert diagnostics["domain_counts"] == {"light": 1}
     assert diagnostics["capability_counts"] == {"lights": 2}
+
+
+async def test_workspace_semantic_diagnostic_entities(
+    hass: HomeAssistant,
+) -> None:
+    """Test semantic diagnostic entities are workspace-scoped."""
+    entry = _entry(hass)
+    manager = HomeSemanticIndexManager(hass, entry, build_index=_counting_builder([]))
+    manager.index = _index_with_light()
+    manager.status = "ready"
+    manager.generation = 7
+    manager.last_duration_ms = 1234
+    entry.runtime_data = WorkspaceRuntimeData(
+        workspace_name="Workspace",
+        home_semantic=manager,
+    )
+    added: list[object] = []
+
+    def add_entities(
+        entities: list[object],
+        update_before_add: bool = False,
+        config_subentry_id: str | None = None,
+    ) -> None:
+        added.extend(entities)
+
+    await sensor.async_setup_entry(hass, entry, cast(AddConfigEntryEntitiesCallback, add_entities))
+    await binary_sensor.async_setup_entry(
+        hass, entry, cast(AddConfigEntryEntitiesCallback, add_entities)
+    )
+
+    semantic_entities = [
+        entity for entity in added if "semantic_" in str(getattr(entity, "unique_id"))
+    ]
+
+    assert {getattr(entity, "unique_id") for entity in semantic_entities} == {
+        f"pydantic_ai_agent_{entry.entry_id}_semantic_document_count",
+        f"pydantic_ai_agent_{entry.entry_id}_semantic_index_generation",
+        f"pydantic_ai_agent_{entry.entry_id}_semantic_index_ready",
+        f"pydantic_ai_agent_{entry.entry_id}_semantic_last_refresh_duration",
+    }
+    assert all(":" not in str(getattr(entity, "unique_id")) for entity in semantic_entities)

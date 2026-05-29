@@ -30,6 +30,7 @@ from .const import (
     SUBENTRY_TYPE_CONVERSATION,
 )
 from .entity import device_identifier_for_subentry, unique_id_for_subentry_entity
+from .home_semantic.manager import HomeSemanticIndexManager, semantic_index_signal
 from .metrics import AgentRunMetrics, metric_value, metrics_signal
 from .model_profiles import ModelProfile, primary_model_profile
 from .structured_output import structured_output_mode
@@ -53,6 +54,13 @@ class PydanticAIConfigSensorDescription(SensorEntityDescription):
         SUBENTRY_TYPE_CONVERSATION,
         SUBENTRY_TYPE_AI_TASK,
     )
+
+
+@dataclass(frozen=True, kw_only=True)
+class PydanticAISemanticSensorDescription(SensorEntityDescription):
+    """Description for one workspace semantic index sensor."""
+
+    value_fn: Callable[[HomeSemanticIndexManager | None], int | float | None]
 
 
 SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
@@ -307,6 +315,41 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
     ),
 )
 
+SEMANTIC_SENSOR_DESCRIPTIONS: tuple[PydanticAISemanticSensorDescription, ...] = (
+    PydanticAISemanticSensorDescription(
+        key="semantic_index_generation",
+        name="Semantic index generation",
+        icon="mdi:counter",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda manager: None if manager is None else manager.generation,
+    ),
+    PydanticAISemanticSensorDescription(
+        key="semantic_document_count",
+        name="Semantic document count",
+        icon="mdi:file-tree-outline",
+        native_unit_of_measurement="documents",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda manager: None
+        if manager is None or manager.index is None
+        else len(manager.index.documents),
+    ),
+    PydanticAISemanticSensorDescription(
+        key="semantic_last_refresh_duration",
+        name="Semantic last refresh duration",
+        icon="mdi:timer-outline",
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda manager: None
+        if manager is None or manager.last_duration_ms is None
+        else manager.last_duration_ms / 1000,
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -314,6 +357,12 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Pydantic AI Agent metric sensors."""
+    async_add_entities(
+        [
+            PydanticAISemanticSensor(config_entry, description)
+            for description in SEMANTIC_SENSOR_DESCRIPTIONS
+        ]
+    )
     for valid in _agent_subentries(config_entry):
         subentry = valid.subentry
         async_add_entities(
@@ -425,6 +474,58 @@ class PydanticAIConfigSensor(SensorEntity):
         return self.entity_description.value_fn(self.entry, self.subentry)
 
 
+class PydanticAISemanticSensor(SensorEntity):
+    """Workspace-level sensor for the Home Semantic Index."""
+
+    _attr_has_entity_name = True
+
+    entity_description: PydanticAISemanticSensorDescription
+
+    def __init__(
+        self,
+        entry: PydanticAIAgentConfigEntry,
+        description: PydanticAISemanticSensorDescription,
+    ) -> None:
+        """Initialize the semantic index sensor."""
+        self.entry = entry
+        self.entity_description = description
+        self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_{description.key}"
+        self._attr_device_info = _workspace_device_info(entry)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to semantic index updates."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                semantic_index_signal(self.entry.entry_id),
+                self._handle_semantic_update,
+            )
+        )
+
+    @property
+    def native_value(self) -> int | float | None:
+        """Return the current semantic index diagnostic value."""
+        return self.entity_description.value_fn(self.entry.runtime_data.home_semantic)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Return compact semantic index status attributes."""
+        manager = self.entry.runtime_data.home_semantic
+        if manager is None:
+            return {"ready": False, "status": "not_loaded"}
+        return {
+            "ready": manager.index is not None,
+            "status": manager.status,
+            "generation": manager.generation,
+            "last_error_type": manager.last_error_type,
+        }
+
+    @callback
+    def _handle_semantic_update(self) -> None:
+        """Write updated semantic index sensor state."""
+        self.async_write_ha_state()
+
+
 def _agent_subentries(
     entry: PydanticAIAgentConfigEntry,
 ) -> Iterator[ValidAgentSubentry[ModelProfile]]:
@@ -448,3 +549,13 @@ def _subentry_name(subentry: ConfigSubentry) -> str:
     if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
         return str(subentry.data[CONF_AGENT_NAME])
     return str(subentry.data.get(CONF_AI_TASK_NAME, subentry.title))
+
+
+def _workspace_device_info(entry: PydanticAIAgentConfigEntry) -> dr.DeviceInfo:
+    """Return the workspace-level diagnostic device info."""
+    return dr.DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=entry.title,
+        manufacturer="Pydantic AI",
+        entry_type=dr.DeviceEntryType.SERVICE,
+    )

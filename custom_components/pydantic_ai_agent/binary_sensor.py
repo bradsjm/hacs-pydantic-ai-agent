@@ -28,6 +28,7 @@ from .const import (
     SUBENTRY_TYPE_CONVERSATION,
 )
 from .entity import device_identifier_for_subentry, unique_id_for_subentry_entity
+from .home_semantic.manager import HomeSemanticIndexManager, semantic_index_signal
 from .metrics import AgentRunMetrics, metric_bool, metrics_signal
 from .model_profiles import ModelProfile, primary_model_profile
 
@@ -50,6 +51,13 @@ class PydanticAIConfigBinarySensorDescription(BinarySensorEntityDescription):
         SUBENTRY_TYPE_CONVERSATION,
         SUBENTRY_TYPE_AI_TASK,
     )
+
+
+@dataclass(frozen=True, kw_only=True)
+class PydanticAISemanticBinarySensorDescription(BinarySensorEntityDescription):
+    """Description for one workspace semantic index binary sensor."""
+
+    value_fn: Callable[[HomeSemanticIndexManager | None], bool | None]
 
 
 BINARY_SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricBinarySensorDescription, ...] = (
@@ -110,6 +118,19 @@ CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
     ),
 )
 
+SEMANTIC_BINARY_SENSOR_DESCRIPTIONS: tuple[
+    PydanticAISemanticBinarySensorDescription, ...
+] = (
+    PydanticAISemanticBinarySensorDescription(
+        key="semantic_index_ready",
+        name="Semantic index ready",
+        icon="mdi:home-search-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
+        value_fn=lambda manager: None if manager is None else manager.index is not None,
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -117,6 +138,12 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Pydantic AI Agent metric binary sensors."""
+    async_add_entities(
+        [
+            PydanticAISemanticBinarySensor(config_entry, description)
+            for description in SEMANTIC_BINARY_SENSOR_DESCRIPTIONS
+        ]
+    )
     for valid in _agent_subentries(config_entry):
         subentry = valid.subentry
         async_add_entities(
@@ -227,6 +254,61 @@ class PydanticAIConfigBinarySensor(BinarySensorEntity):
         return self.entity_description.value_fn(self.subentry)
 
 
+class PydanticAISemanticBinarySensor(BinarySensorEntity):
+    """Workspace-level binary sensor for the Home Semantic Index."""
+
+    _attr_has_entity_name = True
+
+    entity_description: PydanticAISemanticBinarySensorDescription
+
+    def __init__(
+        self,
+        entry: PydanticAIAgentConfigEntry,
+        description: PydanticAISemanticBinarySensorDescription,
+    ) -> None:
+        """Initialize the semantic index binary sensor."""
+        self.entry = entry
+        self.entity_description = description
+        self._attr_entity_registry_enabled_default = (
+            description.entity_registry_enabled_default
+        )
+        self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_{description.key}"
+        self._attr_device_info = _workspace_device_info(entry)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to semantic index updates."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                semantic_index_signal(self.entry.entry_id),
+                self._handle_semantic_update,
+            )
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether the semantic index is ready."""
+        return self.entity_description.value_fn(self.entry.runtime_data.home_semantic)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Return compact semantic index status attributes."""
+        manager = self.entry.runtime_data.home_semantic
+        if manager is None:
+            return {"status": "not_loaded", "generation": 0, "last_error_type": None}
+        return {
+            "status": manager.status,
+            "generation": manager.generation,
+            "last_error_type": manager.last_error_type,
+            "last_refresh_reason": manager.last_refresh_reason,
+        }
+
+    @callback
+    def _handle_semantic_update(self) -> None:
+        """Write updated semantic index binary sensor state."""
+        self.async_write_ha_state()
+
+
 def _agent_subentries(
     entry: PydanticAIAgentConfigEntry,
 ) -> Iterator[ValidAgentSubentry[ModelProfile]]:
@@ -250,3 +332,13 @@ def _subentry_name(subentry: ConfigSubentry) -> str:
     if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
         return str(subentry.data[CONF_AGENT_NAME])
     return str(subentry.data.get(CONF_AI_TASK_NAME, subentry.title))
+
+
+def _workspace_device_info(entry: PydanticAIAgentConfigEntry) -> dr.DeviceInfo:
+    """Return the workspace-level diagnostic device info."""
+    return dr.DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=entry.title,
+        manufacturer="Pydantic AI",
+        entry_type=dr.DeviceEntryType.SERVICE,
+    )
