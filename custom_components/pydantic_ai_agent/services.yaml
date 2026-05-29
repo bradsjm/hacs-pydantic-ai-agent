@@ -20,3 +20,74 @@ refresh_mcp_tools:
       required: false
       selector:
         text:
+get_home_semantic_summary:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: pydantic_ai_agent
+    assistant_id:
+      required: false
+      selector:
+        text:
+resolve_home_semantic_target:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: pydantic_ai_agent
+    assistant_id:
+      required: false
+      selector:
+        text:
+    phrase:
+      required: true
+      selector:
+        text:
+    action:
+      required: false
+      selector:
+        select:
+          options:
+            - turn_on
+            - turn_off
+            - toggle
+            - activate
+get_home_semantic_context:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: pydantic_ai_agent
+    assistant_id:
+      required: false
+      selector:
+        text:
+    entity_ids:
+      required: false
+      selector:
+        entity:
+          multiple: true
+    phrase:
+      required: false
+      selector:
+        text:
+    domain:
+      required: false
+      selector:
+        text:
+    area_id:
+      required: false
+      selector:
+        area:
+    limit:
+      required: false
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 100
+          mode: box

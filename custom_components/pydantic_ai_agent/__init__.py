@@ -73,6 +73,7 @@ from .repairs import (
 from .structured_output import structured_output_mode
 from .home_semantic import HomeSemanticIndexManager
 from .home_semantic.llm_api import HomeSemanticAPI
+from .home_semantic.services import async_setup_services as async_setup_home_semantic_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -182,6 +183,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         schema=_MCP_SERVICE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
+    await async_setup_home_semantic_services(hass)
     return True
 
 

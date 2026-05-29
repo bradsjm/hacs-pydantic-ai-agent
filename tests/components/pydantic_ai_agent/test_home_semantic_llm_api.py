@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent import (
     WorkspaceRuntimeData,
+    async_setup,
     async_setup_entry,
 )
 from custom_components.pydantic_ai_agent.const import DOMAIN
@@ -22,6 +23,11 @@ from custom_components.pydantic_ai_agent.home_semantic import (
 )
 from custom_components.pydantic_ai_agent.home_semantic.builder import (
     build_home_semantic_index,
+)
+from custom_components.pydantic_ai_agent.home_semantic.services import (
+    SERVICE_GET_HOME_SEMANTIC_CONTEXT,
+    SERVICE_GET_HOME_SEMANTIC_SUMMARY,
+    SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
 )
 from custom_components.pydantic_ai_agent.home_semantic.models import (
     AreaSource,
@@ -75,6 +81,20 @@ async def _call_tool(
             tool_args={} if tool_args is None else tool_args,
             id="test-call",
         )
+    )
+    return cast(dict[str, Any], result)
+
+
+async def _call_service(
+    hass: HomeAssistant, service: str, data: dict[str, Any]
+) -> dict[str, Any]:
+    """Call one semantic response service."""
+    result = await hass.services.async_call(
+        DOMAIN,
+        service,
+        data,
+        blocking=True,
+        return_response=True,
     )
     return cast(dict[str, Any], result)
 
@@ -135,6 +155,142 @@ async def test_semantic_api_exposes_four_tools(hass: HomeAssistant) -> None:
         "get_home_summary",
         "resolve_home_target",
     }
+
+
+async def test_setup_registers_home_semantic_response_services(
+    hass: HomeAssistant,
+) -> None:
+    """Test async setup registers read-only semantic response services."""
+    assert await async_setup(hass, {})
+
+    assert hass.services.has_service(DOMAIN, SERVICE_GET_HOME_SEMANTIC_SUMMARY)
+    assert hass.services.has_service(DOMAIN, SERVICE_RESOLVE_HOME_SEMANTIC_TARGET)
+    assert hass.services.has_service(DOMAIN, SERVICE_GET_HOME_SEMANTIC_CONTEXT)
+
+
+async def test_home_semantic_summary_service_filters_exposure(
+    hass: HomeAssistant,
+) -> None:
+    """Test summary response service returns only assistant-exposed targets."""
+    hass.states.async_set("light.kitchen", "on")
+    hass.states.async_set("light.hidden", "on")
+    await _expose(hass, "light.kitchen")
+    await _hide(hass, "light.hidden")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            areas=(AreaSource(area_id="kitchen", name="Kitchen"),),
+            entities=(
+                EntitySource(
+                    entity_id="light.kitchen",
+                    name="Kitchen Light",
+                    area_id="kitchen",
+                    domain="light",
+                ),
+                EntitySource(
+                    entity_id="light.hidden",
+                    name="Hidden Light",
+                    area_id="kitchen",
+                    domain="light",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    response = await _call_service(
+        hass,
+        SERVICE_GET_HOME_SEMANTIC_SUMMARY,
+        {"config_entry_id": entry.entry_id},
+    )
+
+    assert response["success"] is True
+    assert response["ready"] is True
+    assert response["domains"] == {"light": 1}
+    assert response["errors"] == []
+
+
+async def test_home_semantic_services_resolve_and_context(
+    hass: HomeAssistant,
+) -> None:
+    """Test semantic response services share LLM API resolution behavior."""
+    hass.states.async_set("light.kitchen", "off")
+    hass.states.async_set("light.bedroom", "on")
+    await _expose(hass, "light.kitchen", "light.bedroom")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            areas=(
+                AreaSource(area_id="kitchen", name="Kitchen"),
+                AreaSource(area_id="bedroom", name="Bedroom"),
+            ),
+            entities=(
+                EntitySource(
+                    entity_id="light.kitchen",
+                    name="Kitchen Light",
+                    area_id="kitchen",
+                    domain="light",
+                ),
+                EntitySource(
+                    entity_id="light.bedroom",
+                    name="Bedroom Light",
+                    area_id="bedroom",
+                    domain="light",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    resolved = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "kitchen light",
+            "action": "turn_on",
+        },
+    )
+    context = await _call_service(
+        hass,
+        SERVICE_GET_HOME_SEMANTIC_CONTEXT,
+        {"config_entry_id": entry.entry_id, "area_id": "kitchen"},
+    )
+
+    assert resolved["success"] is True
+    assert resolved["target"]["entity_id"] == "light.kitchen"
+    assert [entity["entity_id"] for entity in context["entities"]] == [
+        "light.kitchen"
+    ]
+
+
+async def test_home_semantic_context_service_reports_errors(
+    hass: HomeAssistant,
+) -> None:
+    """Test context response service returns stable semantic errors."""
+    entry = workspace_entry(title="Workspace")
+    entry.add_to_hass(hass)
+    entry.runtime_data = WorkspaceRuntimeData(
+        workspace_name="Workspace",
+        home_semantic=HomeSemanticIndexManager(hass, cast(Any, entry)),
+    )
+    assert await async_setup(hass, {})
+
+    missing_scope = await _call_service(
+        hass,
+        SERVICE_GET_HOME_SEMANTIC_CONTEXT,
+        {"config_entry_id": entry.entry_id},
+    )
+    not_ready = await _call_service(
+        hass,
+        SERVICE_GET_HOME_SEMANTIC_CONTEXT,
+        {"config_entry_id": entry.entry_id, "phrase": "kitchen"},
+    )
+
+    assert missing_scope["success"] is False
+    assert missing_scope["errors"][0]["code"] == "scope_required"
+    assert not_ready["success"] is False
+    assert not_ready["errors"][0]["code"] == "index_not_ready"
 
 
 async def test_summary_and_resolution_respect_exposed_entities(

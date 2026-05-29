@@ -728,6 +728,54 @@
       },
       "name": "List MCP tools"
     },
+    "get_home_semantic_context": {
+      "description": "Return compact exposed live state from the Home Semantic Index for an explicit entity or query scope.",
+      "fields": {
+        "area_id": {
+          "description": "Optional area ID to include exposed entities from.",
+          "name": "Area ID"
+        },
+        "assistant_id": {
+          "description": "Optional assistant ID used for Home Assistant exposed-entity filtering. Defaults to the conversation assistant.",
+          "name": "Assistant ID"
+        },
+        "config_entry_id": {
+          "description": "Pydantic AI Agent workspace config entry.",
+          "name": "Config entry"
+        },
+        "domain": {
+          "description": "Optional entity domain to include, such as light or sensor.",
+          "name": "Domain"
+        },
+        "entity_ids": {
+          "description": "Optional explicit entity IDs to include if exposed to the assistant.",
+          "name": "Entity IDs"
+        },
+        "limit": {
+          "description": "Maximum number of entities to return.",
+          "name": "Limit"
+        },
+        "phrase": {
+          "description": "Optional natural-language phrase to search in the semantic index.",
+          "name": "Phrase"
+        }
+      },
+      "name": "Get home semantic context"
+    },
+    "get_home_semantic_summary": {
+      "description": "Return exposed areas, capabilities, and control counts from the Home Semantic Index.",
+      "fields": {
+        "assistant_id": {
+          "description": "Optional assistant ID used for Home Assistant exposed-entity filtering. Defaults to the conversation assistant.",
+          "name": "Assistant ID"
+        },
+        "config_entry_id": {
+          "description": "Pydantic AI Agent workspace config entry.",
+          "name": "Config entry"
+        }
+      },
+      "name": "Get home semantic summary"
+    },
     "refresh_mcp_tools": {
       "description": "Reconnect to configured MCP servers and refresh their tool catalogs.",
       "fields": {
@@ -741,6 +789,28 @@
         }
       },
       "name": "Refresh MCP tools"
+    },
+    "resolve_home_semantic_target": {
+      "description": "Resolve a natural-language phrase to one exposed semantic home target.",
+      "fields": {
+        "action": {
+          "description": "Optional intended action used to filter compatible targets.",
+          "name": "Action"
+        },
+        "assistant_id": {
+          "description": "Optional assistant ID used for Home Assistant exposed-entity filtering. Defaults to the conversation assistant.",
+          "name": "Assistant ID"
+        },
+        "config_entry_id": {
+          "description": "Pydantic AI Agent workspace config entry.",
+          "name": "Config entry"
+        },
+        "phrase": {
+          "description": "Natural-language phrase to resolve, such as kitchen lights.",
+          "name": "Phrase"
+        }
+      },
+      "name": "Resolve home semantic target"
     }
   }
 }
