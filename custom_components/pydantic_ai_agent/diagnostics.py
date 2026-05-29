@@ -181,6 +181,10 @@ async def async_get_device_diagnostics(
             "metrics": _runtime_metrics(entry, subentry_id),
         },
     }
+    if stream_trace := _runtime_stream_trace(entry, subentry_id):
+        diagnostics["runtime"]["latest_stream_trace"] = _without_stream_previews(
+            stream_trace
+        )
     return _redact(diagnostics)
 
 
@@ -203,7 +207,9 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
         "home_semantic_index": semantic_manager_diagnostics(runtime_data.home_semantic),
     }
     if runtime_data.latest_stream_traces:
-        diagnostics["latest_stream_traces"] = runtime_data.latest_stream_traces
+        diagnostics["latest_stream_traces"] = _without_stream_previews(
+            runtime_data.latest_stream_traces
+        )
     return diagnostics
 
 
@@ -213,6 +219,29 @@ def _runtime_metrics(entry: ConfigEntry, subentry_id: str | None) -> dict[str, A
     if runtime_data is None or subentry_id is None:
         return {}
     return asdict(runtime_data.metrics.record_for(subentry_id))
+
+
+def _runtime_stream_trace(
+    entry: ConfigEntry, subentry_id: str | None
+) -> dict[str, Any] | None:
+    """Return the latest diagnostics-safe stream trace for one subentry."""
+    runtime_data = getattr(entry, "runtime_data", None)
+    if runtime_data is None or subentry_id is None:
+        return None
+    return runtime_data.latest_stream_traces.get(subentry_id)
+
+
+def _without_stream_previews(value: Any) -> Any:
+    """Return diagnostics data with debug-only stream previews removed."""
+    if isinstance(value, Mapping):
+        return {
+            key: _without_stream_previews(item)
+            for key, item in value.items()
+            if not str(key).endswith("_preview")
+        }
+    if isinstance(value, list):
+        return [_without_stream_previews(item) for item in value]
+    return value
 
 
 def _device_subentry_id(device: dr.DeviceEntry) -> str | None:

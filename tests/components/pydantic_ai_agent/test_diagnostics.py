@@ -1,5 +1,6 @@
 """Test diagnostics for Pydantic AI Agent."""
 
+import json
 import sys
 from types import SimpleNamespace
 from typing import cast
@@ -297,6 +298,16 @@ async def test_device_diagnostics_filters_to_matching_subentry(
     entry.add_to_hass(hass)
     matching_id = next(iter(entry.subentries))
     entry.runtime_data = WorkspaceRuntimeData(workspace_name="Workspace")
+    entry.runtime_data.latest_stream_traces[matching_id] = {
+        "events_total": 1,
+        "events": [
+            {
+                "event_type": "PartDeltaEvent",
+                "delta": {"content_delta_chars": 12},
+            }
+        ],
+        "debug_preview": "should not be persisted",
+    }
     record_run_success(
         hass,
         entry.entry_id,
@@ -329,3 +340,7 @@ async def test_device_diagnostics_filters_to_matching_subentry(
         diagnostics["runtime"]["metrics"]["last_run_model_profile"] == "Kitchen Model"
     )
     assert diagnostics["runtime"]["metrics"]["last_run_total_tokens"] == 12
+    assert diagnostics["runtime"]["latest_stream_trace"]["events_total"] == 1
+    assert "debug_preview" not in json.dumps(
+        diagnostics["runtime"]["latest_stream_trace"]
+    )

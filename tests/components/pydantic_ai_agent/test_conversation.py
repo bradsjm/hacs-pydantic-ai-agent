@@ -54,6 +54,7 @@ from custom_components.pydantic_ai_agent.const import (
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
 )
+from custom_components.pydantic_ai_agent.chat_deltas import _StreamTraceRecorder
 from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
     async_setup_entry,
@@ -978,6 +979,35 @@ async def test_streaming_records_safe_trace_payload(
     assert "content_delta_preview" not in diagnostic_trace_json
     assert "content_preview" not in diagnostic_trace_json
     assert "thinking_content_preview" not in diagnostic_trace_json
+
+
+def test_stream_trace_recorder_keeps_tail_for_long_streams() -> None:
+    """Test long traces retain the beginning and end of the stream."""
+    recorder = _StreamTraceRecorder()
+    for index in range(250):
+        recorder.record_event(
+            PartDeltaEvent(
+                index=0,
+                delta=ThinkingPartDelta(content_delta=str(index)),
+            )
+        )
+    recorder.record_event(PartStartEvent(index=1, part=TextPart(content="done")))
+
+    payload = recorder.payload(
+        final_messages=[ModelResponse(parts=[TextPart(content="done")])],
+        backfill={"changed": False},
+        final_chat_content=None,
+    )
+
+    assert payload["events_total"] == 251
+    assert payload["events_truncated"] is True
+    assert payload["events_omitted_middle_count"] == 51
+    assert payload["events"][0]["order"] == 1
+    assert payload["events"][-1]["order"] == 100
+    assert payload["events_tail"][0]["order"] == 152
+    assert payload["events_tail"][-1]["order"] == 251
+    assert payload["events_tail"][-1]["event_type"] == "PartStartEvent"
+    assert payload["events_tail"][-1]["part"]["type"] == "TextPart"
 
 
 async def test_conversation_runtime_uses_thinking_capability(

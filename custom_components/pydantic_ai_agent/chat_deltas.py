@@ -1,5 +1,6 @@
 """Convert Pydantic AI messages and events to Home Assistant ChatLog deltas."""
 
+from collections import deque
 from collections.abc import AsyncIterable, AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 import json
@@ -37,6 +38,8 @@ from .virtual_workspace.const import TOOL_RETURN_METADATA_SOURCE
 _LOGGER = logging.getLogger(__name__)
 
 _TRACE_MAX_ITEMS = 200
+_TRACE_HEAD_ITEMS = 100
+_TRACE_TAIL_ITEMS = _TRACE_MAX_ITEMS - _TRACE_HEAD_ITEMS
 _TRACE_PREVIEW_CHARS = 120
 
 
@@ -256,28 +259,36 @@ class _StreamTraceRecorder:
     chat_deltas_total: int = 0
     events: list[dict[str, Any]] = field(default_factory=list)
     chat_deltas: list[dict[str, Any]] = field(default_factory=list)
+    events_tail: deque[dict[str, Any]] = field(
+        default_factory=lambda: deque(maxlen=_TRACE_TAIL_ITEMS)
+    )
+    chat_deltas_tail: deque[dict[str, Any]] = field(
+        default_factory=lambda: deque(maxlen=_TRACE_TAIL_ITEMS)
+    )
 
     def record_event(self, event: object) -> None:
         """Record one Pydantic AI stream event summary."""
         self.events_total += 1
-        if len(self.events) < _TRACE_MAX_ITEMS:
-            self.events.append(
-                {
-                    "order": self.events_total,
-                    **_stream_event_summary(event, self.include_previews),
-                }
-            )
+        summary = {
+            "order": self.events_total,
+            **_stream_event_summary(event, self.include_previews),
+        }
+        if len(self.events) < _TRACE_HEAD_ITEMS:
+            self.events.append(summary)
+        else:
+            self.events_tail.append(summary)
 
     def record_chat_delta(self, delta: Mapping[str, Any]) -> None:
         """Record one Home Assistant ChatLog delta summary."""
         self.chat_deltas_total += 1
-        if len(self.chat_deltas) < _TRACE_MAX_ITEMS:
-            self.chat_deltas.append(
-                {
-                    "order": self.chat_deltas_total,
-                    **_chat_delta_summary(delta, self.include_previews),
-                }
-            )
+        summary = {
+            "order": self.chat_deltas_total,
+            **_chat_delta_summary(delta, self.include_previews),
+        }
+        if len(self.chat_deltas) < _TRACE_HEAD_ITEMS:
+            self.chat_deltas.append(summary)
+        else:
+            self.chat_deltas_tail.append(summary)
 
     def payload(
         self,
@@ -287,19 +298,38 @@ class _StreamTraceRecorder:
         final_chat_content: conversation.Content | None,
     ) -> dict[str, Any]:
         """Return the trace payload for HA conversation traces and diagnostics."""
+        events_tail = list(self.events_tail)
+        chat_deltas_tail = list(self.chat_deltas_tail)
+        events_truncated = self.events_total > len(self.events) + len(events_tail)
+        chat_deltas_truncated = self.chat_deltas_total > len(
+            self.chat_deltas
+        ) + len(chat_deltas_tail)
         return {
             "schema_version": 1,
             "include_previews": self.include_previews,
             "limits": {
                 "max_items": _TRACE_MAX_ITEMS,
+                "head_items": _TRACE_HEAD_ITEMS,
+                "tail_items": _TRACE_TAIL_ITEMS,
                 "preview_chars": _TRACE_PREVIEW_CHARS,
             },
             "events_total": self.events_total,
-            "events_truncated": self.events_total > len(self.events),
-            "events": self.events,
+            "events_truncated": events_truncated,
+            "events_omitted_middle_count": max(
+                self.events_total - len(self.events) - len(events_tail),
+                0,
+            ),
+            "events": self.events + ([] if events_truncated else events_tail),
+            "events_tail": events_tail if events_truncated else [],
             "chat_deltas_total": self.chat_deltas_total,
-            "chat_deltas_truncated": self.chat_deltas_total > len(self.chat_deltas),
-            "chat_deltas": self.chat_deltas,
+            "chat_deltas_truncated": chat_deltas_truncated,
+            "chat_deltas_omitted_middle_count": max(
+                self.chat_deltas_total - len(self.chat_deltas) - len(chat_deltas_tail),
+                0,
+            ),
+            "chat_deltas": self.chat_deltas
+            + ([] if chat_deltas_truncated else chat_deltas_tail),
+            "chat_deltas_tail": chat_deltas_tail if chat_deltas_truncated else [],
             "final_new_messages": _messages_summary(
                 final_messages, self.include_previews
             ),
