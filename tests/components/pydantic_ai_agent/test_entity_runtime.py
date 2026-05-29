@@ -625,7 +625,7 @@ async def test_agent_events_to_chat_deltas_logs_tool_failures(
     assert state.latest_tool_problem is not None
     assert state.latest_tool_problem.tool_name == "applyPatch"
     assert state.latest_tool_problem.reason == "patch must start with *** Begin Patch"
-    assert "Pydantic AI tool \"applyPatch\" returned failed" in caplog.text
+    assert 'Pydantic AI tool "applyPatch" returned failed' in caplog.text
 
 
 async def test_agent_events_to_chat_deltas_redacts_untrusted_tool_failure_reason(

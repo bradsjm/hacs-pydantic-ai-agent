@@ -10,20 +10,69 @@ from .const import MAX_COMMAND_BYTES, TOOL_RETURN_METADATA_SOURCE
 from .workspace import VirtualWorkspace
 
 
-def build_virtual_workspace_toolset(workspace: VirtualWorkspace) -> FunctionToolset[None]:
+def build_virtual_workspace_toolset(
+    workspace: VirtualWorkspace,
+) -> FunctionToolset[None]:
     """Return the virtual workspace tools as an exact-schema toolset."""
     toolset: FunctionToolset[None] = FunctionToolset(sequential=True)
     for tool in (
-        _tool("bash", "Run a command in the in-memory virtual bash workspace.", _bash_schema(), _bash(workspace)),
-        _tool("readFile", "Read a file from the virtual workspace.", _read_file_schema(), _read_file(workspace)),
-        _tool("writeFile", "Write a file in the virtual workspace.", _write_file_schema(), _write_file(workspace)),
-        _tool("createDirectory", "Create a directory in the virtual workspace.", _create_directory_schema(), _create_directory(workspace)),
-        _tool("getMetadata", "Get metadata for a virtual workspace path.", _metadata_schema(), _metadata(workspace)),
-        _tool("readDirectory", "List a virtual workspace directory.", _read_directory_schema(), _read_directory(workspace)),
-        _tool("remove", "Remove a virtual workspace path after confirmation.", _remove_schema(), _remove(workspace)),
-        _tool("copy", "Copy a virtual workspace path.", _copy_schema(), _copy(workspace)),
-        _tool("move", "Move a virtual workspace path after confirmation.", _move_schema(), _move(workspace)),
-        _tool("applyPatch", "Apply a Codex-style patch to the virtual workspace.", _apply_patch_schema(), _apply_patch(workspace)),
+        _tool(
+            "bash",
+            "Run a command in the in-memory virtual bash workspace.",
+            _bash_schema(),
+            _bash(workspace),
+        ),
+        _tool(
+            "readFile",
+            "Read a file from the virtual workspace.",
+            _read_file_schema(),
+            _read_file(workspace),
+        ),
+        _tool(
+            "writeFile",
+            "Write a file in the virtual workspace.",
+            _write_file_schema(),
+            _write_file(workspace),
+        ),
+        _tool(
+            "createDirectory",
+            "Create a directory in the virtual workspace.",
+            _create_directory_schema(),
+            _create_directory(workspace),
+        ),
+        _tool(
+            "getMetadata",
+            "Get metadata for a virtual workspace path.",
+            _metadata_schema(),
+            _metadata(workspace),
+        ),
+        _tool(
+            "readDirectory",
+            "List a virtual workspace directory.",
+            _read_directory_schema(),
+            _read_directory(workspace),
+        ),
+        _tool(
+            "remove",
+            "Remove a virtual workspace path after confirmation.",
+            _remove_schema(),
+            _remove(workspace),
+        ),
+        _tool(
+            "copy", "Copy a virtual workspace path.", _copy_schema(), _copy(workspace)
+        ),
+        _tool(
+            "move",
+            "Move a virtual workspace path after confirmation.",
+            _move_schema(),
+            _move(workspace),
+        ),
+        _tool(
+            "applyPatch",
+            "Apply a Codex-style patch to the virtual workspace.",
+            _apply_patch_schema(),
+            _apply_patch(workspace),
+        ),
     ):
         toolset.add_tool(tool)
     return toolset
@@ -95,7 +144,12 @@ def _read_directory(workspace: VirtualWorkspace) -> Any:
         try:
             limit = _int_arg(tool_args, "limit", 100)
         except ValueError as err:
-            return {"ok": False, "path": _string_arg(tool_args, "path"), "entries": [], "error": str(err)}
+            return {
+                "ok": False,
+                "path": _string_arg(tool_args, "path"),
+                "entries": [],
+                "error": str(err),
+            }
         return workspace.read_directory(
             _string_arg(tool_args, "path"),
             cursor=_optional_string_arg(tool_args, "cursor"),
@@ -205,7 +259,9 @@ def _bash_schema() -> dict[str, Any]:
                 "Command to execute in the virtual bash.",
                 max_length=MAX_COMMAND_BYTES,
             ),
-            "workingDirectory": _string("Virtual working directory. Defaults to /workspace."),
+            "workingDirectory": _string(
+                "Virtual working directory. Defaults to /workspace."
+            ),
         },
         ["command"],
     )
@@ -278,10 +334,14 @@ def _copy_move_schema(action: str, *, confirm_required: bool = False) -> dict[st
     return _object_schema(
         {
             "source": _string(f"Virtual source path to {action.lower()}."),
-            "destination": _string(f"Virtual destination path for the {action.lower()}."),
+            "destination": _string(
+                f"Virtual destination path for the {action.lower()}."
+            ),
             "overwrite": _boolean("Set true to replace an existing destination."),
             "confirm": _boolean(
-                "Required for every move." if confirm_required else "Required with overwrite=true."
+                "Required for every move."
+                if confirm_required
+                else "Required with overwrite=true."
             ),
         },
         required,
@@ -292,7 +352,9 @@ def _apply_patch_schema() -> dict[str, Any]:
     return _object_schema(
         {
             "patch": _string("Codex-style patch envelope to apply."),
-            "confirm": _boolean("Required for updates, deletes, moves, and overwrites."),
+            "confirm": _boolean(
+                "Required for updates, deletes, moves, and overwrites."
+            ),
         },
         ["patch"],
     )

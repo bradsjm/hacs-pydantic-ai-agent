@@ -85,6 +85,7 @@ from tests.components.pydantic_ai_agent.support.schemas import (
     serialized_section_default as _serialized_section_default,
 )
 
+
 async def _loaded_workspace_entry(
     hass: HomeAssistant, subentries_data: tuple[dict[str, object], ...] = ()
 ) -> MockConfigEntry:

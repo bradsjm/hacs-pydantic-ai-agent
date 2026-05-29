@@ -95,7 +95,9 @@ async def test_conversation_uses_hosted_mcp_echo_tool(
     captured_tool_names: list[str] = []
     tool_result_seen = False
     second_turn_tool_call_seen = False
-    original_agent_events_to_chat_deltas = agent_entity_module._agent_events_to_chat_deltas
+    original_agent_events_to_chat_deltas = (
+        agent_entity_module._agent_events_to_chat_deltas
+    )
 
     async def capture_agent_events_to_chat_deltas(
         events: Any,
@@ -161,7 +163,9 @@ async def test_conversation_uses_workspace_skill(
     """Test a live provider can list and load a selected workspace Skill."""
     captured_tool_names: list[str] = []
     listed_skill_ids: list[str] = []
-    original_agent_events_to_chat_deltas = agent_entity_module._agent_events_to_chat_deltas
+    original_agent_events_to_chat_deltas = (
+        agent_entity_module._agent_events_to_chat_deltas
+    )
 
     async def capture_agent_events_to_chat_deltas(
         events: Any,
@@ -172,7 +176,9 @@ async def test_conversation_uses_workspace_skill(
             events, output_tool_names, state
         ):
             if tool_calls := delta.get("tool_calls"):
-                captured_tool_names.extend(tool_input.tool_name for tool_input in tool_calls)
+                captured_tool_names.extend(
+                    tool_input.tool_name for tool_input in tool_calls
+                )
             if delta.get("role") == "tool_result":
                 tool_name = str(delta["tool_name"])
                 captured_tool_names.append(tool_name)

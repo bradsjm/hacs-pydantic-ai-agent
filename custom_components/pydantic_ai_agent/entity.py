@@ -33,6 +33,8 @@ from .chat_deltas import (
     _append_missing_final_text,
     _append_text,
     _json_output,
+    _StreamTraceRecorder,
+    _stream_trace_without_previews,
 )
 from .context_management import SlidingWindowContextCapability
 from .ha_toolset import tool_definitions_from_llm_api, tools_from_llm_api
@@ -179,7 +181,9 @@ class PydanticAIBaseLLMEntity:
                     parts = virtual_workspace_parts()
                     virtual_toolsets = parts.toolsets
                     virtual_instructions = parts.instructions
-                instructions = _join_instructions(virtual_instructions, extra_instructions)
+                instructions = _join_instructions(
+                    virtual_instructions, extra_instructions
+                )
                 settings = model_settings(profile, self.subentry.data)
                 settings = _model_settings_with_provider_extra_body(
                     self.entry, profile, settings
@@ -374,6 +378,9 @@ class PydanticAIBaseLLMEntity:
     ) -> Any:
         """Run one Agent attempt and stream live deltas into the HA ChatLog."""
         state = _StreamRunState()
+        trace_recorder = _StreamTraceRecorder(
+            include_previews=_LOGGER.isEnabledFor(logging.DEBUG)
+        )
         try:
             async with agent.run_stream_events(
                 user_prompt,
@@ -389,6 +396,7 @@ class PydanticAIBaseLLMEntity:
                             events,
                             structured_output_tool_names,
                             state,
+                            trace_recorder,
                         ),
                     ),
                 ):
@@ -405,10 +413,20 @@ class PydanticAIBaseLLMEntity:
             raise
         if state.result is None:
             raise HomeAssistantError("Agent stream did not produce a final result")
-        await _append_missing_final_text(
+        final_messages = state.result.new_messages()
+        backfill = await _append_missing_final_text(
             chat_log,
             agent_id,
-            state.result.new_messages(),
+            final_messages,
+        )
+        trace_payload = trace_recorder.payload(
+            final_messages=final_messages,
+            backfill=backfill,
+            final_chat_content=chat_log.content[-1] if chat_log.content else None,
+        )
+        chat_log.async_trace({"pydantic_ai_stream": trace_payload})
+        self.entry.runtime_data.latest_stream_traces[self.subentry.subentry_id] = (
+            _stream_trace_without_previews(trace_payload)
         )
         return state.result
 

@@ -275,6 +275,8 @@ _THINKING_OPTIONS = ("", "true", "false", "minimal", "low", "medium", "high", "x
 _OUTPUT_MODE_OPTIONS = tuple(
     SelectOptionDict(value=value, label=value) for value in STRUCTURED_OUTPUT_MODES
 )
+
+
 class RunSettingsValidationError(ValueError):
     """Error raised when conversation/task run settings are invalid."""
 
@@ -1242,9 +1244,7 @@ def _run_settings_schema(
         {
             vol.Optional(
                 _MODEL_SETTING_MAX_TOKENS,
-                description={
-                    "suggested_value": options.get(_MODEL_SETTING_MAX_TOKENS)
-                },
+                description={"suggested_value": options.get(_MODEL_SETTING_MAX_TOKENS)},
             ): NumberSelector(
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
             ),
@@ -1703,7 +1703,9 @@ def _store_model_settings(
         data.pop(CONF_MODEL_SETTINGS, None)
 
 
-def _store_model_pricing(data: dict[str, Any], model_pricing: Mapping[str, float]) -> None:
+def _store_model_pricing(
+    data: dict[str, Any], model_pricing: Mapping[str, float]
+) -> None:
     """Store profile pricing, including an empty mapping after explicit clears."""
     data[CONF_MODEL_PRICING] = dict(model_pricing)
 

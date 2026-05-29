@@ -124,7 +124,9 @@ def parse_models_response(data: object) -> list[str]:
     for model in models:
         if isinstance(model, str):
             model_ids.append(model)
-        elif isinstance(model, Mapping) and isinstance(model_id := model.get("id"), str):
+        elif isinstance(model, Mapping) and isinstance(
+            model_id := model.get("id"), str
+        ):
             model_ids.append(model_id)
     return model_ids
 
@@ -173,7 +175,9 @@ def provider_model_params(config: pytest.Config) -> list[object]:
         else:
             model_ids = split_model_ids(values["OPENAI_MODEL"])
     except re.PatternError as err:
-        return [skip_model_param(f"Invalid provider integration model filter regex: {err}")]
+        return [
+            skip_model_param(f"Invalid provider integration model filter regex: {err}")
+        ]
 
     if not model_ids:
         return [
@@ -191,4 +195,6 @@ def provider_model_params(config: pytest.Config) -> list[object]:
 def mcp_echo_url() -> str:
     """Return the hosted MCP echo server URL for provider integration tests."""
     file_values = load_dotenv_values()
-    return os.environ.get(MCP_ECHO_URL_ENV, file_values.get(MCP_ECHO_URL_ENV, MCP_ECHO_URL))
+    return os.environ.get(
+        MCP_ECHO_URL_ENV, file_values.get(MCP_ECHO_URL_ENV, MCP_ECHO_URL)
+    )

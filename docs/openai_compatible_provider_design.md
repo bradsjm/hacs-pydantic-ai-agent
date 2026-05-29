@@ -21,7 +21,7 @@ Implemented source areas:
 | Home Assistant model factory       | `custom_components/pydantic_ai_agent/provider.py`                |
 | Config-flow provider probe         | `custom_components/pydantic_ai_agent/config_flow.py`             |
 | Runtime agent construction         | `custom_components/pydantic_ai_agent/entity.py`                  |
-| Provider integration tests         | `tests/components/pydantic_ai_agent/integration/`               |
+| Provider integration tests         | `tests/components/pydantic_ai_agent/integration/`                |
 
 ## Rationale
 

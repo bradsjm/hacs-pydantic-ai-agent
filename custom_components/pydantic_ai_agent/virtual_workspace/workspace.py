@@ -21,7 +21,11 @@ from .const import (
     MAX_WRITE_BYTES,
     VFS_ROOT,
 )
-from .errors import ConfirmationRequiredError, PathValidationError, VirtualWorkspaceError
+from .errors import (
+    ConfirmationRequiredError,
+    PathValidationError,
+    VirtualWorkspaceError,
+)
 from .models import (
     BashResult,
     CopyMoveResult,
@@ -151,7 +155,12 @@ class VirtualWorkspace:
             self._tool.write_file(normalized, content)
             return {"ok": True, "path": normalized, "bytesWritten": content_bytes}
         except Exception as err:
-            return {"ok": False, "path": _safe_normalized_path(path), "bytesWritten": 0, "error": str(err)}
+            return {
+                "ok": False,
+                "path": _safe_normalized_path(path),
+                "bytesWritten": 0,
+                "error": str(err),
+            }
 
     def create_directory(
         self,
@@ -166,7 +175,12 @@ class VirtualWorkspace:
             self._tool.mkdir(normalized, recursive=parents)
             return {"ok": True, "path": normalized, "created": not existed}
         except Exception as err:
-            return {"ok": False, "path": _safe_normalized_path(path), "created": False, "error": str(err)}
+            return {
+                "ok": False,
+                "path": _safe_normalized_path(path),
+                "created": False,
+                "error": str(err),
+            }
 
     def metadata(self, path: str) -> MetadataResult:
         """Return metadata for a virtual path."""
@@ -174,7 +188,11 @@ class VirtualWorkspace:
             normalized = normalize_vfs_path(path)
             return cast(
                 MetadataResult,
-                {"ok": True, "path": normalized, **_metadata(self._tool.stat(normalized))},
+                {
+                    "ok": True,
+                    "path": normalized,
+                    **_metadata(self._tool.stat(normalized)),
+                },
             )
         except Exception as err:
             return {
@@ -214,7 +232,9 @@ class VirtualWorkspace:
                         DirectoryEntry,
                         {
                             "name": name,
-                            "path": normalize_vfs_path(name, working_directory=normalized),
+                            "path": normalize_vfs_path(
+                                name, working_directory=normalized
+                            ),
                             **metadata,
                         },
                     )
@@ -229,7 +249,12 @@ class VirtualWorkspace:
                 result["nextCursor"] = str(next_offset)
             return result
         except Exception as err:
-            return {"ok": False, "path": _safe_normalized_path(path), "entries": [], "error": str(err)}
+            return {
+                "ok": False,
+                "path": _safe_normalized_path(path),
+                "entries": [],
+                "error": str(err),
+            }
 
     def remove(
         self,
@@ -248,7 +273,12 @@ class VirtualWorkspace:
             self._tool.remove(normalized, recursive=recursive)
             return {"ok": True, "path": normalized, "removed": True}
         except Exception as err:
-            return {"ok": False, "path": _safe_normalized_path(path), "removed": False, "error": str(err)}
+            return {
+                "ok": False,
+                "path": _safe_normalized_path(path),
+                "removed": False,
+                "error": str(err),
+            }
 
     def copy(
         self,
@@ -311,7 +341,9 @@ class VirtualWorkspace:
                 raise VirtualWorkspaceError("source does not exist")
             self._reject_descendant_destination(src, dest)
             replaced_path = dest if self.exists(dest) else None
-            self._ensure_workspace_size_limit(added_bytes=0, replaced_path=replaced_path)
+            self._ensure_workspace_size_limit(
+                added_bytes=0, replaced_path=replaced_path
+            )
             snapshot = self.snapshot()
             try:
                 self._prepare_destination(dest, overwrite=overwrite, confirm=confirm)
@@ -379,7 +411,10 @@ class VirtualWorkspace:
 
     def _is_directory(self, path: str) -> bool:
         try:
-            return self.exists(path) and self._tool.stat(path).get("file_type") == "directory"
+            return (
+                self.exists(path)
+                and self._tool.stat(path).get("file_type") == "directory"
+            )
         except Exception:
             return False
 
@@ -387,7 +422,9 @@ class VirtualWorkspace:
         self._tool.mkdir(DEFAULT_WORKING_DIRECTORY, recursive=True)
 
     def _reject_descendant_destination(self, source: str, destination: str) -> None:
-        if self._is_directory(source) and destination.startswith(f"{source.rstrip('/')}/"):
+        if self._is_directory(source) and destination.startswith(
+            f"{source.rstrip('/')}/"
+        ):
             raise VirtualWorkspaceError("destination cannot be inside source")
 
     def _ensure_workspace_size_limit(
@@ -427,7 +464,9 @@ def _require_confirmed_overwrite(path: str, overwrite: bool, confirm: bool) -> N
     if protected_replacement_path(path):
         raise PathValidationError("protected workspace paths cannot be replaced")
     if not overwrite:
-        raise ConfirmationRequiredError("target exists; set overwrite=true to replace it")
+        raise ConfirmationRequiredError(
+            "target exists; set overwrite=true to replace it"
+        )
     if not confirm:
         raise ConfirmationRequiredError("overwrite requires confirm=true")
 

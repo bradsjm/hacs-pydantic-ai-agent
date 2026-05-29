@@ -8,8 +8,12 @@ from custom_components.pydantic_ai_agent.const import CONF_VIRTUAL_WORKSPACE_ENA
 from custom_components.pydantic_ai_agent.virtual_workspace import (
     virtual_workspace_enabled,
 )
-from custom_components.pydantic_ai_agent.virtual_workspace import workspace as workspace_module
-from custom_components.pydantic_ai_agent.virtual_workspace.const import MAX_COMMAND_BYTES
+from custom_components.pydantic_ai_agent.virtual_workspace import (
+    workspace as workspace_module,
+)
+from custom_components.pydantic_ai_agent.virtual_workspace.const import (
+    MAX_COMMAND_BYTES,
+)
 from custom_components.pydantic_ai_agent.virtual_workspace.tools import (
     build_virtual_workspace_toolset,
 )
@@ -98,7 +102,9 @@ def test_read_file_truncates_with_utf8_replacement(
     assert result["content"] == "�"
 
 
-def test_workspace_constructor_uses_no_mounts_or_network(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_workspace_constructor_uses_no_mounts_or_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Test Bashkit is created without host mounts or network access."""
     calls: list[dict[str, Any]] = []
 
@@ -117,9 +123,7 @@ def test_workspace_constructor_uses_no_mounts_or_network(monkeypatch: pytest.Mon
 
     VirtualWorkspace()
 
-    assert calls == [
-        {"max_memory": 16777216, "timeout_seconds": 10.0, "network": None}
-    ]
+    assert calls == [{"max_memory": 16777216, "timeout_seconds": 10.0, "network": None}]
 
 
 def test_file_operations_require_confirmation_for_overwrite() -> None:
@@ -312,7 +316,9 @@ def test_copy_and_move_missing_source_preserve_destination() -> None:
     copied = workspace.copy(
         "missing.txt", "destination.txt", overwrite=True, confirm=True
     )
-    moved = workspace.move("missing.txt", "destination.txt", overwrite=True, confirm=True)
+    moved = workspace.move(
+        "missing.txt", "destination.txt", overwrite=True, confirm=True
+    )
 
     assert copied["ok"] is False
     assert moved["ok"] is False
@@ -424,7 +430,9 @@ def test_toolset_exposes_exact_camel_case_tool_schemas() -> None:
     assert set(toolset.tools["readFile"].function_schema.json_schema["properties"]) == {
         "path"
     }
-    assert set(toolset.tools["applyPatch"].function_schema.json_schema["properties"]) == {
+    assert set(
+        toolset.tools["applyPatch"].function_schema.json_schema["properties"]
+    ) == {
         "patch",
         "confirm",
     }

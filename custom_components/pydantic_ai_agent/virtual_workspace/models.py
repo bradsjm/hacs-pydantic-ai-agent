@@ -13,7 +13,6 @@ class ToolResult(TypedDict):
 class BashResult(ToolResult):
     """Result from a virtual bash command."""
 
-
     stdout: str
     stderr: str
     exitCode: int | None

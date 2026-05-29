@@ -39,7 +39,9 @@ def apply_patch(
             raise PatchApplyError("patch exceeds the size limit")
         operations = _parse_patch(patch)
         for operation in operations:
-            changed_files.extend(_apply_operation(workspace, operation, confirm=confirm))
+            changed_files.extend(
+                _apply_operation(workspace, operation, confirm=confirm)
+            )
         return {"success": True, "changedFiles": changed_files}
     except Exception as err:
         workspace.restore_snapshot(snapshot)
@@ -59,14 +61,20 @@ def _parse_patch(patch: str) -> list[_PatchOperation]:
             current = _append_operation(operations, "add", line.removeprefix(_ADD))
             continue
         if line.startswith(_UPDATE):
-            current = _append_operation(operations, "update", line.removeprefix(_UPDATE))
+            current = _append_operation(
+                operations, "update", line.removeprefix(_UPDATE)
+            )
             continue
         if line.startswith(_DELETE):
-            current = _append_operation(operations, "delete", line.removeprefix(_DELETE))
+            current = _append_operation(
+                operations, "delete", line.removeprefix(_DELETE)
+            )
             continue
         if line.startswith(_MOVE):
             if current is None or current.kind != "update" or current.lines:
-                raise PatchApplyError("Move to must immediately follow an update header")
+                raise PatchApplyError(
+                    "Move to must immediately follow an update header"
+                )
             current.move_to = line.removeprefix(_MOVE)
             continue
         if current is None:
@@ -152,7 +160,9 @@ def _apply_update(
         if not read["ok"]:
             raise PatchApplyError(read.get("error", "failed to read file for update"))
         content = _apply_hunks(read["content"], operation.lines)
-        result = workspace.write_file(operation.path, content, overwrite=True, confirm=True)
+        result = workspace.write_file(
+            operation.path, content, overwrite=True, confirm=True
+        )
         if not result["ok"]:
             raise PatchApplyError(result.get("error", "failed to update file"))
     elif operation.move_to is None:
@@ -160,7 +170,9 @@ def _apply_update(
     if operation.move_to is not None:
         destination = normalize_vfs_path(operation.move_to)
         _check_replace_allowed(destination)
-        move = workspace.move(operation.path, destination, overwrite=False, confirm=True)
+        move = workspace.move(
+            operation.path, destination, overwrite=False, confirm=True
+        )
         if not move["ok"]:
             raise PatchApplyError(move.get("error", "failed to move file"))
         changed.append(destination)

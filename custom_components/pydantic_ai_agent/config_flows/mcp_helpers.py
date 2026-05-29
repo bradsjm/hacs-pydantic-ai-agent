@@ -28,7 +28,12 @@ from ..const import (
     CONF_MCP_URL,
     SUBENTRY_TYPE_MCP_SERVER,
 )
-from ..mcp import MCPValidationError, normalise_mcp_url, parse_allowed_tools, parse_mcp_headers
+from ..mcp import (
+    MCPValidationError,
+    normalise_mcp_url,
+    parse_allowed_tools,
+    parse_mcp_headers,
+)
 from .helpers import _flatten_section_data
 
 _LOGGER = logging.getLogger(__name__)

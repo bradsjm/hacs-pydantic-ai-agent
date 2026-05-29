@@ -2,6 +2,8 @@
 
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
+import json
+import logging
 import sys
 from typing import Any, cast
 from types import SimpleNamespace
@@ -26,14 +28,17 @@ from pydantic_ai import (
     FunctionToolset,
     ModelRequest,
     ModelResponse,
+    PartDeltaEvent,
     PartStartEvent,
     TextPart,
+    ThinkingPartDelta,
     ThinkingPart,
 )
 from pydantic_ai.capabilities import Thinking, ToolSearch
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.exceptions import UsageLimitExceeded
+from homeassistant.components.conversation.trace import async_get_traces
 
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
@@ -52,6 +57,9 @@ from custom_components.pydantic_ai_agent.context_management import (
 from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
     async_setup_entry,
+)
+from custom_components.pydantic_ai_agent.diagnostics import (
+    async_get_config_entry_diagnostics,
 )
 from custom_components.pydantic_ai_agent.entity import unique_id_for_subentry_entity
 from custom_components.pydantic_ai_agent.metrics import (
@@ -865,6 +873,111 @@ async def test_streaming_does_not_duplicate_already_streamed_final_text(
         if isinstance(content, AssistantContent)
     ]
     assert len(assistant_messages) == 1
+
+
+async def test_streaming_records_safe_trace_payload(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test streaming records bounded HA trace and diagnostic details."""
+    entry = _entry(None)
+    entry.add_to_hass(hass)
+    caplog.set_level(logging.DEBUG, logger="custom_components.pydantic_ai_agent.entity")
+
+    class TracedAgent(_Agent):
+        @asynccontextmanager
+        async def run_stream_events(
+            self, *_args: object, **kwargs: object
+        ) -> AsyncIterator[AsyncIterator[object]]:
+            self.run_stream_events_calls += 1
+            self.run_kwargs = kwargs
+            result = _ResultWithMessages(
+                "Hello. How can I help you?",
+                [ModelResponse(parts=[TextPart(content="Hello. How can I help you?")])],
+            )
+
+            async def stream() -> AsyncIterator[object]:
+                yield PartStartEvent(index=0, part=ThinkingPart(content=""))
+                yield PartDeltaEvent(
+                    index=0,
+                    delta=ThinkingPartDelta(content_delta="thinking about greeting"),
+                )
+                yield AgentRunResultEvent(cast(Any, result))
+
+            yield stream()
+
+    agent = TracedAgent()
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ),
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert result.response.speech["plain"]["speech"] == "Hello. How can I help you?"
+    trace_events = async_get_traces()[-1].as_dict()["events"]
+    payload = next(
+        event["data"]["pydantic_ai_stream"]
+        for event in trace_events
+        if event["data"] and "pydantic_ai_stream" in event["data"]
+    )
+    json.dumps(payload)
+    assert [event["event_type"] for event in payload["events"]] == [
+        "PartStartEvent",
+        "PartDeltaEvent",
+        "AgentRunResultEvent",
+    ]
+    assert payload["events"][1]["delta"]["content_delta_chars"] == len(
+        "thinking about greeting"
+    )
+    assert payload["events"][1]["delta"]["content_delta_preview"] == (
+        "thinking about greeting"
+    )
+    assert payload["chat_deltas"][0]["role"] == "assistant"
+    assert payload["chat_deltas"][1]["thinking_content_chars"] == len(
+        "thinking about greeting"
+    )
+    assert payload["final_new_messages"][0]["parts"][0]["type"] == "TextPart"
+    assert payload["final_new_messages"][0]["parts"][0]["content_chars"] == len(
+        "Hello. How can I help you?"
+    )
+    assert payload["backfill"]["changed"] is True
+    assert payload["final_chat_content"]["content_chars"] == len(
+        "Hello. How can I help you?"
+    )
+
+    subentry_id = next(iter(entry.subentries))
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    diagnostic_trace = diagnostics["runtime"]["latest_stream_traces"][subentry_id]
+    assert diagnostic_trace["events_total"] == 3
+    diagnostic_trace_json = json.dumps(diagnostic_trace)
+    assert "content_delta_preview" not in diagnostic_trace_json
+    assert "content_preview" not in diagnostic_trace_json
+    assert "thinking_content_preview" not in diagnostic_trace_json
 
 
 async def test_conversation_runtime_uses_thinking_capability(

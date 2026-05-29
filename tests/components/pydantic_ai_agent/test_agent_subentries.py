@@ -29,9 +29,7 @@ def test_iter_valid_agent_subentries_yields_resolved_subentries() -> None:
         )
     )
 
-    def resolver(
-        _entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
-    ) -> str:
+    def resolver(_entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry) -> str:
         return f"resolved:{subentry.subentry_id}"
 
     valid = list(
@@ -67,9 +65,7 @@ def test_iter_valid_agent_subentries_logs_safe_invalid_context(
         )
     )
 
-    def resolver(
-        _entry: PydanticAIAgentConfigEntry, _subentry: ConfigSubentry
-    ) -> str:
+    def resolver(_entry: PydanticAIAgentConfigEntry, _subentry: ConfigSubentry) -> str:
         raise HomeAssistantError("Configured model profile was not found")
 
     with caplog.at_level(logging.WARNING):
@@ -106,9 +102,7 @@ def test_iter_valid_agent_subentries_logs_unexpected_exception(
         )
     )
 
-    def resolver(
-        _entry: PydanticAIAgentConfigEntry, _subentry: ConfigSubentry
-    ) -> str:
+    def resolver(_entry: PydanticAIAgentConfigEntry, _subentry: ConfigSubentry) -> str:
         raise RuntimeError("boom")
 
     with caplog.at_level(logging.ERROR):

@@ -21,11 +21,11 @@ RUN_SETTING_KEYS: Final[frozenset[str]] = frozenset(
 RUN_VALIDATION_SETTING_KEYS: Final[frozenset[str]] = frozenset(
     {CONF_MAX_TOKENS, CONF_THINKING, CONF_TIMEOUT}
 )
-REMOVED_PROFILE_MODEL_SETTING_KEYS: Final[frozenset[str]] = RUN_SETTING_KEYS | frozenset(
-    {MODEL_SETTING_EXTRA_BODY}
+REMOVED_PROFILE_MODEL_SETTING_KEYS: Final[frozenset[str]] = (
+    RUN_SETTING_KEYS | frozenset({MODEL_SETTING_EXTRA_BODY})
 )
-RUNTIME_STRIPPED_MODEL_SETTING_KEYS: Final[frozenset[str]] = RUN_SETTING_KEYS | frozenset(
-    {CONF_CHAT_TEMPLATE_KWARGS, MODEL_SETTING_EXTRA_BODY}
+RUNTIME_STRIPPED_MODEL_SETTING_KEYS: Final[frozenset[str]] = (
+    RUN_SETTING_KEYS | frozenset({CONF_CHAT_TEMPLATE_KWARGS, MODEL_SETTING_EXTRA_BODY})
 )
 PROBE_STRIPPED_MODEL_SETTING_KEYS: Final[frozenset[str]] = frozenset(
     {CONF_MAX_ITERATIONS, MODEL_SETTING_EXTRA_BODY, CONF_THINKING}
@@ -44,7 +44,9 @@ def strip_model_settings(
 
 def normalise_persisted_model_settings(settings: Mapping[str, Any] | None) -> str:
     """Return stable persisted model settings for comparison."""
-    provider_settings = strip_model_settings(settings, REMOVED_PROFILE_MODEL_SETTING_KEYS)
+    provider_settings = strip_model_settings(
+        settings, REMOVED_PROFILE_MODEL_SETTING_KEYS
+    )
     return json.dumps(provider_settings, sort_keys=True, separators=(",", ":"))
 
 
@@ -62,7 +64,9 @@ def validation_probe_model_settings(
     profile_settings: Mapping[str, Any] | None, subentry_data: Mapping[str, Any]
 ) -> dict[str, Any]:
     """Return setup-probe settings with subentry run settings applied."""
-    settings = strip_model_settings(profile_settings, REMOVED_PROFILE_MODEL_SETTING_KEYS)
+    settings = strip_model_settings(
+        profile_settings, REMOVED_PROFILE_MODEL_SETTING_KEYS
+    )
     for key in RUN_VALIDATION_SETTING_KEYS:
         if key in subentry_data:
             settings[key] = subentry_data[key]
@@ -73,7 +77,9 @@ def runtime_model_settings_data(
     profile_settings: Mapping[str, Any] | None, run_settings: Mapping[str, Any] | None
 ) -> dict[str, Any]:
     """Return request model settings before default timeout is applied."""
-    settings = strip_model_settings(profile_settings, RUNTIME_STRIPPED_MODEL_SETTING_KEYS)
+    settings = strip_model_settings(
+        profile_settings, RUNTIME_STRIPPED_MODEL_SETTING_KEYS
+    )
     reject_chat_template_kwargs_in_extra_body(settings.get(MODEL_SETTING_EXTRA_BODY))
     if run_settings is not None:
         if CONF_MAX_TOKENS in run_settings:

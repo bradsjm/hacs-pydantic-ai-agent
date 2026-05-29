@@ -376,7 +376,10 @@ async def test_probe_model_merges_configured_model_settings(
         "temperature": 0.7,
         "timeout": 30.0,
     }
-    assert model_request_stream.call_args.kwargs["model_request_parameters"].thinking == "high"
+    assert (
+        model_request_stream.call_args.kwargs["model_request_parameters"].thinking
+        == "high"
+    )
 
 
 async def test_probe_model_renders_chat_template_kwargs(hass: HomeAssistant) -> None:

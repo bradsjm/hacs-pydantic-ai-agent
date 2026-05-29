@@ -289,7 +289,9 @@ async def async_probe_model(
             model_settings, PROBE_STRIPPED_MODEL_SETTING_KEYS
         )
         thinking = (
-            None if model_settings is None else model_settings.get(_MODEL_SETTING_THINKING)
+            None
+            if model_settings is None
+            else model_settings.get(_MODEL_SETTING_THINKING)
         )
         provider_extra_body = data.get(CONF_PROVIDER_EXTRA_BODY)
         if isinstance(provider_extra_body, Mapping) and provider_extra_body:

@@ -149,6 +149,15 @@
               },
               "name": "Fallback language models"
             },
+            "hass_control": {
+              "data": {
+                "llm_hass_api": "Control Home Assistant"
+              },
+              "data_description": {
+                "llm_hass_api": "Select which tools the model can use to interact with your devices and entities."
+              },
+              "name": "Control Home Assistant"
+            },
             "run_settings": {
               "data": {
                 "max_iterations": "Max iterations",
@@ -163,15 +172,6 @@
                 "timeout": "Provider request timeout in seconds. Default: 10.0."
               },
               "name": "Run settings"
-            },
-            "hass_control": {
-              "data": {
-                "llm_hass_api": "Control Home Assistant"
-              },
-              "data_description": {
-                "llm_hass_api": "Select which tools the model can use to interact with your devices and entities."
-              },
-              "name": "Control Home Assistant"
             },
             "skill_settings": {
               "data": {
@@ -205,13 +205,13 @@
         "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",
         "invalid_model": "{error_message}",
         "invalid_number": "Enter a valid number in this field.",
-        "non_negative_number": "Enter zero or a positive number.",
         "invalid_provider_config": "{error_message}",
         "mcp_server_not_found": "Selected MCP server was not found.",
         "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
         "model_does_not_support_streaming": "{error_message}",
         "model_profile_not_found": "Selected language model profile was not found.",
         "model_profile_required": "Select a primary language model profile.",
+        "non_negative_number": "Enter zero or a positive number.",
         "permission_denied": "{error_message}",
         "positive_number": "Enter a number greater than zero.",
         "primary_model_in_fallbacks": "The primary language model profile cannot also be selected as a fallback.",
@@ -259,6 +259,15 @@
               },
               "name": "Fallback language models"
             },
+            "hass_control": {
+              "data": {
+                "llm_hass_api": "Control Home Assistant"
+              },
+              "data_description": {
+                "llm_hass_api": "Select which tools the model can use to interact with your devices and entities."
+              },
+              "name": "Control Home Assistant"
+            },
             "run_settings": {
               "data": {
                 "max_iterations": "Max iterations",
@@ -273,15 +282,6 @@
                 "timeout": "Provider request timeout in seconds. Default: 10.0."
               },
               "name": "Run settings"
-            },
-            "hass_control": {
-              "data": {
-                "llm_hass_api": "Control Home Assistant"
-              },
-              "data_description": {
-                "llm_hass_api": "Select which tools the model can use to interact with your devices and entities."
-              },
-              "name": "Control Home Assistant"
             },
             "skill_settings": {
               "data": {
@@ -383,7 +383,6 @@
         "invalid_key_value": "Enter one key/value pair per line using 'key: JSON value'.",
         "invalid_model": "{error_message}",
         "invalid_number": "Enter a valid number in this field.",
-        "non_negative_number": "Enter zero or a positive number.",
         "invalid_provider_config": "{error_message}",
         "invalid_provider_headers": "{error_message}",
         "model_catalog_unavailable": "The model catalog could not be loaded. Try again or choose custom provider setup.",
@@ -392,6 +391,7 @@
         "model_profile_in_use": "A referenced model profile cannot be disabled. Remove it from conversation agents and AI tasks first.",
         "model_required": "Select at least one model.",
         "no_models_available": "No models match these filters. Adjust filters or choose custom provider setup.",
+        "non_negative_number": "Enter zero or a positive number.",
         "permission_denied": "{error_message}",
         "positive_number": "Enter a number greater than zero.",
         "provider_error": "{error_message}",

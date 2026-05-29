@@ -541,9 +541,7 @@ async def test_ai_task_runtime_uses_configured_max_iterations(
     hass: HomeAssistant,
 ) -> None:
     """Test AI task runs use the configured run iteration limit."""
-    entity_id = await _setup_ai_task_entity(
-        hass, extra_data={CONF_MAX_ITERATIONS: 26}
-    )
+    entity_id = await _setup_ai_task_entity(hass, extra_data={CONF_MAX_ITERATIONS: 26})
     agent = _Agent(stream_text="plain result", output="plain result")
 
     with (

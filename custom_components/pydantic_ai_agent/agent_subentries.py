@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True, slots=True)
 class ValidAgentSubentry[T]:
     """Resolved valid agent subentry data."""

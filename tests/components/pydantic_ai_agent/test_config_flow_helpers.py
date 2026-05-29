@@ -479,7 +479,9 @@ def test_sectioned_ai_task_input_reports_run_setting_errors() -> None:
     }
 
 
-def test_sectioned_conversation_input_preserves_literal_virtual_workspace_true() -> None:
+def test_sectioned_conversation_input_preserves_literal_virtual_workspace_true() -> (
+    None
+):
     """Test virtual workspace is stored only when explicitly enabled."""
     data = _conversation_data_from_user_input(
         {

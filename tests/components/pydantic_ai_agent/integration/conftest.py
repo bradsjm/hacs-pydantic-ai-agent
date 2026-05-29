@@ -70,7 +70,9 @@ def enable_provider_network(
     )
     host = urlparse(provider_config.base_url).hostname
     if host is None:
-        pytest.skip("OPENAI_BASE_URL must include a hostname for provider integration tests")
+        pytest.skip(
+            "OPENAI_BASE_URL must include a hostname for provider integration tests"
+        )
     mcp_host = urlparse(mcp_echo_url).hostname
     if mcp_host is None:
         pytest.skip(f"{MCP_ECHO_URL_ENV} must include a hostname")

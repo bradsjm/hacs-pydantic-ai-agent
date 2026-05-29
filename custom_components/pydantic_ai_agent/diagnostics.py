@@ -193,7 +193,7 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
             "cached_mcp_server_count": 0,
             "cached_mcp_tool_counts": {},
         }
-    return {
+    diagnostics = {
         "configured_mcp_server_count": len(runtime_data.mcp_servers),
         "cached_mcp_server_count": len(runtime_data.mcp_tool_cache),
         "cached_mcp_tool_counts": {
@@ -202,6 +202,9 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
         },
         "home_semantic_index": semantic_manager_diagnostics(runtime_data.home_semantic),
     }
+    if runtime_data.latest_stream_traces:
+        diagnostics["latest_stream_traces"] = runtime_data.latest_stream_traces
+    return diagnostics
 
 
 def _runtime_metrics(entry: ConfigEntry, subentry_id: str | None) -> dict[str, Any]:

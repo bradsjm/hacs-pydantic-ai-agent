@@ -70,7 +70,9 @@ class EventStream(TextStream):
 class StreamResult:
     """Minimal Agent streamed result for tests."""
 
-    def __init__(self, text: str = "runtime response", usage: Usage | None = None) -> None:
+    def __init__(
+        self, text: str = "runtime response", usage: Usage | None = None
+    ) -> None:
         """Initialize the streamed result."""
         self.output = text
         self.usage = Usage() if usage is None else usage
@@ -117,7 +119,9 @@ class RunResult:
         """Return final Agent messages."""
         if self._messages is not None:
             return self._messages
-        content = self.output if isinstance(self.output, str) else json.dumps(self.output)
+        content = (
+            self.output if isinstance(self.output, str) else json.dumps(self.output)
+        )
         return [ModelResponse(parts=[TextPart(content=content)])]
 
 

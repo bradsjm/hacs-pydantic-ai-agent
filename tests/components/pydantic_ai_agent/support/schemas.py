@@ -55,7 +55,9 @@ def section_default(data_schema: vol.Schema | None, section_name: str) -> Any:
     raise AssertionError(f"Section {section_name} not found")
 
 
-def serialized_section_default(data_schema: vol.Schema | None, section_name: str) -> Any:
+def serialized_section_default(
+    data_schema: vol.Schema | None, section_name: str
+) -> Any:
     """Return the section default serialized for the config-flow frontend."""
     assert data_schema is not None
     serialized_schema = voluptuous_serialize.convert(

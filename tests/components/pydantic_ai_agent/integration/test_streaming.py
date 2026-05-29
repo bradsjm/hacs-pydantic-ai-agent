@@ -37,7 +37,11 @@ async def test_provider_stream_events_include_text(
 
     async with model_request_stream(
         model,
-        [ModelRequest.user_text_prompt(f"Reply with exactly {STREAM_SENTINEL}. No punctuation.")],
+        [
+            ModelRequest.user_text_prompt(
+                f"Reply with exactly {STREAM_SENTINEL}. No punctuation."
+            )
+        ],
         model_settings=ModelSettings(timeout=PROVIDER_INTEGRATION_TIMEOUT),
     ) as stream:
         async for event in stream:

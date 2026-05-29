@@ -112,7 +112,7 @@ def _classify_run_failure(
     elif isinstance(cause, ModelAPIError):
         if _has_connection_failure(cause):
             message = (
-                f'{prefix}the provider connection failed for model '
+                f"{prefix}the provider connection failed for model "
                 f'"{cause.model_name}". Check network connectivity and provider '
                 "availability."
             )
@@ -150,19 +150,19 @@ def _http_failure_message(err: ModelHTTPError, prefix: str) -> str:
     """Return an actionable HTTP provider failure message."""
     if err.status_code == 429:
         return (
-            f'{prefix}the provider quota or rate limit was reached for model '
+            f"{prefix}the provider quota or rate limit was reached for model "
             f'"{err.model_name}". Check provider quota/rate limits or try '
             "again later."
         )
     if err.status_code in {401, 403}:
         return (
-            f'{prefix}the provider rejected credentials or permissions for '
+            f"{prefix}the provider rejected credentials or permissions for "
             f'model "{err.model_name}". Check the provider API key and '
             "account access."
         )
     if 500 <= err.status_code <= 599:
         return (
-            f'{prefix}the provider service returned HTTP {err.status_code} '
+            f"{prefix}the provider service returned HTTP {err.status_code} "
             f'for model "{err.model_name}". Try again later or use a fallback '
             "model profile."
         )
