@@ -30,6 +30,7 @@ from .chat_deltas import (
     _agent_events_to_chat_deltas,
     _agent_messages_to_chat_deltas as _agent_messages_to_chat_deltas,
     _append_agent_messages,
+    _append_missing_final_text,
     _append_text,
     _json_output,
 )
@@ -404,6 +405,11 @@ class PydanticAIBaseLLMEntity:
             raise
         if state.result is None:
             raise HomeAssistantError("Agent stream did not produce a final result")
+        await _append_missing_final_text(
+            chat_log,
+            agent_id,
+            state.result.new_messages(),
+        )
         return state.result
 
     def _record_agent_run_success(

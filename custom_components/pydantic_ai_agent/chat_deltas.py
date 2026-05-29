@@ -1,6 +1,7 @@
 """Convert Pydantic AI messages and events to Home Assistant ChatLog deltas."""
 
 from collections.abc import AsyncIterable, AsyncIterator, Mapping, Sequence
+from dataclasses import replace
 import json
 import logging
 from typing import Any, cast
@@ -63,6 +64,46 @@ async def _append_text(
         cast(AsyncIterable[Any], _text_stream_to_chat_deltas(_single_text(text))),
     ):
         pass
+
+
+async def _append_missing_final_text(
+    chat_log: conversation.ChatLog,
+    agent_id: str,
+    messages: list[ModelMessage],
+) -> None:
+    """Append final Agent text when live events did not stream it completely."""
+    final_text = _final_text_from_messages(messages)
+    if not final_text:
+        return
+
+    last_content = chat_log.content[-1]
+    if not isinstance(last_content, conversation.AssistantContent):
+        await _append_text(chat_log, agent_id, final_text)
+        return
+
+    streamed_text = last_content.content or ""
+    if streamed_text == final_text:
+        return
+
+    missing_text: str | None = None
+    if streamed_text and final_text.startswith(streamed_text):
+        missing_text = final_text.removeprefix(streamed_text)
+    elif not streamed_text:
+        missing_text = final_text
+
+    chat_log.content[-1] = replace(last_content, content=final_text)
+    if missing_text and chat_log.delta_listener:
+        chat_log.delta_listener(chat_log, {"content": missing_text})
+
+
+def _final_text_from_messages(messages: list[ModelMessage]) -> str:
+    """Return text from the final assistant response in Agent messages."""
+    for message in reversed(messages):
+        if isinstance(message, ModelResponse):
+            return "".join(
+                part.content for part in message.parts if isinstance(part, TextPart)
+            )
+    return ""
 
 
 async def _text_stream_to_chat_deltas(

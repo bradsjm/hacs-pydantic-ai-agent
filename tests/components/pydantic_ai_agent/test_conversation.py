@@ -3,11 +3,16 @@
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 import sys
+from typing import Any, cast
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from homeassistant.components import conversation
+from homeassistant.components.conversation.chat_log import (
+    DATA_CHAT_LOGS,
+    AssistantContent,
+)
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME, __version__
 from homeassistant.core import Context, HomeAssistant
@@ -17,11 +22,13 @@ from homeassistant.helpers import llm
 from homeassistant.util import slugify
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pydantic_ai import (
+    AgentRunResultEvent,
     FunctionToolset,
     ModelRequest,
     ModelResponse,
     PartStartEvent,
     TextPart,
+    ThinkingPart,
 )
 from pydantic_ai.capabilities import Thinking, ToolSearch
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -61,6 +68,7 @@ from tests.components.pydantic_ai_agent.support.builders import (
 )
 from tests.components.pydantic_ai_agent.support.pydantic_ai import (
     ConversationAgent as _Agent,
+    Usage,
 )
 
 _PROVIDER_SUBENTRY_ID = "provider-1"
@@ -176,6 +184,20 @@ class _Span:
     def set_attributes(self, attributes: dict[str, int]) -> None:
         """Record attributes set on the mocked span."""
         self.attributes.update(attributes)
+
+
+class _ResultWithMessages:
+    """Minimal Agent result with explicit final messages."""
+
+    def __init__(self, output: str, messages: list[ModelResponse]) -> None:
+        """Initialize the result."""
+        self.output = output
+        self.usage = Usage()
+        self._messages = messages
+
+    def new_messages(self) -> list[ModelResponse]:
+        """Return final Agent messages."""
+        return self._messages
 
 
 class _FailingSetAttributesSpan(_Span):
@@ -645,6 +667,204 @@ async def test_streaming_iteration_failure_updates_chat_and_sensors(
     assert events[-1]["error_type"] == "UsageLimitExceeded"
     assert events[-1]["partial_response"] is True
     assert "configured maximum of 24 iterations" in str(events[-1]["error_message"])
+
+
+async def test_streaming_backfills_final_text_after_thinking_only_events(
+    hass: HomeAssistant,
+) -> None:
+    """Test final result text is used when live events only stream thinking."""
+    entry = _entry(None)
+    entry.add_to_hass(hass)
+
+    class ThinkingOnlyAgent(_Agent):
+        @asynccontextmanager
+        async def run_stream_events(
+            self, *_args: object, **kwargs: object
+        ) -> AsyncIterator[AsyncIterator[object]]:
+            self.run_stream_events_calls += 1
+            self.run_kwargs = kwargs
+            result = _ResultWithMessages(
+                "Hello. How can I help you?",
+                [
+                    ModelResponse(
+                        parts=[
+                            ThinkingPart(content='"Hello! How can I help'),
+                            TextPart(content="Hello. How can I help you?"),
+                        ]
+                    )
+                ],
+            )
+
+            async def stream() -> AsyncIterator[object]:
+                yield PartStartEvent(
+                    index=0,
+                    part=ThinkingPart(content='"Hello! How can I help'),
+                )
+                yield AgentRunResultEvent(cast(Any, result))
+
+            yield stream()
+
+    agent = ThinkingOnlyAgent()
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ),
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert result.response.speech["plain"]["speech"] == "Hello. How can I help you?"
+    assert result.conversation_id is not None
+    assistant_messages = [
+        content
+        for content in hass.data[DATA_CHAT_LOGS][result.conversation_id].content
+        if isinstance(content, AssistantContent)
+    ]
+    assert len(assistant_messages) == 1
+    assert assistant_messages[-1].content == "Hello. How can I help you?"
+    assert assistant_messages[-1].thinking_content == '"Hello! How can I help'
+
+
+async def test_streaming_backfills_missing_final_text_suffix(
+    hass: HomeAssistant,
+) -> None:
+    """Test final speech is complete when live text misses the final suffix."""
+    entry = _entry(None)
+    entry.add_to_hass(hass)
+
+    class PartialTextAgent(_Agent):
+        @asynccontextmanager
+        async def run_stream_events(
+            self, *_args: object, **kwargs: object
+        ) -> AsyncIterator[AsyncIterator[object]]:
+            self.run_stream_events_calls += 1
+            self.run_kwargs = kwargs
+            result = _ResultWithMessages(
+                "Hello. How can I help you?",
+                [ModelResponse(parts=[TextPart(content="Hello. How can I help you?")])],
+            )
+
+            async def stream() -> AsyncIterator[object]:
+                yield PartStartEvent(
+                    index=0,
+                    part=TextPart(content="Hello. How can I help"),
+                )
+                yield AgentRunResultEvent(cast(Any, result))
+
+            yield stream()
+
+    agent = PartialTextAgent()
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ),
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert result.response.speech["plain"]["speech"] == "Hello. How can I help you?"
+    assert result.conversation_id is not None
+    assistant_messages = [
+        content
+        for content in hass.data[DATA_CHAT_LOGS][result.conversation_id].content
+        if isinstance(content, AssistantContent)
+    ]
+    assert len(assistant_messages) == 1
+    assert assistant_messages[0].content == "Hello. How can I help you?"
+
+
+async def test_streaming_does_not_duplicate_already_streamed_final_text(
+    hass: HomeAssistant,
+) -> None:
+    """Test final result text is not replayed when live events streamed it."""
+    entry = _entry(None)
+    entry.add_to_hass(hass)
+    agent = _Agent("Hello. How can I help you?")
+
+    with patch(
+        "custom_components.pydantic_ai_agent.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ),
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert result.response.speech["plain"]["speech"] == "Hello. How can I help you?"
+    assert result.conversation_id is not None
+    assistant_messages = [
+        content
+        for content in hass.data[DATA_CHAT_LOGS][result.conversation_id].content
+        if isinstance(content, AssistantContent)
+    ]
+    assert len(assistant_messages) == 1
 
 
 async def test_conversation_runtime_uses_thinking_capability(
