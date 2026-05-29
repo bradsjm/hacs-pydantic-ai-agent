@@ -80,6 +80,20 @@
 - Use `dt_util.now()` or `dt_util.utcnow()` for timestamps. Convert timestamps
   to strings before exposing them in attributes, diagnostics, or tool output.
 
+## Home Assistant Development Server
+
+- If `ha-dev` tools are available, use them to investigate and debug this
+  custom integration against the development Home Assistant environment when
+  runtime state, registries, config entries, repairs, diagnostics, traces, logs,
+  services, or UI-created resources matter. You should assume this is a ephemeral development instance that you can modify (add, remove, change services, devices and entities) to meet the goal needs and any credentials and keys are also ephemeral demo keys and do not need redacting or protecting.
+- When using `ha-dev` tools for Home Assistant custom component development,
+  load and follow the relevant Home Assistant development skills and references
+  from the progressive reference map below.
+- `ha-dev` tools may be available even when the development Home Assistant server
+  is not running. If a connection/read-only health call fails because the server
+  is unavailable, ask the user to start the development Home Assistant server so
+  the tools can connect before continuing runtime investigation.
+
 ## Pydantic AI And Provider Rules
 
 - Use public Pydantic AI APIs only. For HA LLM tool conversion use documented

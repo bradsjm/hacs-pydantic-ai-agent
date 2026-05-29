@@ -7,6 +7,12 @@
       "skillPath": "skills/building-pydantic-ai-agents/SKILL.md",
       "computedHash": "2389816a61cb173478193ba89a413c6c84296fbad88e2107c72447883168a3df"
     },
+    "home-assistant-best-practices": {
+      "source": "homeassistant-ai/skills",
+      "sourceType": "github",
+      "skillPath": "skills/home-assistant-best-practices/SKILL.md",
+      "computedHash": "ace3219d5f417d5ab7601e331ca6ad51cd77e526ae56deb8ae59f7568e4fd699"
+    },
     "pydantic-ai-agent-creation": {
       "source": "existential-birds/beagle",
       "sourceType": "github",
