@@ -90,10 +90,12 @@
   load and follow the relevant Home Assistant development skills and references
   from the progressive reference map below.
 - Prefer targeted response services over large diagnostics blobs when debugging
-  with `ha-dev`: `list_mcp_tools` / `refresh_mcp_tools` for MCP catalogs,
-  `get_agent_run_diagnostics` for latest conversation or AI task run slices, and
-  Home Semantic services for index readiness, resolution, dry-run control plans,
-  documents, and benchmarks.
+  with `ha-dev`: `get_workspace_status` for entry/subentry/runtime inventory,
+  `list_model_profiles` for configured provider-owned profiles,
+  `get_agent_metrics` for runtime metric snapshots,
+  `get_tool_source_status` for cached MCP and Skill tool sources,
+  `list_mcp_tools` / `refresh_mcp_tools` for MCP catalogs, and
+  `get_agent_run_diagnostics` for latest conversation or AI task run slices.
 - For Home Semantic Index validation, call `refresh_home_semantic_index` first,
   then use `trace_home_semantic_resolution`, `plan_home_semantic_control`,
   `get_home_semantic_document`, or `benchmark_home_semantic_resolution` instead

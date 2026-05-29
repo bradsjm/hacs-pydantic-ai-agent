@@ -86,6 +86,106 @@ get_agent_run_diagnostics:
           min: 1
           max: 100
           mode: box
+get_workspace_status:
+  name: Get workspace status
+  description: Return compact config-entry, subentry, and runtime status for Pydantic AI Agent workspaces.
+  fields:
+    config_entry_id:
+      name: Config entry
+      description: Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.
+      required: false
+      selector:
+        config_entry:
+          integration: pydantic_ai_agent
+    include_subentries:
+      name: Include subentries
+      description: Include provider, conversation, AI task, MCP server, and Skill subentry summaries.
+      required: false
+      default: true
+      selector:
+        boolean:
+    include_runtime:
+      name: Include runtime
+      description: Include loaded runtime counts and Home Semantic Index status.
+      required: false
+      default: true
+      selector:
+        boolean:
+list_model_profiles:
+  name: List model profiles
+  description: List configured provider-owned model profiles without probing providers.
+  fields:
+    config_entry_id:
+      name: Config entry
+      description: Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.
+      required: false
+      selector:
+        config_entry:
+          integration: pydantic_ai_agent
+    provider_subentry_id:
+      name: Provider subentry ID
+      description: Optional provider subentry ID to filter the returned profiles.
+      required: false
+      selector:
+        text:
+    enabled_only:
+      name: Enabled only
+      description: Return only enabled model profiles.
+      required: false
+      default: false
+      selector:
+        boolean:
+get_agent_metrics:
+  name: Get agent metrics
+  description: Return the current in-memory metrics snapshot for conversation and AI task subentries.
+  fields:
+    config_entry_id:
+      name: Config entry
+      description: Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.
+      required: false
+      selector:
+        config_entry:
+          integration: pydantic_ai_agent
+    subentry_id:
+      name: Subentry ID
+      description: Optional conversation or AI task subentry ID to filter metrics.
+      required: false
+      selector:
+        text:
+get_tool_source_status:
+  name: Get tool source status
+  description: Return cached MCP tool and native Skill status without refreshing or executing tools.
+  fields:
+    config_entry_id:
+      name: Config entry
+      description: Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.
+      required: false
+      selector:
+        config_entry:
+          integration: pydantic_ai_agent
+    subentry_id:
+      name: Subentry ID
+      description: Optional MCP server or Skill subentry ID to filter tool sources.
+      required: false
+      selector:
+        text:
+    include_tool_names:
+      name: Include tool names
+      description: Include cached MCP tool names when available.
+      required: false
+      default: true
+      selector:
+        boolean:
+    limit:
+      name: Limit
+      description: Maximum number of cached tool names to return for each MCP server.
+      required: false
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 200
+          mode: box
 refresh_home_semantic_index:
   name: Refresh home semantic index
   description: Refresh the Home Semantic Index for one workspace and return compact readiness diagnostics.

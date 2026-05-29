@@ -71,6 +71,7 @@ from .repairs import (
     model_validation_issue_id,
 )
 from .structured_output import structured_output_mode
+from .debug_services import async_setup_services as async_setup_debug_services
 from .home_semantic import HomeSemanticIndexManager
 from .home_semantic.llm_api import HomeSemanticAPI
 from .home_semantic.services import async_setup_services as async_setup_home_semantic_services
@@ -223,6 +224,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         schema=_RUN_DIAGNOSTICS_SERVICE_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
+    await async_setup_debug_services(hass)
     await async_setup_home_semantic_services(hass)
     return True
 

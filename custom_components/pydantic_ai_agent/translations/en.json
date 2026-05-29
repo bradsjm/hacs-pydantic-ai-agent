@@ -735,6 +735,14 @@
       },
       "name": "Get agent run diagnostics"
     },
+    "get_agent_metrics": {
+      "description": "Return the current in-memory metrics snapshot for conversation and AI task subentries.",
+      "fields": {
+        "config_entry_id": {"description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.", "name": "Config entry"},
+        "subentry_id": {"description": "Optional conversation or AI task subentry ID to filter metrics.", "name": "Subentry ID"}
+      },
+      "name": "Get agent metrics"
+    },
     "get_home_semantic_document": {
       "description": "Return compact document data for one indexed entity or document ID.",
       "fields": {
@@ -826,6 +834,34 @@
         }
       },
       "name": "Get home semantic summary"
+    },
+    "get_tool_source_status": {
+      "description": "Return cached MCP tool and native Skill status without refreshing or executing tools.",
+      "fields": {
+        "config_entry_id": {"description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.", "name": "Config entry"},
+        "include_tool_names": {"description": "Include cached MCP tool names when available.", "name": "Include tool names"},
+        "limit": {"description": "Maximum number of cached tool names to return for each MCP server.", "name": "Limit"},
+        "subentry_id": {"description": "Optional MCP server or Skill subentry ID to filter tool sources.", "name": "Subentry ID"}
+      },
+      "name": "Get tool source status"
+    },
+    "get_workspace_status": {
+      "description": "Return compact config-entry, subentry, and runtime status for Pydantic AI Agent workspaces.",
+      "fields": {
+        "config_entry_id": {"description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.", "name": "Config entry"},
+        "include_runtime": {"description": "Include loaded runtime counts and Home Semantic Index status.", "name": "Include runtime"},
+        "include_subentries": {"description": "Include provider, conversation, AI task, MCP server, and Skill subentry summaries.", "name": "Include subentries"}
+      },
+      "name": "Get workspace status"
+    },
+    "list_model_profiles": {
+      "description": "List configured provider-owned model profiles without probing providers.",
+      "fields": {
+        "config_entry_id": {"description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.", "name": "Config entry"},
+        "enabled_only": {"description": "Return only enabled model profiles.", "name": "Enabled only"},
+        "provider_subentry_id": {"description": "Optional provider subentry ID to filter the returned profiles.", "name": "Provider subentry ID"}
+      },
+      "name": "List model profiles"
     },
     "refresh_mcp_tools": {
       "description": "Reconnect to configured MCP servers and refresh their tool catalogs.",
