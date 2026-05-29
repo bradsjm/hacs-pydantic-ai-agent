@@ -89,6 +89,15 @@
 - When using `ha-dev` tools for Home Assistant custom component development,
   load and follow the relevant Home Assistant development skills and references
   from the progressive reference map below.
+- Prefer targeted response services over large diagnostics blobs when debugging
+  with `ha-dev`: `list_mcp_tools` / `refresh_mcp_tools` for MCP catalogs,
+  `get_agent_run_diagnostics` for latest conversation or AI task run slices, and
+  Home Semantic services for index readiness, resolution, dry-run control plans,
+  documents, and benchmarks.
+- For Home Semantic Index validation, call `refresh_home_semantic_index` first,
+  then use `trace_home_semantic_resolution`, `plan_home_semantic_control`,
+  `get_home_semantic_document`, or `benchmark_home_semantic_resolution` instead
+  of executing live controls. `control_home` remains an LLM-only tool.
 - `ha-dev` tools may be available even when the development Home Assistant server
   is not running. If a connection/read-only health call fails because the server
   is unavailable, ask the user to start the development Home Assistant server so
