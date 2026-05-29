@@ -4,6 +4,8 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.components import conversation
+from homeassistant.components.climate.const import ClimateEntityFeature
+from homeassistant.components.cover import CoverEntityFeature
 from homeassistant.components.homeassistant.exposed_entities import async_expose_entity
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import Context, HomeAssistant, ServiceCall
@@ -15,6 +17,7 @@ from custom_components.pydantic_ai_agent import (
     WorkspaceRuntimeData,
     async_setup,
     async_setup_entry,
+    async_remove_entry,
 )
 from custom_components.pydantic_ai_agent.const import DOMAIN
 from custom_components.pydantic_ai_agent.home_semantic import (
@@ -277,6 +280,123 @@ async def test_home_semantic_services_resolve_and_context(
     ]
 
 
+async def test_home_semantic_context_combines_area_and_domain_filters(
+    hass: HomeAssistant,
+) -> None:
+    """Test context service intersects area and domain scopes."""
+    hass.states.async_set("light.kitchen", "off")
+    hass.states.async_set("cover.kitchen", "closed")
+    hass.states.async_set("light.bedroom", "on")
+    await _expose(hass, "light.kitchen", "cover.kitchen", "light.bedroom")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            areas=(
+                AreaSource(area_id="kitchen", name="Kitchen"),
+                AreaSource(area_id="bedroom", name="Bedroom"),
+            ),
+            entities=(
+                EntitySource(
+                    entity_id="light.kitchen",
+                    name="Kitchen Light",
+                    area_id="kitchen",
+                    domain="light",
+                ),
+                EntitySource(
+                    entity_id="cover.kitchen",
+                    name="Kitchen Shade",
+                    area_id="kitchen",
+                    domain="cover",
+                ),
+                EntitySource(
+                    entity_id="light.bedroom",
+                    name="Bedroom Light",
+                    area_id="bedroom",
+                    domain="light",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    response = await _call_service(
+        hass,
+        SERVICE_GET_HOME_SEMANTIC_CONTEXT,
+        {
+            "config_entry_id": entry.entry_id,
+            "area_id": "kitchen",
+            "domain": "light",
+        },
+    )
+
+    assert response["success"] is True
+    assert [entity["entity_id"] for entity in response["entities"]] == [
+        "light.kitchen"
+    ]
+
+    explicit_response = await _call_service(
+        hass,
+        SERVICE_GET_HOME_SEMANTIC_CONTEXT,
+        {
+            "config_entry_id": entry.entry_id,
+            "entity_ids": ["cover.kitchen", "light.bedroom"],
+            "area_id": "kitchen",
+            "domain": "light",
+        },
+    )
+
+    assert explicit_response["success"] is True
+    assert explicit_response["entities"] == []
+
+
+async def test_home_semantic_context_ignores_empty_optional_filters(
+    hass: HomeAssistant,
+) -> None:
+    """Test blank optional scope filters do not over-constrain context."""
+    hass.states.async_set("light.kitchen", "off")
+    hass.states.async_set("light.bedroom", "on")
+    await _expose(hass, "light.kitchen", "light.bedroom")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            areas=(
+                AreaSource(area_id="kitchen", name="Kitchen"),
+                AreaSource(area_id="bedroom", name="Bedroom"),
+            ),
+            entities=(
+                EntitySource(
+                    entity_id="light.kitchen",
+                    name="Kitchen Light",
+                    area_id="kitchen",
+                    domain="light",
+                ),
+                EntitySource(
+                    entity_id="light.bedroom",
+                    name="Bedroom Light",
+                    area_id="bedroom",
+                    domain="light",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    response = await _call_service(
+        hass,
+        SERVICE_GET_HOME_SEMANTIC_CONTEXT,
+        {
+            "config_entry_id": entry.entry_id,
+            "area_id": "kitchen",
+            "domain": "",
+        },
+    )
+
+    assert response["success"] is True
+    assert [entity["entity_id"] for entity in response["entities"]] == [
+        "light.kitchen"
+    ]
+
+
 async def test_trace_home_semantic_resolution_reports_rejections(
     hass: HomeAssistant,
 ) -> None:
@@ -368,6 +488,713 @@ async def test_plan_home_semantic_control_does_not_call_services(
         }
     ]
     assert calls == []
+    assert entry.runtime_data.home_semantic is not None
+    assert (
+        entry.runtime_data.home_semantic.memory.diagnostics()["usage_signal_count"]
+        == 0
+    )
+
+
+async def test_semantic_resolution_supports_cover_lock_and_climate_actions(
+    hass: HomeAssistant,
+) -> None:
+    """Test expanded action vocabulary resolves safety-domain targets."""
+    hass.states.async_set(
+        "cover.garage_door",
+        "closed",
+        {"supported_features": CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE},
+    )
+    hass.states.async_set("lock.front_door", "unlocked")
+    hass.states.async_set(
+        "climate.primary_bedroom",
+        "heat",
+        {"supported_features": ClimateEntityFeature.TARGET_TEMPERATURE},
+    )
+    await _expose(
+        hass,
+        "cover.garage_door",
+        "lock.front_door",
+        "climate.primary_bedroom",
+    )
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            areas=(AreaSource(area_id="bedroom", name="Primary Bedroom"),),
+            entities=(
+                EntitySource(
+                    entity_id="cover.garage_door",
+                    name="Garage Door",
+                    domain="cover",
+                ),
+                EntitySource(
+                    entity_id="lock.front_door",
+                    name="Front Lock",
+                    domain="lock",
+                ),
+                EntitySource(
+                    entity_id="climate.primary_bedroom",
+                    name="Primary Bedroom Temperature",
+                    area_id="bedroom",
+                    domain="climate",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    garage = await _call_service(
+        hass,
+        SERVICE_TRACE_HOME_SEMANTIC_RESOLUTION,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "garage door",
+            "action": "open",
+        },
+    )
+    front_lock = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "front lock",
+            "action": "lock",
+        },
+    )
+    climate = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "primary bedroom temperature",
+            "action": "set_temperature",
+        },
+    )
+    unlocked = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "unlock front lock",
+            "action": "unlock",
+        },
+    )
+    set_temperature = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "set primary bedroom temperature",
+            "action": "set_temperature",
+        },
+    )
+
+    assert garage["selected"]["entity_id"] == "cover.garage_door"
+    assert front_lock["target"]["entity_id"] == "lock.front_door"
+    assert climate["target"]["entity_id"] == "climate.primary_bedroom"
+    assert unlocked["target"]["entity_id"] == "lock.front_door"
+    assert set_temperature["target"]["entity_id"] == "climate.primary_bedroom"
+
+
+async def test_plan_home_semantic_control_allows_exposed_cover_and_lock(
+    hass: HomeAssistant,
+) -> None:
+    """Test exposed cover and lock domains are live-executable plans."""
+    hass.states.async_set(
+        "cover.garage_door",
+        "closed",
+        {"supported_features": CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE},
+    )
+    hass.states.async_set("lock.front_door", "unlocked")
+    await _expose(hass, "cover.garage_door", "lock.front_door")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            entities=(
+                EntitySource(
+                    entity_id="cover.garage_door",
+                    name="Garage Door",
+                    domain="cover",
+                ),
+                EntitySource(
+                    entity_id="lock.front_door",
+                    name="Front Lock",
+                    domain="lock",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    garage = await _call_service(
+        hass,
+        SERVICE_PLAN_HOME_SEMANTIC_CONTROL,
+        {
+            "config_entry_id": entry.entry_id,
+            "action": "open",
+            "phrase": "garage door",
+        },
+    )
+    front_lock = await _call_service(
+        hass,
+        SERVICE_PLAN_HOME_SEMANTIC_CONTROL,
+        {
+            "config_entry_id": entry.entry_id,
+            "action": "lock",
+            "phrase": "front lock",
+        },
+    )
+
+    assert garage["allowed"] is True
+    assert garage["live_executable"] is True
+    assert garage["execution_policy"] == "live_allowed"
+    assert garage["calls"] == [
+        {
+            "domain": "cover",
+            "service": "open_cover",
+            "target": {ATTR_ENTITY_ID: "cover.garage_door"},
+        }
+    ]
+    assert front_lock["live_executable"] is True
+    assert front_lock["execution_policy"] == "live_allowed"
+    assert front_lock["calls"] == [
+        {
+            "domain": "lock",
+            "service": "lock",
+            "target": {ATTR_ENTITY_ID: "lock.front_door"},
+        }
+    ]
+
+
+async def test_control_home_executes_exposed_lock_actions(
+    hass: HomeAssistant,
+) -> None:
+    """Test LLM control_home executes exposed supported lock actions."""
+    calls: list[ServiceCall] = []
+
+    async def async_record_call(call: ServiceCall) -> None:
+        calls.append(call)
+
+    hass.services.async_register("lock", "lock", async_record_call)
+    hass.states.async_set("lock.front_door", "unlocked")
+    await _expose(hass, "lock.front_door")
+    _, api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            entities=(
+                EntitySource(
+                    entity_id="lock.front_door",
+                    name="Front Lock",
+                    domain="lock",
+                ),
+            ),
+        ),
+    )
+    result = await _call_tool(
+        api,
+        "control_home",
+        {"action": "lock", "phrase": "front lock"},
+    )
+
+    assert result["status"] == "ok"
+    assert result["domain"] == "lock"
+    assert result["service"] == "lock"
+    assert result["target"] == {ATTR_ENTITY_ID: "lock.front_door"}
+    assert calls[0].data == {ATTR_ENTITY_ID: "lock.front_door"}
+
+
+async def test_control_home_executes_exposed_cover_actions(
+    hass: HomeAssistant,
+) -> None:
+    """Test LLM control_home executes exposed supported cover actions."""
+    calls: list[ServiceCall] = []
+
+    async def async_record_call(call: ServiceCall) -> None:
+        calls.append(call)
+
+    hass.services.async_register("cover", "open_cover", async_record_call)
+    hass.states.async_set(
+        "cover.garage_door",
+        "closed",
+        {"supported_features": CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE},
+    )
+    await _expose(hass, "cover.garage_door")
+    entry, api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            entities=(
+                EntitySource(
+                    entity_id="cover.garage_door",
+                    name="Garage Door",
+                    domain="cover",
+                ),
+            ),
+        ),
+    )
+
+    result = await _call_tool(
+        api,
+        "control_home",
+        {"action": "open", "phrase": "garage door"},
+    )
+
+    assert result["status"] == "ok"
+    assert result["domain"] == "cover"
+    assert result["service"] == "open_cover"
+    assert result["target"] == {ATTR_ENTITY_ID: "cover.garage_door"}
+    assert calls[0].data == {ATTR_ENTITY_ID: "cover.garage_door"}
+
+
+async def test_control_home_executes_climate_set_temperature(
+    hass: HomeAssistant,
+) -> None:
+    """Test LLM control_home executes exposed climate set_temperature with data."""
+    calls: list[ServiceCall] = []
+
+    async def async_record_call(call: ServiceCall) -> None:
+        calls.append(call)
+
+    hass.services.async_register("climate", "set_temperature", async_record_call)
+    hass.states.async_set(
+        "climate.primary_bedroom",
+        "heat",
+        {"supported_features": ClimateEntityFeature.TARGET_TEMPERATURE},
+    )
+    await _expose(hass, "climate.primary_bedroom")
+    _, api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            entities=(
+                EntitySource(
+                    entity_id="climate.primary_bedroom",
+                    name="Primary Bedroom Temperature",
+                    domain="climate",
+                ),
+            ),
+        ),
+    )
+
+    result = await _call_tool(
+        api,
+        "control_home",
+        {
+            "action": "set_temperature",
+            "phrase": "primary bedroom temperature",
+            "temperature": 72,
+        },
+    )
+
+    assert result["status"] == "ok"
+    assert result["domain"] == "climate"
+    assert result["service"] == "set_temperature"
+    assert result["target"] == {ATTR_ENTITY_ID: "climate.primary_bedroom"}
+    assert calls[0].data == {
+        ATTR_ENTITY_ID: "climate.primary_bedroom",
+        "temperature": 72.0,
+    }
+
+
+async def test_plan_home_semantic_control_requires_temperature_parameters(
+    hass: HomeAssistant,
+) -> None:
+    """Test climate planning waits until a target temperature schema exists."""
+    hass.states.async_set(
+        "climate.primary_bedroom",
+        "heat",
+        {"supported_features": ClimateEntityFeature.TARGET_TEMPERATURE},
+    )
+    await _expose(hass, "climate.primary_bedroom")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            entities=(
+                EntitySource(
+                    entity_id="climate.primary_bedroom",
+                    name="Primary Bedroom Temperature",
+                    domain="climate",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    response = await _call_service(
+        hass,
+        SERVICE_PLAN_HOME_SEMANTIC_CONTROL,
+        {
+            "config_entry_id": entry.entry_id,
+            "action": "set_temperature",
+            "phrase": "primary bedroom temperature",
+        },
+    )
+
+    assert response["allowed"] is False
+    assert response["reason"] == "unsupported_action_parameters"
+
+    non_finite = await _call_service(
+        hass,
+        SERVICE_PLAN_HOME_SEMANTIC_CONTROL,
+        {
+            "config_entry_id": entry.entry_id,
+            "action": "set_temperature",
+            "phrase": "primary bedroom temperature",
+            "temperature": "nan",
+        },
+    )
+
+    assert non_finite["allowed"] is False
+    assert non_finite["reason"] == "unsupported_action_parameters"
+
+    planned = await _call_service(
+        hass,
+        SERVICE_PLAN_HOME_SEMANTIC_CONTROL,
+        {
+            "config_entry_id": entry.entry_id,
+            "action": "set_temperature",
+            "phrase": "primary bedroom temperature",
+            "temperature": 72,
+        },
+    )
+
+    assert planned["allowed"] is True
+    assert planned["live_executable"] is True
+    assert planned["calls"] == [
+        {
+            "domain": "climate",
+            "service": "set_temperature",
+            "target": {ATTR_ENTITY_ID: "climate.primary_bedroom"},
+            "data": {"temperature": 72.0},
+        }
+    ]
+
+
+async def test_semantic_resolution_rejects_incompatible_actions(
+    hass: HomeAssistant,
+) -> None:
+    """Test expanded actions still enforce domain compatibility."""
+    hass.states.async_set("light.kitchen", "off")
+    hass.states.async_set("cover.garage_door", "closed")
+    await _expose(hass, "light.kitchen", "cover.garage_door")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            entities=(
+                EntitySource(
+                    entity_id="light.kitchen",
+                    name="Kitchen Light",
+                    domain="light",
+                ),
+                EntitySource(
+                    entity_id="cover.garage_door",
+                    name="Garage Door",
+                    domain="cover",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    light_lock = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "kitchen light",
+            "action": "lock",
+        },
+    )
+    cover_toggle = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "garage door",
+            "action": "toggle",
+        },
+    )
+
+    assert light_lock["success"] is False
+    assert light_lock["errors"][0]["code"] == "not_found"
+    assert cover_toggle["success"] is False
+    assert cover_toggle["errors"][0]["code"] == "not_found"
+
+
+async def test_semantic_resolution_rejects_missing_supported_features(
+    hass: HomeAssistant,
+) -> None:
+    """Test exposed entities still need HA-supported features for actions."""
+    hass.states.async_set("cover.read_only_shade", "closed", {"supported_features": 0})
+    hass.states.async_set("climate.read_only", "heat", {"supported_features": 0})
+    await _expose(hass, "cover.read_only_shade", "climate.read_only")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            entities=(
+                EntitySource(
+                    entity_id="cover.read_only_shade",
+                    name="Read Only Shade",
+                    domain="cover",
+                ),
+                EntitySource(
+                    entity_id="climate.read_only",
+                    name="Read Only Thermostat",
+                    domain="climate",
+                ),
+            ),
+        ),
+    )
+    assert await async_setup(hass, {})
+
+    shade = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "read only shade",
+            "action": "open",
+        },
+    )
+    thermostat = await _call_service(
+        hass,
+        SERVICE_PLAN_HOME_SEMANTIC_CONTROL,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "read only thermostat",
+            "action": "set_temperature",
+            "temperature": 72,
+        },
+    )
+
+    assert shade["success"] is False
+    assert shade["errors"][0]["code"] == "not_found"
+    assert thermostat["allowed"] is False
+    assert thermostat["reason"] == "not_found"
+
+
+async def test_memory_correction_improves_future_resolution(
+    hass: HomeAssistant,
+) -> None:
+    """Test explicit memory corrections re-rank already-safe candidates."""
+    hass.states.async_set("light.desk_light", "off")
+    hass.states.async_set("light.desk_lamp", "off")
+    await _expose(hass, "light.desk_light", "light.desk_lamp")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            entities=(
+                EntitySource(
+                    entity_id="light.desk_light",
+                    name="Desk Light",
+                    domain="light",
+                ),
+                EntitySource(
+                    entity_id="light.desk_lamp",
+                    name="Desk Lamp",
+                    domain="light",
+                ),
+            ),
+        ),
+    )
+    assert entry.runtime_data.home_semantic is not None
+    entry.runtime_data.home_semantic.memory.add_correction(
+        phrase="desk",
+        action="turn_on",
+        entity_id="light.desk_lamp",
+    )
+    assert await async_setup(hass, {})
+
+    resolved = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "desk",
+            "action": "turn_on",
+        },
+    )
+    traced = await _call_service(
+        hass,
+        SERVICE_TRACE_HOME_SEMANTIC_RESOLUTION,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "desk",
+            "action": "turn_on",
+        },
+    )
+
+    assert resolved["success"] is True
+    assert resolved["target"]["entity_id"] == "light.desk_lamp"
+    assert "memory_correction" in resolved["target"]["reason"]
+    assert traced["selected"]["entity_id"] == "light.desk_lamp"
+    assert "memory_correction" in traced["selected"]["reason"]
+
+
+async def test_memory_correction_cannot_select_unexposed_or_deleted_entity(
+    hass: HomeAssistant,
+) -> None:
+    """Test memory is applied only after state and exposure filters."""
+    hass.states.async_set("light.desk_light", "off")
+    hass.states.async_set("light.hidden_lamp", "off")
+    await _expose(hass, "light.desk_light")
+    await _hide(hass, "light.hidden_lamp")
+    entry, _api = _workspace_with_manager(
+        hass,
+        HomeSemanticSource(
+            entities=(
+                EntitySource(
+                    entity_id="light.desk_light",
+                    name="Desk Light",
+                    domain="light",
+                ),
+                EntitySource(
+                    entity_id="light.hidden_lamp",
+                    name="Desk Lamp",
+                    domain="light",
+                ),
+                EntitySource(
+                    entity_id="light.deleted_lamp",
+                    name="Deleted Desk Lamp",
+                    domain="light",
+                ),
+            ),
+        ),
+    )
+    assert entry.runtime_data.home_semantic is not None
+    entry.runtime_data.home_semantic.memory.add_correction(
+        phrase="desk",
+        action="turn_on",
+        entity_id="light.hidden_lamp",
+    )
+    entry.runtime_data.home_semantic.memory.add_correction(
+        phrase="deleted desk",
+        action="turn_on",
+        entity_id="light.deleted_lamp",
+    )
+    assert await async_setup(hass, {})
+
+    hidden_result = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "desk",
+            "action": "turn_on",
+        },
+    )
+    deleted_result = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "deleted desk",
+            "action": "turn_on",
+        },
+    )
+
+    assert hidden_result["target"]["entity_id"] == "light.desk_light"
+    assert deleted_result["success"] is False
+    assert deleted_result["errors"][0]["code"] == "not_found"
+
+
+async def test_memory_usage_boost_is_capped_and_diagnostics_are_aggregate(
+    hass: HomeAssistant,
+) -> None:
+    """Test usage memory has bounded effect and diagnostics omit record details."""
+    entry, _api = _workspace_with_manager(hass, HomeSemanticSource())
+    assert entry.runtime_data.home_semantic is not None
+    memory = entry.runtime_data.home_semantic.memory
+
+    for _ in range(100):
+        memory.record_success(
+            phrase="desk light",
+            action="turn_on",
+            entity_id="light.desk_light",
+        )
+    memory.add_correction(
+        phrase="bedroom lamp",
+        action="turn_on",
+        entity_id="light.bedroom_lamp",
+    )
+
+    adjustments = memory.ranking_adjustments(
+        phrase="desk light",
+        action="turn_on",
+        area_id=None,
+        domain=None,
+        candidate_entity_ids=("light.desk_light",),
+    )
+    diagnostics = entry.runtime_data.home_semantic.diagnostics()["memory"]
+
+    assert adjustments["light.desk_light"][0] == 0.08
+    assert diagnostics["correction_count"] == 1
+    assert diagnostics["usage_signal_count"] == 1
+    assert "bedroom" not in str(diagnostics)
+    assert "light.bedroom_lamp" not in str(diagnostics)
+
+
+async def test_memory_correction_does_not_override_explicit_scope(
+    hass: HomeAssistant,
+) -> None:
+    """Test scoped correction records do not apply to conflicting scopes."""
+    entry = workspace_entry(title="Workspace")
+    entry.add_to_hass(hass)
+    manager = HomeSemanticIndexManager(hass, cast(Any, entry))
+    manager.memory.add_correction(
+        phrase="lamp",
+        action="turn_on",
+        area_id="bedroom",
+        domain="light",
+        entity_id="light.bedroom_lamp",
+    )
+
+    adjustments = manager.memory.ranking_adjustments(
+        phrase="lamp",
+        action="turn_on",
+        area_id="kitchen",
+        domain="light",
+        candidate_entity_ids=("light.bedroom_lamp",),
+    )
+
+    assert adjustments == {}
+
+
+async def test_memory_load_failure_degrades_to_empty_memory(
+    hass: HomeAssistant,
+) -> None:
+    """Test memory store load errors do not break semantic index runtime."""
+    entry = workspace_entry(title="Workspace")
+    entry.add_to_hass(hass)
+    manager = HomeSemanticIndexManager(hass, cast(Any, entry))
+
+    with patch.object(
+        manager.memory._store,  # noqa: SLF001
+        "async_load",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("boom"),
+    ):
+        await manager.memory.async_load()
+
+    diagnostics = manager.memory.diagnostics()
+
+    assert diagnostics["loaded"] is True
+    assert diagnostics["load_error_type"] == "RuntimeError"
+    assert diagnostics["correction_count"] == 0
+
+
+async def test_remove_entry_removes_home_semantic_memory(
+    hass: HomeAssistant,
+) -> None:
+    """Test workspace removal deletes entry-scoped semantic memory storage."""
+    entry, _api = _workspace_with_manager(hass, HomeSemanticSource())
+    assert entry.runtime_data.home_semantic is not None
+
+    with patch.object(
+        entry.runtime_data.home_semantic.memory,
+        "async_remove",
+        new_callable=AsyncMock,
+    ) as async_remove:
+        await async_remove_entry(hass, cast(Any, entry))
+
+    async_remove.assert_awaited_once()
 
 
 async def test_home_semantic_document_and_benchmark_services(
@@ -955,7 +1782,7 @@ async def test_control_home_rejects_ambiguous_ungrouped_area_capability(
     hass.states.async_set("light.bedroom_ceiling", "on")
     hass.states.async_set("light.bedroom_lamp", "on")
     await _expose(hass, "light.bedroom_ceiling", "light.bedroom_lamp")
-    _, api = _workspace_with_manager(
+    entry, api = _workspace_with_manager(
         hass,
         HomeSemanticSource(
             areas=(AreaSource(area_id="bedroom", name="Bedroom"),),
@@ -975,6 +1802,26 @@ async def test_control_home_rejects_ambiguous_ungrouped_area_capability(
             ),
         ),
     )
+    assert await async_setup(hass, {})
+
+    dry_run_result = await _call_service(
+        hass,
+        SERVICE_RESOLVE_HOME_SEMANTIC_TARGET,
+        {
+            "config_entry_id": entry.entry_id,
+            "phrase": "bedroom lights",
+            "action": "turn_off",
+        },
+    )
+
+    assert dry_run_result["success"] is False
+    assert entry.runtime_data.home_semantic is not None
+    assert (
+        entry.runtime_data.home_semantic.memory.diagnostics()[
+            "ambiguity_penalty_count"
+        ]
+        == 0
+    )
 
     result = await _call_tool(
         api,
@@ -984,6 +1831,12 @@ async def test_control_home_rejects_ambiguous_ungrouped_area_capability(
 
     assert result["code"] == "ambiguous_target"
     assert calls == []
+    assert (
+        entry.runtime_data.home_semantic.memory.diagnostics()[
+            "ambiguity_penalty_count"
+        ]
+        == 1
+    )
 
 
 async def test_control_home_accepts_action_words_in_phrase(
@@ -998,7 +1851,7 @@ async def test_control_home_accepts_action_words_in_phrase(
     hass.services.async_register("light", "turn_off", async_record_call)
     hass.states.async_set("light.kitchen", "on")
     await _expose(hass, "light.kitchen")
-    _, api = _workspace_with_manager(
+    entry, api = _workspace_with_manager(
         hass,
         HomeSemanticSource(
             entities=(
@@ -1019,6 +1872,11 @@ async def test_control_home_accepts_action_words_in_phrase(
 
     assert result["status"] == "ok"
     assert calls[0].data == {ATTR_ENTITY_ID: "light.kitchen"}
+    assert entry.runtime_data.home_semantic is not None
+    assert (
+        entry.runtime_data.home_semantic.memory.diagnostics()["usage_signal_count"]
+        == 1
+    )
 
 
 async def test_control_home_skips_action_incompatible_phrase_targets(

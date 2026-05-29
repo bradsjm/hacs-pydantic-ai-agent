@@ -1,18 +1,7 @@
 """Deterministic symbolic ranking for home semantic retrieval."""
 
+from .actions import ACTION_CAPABILITIES
 from .models import HomeSemanticDocument
-
-
-ACTION_CAPABILITIES: dict[str, tuple[str, ...]] = {
-    "turn_on": ("lights", "switches", "fans", "media players"),
-    "turn_off": ("lights", "switches", "fans", "media players"),
-    "open": ("covers",),
-    "close": ("covers",),
-    "set_temperature": ("climate",),
-    "lock": ("locks",),
-    "unlock": ("locks",),
-    "activate": ("scenes", "scripts"),
-}
 
 
 def score_document(

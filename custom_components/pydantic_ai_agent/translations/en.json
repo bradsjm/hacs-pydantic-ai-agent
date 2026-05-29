@@ -768,13 +768,14 @@
       "name": "List MCP tools"
     },
     "plan_home_semantic_control": {
-      "description": "Dry-run the same safety checks used by the LLM-only control_home tool without executing service calls.",
+      "description": "Dry-run the same exposure and compatibility checks used by the LLM-only control_home tool without executing service calls. Include temperature for set_temperature.",
       "fields": {
         "action": {"description": "Control action to plan.", "name": "Action"},
         "assistant_id": {"description": "Optional assistant ID used for exposed-entity filtering.", "name": "Assistant ID"},
         "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
         "entity_id": {"description": "Explicit target entity. Provide phrase or entity_id.", "name": "Entity ID"},
-        "phrase": {"description": "Natural-language target phrase. Provide phrase or entity_id.", "name": "Phrase"}
+        "phrase": {"description": "Natural-language target phrase. Provide phrase or entity_id.", "name": "Phrase"},
+        "temperature": {"description": "Target temperature for set_temperature actions.", "name": "Temperature"}
       },
       "name": "Plan home semantic control"
     },
@@ -881,7 +882,7 @@
       "description": "Resolve a natural-language phrase to one exposed semantic home target.",
       "fields": {
         "action": {
-          "description": "Optional intended action used to filter compatible targets.",
+          "description": "Optional intended action used to filter compatible targets, including cover, lock, and climate actions.",
           "name": "Action"
         },
         "assistant_id": {
@@ -902,7 +903,7 @@
     "trace_home_semantic_resolution": {
       "description": "Trace how a phrase ranks and filters Home Semantic Index candidates.",
       "fields": {
-        "action": {"description": "Optional intended action used to filter compatible targets.", "name": "Action"},
+        "action": {"description": "Optional intended action used to filter compatible targets, including cover, lock, and climate actions.", "name": "Action"},
         "area_id": {"description": "Optional area ID expected for candidates.", "name": "Area ID"},
         "assistant_id": {"description": "Optional assistant ID used for exposed-entity filtering.", "name": "Assistant ID"},
         "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},

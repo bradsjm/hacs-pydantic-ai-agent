@@ -306,16 +306,15 @@ Prefer a constrained tool like `control_home` that validates:
 - target;
 - confidence;
 - exposure;
-- domain safety policy;
+- supported domain/action compatibility;
 - ambiguity.
-  Recommended safety rules:
+  Recommended execution rules:
   | Domain/action type | Default behavior |
   |---|---|
-  | lights, media, benign scenes | execute if confidence is high |
-  | switches | execute only if exposed and target is unambiguous |
-  | covers, climate | allow, but support verification/clarification |
-  | locks, alarms, garage doors, security | require stricter confirmation |
-  | config/admin/registry/files/add-ons | out of scope |
+  | lights, switches, scenes, scripts | execute if exposed and unambiguous |
+| covers, locks | execute supported actions if exposed and unambiguous |
+| climate | execute supported structured actions, such as `set_temperature` with a temperature |
+| alarms/security/admin/config/registry/files/add-ons | out of scope until explicit supported mappings exist |
 
 ## Latency strategy
 

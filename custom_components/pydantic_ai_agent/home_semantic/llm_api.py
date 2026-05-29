@@ -9,6 +9,7 @@ import voluptuous as vol
 
 from .manager import HomeSemanticIndexManager
 from .query import (
+    SUPPORTED_ACTIONS,
     default_assistant_id,
     get_home_context,
     get_home_summary,
@@ -51,8 +52,9 @@ class HomeSemanticAPI(llm.API):
             api=self,
             api_prompt=(
                 "Use the semantic home tools to resolve areas, devices, groups, "
-                "and safe controls. Prefer grouped targets. Never assume access "
-                "to entities that are not returned by these tools."
+                "and exposed controls. Prefer grouped targets. Never assume access "
+                "to entities that are not returned by these tools. Use control_home "
+                "only for supported actions and include temperature for set_temperature."
             ),
             llm_context=llm_context,
             tools=tools,
@@ -80,6 +82,11 @@ class _SemanticTool(llm.Tool):
     ) -> bool:
         """Return whether an entity is exposed to this LLM context."""
         return is_exposed(hass, self._assistant(llm_context), entity_id)
+
+
+def _temperature(value: Any) -> float | None:
+    """Return a numeric temperature argument when supplied."""
+    return None if value is None else float(value)
 
 
 class GetHomeSummaryTool(_SemanticTool):
@@ -111,9 +118,7 @@ class ResolveHomeTargetTool(_SemanticTool):
     parameters = vol.Schema(
         {
             vol.Required("phrase"): str,
-            vol.Optional("action"): vol.In(
-                ["turn_on", "turn_off", "toggle", "activate"]
-            ),
+            vol.Optional("action"): vol.In(SUPPORTED_ACTIONS),
         }
     )
 
@@ -183,15 +188,15 @@ class ControlHomeTool(_SemanticTool):
 
     name = "control_home"
     description = (
-        "Execute safe exposed light, switch, scene, script, or group controls."
+        "Execute supported exposed semantic home controls. Include temperature "
+        "when action is set_temperature."
     )
     parameters = vol.Schema(
         {
-            vol.Required("action"): vol.In(
-                ["turn_on", "turn_off", "toggle", "activate"]
-            ),
+            vol.Required("action"): vol.In(SUPPORTED_ACTIONS),
             vol.Optional("entity_id"): str,
             vol.Optional("phrase"): str,
+            vol.Optional("temperature"): vol.Coerce(float),
         }
     )
 
@@ -203,23 +208,34 @@ class ControlHomeTool(_SemanticTool):
     ) -> dict[str, Any]:
         """Execute a constrained exposed home control action."""
         action = tool_input.tool_args["action"]
+        manager = self._manager()
         plan = plan_home_control(
             hass,
-            self._manager(),
+            manager,
             assistant_id=self._assistant(llm_context),
             entity_id=tool_input.tool_args.get("entity_id"),
             phrase=tool_input.tool_args.get("phrase"),
             action=action,
+            temperature=_temperature(tool_input.tool_args.get("temperature")),
+            record_ambiguity=True,
         )
         if isinstance(plan, dict):
             return plan
         for call in plan.calls:
+            service_data = {**call.target, **(call.data or {})}
             await hass.services.async_call(
                 call.domain,
                 call.service,
-                call.target,
+                service_data,
                 blocking=True,
                 context=llm_context.context,
+            )
+        phrase = tool_input.tool_args.get("phrase")
+        if phrase is not None and manager is not None:
+            manager.memory.record_success(
+                phrase=phrase,
+                action=action,
+                entity_id=plan.target.entity_id,
             )
         if len(plan.calls) > 1 or plan.group_expansion is not None:
             return {

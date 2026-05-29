@@ -46,6 +46,7 @@ ATTR_ENTITY_ID = "entity_id"
 ATTR_LIMIT = "limit"
 ATTR_PHRASE = "phrase"
 ATTR_REASON = "reason"
+ATTR_TEMPERATURE = "temperature"
 ATTR_WAIT = "wait"
 ATTR_CASES = "cases"
 ATTR_EXPECTED_TARGET = "expected_target"
@@ -107,6 +108,7 @@ _PLAN_SERVICE_SCHEMA = vol.Schema(
         vol.Required(ATTR_ACTION): vol.In(SUPPORTED_ACTIONS),
         vol.Optional(ATTR_PHRASE): str,
         vol.Optional(ATTR_ENTITY_ID): str,
+        vol.Optional(ATTR_TEMPERATURE): vol.Coerce(float),
     }
 )
 _DOCUMENT_SERVICE_SCHEMA = vol.Schema(
@@ -218,6 +220,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             action=call.data[ATTR_ACTION],
             phrase=call.data.get(ATTR_PHRASE),
             entity_id=call.data.get(ATTR_ENTITY_ID),
+            temperature=call.data.get(ATTR_TEMPERATURE),
         )
         if isinstance(plan, dict):
             return {

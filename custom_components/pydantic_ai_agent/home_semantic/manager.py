@@ -31,6 +31,7 @@ from homeassistant.util import dt as dt_util
 
 from .builder import async_build_home_semantic_index
 from .index import HomeSemanticIndex
+from .store import HomeSemanticMemory
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ class HomeSemanticIndexManager:
         self._stopped = False
 
         self.index: HomeSemanticIndex | None = None
+        self.memory = HomeSemanticMemory(hass, entry)
         self.status: RefreshStatus = "loading"
         self.generation = 0
         self.last_refresh_reason: str | None = None
@@ -100,6 +102,11 @@ class HomeSemanticIndexManager:
         """Start listeners and schedule the initial delayed build."""
         if self._stopped:
             return
+        self._entry.async_create_background_task(
+            self._hass,
+            self.memory.async_load(),
+            name=f"{self._entry.title} Home Semantic Memory load",
+        )
         self._unsubscribers.extend(
             (
                 self._hass.bus.async_listen(
@@ -186,6 +193,7 @@ class HomeSemanticIndexManager:
         }
         if self.index is not None:
             data.update(self.index.diagnostics_summary())
+        data["memory"] = self.memory.diagnostics()
         return data
 
     async def async_refresh_now(

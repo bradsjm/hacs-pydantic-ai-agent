@@ -75,6 +75,7 @@ from .debug_services import async_setup_services as async_setup_debug_services
 from .home_semantic import HomeSemanticIndexManager
 from .home_semantic.llm_api import HomeSemanticAPI
 from .home_semantic.services import async_setup_services as async_setup_home_semantic_services
+from .home_semantic.store import HomeSemanticMemory
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -297,6 +298,12 @@ async def async_remove_entry(
     """Clean up repair issues when a config entry is permanently removed."""
     await async_release_logfire(hass, entry)
     async_delete_entry_repair_issues(hass, entry)
+    runtime_data = getattr(entry, "runtime_data", None)
+    home_semantic = getattr(runtime_data, "home_semantic", None)
+    if home_semantic is not None:
+        await home_semantic.memory.async_remove()
+    else:
+        await HomeSemanticMemory(hass, entry).async_remove()
 
 
 async def async_update_entry(

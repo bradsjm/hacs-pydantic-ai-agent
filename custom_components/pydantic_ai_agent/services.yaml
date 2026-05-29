@@ -246,6 +246,11 @@ trace_home_semantic_resolution:
             - turn_off
             - toggle
             - activate
+            - open
+            - close
+            - set_temperature
+            - lock
+            - unlock
     area_id:
       name: Area ID
       description: Optional area ID expected for candidates.
@@ -271,7 +276,7 @@ trace_home_semantic_resolution:
           mode: box
 plan_home_semantic_control:
   name: Plan home semantic control
-  description: Dry-run the same safety checks used by the LLM-only control_home tool without executing service calls.
+  description: Dry-run the same exposure and compatibility checks used by the LLM-only control_home tool without executing service calls. Include temperature for set_temperature.
   fields:
     config_entry_id:
       name: Config entry
@@ -297,6 +302,11 @@ plan_home_semantic_control:
             - turn_off
             - toggle
             - activate
+            - open
+            - close
+            - set_temperature
+            - lock
+            - unlock
     phrase:
       name: Phrase
       description: Natural-language target phrase. Provide phrase or entity_id.
@@ -310,6 +320,13 @@ plan_home_semantic_control:
       required: false
       selector:
         entity:
+    temperature:
+      name: Temperature
+      description: Target temperature for set_temperature actions.
+      required: false
+      selector:
+        number:
+          mode: box
 get_home_semantic_document:
   name: Get home semantic document
   description: Return compact document data for one indexed entity or document ID.
@@ -429,6 +446,11 @@ resolve_home_semantic_target:
             - turn_off
             - toggle
             - activate
+            - open
+            - close
+            - set_temperature
+            - lock
+            - unlock
 get_home_semantic_context:
   name: Get home semantic context
   description: Return compact exposed live state from the Home Semantic Index for an explicit entity or query scope.
