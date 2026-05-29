@@ -148,6 +148,7 @@ class WorkspaceRuntimeData:
     mcp_tool_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     metrics: MetricsStore = field(default_factory=MetricsStore)
     latest_stream_traces: dict[str, dict[str, Any]] = field(default_factory=dict)
+    latest_run_diagnostics: dict[str, dict[str, Any]] = field(default_factory=dict)
     home_semantic: HomeSemanticIndexManager | None = None
     logfire_enabled: bool = False
     logfire_include_content: bool = False

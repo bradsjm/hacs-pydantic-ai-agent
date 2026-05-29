@@ -33,6 +33,7 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
+    SUBENTRY_TYPE_AI_TASK,
 )
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
@@ -319,6 +320,22 @@ async def test_plain_data_task_returns_text(hass: HomeAssistant) -> None:
 
     assert result.data == "plain result"
     _assert_context_management_capability(agent_class.call_args.kwargs["capabilities"])
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    subentry_id = next(
+        subentry.subentry_id
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
+    )
+    run_diagnostics = entry.runtime_data.latest_run_diagnostics[subentry_id]
+    assert run_diagnostics["status"] == "success"
+    timeline = run_diagnostics["timeline"]
+    assert [event["seq"] for event in timeline] == list(range(1, len(timeline) + 1))
+    assert {event["phase"] for event in timeline} >= {
+        "run",
+        "input",
+        "llm_request",
+        "llm_response",
+    }
 
 
 async def test_plain_data_task_uses_thinking_capability(hass: HomeAssistant) -> None:

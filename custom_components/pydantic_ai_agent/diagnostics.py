@@ -1,33 +1,40 @@
 """Diagnostics for Pydantic AI Agent."""
 
 from collections.abc import Mapping
-from dataclasses import asdict
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API
+from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
-from ._redaction import redact_data
 from .const import (
-    CONF_CHAT_TEMPLATE_KWARGS,
+    CONF_AI_TASK_NAME,
+    CONF_AGENT_NAME,
     CONF_DEFAULT_MODEL_PROFILE_ID,
-    CONF_LOGFIRE_TOKEN,
+    CONF_FALLBACK_MODEL_REFS,
     CONF_MCP_HEADERS,
+    CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_PROMPT,
-    CONF_PROVIDER_EXTRA_BODY,
-    CONF_PROVIDER_HEADERS,
+    CONF_PRIMARY_MODEL_REF,
+    CONF_SKILLS,
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
+    CONF_OUTPUT_MODE,
+    CONF_TODO_LIST_ENTITY_ID,
+    CONF_VIRTUAL_WORKSPACE_ENABLED,
+    CONF_WEB_FETCH_ENABLED,
     DOMAIN,
+    SUBENTRY_TYPE_AI_TASK,
+    SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
+from .run_diagnostics import bound_diagnostics_data
 from .logfire_support import (
     logfire_active_for_entry,
     logfire_enabled,
@@ -35,56 +42,6 @@ from .logfire_support import (
     logfire_token_conflict,
 )
 from .home_semantic.diagnostics import semantic_manager_diagnostics
-
-_SENSITIVE_KEYS = {
-    CONF_API_KEY,
-    CONF_LOGFIRE_TOKEN,
-    CONF_PROMPT,
-    "api_key",
-    "authorization",
-    "cookie",
-    "extra_headers",
-    CONF_MCP_HEADERS,
-    CONF_MCP_URL,
-    CONF_PROVIDER_EXTRA_BODY,
-    CONF_PROVIDER_HEADERS,
-    "password",
-    "secret",
-    "token",
-    "x-api-key",
-}
-
-_MODEL_PROFILE_SENSITIVE_KEYS = _SENSITIVE_KEYS | {
-    CONF_CHAT_TEMPLATE_KWARGS,
-    "extra_body",
-}
-
-
-def _redact(data: dict[str, Any]) -> dict[str, Any]:
-    """Return diagnostics data with sensitive fields redacted."""
-    return redact_data(data, _SENSITIVE_KEYS)
-
-
-def _redact_subentry_data(subentry_type: str, data: dict[str, Any]) -> dict[str, Any]:
-    """Return redacted subentry data."""
-    if subentry_type == SUBENTRY_TYPE_SKILL:
-        return redact_data(
-            data,
-            _SENSITIVE_KEYS | {CONF_SKILL_CONTENT, CONF_SKILL_REFERENCES},
-        )
-    if subentry_type != SUBENTRY_TYPE_PROVIDER:
-        return redact_data(data, _SENSITIVE_KEYS)
-    redacted = dict(data)
-    raw_profiles = redacted.pop(CONF_MODEL_PROFILES, None)
-    redacted = redact_data(redacted, _SENSITIVE_KEYS)
-    if isinstance(raw_profiles, Mapping):
-        redacted[CONF_MODEL_PROFILES] = {
-            profile_id: redact_data(dict(profile), _MODEL_PROFILE_SENSITIVE_KEYS)
-            for profile_id, profile in raw_profiles.items()
-            if isinstance(profile_id, str) and isinstance(profile, Mapping)
-        }
-    return redacted
-
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
@@ -99,9 +56,8 @@ async def async_get_config_entry_diagnostics(
                 "subentry_id": subentry.subentry_id,
                 "subentry_type": subentry.subentry_type,
                 "title": subentry.title,
-                "data": _redact_subentry_data(
-                    subentry.subentry_type, dict(subentry.data)
-                ),
+                "data": dict(subentry.data),
+                "configuration_summary": _configuration_summary(subentry),
                 "model": subentry.data.get(CONF_MODEL),
                 "default_model_profile_id": subentry.data.get(
                     CONF_DEFAULT_MODEL_PROFILE_ID
@@ -133,7 +89,7 @@ async def async_get_config_entry_diagnostics(
             **_runtime_diagnostics(entry),
         },
     }
-    return _redact(diagnostics)
+    return bound_diagnostics_data(diagnostics)
 
 
 async def async_get_device_diagnostics(
@@ -152,9 +108,8 @@ async def async_get_device_diagnostics(
                     "subentry_id": subentry.subentry_id,
                     "subentry_type": subentry.subentry_type,
                     "title": subentry.title,
-                    "data": _redact_subentry_data(
-                        subentry.subentry_type, dict(subentry.data)
-                    ),
+                    "data": dict(subentry.data),
+                    "configuration_summary": _configuration_summary(subentry),
                     "model": subentry.data.get(CONF_MODEL),
                     "default_model_profile_id": subentry.data.get(
                         CONF_DEFAULT_MODEL_PROFILE_ID
@@ -176,16 +131,9 @@ async def async_get_device_diagnostics(
         },
         "device": {"subentry_id": subentry_id},
         "subentries": subentries,
-        "runtime": {
-            "loaded": hasattr(entry, "runtime_data"),
-            "metrics": _runtime_metrics(entry, subentry_id),
-        },
+        "runtime": {"loaded": hasattr(entry, "runtime_data")},
     }
-    if stream_trace := _runtime_stream_trace(entry, subentry_id):
-        diagnostics["runtime"]["latest_stream_trace"] = _without_stream_previews(
-            stream_trace
-        )
-    return _redact(diagnostics)
+    return bound_diagnostics_data(diagnostics)
 
 
 def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
@@ -206,42 +154,71 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
         },
         "home_semantic_index": semantic_manager_diagnostics(runtime_data.home_semantic),
     }
+    if runtime_data.latest_run_diagnostics:
+        diagnostics["latest_run_diagnostics"] = runtime_data.latest_run_diagnostics
     if runtime_data.latest_stream_traces:
-        diagnostics["latest_stream_traces"] = _without_stream_previews(
-            runtime_data.latest_stream_traces
-        )
+        diagnostics["latest_stream_traces"] = runtime_data.latest_stream_traces
     return diagnostics
 
 
-def _runtime_metrics(entry: ConfigEntry, subentry_id: str | None) -> dict[str, Any]:
-    """Return safe runtime metrics for one subentry."""
-    runtime_data = getattr(entry, "runtime_data", None)
-    if runtime_data is None or subentry_id is None:
-        return {}
-    return asdict(runtime_data.metrics.record_for(subentry_id))
-
-
-def _runtime_stream_trace(
-    entry: ConfigEntry, subentry_id: str | None
-) -> dict[str, Any] | None:
-    """Return the latest diagnostics-safe stream trace for one subentry."""
-    runtime_data = getattr(entry, "runtime_data", None)
-    if runtime_data is None or subentry_id is None:
-        return None
-    return runtime_data.latest_stream_traces.get(subentry_id)
-
-
-def _without_stream_previews(value: Any) -> Any:
-    """Return diagnostics data with debug-only stream previews removed."""
-    if isinstance(value, Mapping):
-        return {
-            key: _without_stream_previews(item)
-            for key, item in value.items()
-            if not str(key).endswith("_preview")
-        }
-    if isinstance(value, list):
-        return [_without_stream_previews(item) for item in value]
-    return value
+def _configuration_summary(subentry: Any) -> dict[str, Any]:
+    """Return a compact, unredacted configuration summary for one subentry."""
+    data = subentry.data
+    summary: dict[str, Any] = {
+        "subentry_type": subentry.subentry_type,
+    }
+    if subentry.subentry_type in {SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK}:
+        mcp_server_ids = data.get(CONF_MCP_SERVER_IDS)
+        skill_ids = data.get(CONF_SKILLS)
+        fallback_refs = data.get(CONF_FALLBACK_MODEL_REFS)
+        summary.update(
+            {
+                "name": data.get(CONF_AGENT_NAME, data.get(CONF_AI_TASK_NAME)),
+                CONF_PRIMARY_MODEL_REF: data.get(CONF_PRIMARY_MODEL_REF),
+                "fallback_model_profile_count": len(fallback_refs)
+                if isinstance(fallback_refs, list)
+                else 0,
+                "mcp_server_count": len(mcp_server_ids)
+                if isinstance(mcp_server_ids, list)
+                else 0,
+                "skill_count": len(skill_ids) if isinstance(skill_ids, list) else 0,
+                CONF_LLM_HASS_API: data.get(CONF_LLM_HASS_API),
+                CONF_WEB_FETCH_ENABLED: bool(data.get(CONF_WEB_FETCH_ENABLED, False)),
+                CONF_VIRTUAL_WORKSPACE_ENABLED: bool(
+                    data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)
+                ),
+            }
+        )
+        if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK:
+            summary[CONF_OUTPUT_MODE] = data.get(CONF_OUTPUT_MODE)
+            summary["todo_workspace_enabled"] = bool(data.get(CONF_TODO_LIST_ENTITY_ID))
+    elif subentry.subentry_type == SUBENTRY_TYPE_PROVIDER:
+        model_profiles = data.get(CONF_MODEL_PROFILES)
+        summary.update(
+            {
+                "default_model_profile_id": data.get(CONF_DEFAULT_MODEL_PROFILE_ID),
+                "model_profile_count": len(model_profiles)
+                if isinstance(model_profiles, Mapping)
+                else 0,
+            }
+        )
+    elif subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER:
+        summary.update(
+            {
+                "mcp_url": data.get(CONF_MCP_URL),
+                "has_mcp_headers": bool(data.get(CONF_MCP_HEADERS)),
+            }
+        )
+    elif subentry.subentry_type == SUBENTRY_TYPE_SKILL:
+        summary.update(
+            {
+                "has_skill_content": bool(data.get(CONF_SKILL_CONTENT)),
+                "skill_reference_count": len(references)
+                if isinstance((references := data.get(CONF_SKILL_REFERENCES)), list)
+                else 0,
+            }
+        )
+    return summary
 
 
 def _device_subentry_id(device: dr.DeviceEntry) -> str | None:

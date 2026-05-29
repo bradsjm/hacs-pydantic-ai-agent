@@ -40,7 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 _TRACE_MAX_ITEMS = 200
 _TRACE_HEAD_ITEMS = 100
 _TRACE_TAIL_ITEMS = _TRACE_MAX_ITEMS - _TRACE_HEAD_ITEMS
-_TRACE_PREVIEW_CHARS = 120
+_TRACE_PREVIEW_CHARS = 4096
 
 
 async def _append_agent_messages(
@@ -255,6 +255,7 @@ class _StreamTraceRecorder:
     """Collect a bounded, JSON-safe summary of one Pydantic AI stream."""
 
     include_previews: bool = False
+    run_recorder: Any | None = None
     events_total: int = 0
     chat_deltas_total: int = 0
     events: list[dict[str, Any]] = field(default_factory=list)
@@ -277,6 +278,14 @@ class _StreamTraceRecorder:
             self.events.append(summary)
         else:
             self.events_tail.append(summary)
+        if self.run_recorder is not None:
+            diagnostics_summary = _stream_event_summary(event, True)
+            self.run_recorder.record(
+                phase="llm_stream",
+                source="provider",
+                event=diagnostics_summary["event_type"],
+                data={"summary": diagnostics_summary},
+            )
 
     def record_chat_delta(self, delta: Mapping[str, Any]) -> None:
         """Record one Home Assistant ChatLog delta summary."""
@@ -289,6 +298,14 @@ class _StreamTraceRecorder:
             self.chat_deltas.append(summary)
         else:
             self.chat_deltas_tail.append(summary)
+        if self.run_recorder is not None:
+            diagnostics_summary = _chat_delta_summary(delta, True)
+            self.run_recorder.record(
+                phase="chat_delta",
+                source="home_assistant",
+                event="delta_emitted",
+                data={"summary": diagnostics_summary},
+            )
 
     def payload(
         self,

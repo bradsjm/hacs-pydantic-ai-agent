@@ -16,6 +16,7 @@ class AgentRunOutcome:
     duration: float
     model_profile: str
     model_pricing: dict[str, float]
+    run_recorder: Any | None = None
 
 
 @dataclass

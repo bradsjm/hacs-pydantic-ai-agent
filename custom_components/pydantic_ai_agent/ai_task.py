@@ -159,16 +159,63 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                 data = task.structure(data)
             except json.JSONDecodeError as err:
                 self._record_agent_run_failure(err)
+                if isinstance(outcome, AgentRunOutcome) and outcome.run_recorder:
+                    outcome.run_recorder.record(
+                        phase="output_validation",
+                        event="json_decode_failed",
+                        data={"error": err, "content": last_content.content},
+                    )
+                    self._store_run_diagnostics(
+                        outcome.run_recorder,
+                        status="failed",
+                        summary={
+                            "error": err,
+                            "model_profile": outcome.model_profile,
+                            "output": outcome.output,
+                        },
+                    )
                 raise HomeAssistantError(
                     "Provider returned malformed structured data"
                 ) from err
             except vol.Invalid as err:
                 self._record_agent_run_failure(err)
+                if isinstance(outcome, AgentRunOutcome) and outcome.run_recorder:
+                    outcome.run_recorder.record(
+                        phase="output_validation",
+                        event="schema_validation_failed",
+                        data={"error": err, "content": last_content.content},
+                    )
+                    self._store_run_diagnostics(
+                        outcome.run_recorder,
+                        status="failed",
+                        summary={
+                            "error": err,
+                            "model_profile": outcome.model_profile,
+                            "output": outcome.output,
+                        },
+                    )
                 raise HomeAssistantError(
                     "Provider returned structured data that does not match the schema"
                 ) from err
             if not isinstance(outcome, AgentRunOutcome):
                 raise HomeAssistantError("Provider did not return run metrics")
+            if outcome.run_recorder is not None:
+                outcome.run_recorder.record(
+                    phase="output_validation",
+                    event="structured_output_validated",
+                    data={"validated_data": data},
+                )
+                self._store_run_diagnostics(
+                    outcome.run_recorder,
+                    status="success",
+                    summary={
+                        "output": outcome.output,
+                        "validated_data": data,
+                        "usage": outcome.usage,
+                        "model_profile": outcome.model_profile,
+                        "duration": outcome.duration,
+                    },
+                )
             self._record_agent_run_success(outcome)
             fire_integration_event(
                 self.hass,

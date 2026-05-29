@@ -32,13 +32,25 @@ def tool_definitions_from_llm_api(
 
 def tools_from_llm_api(api_instance: llm.APIInstance | None) -> list[Tool[Any]]:
     """Convert Home Assistant LLM tools into executable Pydantic AI tools."""
+    return tools_from_llm_api_with_diagnostics(api_instance, None)
+
+
+def tools_from_llm_api_with_diagnostics(
+    api_instance: llm.APIInstance | None, run_recorder: Any | None
+) -> list[Tool[Any]]:
+    """Convert Home Assistant LLM tools and record execution diagnostics."""
     if api_instance is None:
         return []
 
-    return [_tool_from_ha_tool(api_instance, tool) for tool in api_instance.tools]
+    return [
+        _tool_from_ha_tool(api_instance, tool, run_recorder)
+        for tool in api_instance.tools
+    ]
 
 
-def _tool_from_ha_tool(api_instance: llm.APIInstance, tool: llm.Tool) -> Tool[Any]:
+def _tool_from_ha_tool(
+    api_instance: llm.APIInstance, tool: llm.Tool, run_recorder: Any | None
+) -> Tool[Any]:
     """Return one executable Pydantic AI tool backed by an HA LLM API tool."""
     parameters_json_schema = convert(
         tool.parameters,
@@ -47,13 +59,37 @@ def _tool_from_ha_tool(api_instance: llm.APIInstance, tool: llm.Tool) -> Tool[An
 
     async def execute(ctx: RunContext[Any], **tool_args: Any) -> Any:
         """Execute the Home Assistant LLM tool with model-provided arguments."""
-        return await api_instance.async_call_tool(
-            llm.ToolInput(
-                id=ctx.tool_call_id or "",
-                tool_name=tool.name,
-                tool_args=dict(tool_args),
-            )
+        tool_input = llm.ToolInput(
+            id=ctx.tool_call_id or "",
+            tool_name=tool.name,
+            tool_args=dict(tool_args),
         )
+        if run_recorder is not None:
+            run_recorder.record(
+                phase="tool_call",
+                source="ha_llm_api",
+                event="call_started",
+                data={"tool_name": tool.name, "tool_input": tool_input},
+            )
+        try:
+            result = await api_instance.async_call_tool(tool_input)
+        except Exception as err:
+            if run_recorder is not None:
+                run_recorder.record(
+                    phase="tool_call",
+                    source="ha_llm_api",
+                    event="call_failed",
+                    data={"tool_name": tool.name, "error": err},
+                )
+            raise
+        if run_recorder is not None:
+            run_recorder.record(
+                phase="tool_call",
+                source="ha_llm_api",
+                event="call_finished",
+                data={"tool_name": tool.name, "result": result},
+            )
+        return result
 
     return Tool.from_schema(
         execute,

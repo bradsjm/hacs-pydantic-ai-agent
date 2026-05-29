@@ -11,7 +11,6 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.redact import REDACTED
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent import (
@@ -59,11 +58,11 @@ _MODEL_PROFILE_ID = "profile-1"
 _MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
 
 
-async def test_diagnostics_redacts_sensitive_config_entry_data(
+async def test_diagnostics_returns_unredacted_bounded_config_entry_data(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test diagnostics redact credentials, prompts, and sensitive headers."""
+    """Test diagnostics keep owner-requested values visible."""
     monkeypatch.setitem(
         sys.modules,
         "logfire",
@@ -160,29 +159,60 @@ async def test_diagnostics_redacts_sensitive_config_entry_data(
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
-    assert diagnostics["entry"]["data"][CONF_LOGFIRE_TOKEN] == REDACTED
+    assert diagnostics["entry"]["data"][CONF_LOGFIRE_TOKEN] == "lf-secret"
     assert diagnostics["entry"]["logfire_enabled"] is True
     assert diagnostics["entry"]["logfire_include_content"] is True
     subentry_data = diagnostics["subentries"][0]["data"]
-    assert subentry_data[CONF_PROMPT] == REDACTED
+    assert subentry_data[CONF_PROMPT] == "Private system prompt"
     assert diagnostics["subentries"][0]["ha_tools_enabled"] is True
+    assert diagnostics["subentries"][0]["configuration_summary"] == {
+        "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+        "name": "Kitchen Agent",
+        CONF_PRIMARY_MODEL_REF: _MODEL_PROFILE_REF,
+        "fallback_model_profile_count": 0,
+        "mcp_server_count": 0,
+        "skill_count": 0,
+        CONF_LLM_HASS_API: ["assist"],
+        "web_fetch_enabled": False,
+        "virtual_workspace_enabled": False,
+    }
     provider_data = diagnostics["subentries"][1]["data"]
-    assert provider_data[CONF_API_KEY] == REDACTED
-    assert provider_data[CONF_PROVIDER_HEADERS] == REDACTED
-    assert provider_data[CONF_PROVIDER_EXTRA_BODY] == REDACTED
+    assert provider_data[CONF_API_KEY] == "sk-secret"
+    assert provider_data[CONF_PROVIDER_HEADERS] == {
+        "Authorization": "Bearer provider-secret"
+    }
+    assert provider_data[CONF_PROVIDER_EXTRA_BODY] == {
+        "api_key": "provider-body-secret"
+    }
     assert provider_data[CONF_BASE_URL] == "http://localhost:11434/v1"
     model_data = provider_data[CONF_MODEL_PROFILES][_MODEL_PROFILE_ID]
     assert model_data[CONF_MODEL_SETTINGS]["max_tokens"] == 500
-    assert model_data[CONF_MODEL_SETTINGS]["extra_headers"] == REDACTED
-    assert model_data[CONF_MODEL_SETTINGS][CONF_CHAT_TEMPLATE_KWARGS] == REDACTED
-    assert model_data[CONF_MODEL_SETTINGS]["extra_body"] == REDACTED
+    assert model_data[CONF_MODEL_SETTINGS]["extra_headers"] == {
+        "Authorization": "Bearer secret"
+    }
+    assert model_data[CONF_MODEL_SETTINGS][CONF_CHAT_TEMPLATE_KWARGS] == [
+        {
+            CONF_CHAT_TEMPLATE_KWARG_KEY: "secret_arg",
+            CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ states('sensor.secret') }}",
+        }
+    ]
+    assert model_data[CONF_MODEL_SETTINGS]["extra_body"] == {
+        "api_key": "nested-secret"
+    }
     mcp_data = diagnostics["subentries"][2]["data"]
-    assert mcp_data[CONF_MCP_URL] == REDACTED
-    assert mcp_data[CONF_MCP_HEADERS] == REDACTED
+    assert mcp_data[CONF_MCP_URL] == (
+        "https://user:pass@mcp.example.com/mcp?token=visible"
+    )
+    assert mcp_data[CONF_MCP_HEADERS] == {
+        "Authorization": "Bearer mcp-secret",
+        "X-API-Key": "nested-secret",
+    }
     skill_data = diagnostics["subentries"][3]["data"]
     assert skill_data[CONF_NAME] == "Kitchen Skill"
-    assert skill_data[CONF_SKILL_CONTENT] == REDACTED
-    assert skill_data[CONF_SKILL_REFERENCES] == REDACTED
+    assert skill_data[CONF_SKILL_CONTENT] == "Private skill body"
+    assert skill_data[CONF_SKILL_REFERENCES] == [
+        {"title": "Secret Reference", "content": "secret reference"}
+    ]
 
 
 async def test_diagnostics_exposes_safe_runtime_mcp_counts(
@@ -238,10 +268,47 @@ async def test_diagnostics_exposes_safe_runtime_mcp_counts(
     assert "secret_tool" not in str(diagnostics["runtime"])
 
 
+async def test_diagnostics_bounds_large_values(hass: HomeAssistant) -> None:
+    """Test diagnostics bound large values without redacting them."""
+    entry = MockConfigEntry(
+        version=2,
+        minor_version=0,
+        domain=DOMAIN,
+        title="Workspace",
+        data={
+            CONF_NAME: "Workspace",
+            "large_secret_text": f"start-{'x' * 9000}-end",
+            "large_list": list(range(250)),
+            "large_mapping": {f"key_{index:03d}": index for index in range(125)},
+        },
+        source=config_entries.SOURCE_USER,
+        unique_id=None,
+    )
+    entry.add_to_hass(hass)
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    bounded_text = diagnostics["entry"]["data"]["large_secret_text"]
+    assert bounded_text["__diagnostics_bounded__"] == "string"
+    assert bounded_text["head"].startswith("start-")
+    assert bounded_text["tail"].endswith("-end")
+    assert bounded_text["omitted_chars"] > 0
+    bounded_list = diagnostics["entry"]["data"]["large_list"]
+    assert bounded_list["__diagnostics_bounded__"] == "sequence"
+    assert bounded_list["total_count"] == 250
+    assert bounded_list["head"][0] == 0
+    assert bounded_list["tail"][-1] == 249
+    bounded_mapping = diagnostics["entry"]["data"]["large_mapping"]
+    assert bounded_mapping["__diagnostics_bounded__"] == "mapping"
+    assert bounded_mapping["total_count"] == 125
+    assert bounded_mapping["head"]["key_000"] == 0
+    assert bounded_mapping["tail"]["key_124"] == 124
+
+
 async def test_device_diagnostics_filters_to_matching_subentry(
     hass: HomeAssistant,
 ) -> None:
-    """Test device diagnostics include only matching subentry and metrics."""
+    """Test device diagnostics include only matching configuration data."""
     entry = MockConfigEntry(
         version=2,
         minor_version=0,
@@ -335,12 +402,10 @@ async def test_device_diagnostics_filters_to_matching_subentry(
     diagnostics = await async_get_device_diagnostics(hass, entry, device)
 
     assert [item["subentry_id"] for item in diagnostics["subentries"]] == [matching_id]
-    assert diagnostics["subentries"][0]["data"][CONF_PROMPT] == REDACTED
-    assert (
-        diagnostics["runtime"]["metrics"]["last_run_model_profile"] == "Kitchen Model"
+    assert diagnostics["subentries"][0]["data"][CONF_PROMPT] == (
+        "Private system prompt"
     )
-    assert diagnostics["runtime"]["metrics"]["last_run_total_tokens"] == 12
-    assert diagnostics["runtime"]["latest_stream_trace"]["events_total"] == 1
-    assert "debug_preview" not in json.dumps(
-        diagnostics["runtime"]["latest_stream_trace"]
-    )
+    assert diagnostics["runtime"] == {"loaded": True}
+    assert "latest_stream_trace" not in diagnostics["runtime"]
+    assert "metrics" not in diagnostics["runtime"]
+    assert "debug_preview" not in json.dumps(diagnostics)

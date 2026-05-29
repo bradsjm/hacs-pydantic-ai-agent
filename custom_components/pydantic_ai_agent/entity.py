@@ -1,6 +1,6 @@
 """Shared Pydantic AI entity runtime."""
 
-from collections.abc import AsyncIterable, Sequence
+from collections.abc import AsyncIterable, Mapping, Sequence
 import logging
 from typing import Any, cast
 
@@ -34,10 +34,12 @@ from .chat_deltas import (
     _append_text,
     _json_output,
     _StreamTraceRecorder,
-    _stream_trace_without_previews,
 )
 from .context_management import SlidingWindowContextCapability
-from .ha_toolset import tool_definitions_from_llm_api, tools_from_llm_api
+from .ha_toolset import (
+    tool_definitions_from_llm_api,
+    tools_from_llm_api_with_diagnostics,
+)
 from .history import chat_log_content_to_model_messages, split_last_user_prompt
 from .logfire_support import agent_run_span, instrument_agent
 from .metrics import (
@@ -71,6 +73,7 @@ from .run_failures import (
     _should_fallback,
 )
 from .run_state import AgentRunOutcome, _StreamRunState
+from .run_diagnostics import RunDiagnosticsRecorder
 from .skills import async_skills_capabilities
 from .structured_output import (
     default_structure_serializer,
@@ -140,6 +143,21 @@ class PydanticAIBaseLLMEntity:
         agent_id = getattr(self, "entity_id", None) or getattr(self, "unique_id", None)
         if agent_id is None:
             raise HomeAssistantError("Entity is not ready")
+        run_recorder = RunDiagnosticsRecorder(
+            subentry_id=self.subentry.subentry_id,
+            subentry_type=self.subentry.subentry_type,
+            conversation_id=chat_log.conversation_id,
+        )
+        run_recorder.record(
+            phase="run",
+            event="run_started",
+            data={
+                "agent_id": agent_id,
+                "subentry_title": self.subentry.title,
+                "stream": stream,
+                "record_success": record_success,
+            },
+        )
 
         output_mode = structured_output_mode(self.subentry.data.get(CONF_OUTPUT_MODE))
         output_name = self._structured_output_name(chat_log.llm_api, structure_name)
@@ -158,6 +176,16 @@ class PydanticAIBaseLLMEntity:
 
         messages = await chat_log_content_to_model_messages(self.hass, chat_log.content)
         user_prompt, message_history = split_last_user_prompt(messages)
+        run_recorder.record(
+            phase="input",
+            event="messages_prepared",
+            data={
+                "user_prompt": user_prompt,
+                "message_history": message_history,
+                "chat_log_content": chat_log.content,
+                "llm_tool_definitions": tool_definitions_from_llm_api(chat_log.llm_api),
+            },
+        )
         capabilities: list[AbstractCapability] = [
             *await async_skills_capabilities(
                 self.hass,
@@ -209,6 +237,23 @@ class PydanticAIBaseLLMEntity:
                     run_capabilities.append(ToolSearch(strategy="keywords"))
                 if thinking := thinking_capability(self.subentry.data):
                     run_capabilities.append(thinking)
+                run_recorder.record(
+                    phase="attempt",
+                    event="model_profile_attempt_started",
+                    data={
+                        "attempt_index": index,
+                        "model_profile": profile,
+                        "model_settings": settings,
+                        "usage_limits": usage_limits,
+                        "mcp_toolset_count": len(mcp_toolsets),
+                        "extra_toolset_count": len(extra_toolsets),
+                        "virtual_workspace_enabled": use_virtual_workspace,
+                        "capability_types": [
+                            type(capability).__name__
+                            for capability in run_capabilities
+                        ],
+                    },
+                )
                 agent = Agent(
                     chat_model_for_profile(self.hass, self.entry, profile),
                     output_type=cast(Any, agent_output_type),
@@ -216,7 +261,9 @@ class PydanticAIBaseLLMEntity:
                     model_settings=settings,
                     tool_retries=0,
                     output_retries=2,
-                    tools=tools_from_llm_api(chat_log.llm_api),
+                    tools=tools_from_llm_api_with_diagnostics(
+                        chat_log.llm_api, run_recorder
+                    ),
                     toolsets=toolsets,
                     max_concurrency=1,
                     capabilities=run_capabilities,
@@ -234,9 +281,20 @@ class PydanticAIBaseLLMEntity:
                     structured_output_tool_names,
                     structure is not None,
                     stream,
+                    run_recorder,
                 )
                 if record_success:
                     self._record_agent_run_success(outcome, agent_id)
+                    self._store_run_diagnostics(
+                        run_recorder,
+                        status="success",
+                        summary={
+                            "output": outcome.output,
+                            "usage": outcome.usage,
+                            "model_profile": outcome.model_profile,
+                            "duration": outcome.duration,
+                        },
+                    )
                     return outcome.output
                 return outcome
             except Exception as err:
@@ -251,9 +309,36 @@ class PydanticAIBaseLLMEntity:
                         model_profile=profile.title,
                         failure=failure,
                     )
+                    run_recorder.record(
+                        phase="failure",
+                        event="run_failed",
+                        data={
+                            "error": err,
+                            "failure": failure,
+                            "model_profile": profile.title,
+                        },
+                    )
+                    self._store_run_diagnostics(
+                        run_recorder,
+                        status="failed",
+                        summary={
+                            "error": err,
+                            "failure": failure,
+                            "model_profile": profile.title,
+                        },
+                    )
                     raise _AgentRunFailed(failure) from err
                 errors.append(err)
                 failure = _classify_run_failure(err, usage_limits=usage_limits)
+                run_recorder.record(
+                    phase="attempt",
+                    event="model_profile_attempt_failed_retrying",
+                    data={
+                        "error": err,
+                        "failure": failure,
+                        "model_profile": profile.title,
+                    },
+                )
                 _LOGGER.warning(
                     'Model profile "%s" failed with retryable %s; trying fallback: %s',
                     profile.title,
@@ -278,6 +363,7 @@ class PydanticAIBaseLLMEntity:
         structured_output_tool_names: set[str],
         has_structure: bool,
         stream: bool,
+        run_recorder: RunDiagnosticsRecorder,
     ) -> AgentRunOutcome:
         """Run one model profile attempt and append only successful messages."""
         try:
@@ -291,6 +377,19 @@ class PydanticAIBaseLLMEntity:
                     model_name=profile.model_name,
                 ) as span:
                     start = self.hass.loop.time()
+                    run_recorder.record(
+                        phase="llm_request",
+                        source="provider",
+                        event="request_started",
+                        data={
+                            "model_profile": profile,
+                            "model_settings": settings,
+                            "user_prompt": user_prompt,
+                            "message_history": message_history,
+                            "stream": stream and not has_structure,
+                            "has_structure": has_structure,
+                        },
+                    )
                     if stream and not has_structure:
                         result = await self._async_run_agent_streaming(
                             agent,
@@ -301,16 +400,29 @@ class PydanticAIBaseLLMEntity:
                             chat_log,
                             agent_id,
                             structured_output_tool_names,
+                            run_recorder,
                         )
                         if span is not None:
                             _set_span_usage_attributes(span, result)
                         duration = self.hass.loop.time() - start
+                        run_recorder.record(
+                            phase="llm_response",
+                            source="provider",
+                            event="stream_finished",
+                            data={
+                                "new_messages": result.new_messages(),
+                                "output": result.output,
+                                "usage": result.usage,
+                                "duration": duration,
+                            },
+                        )
                         return AgentRunOutcome(
                             output=result.output,
                             usage=result.usage,
                             duration=duration,
                             model_profile=profile.title,
                             model_pricing=profile.model_pricing,
+                            run_recorder=run_recorder,
                         )
 
                     if not has_structure:
@@ -326,12 +438,24 @@ class PydanticAIBaseLLMEntity:
                         await _append_agent_messages(
                             chat_log, agent_id, result.new_messages()
                         )
+                        run_recorder.record(
+                            phase="llm_response",
+                            source="provider",
+                            event="run_finished",
+                            data={
+                                "new_messages": result.new_messages(),
+                                "output": result.output,
+                                "usage": result.usage,
+                                "duration": duration,
+                            },
+                        )
                         return AgentRunOutcome(
                             output=result.output,
                             usage=result.usage,
                             duration=duration,
                             model_profile=profile.title,
                             model_pricing=profile.model_pricing,
+                            run_recorder=run_recorder,
                         )
 
                     result = await agent.run(
@@ -354,12 +478,27 @@ class PydanticAIBaseLLMEntity:
                         chat_log.content[-1], conversation.AssistantContent
                     ):
                         await _append_text(chat_log, agent_id, _json_output(output))
+                    run_recorder.record(
+                        phase="llm_response",
+                        source="provider",
+                        event="structured_run_finished",
+                        data={
+                            "new_messages": result.new_messages(),
+                            "output": output,
+                            "usage": result.usage,
+                            "duration": duration,
+                            "final_chat_content": chat_log.content[-1]
+                            if chat_log.content
+                            else None,
+                        },
+                    )
                     return AgentRunOutcome(
                         output=output,
                         usage=result.usage,
                         duration=duration,
                         model_profile=profile.title,
                         model_pricing=profile.model_pricing,
+                        run_recorder=run_recorder,
                     )
         except Exception:
             _LOGGER.debug("Model profile attempt failed: %s", profile.title)
@@ -375,11 +514,13 @@ class PydanticAIBaseLLMEntity:
         chat_log: conversation.ChatLog,
         agent_id: str,
         structured_output_tool_names: set[str],
+        run_recorder: RunDiagnosticsRecorder,
     ) -> Any:
         """Run one Agent attempt and stream live deltas into the HA ChatLog."""
         state = _StreamRunState()
         trace_recorder = _StreamTraceRecorder(
-            include_previews=_LOGGER.isEnabledFor(logging.DEBUG)
+            include_previews=_LOGGER.isEnabledFor(logging.DEBUG),
+            run_recorder=run_recorder,
         )
         try:
             async with agent.run_stream_events(
@@ -419,6 +560,15 @@ class PydanticAIBaseLLMEntity:
             agent_id,
             final_messages,
         )
+        run_recorder.record(
+            phase="output",
+            event="final_text_reconciled",
+            data={
+                "final_messages": final_messages,
+                "backfill": backfill,
+                "final_chat_content": chat_log.content[-1] if chat_log.content else None,
+            },
+        )
         trace_payload = trace_recorder.payload(
             final_messages=final_messages,
             backfill=backfill,
@@ -426,7 +576,7 @@ class PydanticAIBaseLLMEntity:
         )
         chat_log.async_trace({"pydantic_ai_stream": trace_payload})
         self.entry.runtime_data.latest_stream_traces[self.subentry.subentry_id] = (
-            _stream_trace_without_previews(trace_payload)
+            trace_payload
         )
         return state.result
 
@@ -456,6 +606,18 @@ class PydanticAIBaseLLMEntity:
                 "entity_id": entity_id,
                 "model_profile": outcome.model_profile,
             },
+        )
+
+    def _store_run_diagnostics(
+        self,
+        recorder: RunDiagnosticsRecorder,
+        *,
+        status: str,
+        summary: Mapping[str, Any],
+    ) -> None:
+        """Store latest bounded last-run diagnostics for this subentry."""
+        self.entry.runtime_data.latest_run_diagnostics[self.subentry.subentry_id] = (
+            recorder.payload(status=status, summary=summary)
         )
 
     def _record_agent_run_failure(

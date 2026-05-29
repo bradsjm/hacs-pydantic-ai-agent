@@ -992,10 +992,31 @@ async def test_streaming_records_safe_trace_payload(
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
     diagnostic_trace = diagnostics["runtime"]["latest_stream_traces"][subentry_id]
     assert diagnostic_trace["events_total"] == 3
-    diagnostic_trace_json = json.dumps(diagnostic_trace)
-    assert "content_delta_preview" not in diagnostic_trace_json
-    assert "content_preview" not in diagnostic_trace_json
-    assert "thinking_content_preview" not in diagnostic_trace_json
+    run_diagnostics = diagnostics["runtime"]["latest_run_diagnostics"][subentry_id]
+    assert run_diagnostics["status"] == "success"
+    assert run_diagnostics["subentry_id"] == subentry_id
+    assert run_diagnostics["timeline_event_count"] >= 4
+    timeline = run_diagnostics["timeline"]
+    assert [event["seq"] for event in timeline] == list(range(1, len(timeline) + 1))
+    assert all("timestamp" in event for event in timeline)
+    assert all("elapsed_ms" in event for event in timeline)
+    assert all("delta_ms" in event for event in timeline)
+    assert {event["phase"] for event in timeline} >= {
+        "run",
+        "input",
+        "llm_request",
+        "llm_stream",
+        "output",
+        "llm_response",
+    }
+    assert any(
+        event["phase"] == "llm_stream"
+        and event["data"]["summary"].get("delta", {}).get(
+            "content_delta_preview"
+        )
+        == "thinking about greeting"
+        for event in timeline
+    )
 
 
 def test_stream_trace_recorder_keeps_tail_for_long_streams() -> None:
