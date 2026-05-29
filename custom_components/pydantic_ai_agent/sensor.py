@@ -24,12 +24,13 @@ from .const import (
     CONF_AI_TASK_NAME,
     CONF_MCP_SERVER_IDS,
     CONF_OUTPUT_MODE,
+    CONF_SKILLS,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
-from .metrics import AgentRunMetrics, metric_value, metrics_signal
 from .entity import device_identifier_for_subentry, unique_id_for_subentry_entity
+from .metrics import AgentRunMetrics, metric_value, metrics_signal
 from .model_profiles import ModelProfile, primary_model_profile
 from .structured_output import structured_output_mode
 
@@ -188,6 +189,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
         value_fn=lambda record: metric_value(record, "cumulative_total_tokens"),
     ),
     PydanticAIMetricSensorDescription(
@@ -232,6 +234,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL,
         suggested_display_precision=6,
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
         value_fn=lambda record: metric_value(record, "cumulative_total_cost"),
     ),
     PydanticAIMetricSensorDescription(
@@ -249,6 +252,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
         name="Last error type",
         icon="mdi:alert-circle-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
         value_fn=lambda record: metric_value(record, "last_error_type"),
     ),
     PydanticAIMetricSensorDescription(
@@ -257,6 +261,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
         icon="mdi:alert-circle-outline",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
         value_fn=lambda record: metric_value(record, "consecutive_failures"),
     ),
 )
@@ -276,15 +281,26 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
         icon="mdi:server-network-outline",
         native_unit_of_measurement="servers",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=True,
         value_fn=lambda _entry, subentry: len(
             subentry.data.get(CONF_MCP_SERVER_IDS, [])
         ),
+    ),
+    PydanticAIConfigSensorDescription(
+        key="skills_enabled",
+        name="Skills enabled",
+        icon="mdi:school-outline",
+        native_unit_of_measurement="skills",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=True,
+        value_fn=lambda _entry, subentry: len(subentry.data.get(CONF_SKILLS, [])),
     ),
     PydanticAIConfigSensorDescription(
         key="structured_output_mode",
         name="Structured output mode",
         icon="mdi:code-json",
         subentry_types=(SUBENTRY_TYPE_AI_TASK,),
+        entity_registry_enabled_default=True,
         value_fn=lambda _entry, subentry: structured_output_mode(
             subentry.data.get(CONF_OUTPUT_MODE)
         ),
@@ -334,6 +350,9 @@ class PydanticAIMetricSensor(SensorEntity):
         self.entry = entry
         self.subentry = subentry
         self.entity_description = description
+        self._attr_entity_registry_enabled_default = (
+            description.entity_registry_enabled_default
+        )
         profile = primary_model_profile(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry_entity(
             entry, subentry, description.key
@@ -385,6 +404,9 @@ class PydanticAIConfigSensor(SensorEntity):
         self.entry = entry
         self.subentry = subentry
         self.entity_description = description
+        self._attr_entity_registry_enabled_default = (
+            description.entity_registry_enabled_default
+        )
         profile = primary_model_profile(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry_entity(
             entry, subentry, description.key

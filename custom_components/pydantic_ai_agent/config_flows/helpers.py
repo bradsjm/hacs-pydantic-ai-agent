@@ -7,6 +7,21 @@ import voluptuous as vol
 
 from homeassistant.helpers.typing import VolDictType
 
+from homeassistant.helpers.selector import SelectOptionDict
+
+
+def _sorted_select_options(
+    options: Iterable[SelectOptionDict],
+) -> list[SelectOptionDict]:
+    """Return selector options sorted by label, then value."""
+    return sorted(
+        options,
+        key=lambda option: (
+            str(option.get("label", "")).casefold(),
+            str(option.get("value", "")).casefold(),
+        ),
+    )
+
 
 def _flatten_section_data(
     data: Mapping[str, Any], section_keys: Iterable[str]

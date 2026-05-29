@@ -25,6 +25,7 @@ from ..const import (
     DEFAULT_SKILL_NAME,
     SUBENTRY_TYPE_SKILL,
 )
+from .helpers import _sorted_select_options
 
 _SKILL_NAME_MAX_LENGTH = 80
 _SKILL_DESCRIPTION_MAX_LENGTH = 500
@@ -67,11 +68,13 @@ def _skill_select_options(
     """Return workspace Skill subentries as select options."""
     if entry is None:
         return []
-    options = [
-        SelectOptionDict(label=subentry.title, value=subentry.subentry_id)
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == SUBENTRY_TYPE_SKILL
-    ]
+    options = _sorted_select_options(
+        [
+            SelectOptionDict(label=subentry.title, value=subentry.subentry_id)
+            for subentry in entry.subentries.values()
+            if subentry.subentry_type == SUBENTRY_TYPE_SKILL
+        ]
+    )
     configured_ids = {str(option["value"]) for option in options if "value" in option}
     for skill_id in _normalise_selected_skill_ids(selected_skill_ids):
         if skill_id not in configured_ids:

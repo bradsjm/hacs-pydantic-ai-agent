@@ -522,11 +522,15 @@ async def test_conversation_entity_id_dispatches_assist_agent(
     ]
 
 
-async def test_diagnostic_entities_are_disabled_by_default(
+async def test_diagnostic_entity_defaults_are_respected(
     hass: HomeAssistant,
 ) -> None:
-    """Test per-agent diagnostic entities are registry-disabled by default."""
-    entry = _entry(None)
+    """Test per-agent diagnostic entity registry defaults are respected."""
+    entry = _entry(
+        None,
+        skills=["skill-1", "skill-2"],
+        virtual_workspace_enabled=True,
+    )
     entry.add_to_hass(hass)
 
     with patch(
@@ -540,13 +544,26 @@ async def test_diagnostic_entities_are_disabled_by_default(
     for entity_id in (
         "sensor.kitchen_agent_last_run_model_profile",
         "sensor.kitchen_agent_primary_language_model",
-        "binary_sensor.kitchen_agent_provider_healthy",
-        "binary_sensor.kitchen_agent_assist_enabled",
     ):
         registry_entry = entity_registry.async_get(entity_id)
         assert registry_entry is not None
         assert registry_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
         assert hass.states.get(entity_id) is None
+    for entity_id in (
+        "sensor.kitchen_agent_mcp_servers_enabled",
+        "sensor.kitchen_agent_skills_enabled",
+        "binary_sensor.kitchen_agent_provider_healthy",
+        "binary_sensor.kitchen_agent_assist_enabled",
+        "binary_sensor.kitchen_agent_web_fetch_enabled",
+        "binary_sensor.kitchen_agent_virtual_workspace_enabled",
+    ):
+        registry_entry = entity_registry.async_get(entity_id)
+        assert registry_entry is not None
+        assert registry_entry.disabled_by is None
+        assert hass.states.get(entity_id) is not None
+    assert _state(hass, "sensor.kitchen_agent_mcp_servers_enabled") == "0"
+    assert _state(hass, "sensor.kitchen_agent_skills_enabled") == "2"
+    assert _state(hass, "binary_sensor.kitchen_agent_virtual_workspace_enabled") == "on"
 
 
 async def test_conversation_runtime_uses_configured_max_iterations(

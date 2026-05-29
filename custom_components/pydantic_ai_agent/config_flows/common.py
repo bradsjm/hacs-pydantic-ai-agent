@@ -171,7 +171,7 @@ from ..model_settings import (
     REMOVED_PROFILE_MODEL_SETTING_KEYS,
     RUN_SETTING_KEYS,
 )
-from .helpers import _flatten_section_data, _section_schema_key
+from .helpers import _flatten_section_data, _section_schema_key, _sorted_select_options
 from .skill_helpers import (
     _append_skill_schema_fields,
     _normalise_skill_selection,
@@ -767,7 +767,7 @@ def _provider_profile_options(
         if not enabled:
             label = f"{label} (disabled)"
         options.append(SelectOptionDict(label=label, value=profile_id))
-    return options
+    return _sorted_select_options(options)
 
 
 def _provider_profile_dependents(entry: ConfigEntry, profile_ref: str) -> list[str]:
@@ -870,11 +870,13 @@ def _mcp_server_select_options(entry: ConfigEntry | None) -> list[SelectOptionDi
     """Return configured MCP servers as select options."""
     if entry is None:
         return []
-    return [
-        SelectOptionDict(label=subentry.title, value=subentry.subentry_id)
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER
-    ]
+    return _sorted_select_options(
+        [
+            SelectOptionDict(label=subentry.title, value=subentry.subentry_id)
+            for subentry in entry.subentries.values()
+            if subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER
+        ]
+    )
 
 
 def _model_profile_select_options(entry: ConfigEntry | None) -> list[SelectOptionDict]:
@@ -896,7 +898,7 @@ def _model_profile_select_options(entry: ConfigEntry | None) -> list[SelectOptio
                     value=model_profile_ref(provider_subentry.subentry_id, profile_id),
                 )
             )
-    return options
+    return _sorted_select_options(options)
 
 
 def _normalise_fallback_model_refs(

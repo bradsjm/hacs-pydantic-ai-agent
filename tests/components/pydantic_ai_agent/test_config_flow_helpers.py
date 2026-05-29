@@ -28,10 +28,14 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _ai_task_data_schema,
     _conversation_data_from_user_input,
     _conversation_schema,
+    _fallback_model_profile_select_options,
+    _mcp_server_select_options,
     _model_settings_from_options,
     _model_settings_schema,
     _model_pricing_from_options,
+    _model_profile_select_options,
     _normalise_provider_model_profiles,
+    _provider_profile_options,
     _parse_model_settings,
     _parse_model_pricing,
     _provider_data_matches,
@@ -47,6 +51,7 @@ from custom_components.pydantic_ai_agent.config_flows.mcp_helpers import (
 from custom_components.pydantic_ai_agent.config_flows.skill_helpers import (
     SkillDataValidationError,
     _selected_skill_error,
+    _skill_select_options,
     _skill_data_from_user_input,
 )
 from custom_components.pydantic_ai_agent.provider_validation import (
@@ -93,6 +98,12 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_SKILL,
 )
 from custom_components.pydantic_ai_agent.mcp import MCPValidationError
+from tests.components.pydantic_ai_agent.support.builders import (
+    mcp_server_subentry_data,
+    provider_subentry_data,
+    skill_subentry_data,
+    workspace_entry,
+)
 from tests.components.pydantic_ai_agent.support.schemas import (
     schema_key_names as _schema_key_names,
 )
@@ -381,6 +392,103 @@ def test_agent_schemas_group_fallbacks_and_hass_control(
     )
     assert CONF_FALLBACK_MODEL_REFS not in _schema_key_names(ai_task_schema)
     assert CONF_LLM_HASS_API not in _schema_key_names(ai_task_schema)
+
+
+def test_provider_model_profile_picker_options_are_sorted() -> None:
+    """Test provider-owned profile picker options sort by label then value."""
+    options = _provider_profile_options(
+        {
+            CONF_MODEL_PROFILES: {
+                "zulu": {
+                    CONF_NAME: "beta",
+                    CONF_MODEL: "model-z",
+                    CONF_ENABLED: True,
+                },
+                "alpha-disabled": {
+                    CONF_NAME: "Alpha",
+                    CONF_MODEL: "model-a",
+                    CONF_ENABLED: False,
+                },
+                "alpha": {
+                    CONF_NAME: "alpha",
+                    CONF_MODEL: "model-b",
+                    CONF_ENABLED: True,
+                },
+            }
+        }
+    )
+
+    assert [(option["label"], option["value"]) for option in options] == [
+        ("alpha", "alpha"),
+        ("Alpha (disabled)", "alpha-disabled"),
+        ("beta", "zulu"),
+    ]
+
+
+def test_agent_selector_options_are_sorted_with_stale_values_last(
+    hass: HomeAssistant,
+) -> None:
+    """Test agent selector options sort configured choices and append stale IDs."""
+    entry = workspace_entry(
+        (
+            provider_subentry_data(
+                subentry_id="provider-z",
+                title="zeta Provider",
+                model_profiles={
+                    "profile-b": {
+                        CONF_NAME: "Beta",
+                        CONF_MODEL: "beta-model",
+                        CONF_ENABLED: True,
+                    },
+                },
+            ),
+            provider_subentry_data(
+                subentry_id="provider-a",
+                title="Alpha Provider",
+                model_profiles={
+                    "profile-a": {
+                        CONF_NAME: "alpha",
+                        CONF_MODEL: "alpha-model",
+                        CONF_ENABLED: True,
+                    },
+                },
+            ),
+            mcp_server_subentry_data(subentry_id="mcp-z", title="zeta MCP"),
+            mcp_server_subentry_data(subentry_id="mcp-a", title="Alpha MCP"),
+            skill_subentry_data(subentry_id="skill-z", title="zeta Skill"),
+            skill_subentry_data(subentry_id="skill-a", title="Alpha Skill"),
+        )
+    )
+
+    assert [option["label"] for option in _model_profile_select_options(entry)] == [
+        "Alpha Provider / alpha",
+        "zeta Provider / Beta",
+    ]
+    assert [
+        (option["label"], option["value"])
+        for option in _fallback_model_profile_select_options(
+            hass, entry, ["missing-provider:missing-profile"]
+        )
+    ] == [
+        ("Alpha Provider / alpha", "provider-a:profile-a"),
+        ("zeta Provider / Beta", "provider-z:profile-b"),
+        (
+            "Unavailable / missing-provider:missing-profile",
+            "missing-provider:missing-profile",
+        ),
+    ]
+    assert [option["label"] for option in _mcp_server_select_options(entry)] == [
+        "Alpha MCP",
+        "zeta MCP",
+    ]
+    assert [
+        (option["label"], option["value"])
+        for option in _skill_select_options(entry, ["missing-skill"])
+    ] == [
+        ("Alpha Skill", "skill-a"),
+        ("zeta Skill", "skill-z"),
+        ("Unavailable / missing-skill", "missing-skill"),
+    ]
 
 
 def test_sectioned_conversation_input_flattens_and_prunes_legacy_skills() -> None:

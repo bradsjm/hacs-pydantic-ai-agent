@@ -20,13 +20,15 @@ from .agent_subentries import ValidAgentSubentry, iter_valid_agent_subentries
 from .const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
+    CONF_TODO_LIST_ENTITY_ID,
+    CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
-from .metrics import AgentRunMetrics, metric_bool, metrics_signal
 from .entity import device_identifier_for_subentry, unique_id_for_subentry_entity
+from .metrics import AgentRunMetrics, metric_bool, metrics_signal
 from .model_profiles import ModelProfile, primary_model_profile
 
 
@@ -56,6 +58,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricBinarySensorDescription, ...] 
         name="Provider healthy",
         icon="mdi:heart-pulse",
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
         value_fn=lambda record: metric_bool(record, "provider_healthy"),
     ),
     PydanticAIMetricBinarySensorDescription(
@@ -63,6 +66,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricBinarySensorDescription, ...] 
         name="Last run succeeded",
         icon="mdi:check-circle-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
         value_fn=lambda record: metric_bool(record, "last_run_succeeded"),
     ),
 )
@@ -75,15 +79,34 @@ CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
         name="Assist enabled",
         icon="mdi:assistant",
         subentry_types=(SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK),
+        entity_registry_enabled_default=True,
         value_fn=lambda subentry: bool(subentry.data.get(CONF_LLM_HASS_API)),
     ),
     PydanticAIConfigBinarySensorDescription(
         key="web_fetch_enabled",
         name="Web fetch enabled",
         icon="mdi:web",
+        entity_registry_enabled_default=True,
         value_fn=lambda subentry: bool(
             subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
         ),
+    ),
+    PydanticAIConfigBinarySensorDescription(
+        key="virtual_workspace_enabled",
+        name="Virtual workspace enabled",
+        icon="mdi:folder-cog-outline",
+        entity_registry_enabled_default=True,
+        value_fn=lambda subentry: (
+            subentry.data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is True
+        ),
+    ),
+    PydanticAIConfigBinarySensorDescription(
+        key="todo_workspace_enabled",
+        name="Todo workspace enabled",
+        icon="mdi:format-list-checks",
+        subentry_types=(SUBENTRY_TYPE_AI_TASK,),
+        entity_registry_enabled_default=True,
+        value_fn=lambda subentry: bool(subentry.data.get(CONF_TODO_LIST_ENTITY_ID)),
     ),
 )
 
@@ -130,6 +153,9 @@ class PydanticAIMetricBinarySensor(BinarySensorEntity):
         self.entry = entry
         self.subentry = subentry
         self.entity_description = description
+        self._attr_entity_registry_enabled_default = (
+            description.entity_registry_enabled_default
+        )
         profile = primary_model_profile(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry_entity(
             entry, subentry, description.key
@@ -180,6 +206,9 @@ class PydanticAIConfigBinarySensor(BinarySensorEntity):
         """Initialize the configuration binary sensor."""
         self.subentry = subentry
         self.entity_description = description
+        self._attr_entity_registry_enabled_default = (
+            description.entity_registry_enabled_default
+        )
         profile = primary_model_profile(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry_entity(
             entry, subentry, description.key

@@ -224,6 +224,22 @@ async def test_ai_task_subentries_add_separate_entities(
     )
 
 
+async def test_ai_task_configuration_entities_expose_counts_and_toggles(
+    hass: HomeAssistant,
+) -> None:
+    """Test AI task configuration entities expose safe counts and toggles."""
+    await _setup_ai_task_entity(
+        hass,
+        skills=["skill-1"],
+        virtual_workspace_enabled=True,
+        todo_workspace_entity_id="todo.ai_tasks",
+    )
+
+    assert _state(hass, "sensor.report_task_skills_enabled") == "1"
+    assert _state(hass, "binary_sensor.report_task_virtual_workspace_enabled") == "on"
+    assert _state(hass, "binary_sensor.report_task_todo_workspace_enabled") == "on"
+
+
 def test_ai_task_entity_uses_task_name() -> None:
     """Test AI task entity display name uses the configured task name."""
     entry = _entry()
