@@ -95,19 +95,6 @@ _PROVIDER_EXTRA_BODY_MODES = {
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 }
 _MAX_METADATA_REPR_LENGTH = 1000
-_SENSITIVE_METADATA_KEYS = {
-    "access_token",
-    "api_key",
-    "authorization",
-    "cookie",
-    "headers",
-    "password",
-    "request_headers",
-    "response_headers",
-    "secret",
-    "token",
-    "x-api-key",
-}
 _STRUCTURED_PROBE_OUTPUT_NAME = structured_output_name(
     "probe_response", "probe_response"
 )
@@ -135,7 +122,7 @@ def provider_extra_body_supported(data: Mapping[str, Any]) -> bool:
 
 def _format_metadata(metadata: object) -> str:
     """Return redacted, bounded provider metadata for config-flow display."""
-    redacted = redact_data(metadata, _SENSITIVE_METADATA_KEYS)
+    redacted = redact_data(metadata)
     formatted = repr(redacted)
     if len(formatted) > _MAX_METADATA_REPR_LENGTH:
         return f"{formatted[:_MAX_METADATA_REPR_LENGTH]}..."

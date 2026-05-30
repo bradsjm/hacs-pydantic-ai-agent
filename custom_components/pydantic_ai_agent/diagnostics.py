@@ -8,6 +8,7 @@ from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
+from ._redaction import redact_data
 from .const import (
     CONF_AI_TASK_NAME,
     CONF_AGENT_NAME,
@@ -48,35 +49,14 @@ async def async_get_config_entry_diagnostics(
     """Return diagnostics for a config entry."""
     subentries = []
     for subentry in entry.subentries.values():
-        model_settings = subentry.data.get(CONF_MODEL_SETTINGS)
-        model_profiles = subentry.data.get(CONF_MODEL_PROFILES)
-        subentries.append(
-            {
-                "subentry_id": subentry.subentry_id,
-                "subentry_type": subentry.subentry_type,
-                "title": subentry.title,
-                "data": dict(subentry.data),
-                "configuration_summary": _configuration_summary(subentry),
-                "model": subentry.data.get(CONF_MODEL),
-                "default_model_profile_id": subentry.data.get(
-                    CONF_DEFAULT_MODEL_PROFILE_ID
-                ),
-                "model_profile_count": len(model_profiles)
-                if isinstance(model_profiles, Mapping)
-                else 0,
-                "ha_tools_enabled": bool(subentry.data.get(CONF_LLM_HASS_API)),
-                "model_settings_keys": sorted(model_settings)
-                if isinstance(model_settings, Mapping)
-                else [],
-            }
-        )
+        subentries.append(_subentry_diagnostics(subentry))
 
     diagnostics = {
         "entry": {
             "entry_id": entry.entry_id,
             "title": entry.title,
             "state": entry.state.value,
-            "data": dict(entry.data),
+            "data": redact_data(dict(entry.data)),
             "logfire_enabled": logfire_enabled(hass, entry),
             "logfire_active": logfire_active_for_entry(hass, entry),
             "logfire_include_content": logfire_include_content(hass, entry),
@@ -100,28 +80,7 @@ async def async_get_device_diagnostics(
     if subentry_id is not None:
         subentry = entry.subentries.get(subentry_id)
         if subentry is not None:
-            model_settings = subentry.data.get(CONF_MODEL_SETTINGS)
-            model_profiles = subentry.data.get(CONF_MODEL_PROFILES)
-            subentries.append(
-                {
-                    "subentry_id": subentry.subentry_id,
-                    "subentry_type": subentry.subentry_type,
-                    "title": subentry.title,
-                    "data": dict(subentry.data),
-                    "configuration_summary": _configuration_summary(subentry),
-                    "model": subentry.data.get(CONF_MODEL),
-                    "default_model_profile_id": subentry.data.get(
-                        CONF_DEFAULT_MODEL_PROFILE_ID
-                    ),
-                    "model_profile_count": len(model_profiles)
-                    if isinstance(model_profiles, Mapping)
-                    else 0,
-                    "ha_tools_enabled": bool(subentry.data.get(CONF_LLM_HASS_API)),
-                    "model_settings_keys": sorted(model_settings)
-                    if isinstance(model_settings, Mapping)
-                    else [],
-                }
-            )
+            subentries.append(_subentry_diagnostics(subentry))
     diagnostics = {
         "entry": {
             "entry_id": entry.entry_id,
@@ -133,6 +92,28 @@ async def async_get_device_diagnostics(
         "runtime": {"loaded": hasattr(entry, "runtime_data")},
     }
     return bound_diagnostics_data(diagnostics)
+
+
+def _subentry_diagnostics(subentry: Any) -> dict[str, Any]:
+    """Return redacted diagnostics for one config subentry."""
+    model_settings = subentry.data.get(CONF_MODEL_SETTINGS)
+    model_profiles = subentry.data.get(CONF_MODEL_PROFILES)
+    return {
+        "subentry_id": subentry.subentry_id,
+        "subentry_type": subentry.subentry_type,
+        "title": subentry.title,
+        "data": redact_data(dict(subentry.data)),
+        "configuration_summary": _configuration_summary(subentry),
+        "model": subentry.data.get(CONF_MODEL),
+        "default_model_profile_id": subentry.data.get(CONF_DEFAULT_MODEL_PROFILE_ID),
+        "model_profile_count": len(model_profiles)
+        if isinstance(model_profiles, Mapping)
+        else 0,
+        "ha_tools_enabled": bool(subentry.data.get(CONF_LLM_HASS_API)),
+        "model_settings_keys": sorted(model_settings)
+        if isinstance(model_settings, Mapping)
+        else [],
+    }
 
 
 def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
@@ -153,9 +134,13 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
         },
     }
     if runtime_data.latest_run_diagnostics:
-        diagnostics["latest_run_diagnostics"] = runtime_data.latest_run_diagnostics
+        diagnostics["latest_run_diagnostics"] = redact_data(
+            runtime_data.latest_run_diagnostics
+        )
     if runtime_data.latest_stream_traces:
-        diagnostics["latest_stream_traces"] = runtime_data.latest_stream_traces
+        diagnostics["latest_stream_traces"] = redact_data(
+            runtime_data.latest_stream_traces
+        )
     return diagnostics
 
 

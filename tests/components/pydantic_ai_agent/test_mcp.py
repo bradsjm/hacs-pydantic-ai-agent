@@ -14,6 +14,7 @@ from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.util.ssl import SSL_ALPN_HTTP11, client_context
 
+from custom_components.pydantic_ai_agent._redaction import redact_data
 from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_DEFERRED_LOADING,
@@ -36,7 +37,6 @@ from custom_components.pydantic_ai_agent.mcp import (
     normalise_mcp_url,
     parse_allowed_tools,
     parse_mcp_headers,
-    redact_for_log,
     schema_hash,
 )
 
@@ -136,18 +136,19 @@ async def test_mcp_http_client_factory_closes_fastmcp_owned_clients() -> None:
 
 
 def test_mcp_log_redaction_uses_shared_sensitive_key_handling() -> None:
-    """Test MCP log redaction handles nested sensitive keys."""
-    redacted = redact_for_log(
+    """Test MCP log redaction uses the shared explicit sensitive keys."""
+    redacted = redact_data(
         {
             "mcp_url": "https://mcp.example.com/mcp?token=visible",
             "headers": {"Authorization": "Bearer secret"},
-            "result": {"session_token": "secret", "value": "safe"},
+            "result": {"token": "secret", "session_token": "visible", "value": "safe"},
         }
     )
 
-    assert redacted["mcp_url"] == "**REDACTED**"
+    assert redacted["mcp_url"] == "https://mcp.example.com/mcp?token=visible"
     assert redacted["headers"] == "**REDACTED**"
-    assert redacted["result"]["session_token"] == "**REDACTED**"
+    assert redacted["result"]["token"] == "**REDACTED**"
+    assert redacted["result"]["session_token"] == "visible"
     assert redacted["result"]["value"] == "safe"
 
 

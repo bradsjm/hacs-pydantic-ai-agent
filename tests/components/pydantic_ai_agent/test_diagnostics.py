@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 from homeassistant import config_entries
+from homeassistant.components.diagnostics import REDACTED
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -58,11 +59,11 @@ _MODEL_PROFILE_ID = "profile-1"
 _MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
 
 
-async def test_diagnostics_returns_unredacted_bounded_config_entry_data(
+async def test_diagnostics_returns_redacted_bounded_config_entry_data(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test diagnostics keep owner-requested values visible."""
+    """Test diagnostics redact sensitive keys and keep useful values visible."""
     monkeypatch.setitem(
         sys.modules,
         "logfire",
@@ -159,11 +160,11 @@ async def test_diagnostics_returns_unredacted_bounded_config_entry_data(
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
-    assert diagnostics["entry"]["data"][CONF_LOGFIRE_TOKEN] == "lf-secret"
+    assert diagnostics["entry"]["data"][CONF_LOGFIRE_TOKEN] == REDACTED
     assert diagnostics["entry"]["logfire_enabled"] is True
     assert diagnostics["entry"]["logfire_include_content"] is True
     subentry_data = diagnostics["subentries"][0]["data"]
-    assert subentry_data[CONF_PROMPT] == "Private system prompt"
+    assert subentry_data[CONF_PROMPT] == REDACTED
     assert diagnostics["subentries"][0]["ha_tools_enabled"] is True
     assert diagnostics["subentries"][0]["configuration_summary"] == {
         "subentry_type": SUBENTRY_TYPE_CONVERSATION,
@@ -177,19 +178,15 @@ async def test_diagnostics_returns_unredacted_bounded_config_entry_data(
         "virtual_workspace_enabled": False,
     }
     provider_data = diagnostics["subentries"][1]["data"]
-    assert provider_data[CONF_API_KEY] == "sk-secret"
-    assert provider_data[CONF_PROVIDER_HEADERS] == {
-        "Authorization": "Bearer provider-secret"
-    }
+    assert provider_data[CONF_API_KEY] == REDACTED
+    assert provider_data[CONF_PROVIDER_HEADERS] == REDACTED
     assert provider_data[CONF_PROVIDER_EXTRA_BODY] == {
-        "api_key": "provider-body-secret"
+        "api_key": REDACTED
     }
     assert provider_data[CONF_BASE_URL] == "http://localhost:11434/v1"
     model_data = provider_data[CONF_MODEL_PROFILES][_MODEL_PROFILE_ID]
     assert model_data[CONF_MODEL_SETTINGS]["max_tokens"] == 500
-    assert model_data[CONF_MODEL_SETTINGS]["extra_headers"] == {
-        "Authorization": "Bearer secret"
-    }
+    assert model_data[CONF_MODEL_SETTINGS]["extra_headers"] == REDACTED
     assert model_data[CONF_MODEL_SETTINGS][CONF_CHAT_TEMPLATE_KWARGS] == [
         {
             CONF_CHAT_TEMPLATE_KWARG_KEY: "secret_arg",
@@ -197,22 +194,21 @@ async def test_diagnostics_returns_unredacted_bounded_config_entry_data(
         }
     ]
     assert model_data[CONF_MODEL_SETTINGS]["extra_body"] == {
-        "api_key": "nested-secret"
+        "api_key": REDACTED
     }
     mcp_data = diagnostics["subentries"][2]["data"]
     assert mcp_data[CONF_MCP_URL] == (
         "https://user:pass@mcp.example.com/mcp?token=visible"
     )
-    assert mcp_data[CONF_MCP_HEADERS] == {
-        "Authorization": "Bearer mcp-secret",
-        "X-API-Key": "nested-secret",
-    }
+    assert mcp_data[CONF_MCP_HEADERS] == REDACTED
     skill_data = diagnostics["subentries"][3]["data"]
     assert skill_data[CONF_NAME] == "Kitchen Skill"
-    assert skill_data[CONF_SKILL_CONTENT] == "Private skill body"
+    assert skill_data[CONF_SKILL_CONTENT] == REDACTED
     assert skill_data[CONF_SKILL_REFERENCES] == [
-        {"title": "Secret Reference", "content": "secret reference"}
+        {"title": "Secret Reference", "content": REDACTED}
     ]
+    assert "sk-secret" not in json.dumps(diagnostics)
+    assert "Private system prompt" not in json.dumps(diagnostics)
 
 
 async def test_diagnostics_exposes_safe_runtime_mcp_counts(
@@ -265,6 +261,45 @@ async def test_diagnostics_exposes_safe_runtime_mcp_counts(
     }
     assert "mcp.example.com" not in str(diagnostics["runtime"])
     assert "secret_tool" not in str(diagnostics["runtime"])
+
+
+async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> None:
+    """Test runtime diagnostic snapshots use the shared redaction policy."""
+    entry = MockConfigEntry(
+        version=2,
+        minor_version=0,
+        domain=DOMAIN,
+        title="Workspace",
+        data={CONF_NAME: "Workspace"},
+        source=config_entries.SOURCE_USER,
+        unique_id=None,
+    )
+    entry.add_to_hass(hass)
+    entry.runtime_data = WorkspaceRuntimeData(workspace_name="Workspace")
+    entry.runtime_data.latest_run_diagnostics["conversation-1"] = {
+        "model_settings": {
+            "api_key": "runtime-secret",
+            "session_token": "visible",
+        }
+    }
+    entry.runtime_data.latest_stream_traces["conversation-1"] = {
+        "headers": {"Authorization": "Bearer stream-secret"},
+        CONF_MCP_URL: "https://mcp.example.com/mcp?token=visible",
+    }
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    runtime = diagnostics["runtime"]
+    model_settings = runtime["latest_run_diagnostics"]["conversation-1"][
+        "model_settings"
+    ]
+    assert model_settings["api_key"] == REDACTED
+    assert model_settings["session_token"] == "visible"
+    stream_trace = runtime["latest_stream_traces"]["conversation-1"]
+    assert stream_trace["headers"] == REDACTED
+    assert stream_trace[CONF_MCP_URL] == "https://mcp.example.com/mcp?token=visible"
+    assert "runtime-secret" not in json.dumps(diagnostics)
+    assert "stream-secret" not in json.dumps(diagnostics)
 
 
 async def test_diagnostics_bounds_large_values(hass: HomeAssistant) -> None:
@@ -401,9 +436,7 @@ async def test_device_diagnostics_filters_to_matching_subentry(
     diagnostics = await async_get_device_diagnostics(hass, entry, device)
 
     assert [item["subentry_id"] for item in diagnostics["subentries"]] == [matching_id]
-    assert diagnostics["subentries"][0]["data"][CONF_PROMPT] == (
-        "Private system prompt"
-    )
+    assert diagnostics["subentries"][0]["data"][CONF_PROMPT] == REDACTED
     assert diagnostics["runtime"] == {"loaded": True}
     assert "latest_stream_trace" not in diagnostics["runtime"]
     assert "metrics" not in diagnostics["runtime"]

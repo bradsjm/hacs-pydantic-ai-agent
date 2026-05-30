@@ -1,56 +1,55 @@
 """Shared redaction helpers for Pydantic AI Agent."""
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
+from homeassistant.const import CONF_API_KEY, CONF_PASSWORD
 
-COMMON_SENSITIVE_KEYS = {
-    "access_token",
-    "api_key",
-    "authorization",
-    "cookie",
-    "extra_headers",
-    "headers",
-    "password",
-    "provider_headers",
-    "request_headers",
-    "response_headers",
-    "secret",
-    "token",
-    "x-api-key",
-}
+from .const import (
+    CONF_LOGFIRE_TOKEN,
+    CONF_MCP_HEADERS,
+    CONF_PROMPT,
+    CONF_PROVIDER_HEADERS,
+    CONF_SKILL_CONTENT,
+)
+
+TO_REDACT = frozenset(
+    {
+        CONF_API_KEY,
+        CONF_LOGFIRE_TOKEN,
+        CONF_MCP_HEADERS,
+        CONF_PASSWORD,
+        CONF_PROMPT,
+        CONF_PROVIDER_HEADERS,
+        CONF_SKILL_CONTENT,
+        "Authorization",
+        "Cookie",
+        "X-API-Key",
+        "access_token",
+        "api_key",
+        "auth",
+        "authorization",
+        "client_secret",
+        "cookie",
+        "extra_headers",
+        "headers",
+        "password",
+        "refresh_token",
+        "request_headers",
+        "response_headers",
+        "secret",
+        "token",
+        "x-api-key",
+    }
+)
 
 
-def redaction_keys(
-    data: object, extra_sensitive_keys: Iterable[object] = ()
-) -> set[object]:
-    """Return nested mapping keys that should be redacted."""
-    sensitive_keys = {str(key).lower() for key in COMMON_SENSITIVE_KEYS}
-    sensitive_keys.update(str(key).lower() for key in extra_sensitive_keys)
-    keys: set[object] = set()
-    if isinstance(data, Mapping):
-        for key, value in data.items():
-            key_text = str(key).lower()
-            if key_text in sensitive_keys or key_text.endswith(("_token", "-token")):
-                keys.add(key)
-            keys.update(redaction_keys(value, sensitive_keys))
-    elif isinstance(data, list):
-        for item in data:
-            keys.update(redaction_keys(item, sensitive_keys))
-    return keys
+def redaction_keys(extra_sensitive_keys: Iterable[object] = ()) -> frozenset[object]:
+    """Return the integration-wide set of sensitive mapping keys."""
+    return TO_REDACT | frozenset(extra_sensitive_keys)
 
 
 def redact_data(data: Any, extra_sensitive_keys: Iterable[object] = ()) -> Any:
     """Return a copy of data with sensitive values redacted by Home Assistant."""
-    keys = redaction_keys(data, extra_sensitive_keys)
-    return async_redact_data(data, keys) if keys else _copy_containers(data)
-
-
-def _copy_containers(data: Any) -> Any:
-    """Copy nested containers before in-place URL redaction."""
-    if isinstance(data, Mapping):
-        return {key: _copy_containers(value) for key, value in data.items()}
-    if isinstance(data, list):
-        return [_copy_containers(item) for item in data]
-    return data
+    return async_redact_data(data, redaction_keys(extra_sensitive_keys))

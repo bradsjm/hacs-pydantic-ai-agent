@@ -44,17 +44,6 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_MCP_SENSITIVE_KEYS = {
-    "api_key",
-    "authorization",
-    "cookie",
-    "headers",
-    CONF_MCP_URL,
-    "password",
-    "secret",
-    "token",
-    "x-api-key",
-}
 _HTTP_HEADER_NAME_PATTERN = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 
 
@@ -90,11 +79,6 @@ class ValidatedMCPURL:
     scheme: str
     hostname: str
     port: int
-
-
-def redact_for_log(data: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a log-safe copy of mapping data."""
-    return redact_data(dict(data), _MCP_SENSITIVE_KEYS)
 
 
 def _jsonable(value: Any) -> Any:
@@ -460,7 +444,7 @@ async def async_discover_mcp_tools_from_config(
         "allowed" if apply_allowlist else "available",
         server_id,
     )
-    _LOGGER.debug("MCP server config used for discovery: %s", redact_for_log(config))
+    _LOGGER.debug("MCP server config used for discovery: %s", redact_data(config))
     return discovered
 
 
@@ -547,9 +531,9 @@ async def async_runtime_mcp_toolsets(
                 tool_name,
                 server_id,
             )
-            _LOGGER.debug("MCP tool call arguments: %s", redact_for_log(tool_args))
+            _LOGGER.debug("MCP tool call arguments: %s", redact_data(tool_args))
             result = await call_tool(tool_name, tool_args)
-            _LOGGER.debug("MCP tool result: %s", redact_for_log({"result": result}))
+            _LOGGER.debug("MCP tool result: %s", redact_data({"result": result}))
             return result
 
         toolset = MCPToolset(
