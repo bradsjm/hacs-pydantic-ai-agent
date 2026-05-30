@@ -65,11 +65,12 @@ class ProviderWizardCatalogManager:
         """Return a per-flow catalog load task, creating the shared fetch if needed."""
         cached_catalog = self.cached_catalog()
         if cached_catalog is not None:
-            task = self.hass.loop.create_task(_return_catalog(cached_catalog))
-            return task
+            return self.hass.async_create_task(_return_catalog(cached_catalog))
+        if self.catalog is not None:
+            self._clear_cache_state(cancel_inflight=False)
         if self.inflight_task is None or self.inflight_task.done():
             self.inflight_task = self.hass.async_create_task(self._async_load_catalog())
-        return self.hass.loop.create_task(_await_shared_catalog(self.inflight_task))
+        return self.hass.async_create_task(_await_shared_catalog(self.inflight_task))
 
     async def async_get_catalog(self) -> CompactCatalog:
         """Return a fresh catalog, loading it if needed."""
@@ -88,9 +89,18 @@ class ProviderWizardCatalogManager:
     @callback
     def clear(self) -> None:
         """Drop cached catalog data and cleanup handles."""
+        self._clear_cache_state(cancel_inflight=True)
+
+    @callback
+    def _clear_cache_state(self, *, cancel_inflight: bool) -> None:
+        """Drop cached catalog state, optionally cancelling the shared fetch."""
         self.catalog = None
         self.loaded_at = None
         self.last_used_at = None
+        if cancel_inflight and self.inflight_task is not None:
+            if not self.inflight_task.done():
+                self.inflight_task.cancel()
+            self.inflight_task = None
         if self.cleanup_unsub is not None:
             self.cleanup_unsub()
             self.cleanup_unsub = None
@@ -103,7 +113,7 @@ class ProviderWizardCatalogManager:
         if self.cache_is_fresh():
             self._schedule_cleanup()
             return
-        self.clear()
+        self._clear_cache_state(cancel_inflight=False)
 
     @callback
     def _schedule_cleanup(self) -> None:

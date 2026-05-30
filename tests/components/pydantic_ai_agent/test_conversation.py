@@ -3,7 +3,6 @@
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 import json
-import logging
 import sys
 from typing import Any, cast
 from types import SimpleNamespace
@@ -895,12 +894,10 @@ async def test_streaming_does_not_duplicate_already_streamed_final_text(
 
 async def test_streaming_records_safe_trace_payload(
     hass: HomeAssistant,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Test streaming records bounded HA trace and diagnostic details."""
     entry = _entry(None)
     entry.add_to_hass(hass)
-    caplog.set_level(logging.DEBUG, logger="custom_components.pydantic_ai_agent.entity")
 
     class TracedAgent(_Agent):
         @asynccontextmanager

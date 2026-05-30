@@ -132,19 +132,6 @@ async def _append_missing_final_text(
     }
 
 
-def _stream_trace_without_previews(value: Any) -> Any:
-    """Return a stream trace copy with debug-only previews removed."""
-    if isinstance(value, Mapping):
-        return {
-            key: _stream_trace_without_previews(item)
-            for key, item in value.items()
-            if not str(key).endswith("_preview")
-        }
-    if isinstance(value, list):
-        return [_stream_trace_without_previews(item) for item in value]
-    return value
-
-
 def _final_text_from_messages(messages: list[ModelMessage]) -> str:
     """Return text from the final assistant response in Agent messages."""
     for message in reversed(messages):
@@ -254,7 +241,6 @@ async def _agent_events_to_chat_deltas(
 class _StreamTraceRecorder:
     """Collect a bounded, JSON-safe summary of one Pydantic AI stream."""
 
-    include_previews: bool = False
     run_recorder: Any | None = None
     events_total: int = 0
     chat_deltas_total: int = 0
@@ -272,7 +258,7 @@ class _StreamTraceRecorder:
         self.events_total += 1
         summary = {
             "order": self.events_total,
-            **_stream_event_summary(event, self.include_previews),
+            **_stream_event_summary(event, True),
         }
         if len(self.events) < _TRACE_HEAD_ITEMS:
             self.events.append(summary)
@@ -292,7 +278,7 @@ class _StreamTraceRecorder:
         self.chat_deltas_total += 1
         summary = {
             "order": self.chat_deltas_total,
-            **_chat_delta_summary(delta, self.include_previews),
+            **_chat_delta_summary(delta, True),
         }
         if len(self.chat_deltas) < _TRACE_HEAD_ITEMS:
             self.chat_deltas.append(summary)
@@ -323,7 +309,6 @@ class _StreamTraceRecorder:
         ) + len(chat_deltas_tail)
         return {
             "schema_version": 1,
-            "include_previews": self.include_previews,
             "limits": {
                 "max_items": _TRACE_MAX_ITEMS,
                 "head_items": _TRACE_HEAD_ITEMS,
@@ -347,14 +332,9 @@ class _StreamTraceRecorder:
             "chat_deltas": self.chat_deltas
             + ([] if chat_deltas_truncated else chat_deltas_tail),
             "chat_deltas_tail": chat_deltas_tail if chat_deltas_truncated else [],
-            "final_new_messages": _messages_summary(
-                final_messages, self.include_previews
-            ),
+            "final_new_messages": _messages_summary(final_messages, True),
             "backfill": dict(backfill),
-            "final_chat_content": _chat_content_summary(
-                final_chat_content,
-                self.include_previews,
-            ),
+            "final_chat_content": _chat_content_summary(final_chat_content, True),
         }
 
 
@@ -517,7 +497,7 @@ def _add_text_summary(
 def _add_preview(
     summary: dict[str, Any], field_name: str, text: str, include_preview: bool
 ) -> None:
-    """Add a bounded text preview when debug previews are enabled."""
+    """Add a bounded text preview when requested."""
     if include_preview and text:
         summary[f"{field_name}_preview"] = text[:_TRACE_PREVIEW_CHARS]
 

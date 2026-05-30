@@ -86,6 +86,91 @@ async def test_catalog_manager_flow_task_cancel_does_not_cancel_shared_fetch(
     assert calls == 1
 
 
+async def test_catalog_manager_clear_cancels_inflight_fetch(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test clearing the cache cancels an active shared catalog fetch."""
+    started = asyncio.Event()
+    catalog = _catalog()
+
+    async def fake_fetch_catalog(hass: HomeAssistant) -> CompactCatalog:
+        started.set()
+        await asyncio.Event().wait()
+        return catalog
+
+    monkeypatch.setattr(catalog_cache, "async_fetch_catalog", fake_fetch_catalog)
+    manager = ProviderWizardCatalogManager(hass)
+
+    flow_task = manager.load_task()
+    await started.wait()
+    shared_task = manager.inflight_task
+    assert shared_task is not None
+
+    manager.clear()
+
+    assert manager.inflight_task is None
+    await asyncio.gather(flow_task, shared_task, return_exceptions=True)
+    assert shared_task.cancelled()
+
+
+async def test_catalog_manager_clear_allows_new_fetch(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test loading after clear starts a new shared catalog fetch."""
+    calls = 0
+    first_started = asyncio.Event()
+    catalog = _catalog()
+
+    async def fake_fetch_catalog(hass: HomeAssistant) -> CompactCatalog:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            first_started.set()
+            await asyncio.Event().wait()
+        return catalog
+
+    monkeypatch.setattr(catalog_cache, "async_fetch_catalog", fake_fetch_catalog)
+    manager = ProviderWizardCatalogManager(hass)
+
+    first_task = manager.load_task()
+    await first_started.wait()
+    manager.clear()
+    await asyncio.gather(first_task, return_exceptions=True)
+
+    assert await manager.async_get_catalog() is catalog
+    assert calls == 2
+
+
+async def test_catalog_manager_expired_cleanup_does_not_cancel_new_fetch(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test stale cache cleanup does not cancel a fresh shared fetch."""
+    release = asyncio.Event()
+    catalog = _catalog()
+
+    async def fake_fetch_catalog(hass: HomeAssistant) -> CompactCatalog:
+        await release.wait()
+        return catalog
+
+    monkeypatch.setattr(catalog_cache, "async_fetch_catalog", fake_fetch_catalog)
+    manager = ProviderWizardCatalogManager(hass)
+    manager.catalog = _catalog()
+    manager.loaded_at = (
+        dt_util.utcnow() - MODEL_CATALOG_HARD_TTL - MODEL_CATALOG_IDLE_TTL
+    )
+    manager.last_used_at = dt_util.utcnow() - MODEL_CATALOG_IDLE_TTL
+
+    flow_task = manager.load_task()
+    shared_task = manager.inflight_task
+    assert shared_task is not None
+
+    manager.clear_expired()
+
+    assert not shared_task.cancelled()
+    release.set()
+    assert await flow_task is catalog
+
+
 async def test_catalog_manager_reuses_fresh_memory_catalog(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:

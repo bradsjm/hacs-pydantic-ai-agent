@@ -519,7 +519,6 @@ class PydanticAIBaseLLMEntity:
         """Run one Agent attempt and stream live deltas into the HA ChatLog."""
         state = _StreamRunState()
         trace_recorder = _StreamTraceRecorder(
-            include_previews=_LOGGER.isEnabledFor(logging.DEBUG),
             run_recorder=run_recorder,
         )
         try:

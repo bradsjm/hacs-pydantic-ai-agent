@@ -366,6 +366,7 @@
         "already_configured": "This provider is already configured in the workspace.",
         "entry_not_loaded": "The workspace is not loaded.",
         "invalid_provider_config": "Provider configuration is incomplete. Start provider setup again.",
+        "model_profile_not_found": "The selected model profile is no longer available.",
         "reconfigure_successful": "Provider configuration updated."
       },
       "entry_type": "Language model provider",
