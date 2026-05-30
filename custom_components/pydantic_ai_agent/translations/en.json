@@ -714,16 +714,6 @@
     }
   },
   "services": {
-    "benchmark_home_semantic_resolution": {
-      "description": "Resolve a small batch of phrases and compare selected targets with expected entity IDs.",
-      "fields": {
-        "assistant_id": {"description": "Optional assistant ID used for exposed-entity filtering.", "name": "Assistant ID"},
-        "cases": {"description": "List of phrase/action/expected target cases to resolve.", "name": "Cases"},
-        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
-        "limit": {"description": "Maximum number of cases to run.", "name": "Limit"}
-      },
-      "name": "Benchmark home semantic resolution"
-    },
     "get_agent_run_diagnostics": {
       "description": "Return a compact slice of latest run diagnostics for one conversation or AI task subentry.",
       "fields": {
@@ -743,16 +733,6 @@
       },
       "name": "Get agent metrics"
     },
-    "get_home_semantic_document": {
-      "description": "Return compact document data for one indexed entity or document ID.",
-      "fields": {
-        "assistant_id": {"description": "Optional assistant ID used for exposure flags.", "name": "Assistant ID"},
-        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
-        "document_id": {"description": "Semantic document ID to fetch.", "name": "Document ID"},
-        "entity_id": {"description": "Entity ID whose semantic document should be returned.", "name": "Entity ID"}
-      },
-      "name": "Get home semantic document"
-    },
     "list_mcp_tools": {
       "description": "List cached MCP tools for a configured server, discovering them if no cache exists.",
       "fields": {
@@ -766,75 +746,6 @@
         }
       },
       "name": "List MCP tools"
-    },
-    "plan_home_semantic_control": {
-      "description": "Dry-run the same exposure and compatibility checks used by the LLM-only control_home tool without executing service calls. Include temperature for set_temperature.",
-      "fields": {
-        "action": {"description": "Control action to plan.", "name": "Action"},
-        "assistant_id": {"description": "Optional assistant ID used for exposed-entity filtering.", "name": "Assistant ID"},
-        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
-        "entity_id": {"description": "Explicit target entity. Provide phrase or entity_id.", "name": "Entity ID"},
-        "phrase": {"description": "Natural-language target phrase. Provide phrase or entity_id.", "name": "Phrase"},
-        "temperature": {"description": "Target temperature for set_temperature actions.", "name": "Temperature"}
-      },
-      "name": "Plan home semantic control"
-    },
-    "refresh_home_semantic_index": {
-      "description": "Refresh the Home Semantic Index for one workspace and return compact readiness diagnostics.",
-      "fields": {
-        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
-        "reason": {"description": "Optional diagnostic reason stored as the refresh reason.", "name": "Reason"},
-        "wait": {"description": "Wait for the refresh to complete before returning.", "name": "Wait"}
-      },
-      "name": "Refresh home semantic index"
-    },
-    "get_home_semantic_context": {
-      "description": "Return compact exposed live state from the Home Semantic Index for an explicit entity or query scope.",
-      "fields": {
-        "area_id": {
-          "description": "Optional area ID to include exposed entities from.",
-          "name": "Area ID"
-        },
-        "assistant_id": {
-          "description": "Optional assistant ID used for Home Assistant exposed-entity filtering. Defaults to the conversation assistant.",
-          "name": "Assistant ID"
-        },
-        "config_entry_id": {
-          "description": "Pydantic AI Agent workspace config entry.",
-          "name": "Config entry"
-        },
-        "domain": {
-          "description": "Optional entity domain to include, such as light or sensor.",
-          "name": "Domain"
-        },
-        "entity_ids": {
-          "description": "Optional explicit entity IDs to include if exposed to the assistant.",
-          "name": "Entity IDs"
-        },
-        "limit": {
-          "description": "Maximum number of entities to return.",
-          "name": "Limit"
-        },
-        "phrase": {
-          "description": "Optional natural-language phrase to search in the semantic index.",
-          "name": "Phrase"
-        }
-      },
-      "name": "Get home semantic context"
-    },
-    "get_home_semantic_summary": {
-      "description": "Return exposed areas, capabilities, and control counts from the Home Semantic Index.",
-      "fields": {
-        "assistant_id": {
-          "description": "Optional assistant ID used for Home Assistant exposed-entity filtering. Defaults to the conversation assistant.",
-          "name": "Assistant ID"
-        },
-        "config_entry_id": {
-          "description": "Pydantic AI Agent workspace config entry.",
-          "name": "Config entry"
-        }
-      },
-      "name": "Get home semantic summary"
     },
     "get_tool_source_status": {
       "description": "Return cached MCP tool and native Skill status without refreshing or executing tools.",
@@ -850,7 +761,7 @@
       "description": "Return compact config-entry, subentry, and runtime status for Pydantic AI Agent workspaces.",
       "fields": {
         "config_entry_id": {"description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.", "name": "Config entry"},
-        "include_runtime": {"description": "Include loaded runtime counts and Home Semantic Index status.", "name": "Include runtime"},
+        "include_runtime": {"description": "Include loaded runtime counts.", "name": "Include runtime"},
         "include_subentries": {"description": "Include provider, conversation, AI task, MCP server, and Skill subentry summaries.", "name": "Include subentries"}
       },
       "name": "Get workspace status"
@@ -877,41 +788,6 @@
         }
       },
       "name": "Refresh MCP tools"
-    },
-    "resolve_home_semantic_target": {
-      "description": "Resolve a natural-language phrase to one exposed semantic home target.",
-      "fields": {
-        "action": {
-          "description": "Optional intended action used to filter compatible targets, including cover, lock, and climate actions.",
-          "name": "Action"
-        },
-        "assistant_id": {
-          "description": "Optional assistant ID used for Home Assistant exposed-entity filtering. Defaults to the conversation assistant.",
-          "name": "Assistant ID"
-        },
-        "config_entry_id": {
-          "description": "Pydantic AI Agent workspace config entry.",
-          "name": "Config entry"
-        },
-        "phrase": {
-          "description": "Natural-language phrase to resolve, such as kitchen lights.",
-          "name": "Phrase"
-        }
-      },
-      "name": "Resolve home semantic target"
-    },
-    "trace_home_semantic_resolution": {
-      "description": "Trace how a phrase ranks and filters Home Semantic Index candidates.",
-      "fields": {
-        "action": {"description": "Optional intended action used to filter compatible targets, including cover, lock, and climate actions.", "name": "Action"},
-        "area_id": {"description": "Optional area ID expected for candidates.", "name": "Area ID"},
-        "assistant_id": {"description": "Optional assistant ID used for exposed-entity filtering.", "name": "Assistant ID"},
-        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
-        "domain": {"description": "Optional entity domain expected for candidates.", "name": "Domain"},
-        "limit": {"description": "Maximum number of ranked candidates to return.", "name": "Limit"},
-        "phrase": {"description": "Natural-language phrase to trace, such as kitchen lights.", "name": "Phrase"}
-      },
-      "name": "Trace home semantic resolution"
     }
   }
 }

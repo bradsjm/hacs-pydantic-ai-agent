@@ -96,10 +96,6 @@
   `get_tool_source_status` for cached MCP and Skill tool sources,
   `list_mcp_tools` / `refresh_mcp_tools` for MCP catalogs, and
   `get_agent_run_diagnostics` for latest conversation or AI task run slices.
-- For Home Semantic Index validation, call `refresh_home_semantic_index` first,
-  then use `trace_home_semantic_resolution`, `plan_home_semantic_control`,
-  `get_home_semantic_document`, or `benchmark_home_semantic_resolution` instead
-  of executing live controls. `control_home` remains an LLM-only tool.
 - `ha-dev` tools may be available even when the development Home Assistant server
   is not running. If a connection/read-only health call fails because the server
   is unavailable, ask the user to start the development Home Assistant server so

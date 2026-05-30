@@ -6,10 +6,12 @@ import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
-from homeassistant.const import CONF_API_KEY, CONF_NAME, Platform
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME, Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import llm
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store
 import voluptuous as vol
 
 from .const import (
@@ -72,14 +74,18 @@ from .repairs import (
 )
 from .structured_output import structured_output_mode
 from .debug_services import async_setup_services as async_setup_debug_services
-from .home_semantic import HomeSemanticIndexManager
-from .home_semantic.llm_api import HomeSemanticAPI
-from .home_semantic.services import async_setup_services as async_setup_home_semantic_services
-from .home_semantic.store import HomeSemanticMemory
 
 _LOGGER = logging.getLogger(__name__)
 
 _MODEL_VALIDATION_OUTPUT_MODE_KEY = "_pydantic_ai_agent_output_mode"
+_REMOVED_IN_REPO_LLM_API_PREFIX = "pydantic_ai_agent_home_semantic_"
+_REMOVED_IN_REPO_MEMORY_STORE_VERSION = 1
+_REMOVED_IN_REPO_ENTITY_UNIQUE_ID_KEYS: tuple[tuple[str, str], ...] = (
+    (Platform.BINARY_SENSOR, "semantic_index_ready"),
+    (Platform.SENSOR, "semantic_index_generation"),
+    (Platform.SENSOR, "semantic_document_count"),
+    (Platform.SENSOR, "semantic_last_refresh_duration"),
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -181,7 +187,6 @@ class WorkspaceRuntimeData:
     metrics: MetricsStore = field(default_factory=MetricsStore)
     latest_stream_traces: dict[str, dict[str, Any]] = field(default_factory=dict)
     latest_run_diagnostics: dict[str, dict[str, Any]] = field(default_factory=dict)
-    home_semantic: HomeSemanticIndexManager | None = None
     logfire_enabled: bool = False
     logfire_include_content: bool = False
 
@@ -226,7 +231,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         supports_response=SupportsResponse.ONLY,
     )
     await async_setup_debug_services(hass)
-    await async_setup_home_semantic_services(hass)
     return True
 
 
@@ -237,7 +241,6 @@ async def async_setup_entry(
     provider_runtimes = _provider_runtimes(entry)
     mcp_runtime = _mcp_server_runtimes(entry)
     model_profiles = _resolved_model_profiles(entry, provider_runtimes)
-    home_semantic = HomeSemanticIndexManager(hass, entry)
     await async_configure_logfire(hass, entry)
     try:
         entry.runtime_data = WorkspaceRuntimeData(
@@ -245,7 +248,6 @@ async def async_setup_entry(
             providers=provider_runtimes,
             mcp_servers=mcp_runtime,
             model_profiles=model_profiles,
-            home_semantic=home_semantic,
             logfire_enabled=logfire_enabled(hass, entry),
             logfire_include_content=logfire_include_content(hass, entry),
         )
@@ -260,9 +262,6 @@ async def async_setup_entry(
     except BaseException:
         await async_release_logfire(hass, entry)
         raise
-    entry.async_on_unload(llm.async_register_api(hass, HomeSemanticAPI(hass, entry)))
-    home_semantic.async_start()
-    entry.async_on_unload(home_semantic.async_stop)
     entry.async_on_unload(entry.add_update_listener(async_update_entry))
     return True
 
@@ -281,7 +280,14 @@ async def async_unload_entry(
 async def async_migrate_entry(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> bool:
-    """Reject legacy config entries that predate the workspace schema."""
+    """Migrate workspace entries."""
+    if entry.version == 2 and entry.minor_version == 0:
+        _remove_removed_llm_api_refs(hass, entry)
+        _remove_removed_entity_registry_entries(hass, entry)
+        _remove_removed_device_registry_entry(hass, entry)
+        hass.config_entries.async_update_entry(entry, minor_version=1)
+        return True
+
     _LOGGER.error(
         "Pydantic AI Agent config entry %s uses unsupported schema version %s.%s; "
         "delete and recreate the workspace entry.",
@@ -298,12 +304,76 @@ async def async_remove_entry(
     """Clean up repair issues when a config entry is permanently removed."""
     await async_release_logfire(hass, entry)
     async_delete_entry_repair_issues(hass, entry)
-    runtime_data = getattr(entry, "runtime_data", None)
-    home_semantic = getattr(runtime_data, "home_semantic", None)
-    if home_semantic is not None:
-        await home_semantic.memory.async_remove()
-    else:
-        await HomeSemanticMemory(hass, entry).async_remove()
+    _remove_removed_entity_registry_entries(hass, entry)
+    _remove_removed_device_registry_entry(hass, entry)
+    await _async_remove_removed_memory_store(hass, entry)
+
+
+def _remove_removed_llm_api_refs(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
+) -> None:
+    """Remove persisted LLM API selections for the deleted in-repo API."""
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type not in {
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        }:
+            continue
+        api_ids = subentry.data.get(CONF_LLM_HASS_API)
+        if not isinstance(api_ids, list):
+            continue
+        cleaned_api_ids = [
+            api_id
+            for api_id in api_ids
+            if not (
+                isinstance(api_id, str)
+                and api_id.startswith(_REMOVED_IN_REPO_LLM_API_PREFIX)
+            )
+        ]
+        if cleaned_api_ids == api_ids:
+            continue
+        data = dict(subentry.data)
+        if cleaned_api_ids:
+            data[CONF_LLM_HASS_API] = cleaned_api_ids
+        else:
+            data.pop(CONF_LLM_HASS_API, None)
+        hass.config_entries.async_update_subentry(entry, subentry, data=data)
+
+
+def _remove_removed_entity_registry_entries(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
+) -> None:
+    """Remove registry entries for diagnostic entities that no longer exist."""
+    entity_registry = er.async_get(hass)
+    for domain, key in _REMOVED_IN_REPO_ENTITY_UNIQUE_ID_KEYS:
+        unique_id = f"{DOMAIN}_{entry.entry_id}_{key}"
+        entity_id = entity_registry.async_get_entity_id(domain, DOMAIN, unique_id)
+        if entity_id is not None:
+            entity_registry.async_remove(entity_id)
+
+
+def _remove_removed_device_registry_entry(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
+) -> None:
+    """Remove obsolete workspace-level diagnostic device when it is empty."""
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    device = device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    if device is None or er.async_entries_for_device(entity_registry, device.id, True):
+        return
+    device_registry.async_remove_device(device.id)
+
+
+async def _async_remove_removed_memory_store(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
+) -> None:
+    """Remove obsolete per-entry memory from the deleted in-repo API."""
+    store: Store[dict[str, Any]] = Store(
+        hass,
+        _REMOVED_IN_REPO_MEMORY_STORE_VERSION,
+        f"{DOMAIN}.home_semantic.{entry.entry_id}",
+    )
+    await store.async_remove()
 
 
 async def async_update_entry(

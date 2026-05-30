@@ -291,7 +291,7 @@ def workspace_entry(
         options={} if options is None else dict(options),
         unique_id=None,
         version=2,
-        minor_version=0,
+        minor_version=1,
     )
 
 

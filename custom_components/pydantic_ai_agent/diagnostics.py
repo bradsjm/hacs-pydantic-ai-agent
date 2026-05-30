@@ -41,7 +41,6 @@ from .logfire_support import (
     logfire_include_content,
     logfire_token_conflict,
 )
-from .home_semantic.diagnostics import semantic_manager_diagnostics
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
@@ -152,7 +151,6 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
             server_id: len(tools)
             for server_id, tools in runtime_data.mcp_tool_cache.items()
         },
-        "home_semantic_index": semantic_manager_diagnostics(runtime_data.home_semantic),
     }
     if runtime_data.latest_run_diagnostics:
         diagnostics["latest_run_diagnostics"] = runtime_data.latest_run_diagnostics

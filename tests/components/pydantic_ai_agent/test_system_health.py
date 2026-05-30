@@ -41,7 +41,7 @@ async def test_system_health_reports_safe_workspace_aggregate_counts(
     """Test system health exposes workspace aggregate counts without secrets."""
     entry = MockConfigEntry(
         version=2,
-        minor_version=0,
+        minor_version=1,
         domain=DOMAIN,
         title="Workspace",
         data={CONF_NAME: "Workspace"},
@@ -135,7 +135,7 @@ async def test_system_health_reports_safe_workspace_aggregate_counts(
     )
     other_entry = MockConfigEntry(
         version=2,
-        minor_version=0,
+        minor_version=1,
         domain=DOMAIN,
         title="Workspace 2",
         data={CONF_NAME: "Workspace 2"},

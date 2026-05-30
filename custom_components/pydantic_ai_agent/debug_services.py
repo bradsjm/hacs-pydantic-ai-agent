@@ -348,8 +348,6 @@ def _runtime_status(runtime_data: Any) -> dict[str, Any] | None:
     metrics = getattr(runtime_data, "metrics", None)
     records = getattr(metrics, "_records", {}) if metrics is not None else {}
     latest_run_diagnostics = getattr(runtime_data, "latest_run_diagnostics", {})
-    home_semantic = getattr(runtime_data, "home_semantic", None)
-    semantic_diagnostics = home_semantic.diagnostics() if home_semantic is not None else None
     return {
         "workspace_name": getattr(runtime_data, "workspace_name", None),
         "provider_count": len(getattr(runtime_data, "providers", {})),
@@ -360,22 +358,6 @@ def _runtime_status(runtime_data: Any) -> dict[str, Any] | None:
         "latest_run_diagnostic_count": len(latest_run_diagnostics),
         "logfire_enabled": bool(getattr(runtime_data, "logfire_enabled", False)),
         "logfire_include_content": bool(getattr(runtime_data, "logfire_include_content", False)),
-        "home_semantic": _semantic_runtime_status(semantic_diagnostics),
-    }
-
-
-def _semantic_runtime_status(diagnostics: Mapping[str, Any] | None) -> dict[str, Any] | None:
-    """Return compact Home Semantic Index runtime status."""
-    if diagnostics is None:
-        return None
-    return {
-        "ready": diagnostics.get("ready"),
-        "status": diagnostics.get("status"),
-        "generation": diagnostics.get("generation"),
-        "document_count": diagnostics.get("document_count", 0),
-        "edge_count": diagnostics.get("edge_count", 0),
-        "last_duration_ms": diagnostics.get("last_duration_ms"),
-        "last_error_type": diagnostics.get("last_error_type"),
     }
 
 
