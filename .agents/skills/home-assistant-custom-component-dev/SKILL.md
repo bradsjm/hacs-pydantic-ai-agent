@@ -35,6 +35,45 @@ Authoritative starting points:
 5. Update every product surface affected by the behavior change.
 6. Verify with focused tests first, then broader validation scripts available in the repo.
 
+## New Component Skeleton Pattern
+
+When creating a new HACS custom component repository or extracting a component into its own repository, set up the root as a first-class development project, not only `custom_components/<domain>`.
+
+Create or adapt these root files:
+
+- Python project metadata: `pyproject.toml`, `uv.lock`, and root `conftest.py`.
+- Node tooling metadata for markdown/prettier checks: `package.json` and `package-lock.json` when those checks are used.
+- Validation config: `.pre-commit-config.yaml`, `.ruff` settings in `pyproject.toml`, `.yamllint`, `.markdownlint.json`, `.prettierrc.js`, `.prettierignore`, and `.gitignore`.
+- Local commands: `scripts/setup`, `scripts/check`, `scripts/lint-check`, `scripts/type-check`, `scripts/yaml-check`, `scripts/markdown-check`, `scripts/format`, and `scripts/test`.
+- CI and support: `.github/workflows/validate.yml` with HACS, Hassfest, and test jobs; `.github/ISSUE_TEMPLATE/bug_report.yml`.
+- Product and maintainer docs: `README.md`, `AGENTS.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, and `LICENSE`.
+- Test scaffold: `tests/components/<domain>/conftest.py`, `tests/components/<domain>/__init__.py`, and at least one smoke test proving manifest/domain alignment.
+
+Create or verify these component files before calling the integration loadable:
+
+- `custom_components/<domain>/__init__.py`
+- `custom_components/<domain>/manifest.json`
+- `custom_components/<domain>/const.py`
+- `custom_components/<domain>/config_flow.py` when `config_flow` is true
+- `custom_components/<domain>/translations/en.json`
+- `custom_components/<domain>/services.yaml` for registered services/actions
+- `custom_components/<domain>/icons.json` for service/entity icons when exposed
+- `custom_components/<domain>/diagnostics.py` and `system_health.py` when runtime state or user support diagnostics exist
+
+Adapt from an existing repo only as a template:
+
+- Replace every domain, package name, test path, CI label, README claim, and script target with the new domain.
+- Remove dependencies, scripts, tests, and docs for features the new component does not implement.
+- Keep `manifest.json`, `hacs.json`, `pyproject.toml`, README, tests, translations, services, and changelog versions aligned.
+- Do not copy caches, virtual environments, generated coverage, or old lockfiles after changing dependency sets; regenerate lockfiles from the new metadata.
+
+Verify the skeleton from the new repository root:
+
+1. Run `scripts/setup` to install locked Python and Node tooling.
+2. Run `scripts/check` and fix failures surfaced by Ruff, Pyright, yamllint, markdownlint, and pytest.
+3. Grep source/docs/config for stale old-domain references, excluding ignored dependency directories.
+4. Run HACS and Hassfest validation locally or in CI before release.
+
 ## Reference Map
 
 - Read `references/architecture-lifecycle.md` for repository shape, manifest/HACS metadata, setup, unload, remove, migration, runtime data, and process-global coordination.
