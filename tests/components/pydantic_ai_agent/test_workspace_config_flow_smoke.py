@@ -215,7 +215,9 @@ async def test_migration_removes_removed_diagnostic_entities(
 
     assert await async_migrate_entry(hass, cast(Any, entry))
 
-    assert device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)}) is None
+    assert (
+        device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)}) is None
+    )
     for domain, key in removed_entities:
         assert (
             entity_registry.async_get_entity_id(

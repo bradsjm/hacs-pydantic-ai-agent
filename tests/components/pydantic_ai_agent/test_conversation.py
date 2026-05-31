@@ -389,7 +389,7 @@ async def test_conversation_subentries_add_separate_entity_agents(
                     f"{entry.entry_id}:{subentries[0].subentry_type}:{subentries[0].subentry_id}",
                 )
             },
-            "name": "Kitchen Agent Configuration",
+            "name": "Kitchen Agent",
             "manufacturer": "Pydantic AI",
             "model": "gpt-kitchen",
             "entry_type": dr.DeviceEntryType.SERVICE,
@@ -401,7 +401,7 @@ async def test_conversation_subentries_add_separate_entity_agents(
                     f"{entry.entry_id}:{subentries[1].subentry_type}:{subentries[1].subentry_id}",
                 )
             },
-            "name": "Garage Agent Configuration",
+            "name": "Garage Agent",
             "manufacturer": "Pydantic AI",
             "model": "gpt-garage",
             "entry_type": dr.DeviceEntryType.SERVICE,
@@ -1008,9 +1008,7 @@ async def test_streaming_records_safe_trace_payload(
     }
     assert any(
         event["phase"] == "llm_stream"
-        and event["data"]["summary"].get("delta", {}).get(
-            "content_delta_preview"
-        )
+        and event["data"]["summary"].get("delta", {}).get("content_delta_preview")
         == "thinking about greeting"
         for event in timeline
     )

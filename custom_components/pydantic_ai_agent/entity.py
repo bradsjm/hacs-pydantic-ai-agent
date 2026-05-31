@@ -6,6 +6,7 @@ from typing import Any, cast
 
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import AbstractCapability, ToolSearch, WebFetch
+from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.toolsets import AbstractToolset, DeferredLoadingToolset
@@ -64,6 +65,8 @@ from .model_profiles import (
     primary_model_profile,
     thinking_capability,
 )
+from .provider_validation import ProviderValidationError
+from .repairs import async_create_provider_auth_issue, async_delete_provider_auth_issue
 from .run_failures import (
     _AgentRunFailed,
     _AgentRunFailure,
@@ -86,12 +89,75 @@ from .structured_output import (
 from .virtual_workspace import virtual_workspace_enabled, virtual_workspace_parts
 
 _LOGGER = logging.getLogger(__name__)
+_AUTH_VALIDATION_FAILURE_REASONS = {"invalid_auth", "permission_denied"}
 
 
 def _join_instructions(*parts: str | None) -> str | None:
     """Join optional instruction blocks for one agent run."""
     instructions = [part.strip() for part in parts if part and part.strip()]
     return "\n\n".join(instructions) if instructions else None
+
+
+def _has_provider_auth_validation_failure(
+    failures: Mapping[str, str], provider_subentry_id: str
+) -> bool:
+    """Return if setup validation still has an auth issue for a provider."""
+    return any(
+        reason in _AUTH_VALIDATION_FAILURE_REASONS
+        and len(parts := failure_key.split(":")) >= 3
+        and parts[1] == provider_subentry_id
+        for failure_key, reason in failures.items()
+    )
+
+
+def _has_provider_auth_failure(
+    entry: PydanticAIAgentConfigEntry, provider_subentry_id: str
+) -> bool:
+    """Return if setup or runtime has a current auth issue for a provider."""
+    return _has_provider_auth_validation_failure(
+        entry.runtime_data.model_validation_failures,
+        provider_subentry_id,
+    ) or bool(entry.runtime_data.runtime_provider_auth_failures.get(provider_subentry_id))
+
+
+def _record_runtime_auth_failure(
+    entry: PydanticAIAgentConfigEntry, profile: ModelProfile
+) -> None:
+    """Record a runtime auth issue for one provider/profile pair."""
+    failures = entry.runtime_data.runtime_provider_auth_failures.setdefault(
+        profile.provider_subentry_id, []
+    )
+    if profile.ref not in failures:
+        failures.append(profile.ref)
+
+
+def _clear_runtime_auth_failure(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry, profile: ModelProfile
+) -> None:
+    """Clear a runtime auth issue for one provider/profile pair when safe."""
+    _clear_runtime_auth_failure_for_ref(
+        hass, entry, profile.provider_subentry_id, profile.ref
+    )
+
+
+def _clear_runtime_auth_failure_for_ref(
+    hass: HomeAssistant,
+    entry: PydanticAIAgentConfigEntry,
+    provider_subentry_id: str,
+    profile_ref: str,
+) -> None:
+    """Clear a runtime auth issue by provider/profile reference when safe."""
+    failures = entry.runtime_data.runtime_provider_auth_failures.get(
+        provider_subentry_id
+    )
+    if failures is not None and profile_ref in failures:
+        failures.remove(profile_ref)
+        if not failures:
+            entry.runtime_data.runtime_provider_auth_failures.pop(
+                provider_subentry_id, None
+            )
+    if not _has_provider_auth_failure(entry, provider_subentry_id):
+        async_delete_provider_auth_issue(hass, entry, provider_subentry_id)
 
 
 class PydanticAIBaseLLMEntity:
@@ -112,9 +178,6 @@ class PydanticAIBaseLLMEntity:
         """Initialize shared entity metadata."""
         self.entry = entry
         self.subentry = subentry
-        if device_name is not None and device_name != name:
-            self._attr_has_entity_name = False
-            self._attr_name = name
         profile = primary_model_profile(entry, subentry)
         self._attr_unique_id = unique_id_for_subentry(entry, subentry)
         self._attr_device_info = dr.DeviceInfo(
@@ -124,6 +187,16 @@ class PydanticAIBaseLLMEntity:
             model=profile.model_name,
             entry_type=dr.DeviceEntryType.SERVICE,
         )
+
+    @property
+    def available(self) -> bool:
+        """Return if the primary model profile validated at setup."""
+        failures = self.entry.runtime_data.model_validation_failures
+        try:
+            primary_profile = model_profile_chain(self.entry, self.subentry)[0]
+        except (HomeAssistantError, IndexError):
+            return False
+        return f"{self.subentry.subentry_id}:{primary_profile.ref}" not in failures
 
     async def _async_handle_chat_log(
         self,
@@ -249,8 +322,7 @@ class PydanticAIBaseLLMEntity:
                         "extra_toolset_count": len(extra_toolsets),
                         "virtual_workspace_enabled": use_virtual_workspace,
                         "capability_types": [
-                            type(capability).__name__
-                            for capability in run_capabilities
+                            type(capability).__name__ for capability in run_capabilities
                         ],
                     },
                 )
@@ -284,6 +356,7 @@ class PydanticAIBaseLLMEntity:
                     run_recorder,
                 )
                 if record_success:
+                    _clear_runtime_auth_failure(self.hass, self.entry, profile)
                     self._record_agent_run_success(outcome, agent_id)
                     self._store_run_diagnostics(
                         run_recorder,
@@ -298,11 +371,17 @@ class PydanticAIBaseLLMEntity:
                     return outcome.output
                 return outcome
             except Exception as err:
+                if _auth_status_code(err) is None:
+                    _clear_runtime_auth_failure(self.hass, self.entry, profile)
                 if index == len(profiles) - 1 or not _should_fallback(err):
                     failure = _classify_run_failure(
                         err,
                         usage_limits=usage_limits,
                     )
+                    if not _async_create_runtime_auth_issue(
+                        self.hass, self.entry, profile, err, failure.user_message
+                    ):
+                        _clear_runtime_auth_failure(self.hass, self.entry, profile)
                     self._record_agent_run_failure(
                         err,
                         agent_id,
@@ -421,6 +500,8 @@ class PydanticAIBaseLLMEntity:
                             usage=result.usage,
                             duration=duration,
                             model_profile=profile.title,
+                            model_profile_ref=profile.ref,
+                            provider_subentry_id=profile.provider_subentry_id,
                             model_pricing=profile.model_pricing,
                             run_recorder=run_recorder,
                         )
@@ -454,6 +535,8 @@ class PydanticAIBaseLLMEntity:
                             usage=result.usage,
                             duration=duration,
                             model_profile=profile.title,
+                            model_profile_ref=profile.ref,
+                            provider_subentry_id=profile.provider_subentry_id,
                             model_pricing=profile.model_pricing,
                             run_recorder=run_recorder,
                         )
@@ -497,6 +580,8 @@ class PydanticAIBaseLLMEntity:
                         usage=result.usage,
                         duration=duration,
                         model_profile=profile.title,
+                        model_profile_ref=profile.ref,
+                        provider_subentry_id=profile.provider_subentry_id,
                         model_pricing=profile.model_pricing,
                         run_recorder=run_recorder,
                     )
@@ -565,7 +650,9 @@ class PydanticAIBaseLLMEntity:
             data={
                 "final_messages": final_messages,
                 "backfill": backfill,
-                "final_chat_content": chat_log.content[-1] if chat_log.content else None,
+                "final_chat_content": chat_log.content[-1]
+                if chat_log.content
+                else None,
             },
         )
         trace_payload = trace_recorder.payload(
@@ -686,6 +773,41 @@ def unique_id_for_subentry_entity(
 ) -> str:
     """Return the unique ID for one subentry-backed diagnostic entity."""
     return f"{unique_id_for_subentry(entry, subentry)}_{key}"
+
+
+def _async_create_runtime_auth_issue(
+    hass: HomeAssistant,
+    entry: PydanticAIAgentConfigEntry,
+    profile: ModelProfile,
+    err: BaseException,
+    message: str,
+) -> bool:
+    """Create a provider auth repair issue for runtime credential failures."""
+    status_code = _auth_status_code(err)
+    if status_code is None:
+        return False
+    reason = "invalid_auth" if status_code == 401 else "permission_denied"
+    _record_runtime_auth_failure(entry, profile)
+    async_create_provider_auth_issue(
+        hass,
+        entry,
+        profile.provider_subentry_id,
+        profile.provider_title,
+        ProviderValidationError(reason, message, status_code),
+    )
+    return True
+
+
+def _auth_status_code(err: BaseException) -> int | None:
+    """Return 401/403 from a runtime error cause chain when present."""
+    seen: set[int] = set()
+    current: BaseException | None = err
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ModelHTTPError) and current.status_code in {401, 403}:
+            return current.status_code
+        current = current.__cause__ or current.__context__
+    return None
 
 
 def device_identifier_for_subentry(

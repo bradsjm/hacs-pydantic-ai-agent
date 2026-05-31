@@ -8,7 +8,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME, Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
@@ -67,10 +67,14 @@ from .model_profiles import (
 from .repairs import (
     async_delete_logfire_token_conflict_issue,
     async_create_model_validation_issue,
+    async_create_provider_auth_issue,
     async_delete_entry_repair_issues,
     async_delete_model_validation_issue,
+    async_delete_provider_auth_issue,
     async_delete_stale_model_validation_issues,
+    async_delete_stale_provider_auth_issues,
     model_validation_issue_id,
+    provider_validation_is_auth_failure,
 )
 from .structured_output import structured_output_mode
 from .debug_services import async_setup_services as async_setup_debug_services
@@ -94,6 +98,7 @@ class _ConfiguredModelProbe:
 
     provider_subentry: ConfigSubentry
     issue_profile_id: str
+    failure_keys: tuple[str, ...]
     model: str
     model_settings: dict[str, Any]
     output_mode: str | None
@@ -187,6 +192,8 @@ class WorkspaceRuntimeData:
     metrics: MetricsStore = field(default_factory=MetricsStore)
     latest_stream_traces: dict[str, dict[str, Any]] = field(default_factory=dict)
     latest_run_diagnostics: dict[str, dict[str, Any]] = field(default_factory=dict)
+    model_validation_failures: dict[str, str] = field(default_factory=dict)
+    runtime_provider_auth_failures: dict[str, list[str]] = field(default_factory=dict)
     logfire_enabled: bool = False
     logfire_include_content: bool = False
 
@@ -251,7 +258,12 @@ async def async_setup_entry(
             logfire_enabled=logfire_enabled(hass, entry),
             logfire_include_content=logfire_include_content(hass, entry),
         )
-        await _async_validate_configured_models(hass, entry)
+        model_validation_failures = await _async_validate_configured_models(hass, entry)
+        entry.runtime_data = replace(
+            entry.runtime_data,
+            model_validation_failures=model_validation_failures,
+        )
+        _remove_stale_subentry_registry_entries(hass, entry)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         await async_configure_logfire(hass, entry)
         entry.runtime_data = replace(
@@ -306,6 +318,7 @@ async def async_remove_entry(
     async_delete_entry_repair_issues(hass, entry)
     _remove_removed_entity_registry_entries(hass, entry)
     _remove_removed_device_registry_entry(hass, entry)
+    _remove_stale_subentry_registry_entries(hass, entry)
     await _async_remove_removed_memory_store(hass, entry)
 
 
@@ -364,6 +377,72 @@ def _remove_removed_device_registry_entry(
     device_registry.async_remove_device(device.id)
 
 
+def _remove_stale_subentry_registry_entries(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
+) -> None:
+    """Remove entities and empty devices for subentries no longer in the entry."""
+    live_subentry_ids = set(entry.subentries)
+    entity_registry = er.async_get(hass)
+    for entity_entry in er.async_entries_for_config_entry(
+        entity_registry, entry.entry_id
+    ):
+        subentry_id = entity_entry.config_subentry_id or _subentry_id_from_unique_id(
+            entity_entry.unique_id, entry
+        )
+        if subentry_id is not None and subentry_id not in live_subentry_ids:
+            entity_registry.async_remove(entity_entry.entity_id)
+
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+        subentry_id = _subentry_id_from_device(device, entry)
+        if subentry_id is None or subentry_id in live_subentry_ids:
+            continue
+        if er.async_entries_for_device(entity_registry, device.id, True):
+            continue
+        device_registry.async_remove_device(device.id)
+
+
+def _subentry_id_from_unique_id(
+    unique_id: str, entry: PydanticAIAgentConfigEntry
+) -> str | None:
+    """Return the subentry ID from an integration-owned entity unique ID."""
+    prefix = f"{DOMAIN}_{entry.entry_id}_"
+    if not unique_id.startswith(prefix):
+        return None
+    remainder = unique_id.removeprefix(prefix)
+    for subentry_type in (
+        SUBENTRY_TYPE_CONVERSATION,
+        SUBENTRY_TYPE_AI_TASK,
+        SUBENTRY_TYPE_PROVIDER,
+    ):
+        type_prefix = f"{subentry_type}_"
+        if not remainder.startswith(type_prefix):
+            continue
+        subentry_and_key = remainder.removeprefix(type_prefix)
+        for subentry_id in entry.subentries:
+            if subentry_and_key == subentry_id or subentry_and_key.startswith(
+                f"{subentry_id}_"
+            ):
+                return subentry_id
+        return subentry_and_key.rsplit("_", 1)[0]
+    return None
+
+
+def _subentry_id_from_device(
+    device: dr.DeviceEntry, entry: PydanticAIAgentConfigEntry
+) -> str | None:
+    """Return the subentry ID represented by an integration-owned device."""
+    prefix = f"{entry.entry_id}:"
+    for domain, identifier in device.identifiers:
+        if domain != DOMAIN or not identifier.startswith(prefix):
+            continue
+        parts = identifier.split(":", 2)
+        if len(parts) == 3:
+            return parts[2]
+    return None
+
+
 async def _async_remove_removed_memory_store(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> None:
@@ -401,9 +480,10 @@ def _config_entry_for_service(
     """Return a config entry for an MCP response service."""
     entry = hass.config_entries.async_get_entry(entry_id)
     if entry is None or entry.domain != DOMAIN:
-        raise MCPValidationError(
-            "config_entry_not_found",
-            "Pydantic AI Agent config entry was not found.",
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="config_entry_not_found",
+            translation_placeholders={"config_entry_id": entry_id},
         )
     return entry
 
@@ -426,48 +506,43 @@ async def _async_mcp_tools_service(
     """List or refresh MCP tools for one config entry."""
     errors: list[dict[str, Any]] = []
     tools_by_server: dict[str, list[dict[str, Any]]] = {}
-    try:
-        entry = _config_entry_for_service(hass, call.data[ATTR_CONFIG_ENTRY_ID])
-        subentry_ids = _mcp_service_subentry_ids(
-            entry, call.data.get(ATTR_MCP_SERVER_ID)
-        )
-        if not subentry_ids:
-            return {"success": True, "servers": {}, "tools": []}
-        for subentry_id in subentry_ids:
-            try:
-                tools = None if refresh else cached_mcp_tools(entry, subentry_id)
-                if tools is None:
-                    tools = await async_refresh_mcp_tools(hass, entry, subentry_id)
-                tools_by_server[subentry_id] = tools
-                if refresh:
-                    fire_integration_event(
-                        hass,
-                        EVENT_MCP_TOOL_REFRESH_COMPLETED,
-                        {
-                            "config_entry_id": entry.entry_id,
-                            "mcp_server_id": subentry_id,
-                            "tool_count": len(tools),
-                        },
-                    )
-            except MCPValidationError as err:
-                _LOGGER.warning(
-                    "MCP tool discovery failed: reason=%s server_id=%s",
-                    err.reason,
-                    err.server_id,
+    entry = _config_entry_for_service(hass, call.data[ATTR_CONFIG_ENTRY_ID])
+    subentry_ids = _mcp_service_subentry_ids(entry, call.data.get(ATTR_MCP_SERVER_ID))
+    if not subentry_ids:
+        return {"success": True, "servers": {}, "tools": []}
+    for subentry_id in subentry_ids:
+        try:
+            tools = None if refresh else cached_mcp_tools(entry, subentry_id)
+            if tools is None:
+                tools = await async_refresh_mcp_tools(hass, entry, subentry_id)
+            tools_by_server[subentry_id] = tools
+            if refresh:
+                fire_integration_event(
+                    hass,
+                    EVENT_MCP_TOOL_REFRESH_COMPLETED,
+                    {
+                        "config_entry_id": entry.entry_id,
+                        "mcp_server_id": subentry_id,
+                        "tool_count": len(tools),
+                    },
                 )
-                errors.append(_mcp_error_response(err))
-                if refresh:
-                    fire_integration_event(
-                        hass,
-                        EVENT_MCP_TOOL_REFRESH_FAILED,
-                        {
-                            "config_entry_id": entry.entry_id,
-                            "mcp_server_id": subentry_id,
-                            "reason": err.reason,
-                        },
-                    )
-    except MCPValidationError as err:
-        errors.append(_mcp_error_response(err))
+        except MCPValidationError as err:
+            _LOGGER.warning(
+                "MCP tool discovery failed: reason=%s server_id=%s",
+                err.reason,
+                err.server_id,
+            )
+            errors.append(_mcp_error_response(err))
+            if refresh:
+                fire_integration_event(
+                    hass,
+                    EVENT_MCP_TOOL_REFRESH_FAILED,
+                    {
+                        "config_entry_id": entry.entry_id,
+                        "mcp_server_id": subentry_id,
+                        "reason": err.reason,
+                    },
+                )
     flat_tools = [tool for tools in tools_by_server.values() for tool in tools]
     return {
         "success": not errors,
@@ -482,30 +557,22 @@ def _agent_run_diagnostics_service(
     call: ServiceCall,
 ) -> dict[str, Any]:
     """Return compact latest-run diagnostics for one agent subentry."""
-    errors: list[dict[str, Any]] = []
-    entry: PydanticAIAgentConfigEntry | None = None
-    try:
-        entry = _config_entry_for_service(hass, call.data[ATTR_CONFIG_ENTRY_ID])
-    except MCPValidationError as err:
-        errors.append(_mcp_error_response(err))
-    if entry is None:
-        return {"success": False, "errors": errors}
+    entry = _config_entry_for_service(hass, call.data[ATTR_CONFIG_ENTRY_ID])
     subentry_id = call.data[ATTR_SUBENTRY_ID]
     if subentry_id not in entry.subentries:
-        return {
-            "success": False,
-            "config_entry_id": entry.entry_id,
-            "subentry_id": subentry_id,
-            "errors": [
-                {
-                    "reason": "subentry_not_found",
-                    "message": "Agent subentry was not found.",
-                }
-            ],
-        }
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="subentry_not_found",
+            translation_placeholders={
+                "config_entry_id": entry.entry_id,
+                "subentry_id": subentry_id,
+            },
+        )
     runtime_data = getattr(entry, "runtime_data", None)
-    diagnostics = None if runtime_data is None else runtime_data.latest_run_diagnostics.get(
-        subentry_id
+    diagnostics = (
+        None
+        if runtime_data is None
+        else runtime_data.latest_run_diagnostics.get(subentry_id)
     )
     base: dict[str, Any] = {
         "success": True,
@@ -586,11 +653,7 @@ def _timeline_events(timeline: Any) -> tuple[list[dict[str, Any]], int, int]:
     if isinstance(timeline, Mapping):
         head = timeline.get("head", [])
         tail = timeline.get("tail", [])
-        events = [
-            event
-            for event in [*head, *tail]
-            if isinstance(event, dict)
-        ]
+        events = [event for event in [*head, *tail] if isinstance(event, dict)]
         return (
             events,
             int(timeline.get("total_count", len(events))),
@@ -725,10 +788,11 @@ def _configured_subentry_models(
 ) -> list[_ConfiguredModelProbe]:
     """Return unique model probes needed before the entry can load."""
     models: list[_ConfiguredModelProbe] = []
-    seen: set[tuple[str, str, str, str | None]] = set()
+    seen: dict[tuple[str, str, str, str | None], int] = {}
 
     def add_model(
         provider_subentry: ConfigSubentry,
+        subentry_id: str,
         profile_ref: str,
         subentry_data: Mapping[str, Any],
         output_mode: str | None,
@@ -752,15 +816,23 @@ def _configured_subentry_models(
             normalise_applied_model_settings(model_settings),
             output_mode,
         )
+        failure_key = f"{subentry_id}:{profile_ref}"
         # Several subentries can target the same model/settings pair, so probe
         # each unique runtime capability once during setup.
         if dedupe_key in seen:
+            index = seen[dedupe_key]
+            probe = models[index]
+            models[index] = replace(
+                probe,
+                failure_keys=(*probe.failure_keys, failure_key),
+            )
             return
-        seen.add(dedupe_key)
+        seen[dedupe_key] = len(models)
         models.append(
             _ConfiguredModelProbe(
                 provider_subentry=provider_subentry,
                 issue_profile_id=profile_ref,
+                failure_keys=(failure_key,),
                 model=model,
                 model_settings=model_settings,
                 output_mode=output_mode,
@@ -811,7 +883,9 @@ def _configured_subentry_models(
                     subentry.subentry_id,
                 )
                 continue
-            add_model(provider_subentry, ref, subentry.data, output_mode)
+            add_model(
+                provider_subentry, subentry.subentry_id, ref, subentry.data, output_mode
+            )
     return models
 
 
@@ -831,9 +905,11 @@ def _repair_issue_model_settings(
 
 async def _async_validate_configured_models(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+) -> dict[str, str]:
     """Probe configured models and surface provider/profile repairs."""
     current_issue_ids: set[str] = set()
+    auth_failure_provider_ids: set[str] = set()
+    validation_failures: dict[str, str] = {}
     for probe in _configured_subentry_models(entry):
         repair_settings = _repair_issue_model_settings(
             probe.model_settings, probe.output_mode
@@ -873,8 +949,33 @@ async def _async_validate_configured_models(
                 repair_settings,
                 err,
             )
+            validation_failures.update(
+                {failure_key: err.reason for failure_key in probe.failure_keys}
+            )
+            if provider_validation_is_auth_failure(err):
+                auth_failure_provider_ids.add(probe.provider_subentry.subentry_id)
+                async_create_provider_auth_issue(
+                    hass,
+                    entry,
+                    probe.provider_subentry.subentry_id,
+                    probe.provider_subentry.title,
+                    err,
+                )
             continue
         async_delete_model_validation_issue(
             hass, entry, probe.issue_profile_id, probe.model, repair_settings
         )
     async_delete_stale_model_validation_issues(hass, entry, current_issue_ids)
+    current_provider_ids = {
+        subentry.subentry_id
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER
+    }
+    for provider_id in current_provider_ids - auth_failure_provider_ids:
+        async_delete_provider_auth_issue(hass, entry, provider_id)
+    async_delete_stale_provider_auth_issues(
+        hass,
+        entry,
+        current_provider_ids,
+    )
+    return validation_failures

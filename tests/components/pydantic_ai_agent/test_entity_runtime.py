@@ -37,13 +37,24 @@ from pydantic_ai.usage import UsageLimits
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import issue_registry as ir
 
 from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
+    CONF_FALLBACK_MODEL_REFS,
     CONF_PROVIDER_EXTRA_BODY,
+    DOMAIN,
     PROVIDER_GOOGLE_GEMINI,
+)
+from custom_components.pydantic_ai_agent.ai_task import PydanticAIAgentAITaskEntity
+from custom_components.pydantic_ai_agent.binary_sensor import (
+    BINARY_SENSOR_DESCRIPTIONS,
+    CONFIG_BINARY_SENSOR_DESCRIPTIONS,
+)
+from custom_components.pydantic_ai_agent.conversation import (
+    PydanticAIConversationEntity,
 )
 
 from custom_components.pydantic_ai_agent.entity import (
@@ -52,10 +63,13 @@ from custom_components.pydantic_ai_agent.entity import (
     _agent_events_to_chat_deltas,
     _agent_messages_to_chat_deltas,
     _classify_run_failure,
+    _clear_runtime_auth_failure,
     _has_connection_failure,
+    _has_provider_auth_validation_failure,
     _home_assistant_error,
     _model_settings_with_chat_template_kwargs,
     _model_settings_with_provider_extra_body,
+    _record_runtime_auth_failure,
     _should_fallback,
 )
 from custom_components.pydantic_ai_agent.metrics import (
@@ -65,8 +79,22 @@ from custom_components.pydantic_ai_agent.metrics import (
 )
 from custom_components.pydantic_ai_agent.mcp import MCPValidationError
 from custom_components.pydantic_ai_agent.model_profiles import ModelProfile
+from custom_components.pydantic_ai_agent.repairs import provider_auth_issue_id
 from custom_components.pydantic_ai_agent.virtual_workspace.const import (
     TOOL_RETURN_METADATA_SOURCE,
+)
+from tests.components.pydantic_ai_agent.support.builders import (
+    ai_task_subentry_data,
+    conversation_subentry_data,
+    provider_runtime_data,
+    provider_subentry_data,
+    workspace_entry,
+    workspace_runtime_data,
+)
+
+from custom_components.pydantic_ai_agent.sensor import (
+    CONFIG_SENSOR_DESCRIPTIONS,
+    SENSOR_DESCRIPTIONS,
 )
 
 
@@ -108,6 +136,201 @@ def test_should_not_fallback_for_non_retryable_http_errors(status_code: int) -> 
     assert not _should_fallback(
         ModelHTTPError(status_code=status_code, model_name="gpt-test", body=None)
     )
+
+
+def test_agent_entities_keep_has_entity_name() -> None:
+    """Test base metadata setup does not override HA entity naming."""
+    profile_ref = "provider-1:profile-1"
+    entry = workspace_entry(
+        (
+            provider_subentry_data(subentry_id="provider-1"),
+            conversation_subentry_data(profile_ref, subentry_id="conversation-1"),
+            ai_task_subentry_data(profile_ref, subentry_id="task-1"),
+        )
+    )
+    entry.runtime_data = workspace_runtime_data(
+        providers={"provider-1": provider_runtime_data(subentry_id="provider-1")}
+    )
+
+    conversation_entity = PydanticAIConversationEntity(
+        cast(Any, entry), entry.subentries["conversation-1"]
+    )
+    ai_task_entity = PydanticAIAgentAITaskEntity(
+        cast(Any, entry), entry.subentries["task-1"]
+    )
+
+    assert conversation_entity._attr_has_entity_name is True
+    assert conversation_entity._attr_name is None
+    assert ai_task_entity._attr_has_entity_name is True
+    assert ai_task_entity._attr_name is None
+
+
+def test_agent_entities_unavailable_when_all_profiles_failed_validation() -> None:
+    """Test setup-time validation failures drive degraded entity availability."""
+    profile_ref = "provider-1:profile-1"
+    entry = workspace_entry(
+        (
+            provider_subentry_data(subentry_id="provider-1"),
+            conversation_subentry_data(profile_ref, subentry_id="conversation-1"),
+        )
+    )
+    runtime_data = workspace_runtime_data(
+        providers={"provider-1": provider_runtime_data(subentry_id="provider-1")}
+    )
+    runtime_data.model_validation_failures[f"conversation-1:{profile_ref}"] = "invalid_auth"
+    entry.runtime_data = runtime_data
+
+    entity = PydanticAIConversationEntity(
+        cast(Any, entry), entry.subentries["conversation-1"]
+    )
+
+    assert entity.available is False
+
+
+def test_agent_entities_ignore_other_subentry_validation_failures() -> None:
+    """Test setup-time validation failures are scoped to the affected subentry."""
+    profile_ref = "provider-1:profile-1"
+    entry = workspace_entry(
+        (
+            provider_subentry_data(subentry_id="provider-1"),
+            conversation_subentry_data(profile_ref, subentry_id="conversation-1"),
+            ai_task_subentry_data(profile_ref, subentry_id="task-1"),
+        )
+    )
+    runtime_data = workspace_runtime_data(
+        providers={"provider-1": provider_runtime_data(subentry_id="provider-1")}
+    )
+    runtime_data.model_validation_failures[f"task-1:{profile_ref}"] = "invalid_auth"
+    entry.runtime_data = runtime_data
+
+    conversation_entity = PydanticAIConversationEntity(
+        cast(Any, entry), entry.subentries["conversation-1"]
+    )
+    ai_task_entity = PydanticAIAgentAITaskEntity(
+        cast(Any, entry), entry.subentries["task-1"]
+    )
+
+    assert conversation_entity.available is True
+    assert ai_task_entity.available is False
+
+
+def test_agent_entities_unavailable_when_primary_profile_failed_validation() -> None:
+    """Test fallback profiles do not make entities available before runtime use."""
+    primary_ref = "provider-1:profile-1"
+    fallback_ref = "provider-2:profile-1"
+    entry = workspace_entry(
+        (
+            provider_subentry_data(subentry_id="provider-1"),
+            provider_subentry_data(subentry_id="provider-2"),
+            conversation_subentry_data(
+                primary_ref,
+                subentry_id="conversation-1",
+                extra_data={CONF_FALLBACK_MODEL_REFS: [fallback_ref]},
+            ),
+        )
+    )
+    runtime_data = workspace_runtime_data(
+        providers={
+            "provider-1": provider_runtime_data(subentry_id="provider-1"),
+            "provider-2": provider_runtime_data(subentry_id="provider-2"),
+        }
+    )
+    runtime_data.model_validation_failures[f"conversation-1:{primary_ref}"] = (
+        "invalid_model"
+    )
+    entry.runtime_data = runtime_data
+
+    entity = PydanticAIConversationEntity(
+        cast(Any, entry), entry.subentries["conversation-1"]
+    )
+
+    assert entity.available is False
+
+
+def test_provider_auth_validation_failure_detection_is_provider_scoped() -> None:
+    """Test runtime auth cleanup only respects auth failures for the provider."""
+    failures = {
+        "conversation-1:provider-1:profile-1": "invalid_auth",
+        "conversation-2:provider-1:profile-2": "invalid_model",
+        "conversation-3:provider-2:profile-1": "permission_denied",
+    }
+
+    assert _has_provider_auth_validation_failure(failures, "provider-1") is True
+    assert _has_provider_auth_validation_failure(failures, "provider-2") is True
+    assert _has_provider_auth_validation_failure(failures, "provider-3") is False
+    assert (
+        _has_provider_auth_validation_failure(
+            {"conversation-1:provider-1:profile-1": "invalid_model"},
+            "provider-1",
+        )
+        is False
+    )
+
+
+def test_runtime_auth_failure_cleanup_is_profile_scoped(hass: HomeAssistant) -> None:
+    """Test a successful profile does not clear another runtime auth failure."""
+    entry = workspace_entry((provider_subentry_data(subentry_id="provider-1"),))
+    entry.add_to_hass(hass)
+    entry.runtime_data = workspace_runtime_data(
+        providers={"provider-1": provider_runtime_data(subentry_id="provider-1")}
+    )
+    failing_profile = ModelProfile(
+        ref="provider-1:failing-profile",
+        provider_subentry_id="provider-1",
+        profile_id="failing-profile",
+        title="Failing profile",
+        provider_title="Provider",
+        provider_mode="openai_compatible_completions",
+        model_name="failing-model",
+        model_settings={},
+    )
+    successful_profile = ModelProfile(
+        ref="provider-1:successful-profile",
+        provider_subentry_id="provider-1",
+        profile_id="successful-profile",
+        title="Successful profile",
+        provider_title="Provider",
+        provider_mode="openai_compatible_completions",
+        model_name="successful-model",
+        model_settings={},
+    )
+    issue_id = provider_auth_issue_id(entry, "provider-1")
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=True,
+        severity=ir.IssueSeverity.ERROR,
+        translation_key="provider_auth_failed",
+    )
+
+    _record_runtime_auth_failure(entry, failing_profile)
+    _clear_runtime_auth_failure(hass, entry, successful_profile)
+
+    assert entry.runtime_data.runtime_provider_auth_failures == {
+        "provider-1": [failing_profile.ref]
+    }
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is not None
+
+    _clear_runtime_auth_failure(hass, entry, failing_profile)
+
+    assert entry.runtime_data.runtime_provider_auth_failures == {}
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+
+
+def test_diagnostic_entity_descriptions_use_translation_keys() -> None:
+    """Test diagnostic entities use static translation keys for their names."""
+    descriptions = (
+        *SENSOR_DESCRIPTIONS,
+        *CONFIG_SENSOR_DESCRIPTIONS,
+        *BINARY_SENSOR_DESCRIPTIONS,
+        *CONFIG_BINARY_SENSOR_DESCRIPTIONS,
+    )
+
+    assert all(
+        description.translation_key == description.key for description in descriptions
+    )
+    assert all(not isinstance(description.name, str) for description in descriptions)
 
 
 def test_should_fallback_for_timeout_usage_and_transport_api_errors() -> None:

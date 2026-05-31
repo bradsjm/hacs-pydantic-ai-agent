@@ -25,7 +25,11 @@ from .const import (
     CONF_WEB_FETCH_ENABLED,
     SUBENTRY_TYPE_AI_TASK,
 )
-from .entity import AgentRunOutcome, PydanticAIBaseLLMEntity
+from .entity import (
+    AgentRunOutcome,
+    PydanticAIBaseLLMEntity,
+    _clear_runtime_auth_failure_for_ref,
+)
 from .ha_todo_tools import TodoWorkspace, todo_workspace_lock
 from .metrics import EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED, fire_integration_event
 from .model_profiles import model_display_names, model_profile_chain
@@ -67,12 +71,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
     ) -> None:
         """Initialize the AI task entity."""
         name = str(subentry.data.get(CONF_AI_TASK_NAME, subentry.title))
-        super().__init__(
-            entry,
-            subentry,
-            name=name,
-            device_name=f"{name} Configuration",
-        )
+        super().__init__(entry, subentry, name=name, device_name=name)
 
     @property
     def extra_state_attributes(self) -> dict[str, str | bool | list[str] | None]:
@@ -144,6 +143,18 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                 record_success=task.structure is None,
             )
 
+        structured_outcome: AgentRunOutcome | None = None
+        if task.structure is not None:
+            if not isinstance(outcome, AgentRunOutcome):
+                raise HomeAssistantError("Provider did not return run metrics")
+            structured_outcome = outcome
+            _clear_runtime_auth_failure_for_ref(
+                self.hass,
+                self.entry,
+                outcome.provider_subentry_id,
+                outcome.model_profile_ref,
+            )
+
         # After all tool calls resolve, ChatLog's final assistant message carries
         # the model output that Home Assistant expects for the task result.
         last_content = chat_log.content[-1]
@@ -152,6 +163,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
 
         data: object = last_content.content or ""
         if task.structure is not None:
+            assert structured_outcome is not None
             try:
                 # HA receives streamed assistant content for every structured
                 # output mode and validates the final JSON before returning it.
@@ -159,19 +171,19 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                 data = task.structure(data)
             except json.JSONDecodeError as err:
                 self._record_agent_run_failure(err)
-                if isinstance(outcome, AgentRunOutcome) and outcome.run_recorder:
-                    outcome.run_recorder.record(
+                if structured_outcome is not None and structured_outcome.run_recorder:
+                    structured_outcome.run_recorder.record(
                         phase="output_validation",
                         event="json_decode_failed",
                         data={"error": err, "content": last_content.content},
                     )
                     self._store_run_diagnostics(
-                        outcome.run_recorder,
+                        structured_outcome.run_recorder,
                         status="failed",
                         summary={
                             "error": err,
-                            "model_profile": outcome.model_profile,
-                            "output": outcome.output,
+                            "model_profile": structured_outcome.model_profile,
+                            "output": structured_outcome.output,
                         },
                     )
                 raise HomeAssistantError(
@@ -179,44 +191,45 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                 ) from err
             except vol.Invalid as err:
                 self._record_agent_run_failure(err)
-                if isinstance(outcome, AgentRunOutcome) and outcome.run_recorder:
-                    outcome.run_recorder.record(
+                if structured_outcome is not None and structured_outcome.run_recorder:
+                    structured_outcome.run_recorder.record(
                         phase="output_validation",
                         event="schema_validation_failed",
                         data={"error": err, "content": last_content.content},
                     )
                     self._store_run_diagnostics(
-                        outcome.run_recorder,
+                        structured_outcome.run_recorder,
                         status="failed",
                         summary={
                             "error": err,
-                            "model_profile": outcome.model_profile,
-                            "output": outcome.output,
+                            "model_profile": structured_outcome.model_profile,
+                            "output": structured_outcome.output,
                         },
                     )
                 raise HomeAssistantError(
                     "Provider returned structured data that does not match the schema"
                 ) from err
-            if not isinstance(outcome, AgentRunOutcome):
-                raise HomeAssistantError("Provider did not return run metrics")
-            if outcome.run_recorder is not None:
-                outcome.run_recorder.record(
+            if (
+                structured_outcome is not None
+                and structured_outcome.run_recorder is not None
+            ):
+                structured_outcome.run_recorder.record(
                     phase="output_validation",
                     event="structured_output_validated",
                     data={"validated_data": data},
                 )
                 self._store_run_diagnostics(
-                    outcome.run_recorder,
+                    structured_outcome.run_recorder,
                     status="success",
                     summary={
-                        "output": outcome.output,
+                        "output": structured_outcome.output,
                         "validated_data": data,
-                        "usage": outcome.usage,
-                        "model_profile": outcome.model_profile,
-                        "duration": outcome.duration,
+                        "usage": structured_outcome.usage,
+                        "model_profile": structured_outcome.model_profile,
+                        "duration": structured_outcome.duration,
                     },
-                )
-            self._record_agent_run_success(outcome)
+                    )
+            self._record_agent_run_success(structured_outcome)
             fire_integration_event(
                 self.hass,
                 EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED,

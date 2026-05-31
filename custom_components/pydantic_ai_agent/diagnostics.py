@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from typing import Any
 
+from homeassistant.components.diagnostics import REDACTED
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
@@ -42,6 +43,7 @@ from .logfire_support import (
     logfire_include_content,
     logfire_token_conflict,
 )
+
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
@@ -128,6 +130,8 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
     diagnostics = {
         "configured_mcp_server_count": len(runtime_data.mcp_servers),
         "cached_mcp_server_count": len(runtime_data.mcp_tool_cache),
+        "model_validation_failure_count": len(runtime_data.model_validation_failures),
+        "model_validation_failures": dict(runtime_data.model_validation_failures),
         "cached_mcp_tool_counts": {
             server_id: len(tools)
             for server_id, tools in runtime_data.mcp_tool_cache.items()
@@ -188,7 +192,7 @@ def _configuration_summary(subentry: Any) -> dict[str, Any]:
     elif subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER:
         summary.update(
             {
-                "mcp_url": data.get(CONF_MCP_URL),
+                "mcp_url": REDACTED if data.get(CONF_MCP_URL) else None,
                 "has_mcp_headers": bool(data.get(CONF_MCP_HEADERS)),
             }
         )

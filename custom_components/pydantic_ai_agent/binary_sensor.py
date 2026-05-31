@@ -55,7 +55,7 @@ class PydanticAIConfigBinarySensorDescription(BinarySensorEntityDescription):
 BINARY_SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricBinarySensorDescription, ...] = (
     PydanticAIMetricBinarySensorDescription(
         key="provider_healthy",
-        name="Provider healthy",
+        translation_key="provider_healthy",
         icon="mdi:heart-pulse",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=True,
@@ -63,7 +63,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricBinarySensorDescription, ...] 
     ),
     PydanticAIMetricBinarySensorDescription(
         key="last_run_succeeded",
-        name="Last run succeeded",
+        translation_key="last_run_succeeded",
         icon="mdi:check-circle-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=True,
@@ -76,7 +76,7 @@ CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
 ] = (
     PydanticAIConfigBinarySensorDescription(
         key="assist_enabled",
-        name="Assist enabled",
+        translation_key="assist_enabled",
         icon="mdi:assistant",
         subentry_types=(SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK),
         entity_registry_enabled_default=True,
@@ -84,7 +84,7 @@ CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
     ),
     PydanticAIConfigBinarySensorDescription(
         key="web_fetch_enabled",
-        name="Web fetch enabled",
+        translation_key="web_fetch_enabled",
         icon="mdi:web",
         entity_registry_enabled_default=True,
         value_fn=lambda subentry: bool(
@@ -93,7 +93,7 @@ CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
     ),
     PydanticAIConfigBinarySensorDescription(
         key="virtual_workspace_enabled",
-        name="Virtual workspace enabled",
+        translation_key="virtual_workspace_enabled",
         icon="mdi:folder-cog-outline",
         entity_registry_enabled_default=True,
         value_fn=lambda subentry: (
@@ -102,13 +102,14 @@ CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
     ),
     PydanticAIConfigBinarySensorDescription(
         key="todo_workspace_enabled",
-        name="Todo workspace enabled",
+        translation_key="todo_workspace_enabled",
         icon="mdi:format-list-checks",
         subentry_types=(SUBENTRY_TYPE_AI_TASK,),
         entity_registry_enabled_default=True,
         value_fn=lambda subentry: bool(subentry.data.get(CONF_TODO_LIST_ENTITY_ID)),
     ),
 )
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -249,4 +250,3 @@ def _subentry_name(subentry: ConfigSubentry) -> str:
     if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
         return str(subentry.data[CONF_AGENT_NAME])
     return str(subentry.data.get(CONF_AI_TASK_NAME, subentry.title))
-

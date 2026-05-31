@@ -1,25 +1,25 @@
 {
   "services": {
-    "list_mcp_tools": {
-      "service": "mdi:toolbox-outline"
-    },
-    "refresh_mcp_tools": {
-      "service": "mdi:sync"
+    "get_agent_metrics": {
+      "service": "mdi:chart-line"
     },
     "get_agent_run_diagnostics": {
       "service": "mdi:clipboard-pulse-outline"
     },
+    "get_tool_source_status": {
+      "service": "mdi:tools"
+    },
     "get_workspace_status": {
       "service": "mdi:view-dashboard-outline"
+    },
+    "list_mcp_tools": {
+      "service": "mdi:toolbox-outline"
     },
     "list_model_profiles": {
       "service": "mdi:card-account-details-outline"
     },
-    "get_agent_metrics": {
-      "service": "mdi:chart-line"
-    },
-    "get_tool_source_status": {
-      "service": "mdi:tools"
+    "refresh_mcp_tools": {
+      "service": "mdi:sync"
     }
   }
 }

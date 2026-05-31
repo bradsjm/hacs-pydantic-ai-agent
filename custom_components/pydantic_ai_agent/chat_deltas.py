@@ -304,9 +304,9 @@ class _StreamTraceRecorder:
         events_tail = list(self.events_tail)
         chat_deltas_tail = list(self.chat_deltas_tail)
         events_truncated = self.events_total > len(self.events) + len(events_tail)
-        chat_deltas_truncated = self.chat_deltas_total > len(
-            self.chat_deltas
-        ) + len(chat_deltas_tail)
+        chat_deltas_truncated = self.chat_deltas_total > len(self.chat_deltas) + len(
+            chat_deltas_tail
+        )
         return {
             "schema_version": 1,
             "limits": {

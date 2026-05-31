@@ -675,6 +675,56 @@
       }
     }
   },
+  "entity": {
+    "binary_sensor": {
+      "assist_enabled": { "name": "Assist enabled" },
+      "last_run_succeeded": { "name": "Last run succeeded" },
+      "provider_healthy": { "name": "Provider healthy" },
+      "todo_workspace_enabled": { "name": "Todo workspace enabled" },
+      "virtual_workspace_enabled": { "name": "Virtual workspace enabled" },
+      "web_fetch_enabled": { "name": "Web fetch enabled" }
+    },
+    "sensor": {
+      "consecutive_failures": { "name": "Consecutive failures" },
+      "cumulative_cache_read_cost": { "name": "Cumulative cache read cost" },
+      "cumulative_cache_read_tokens": {
+        "name": "Cumulative cache read tokens"
+      },
+      "cumulative_input_cost": { "name": "Cumulative input cost" },
+      "cumulative_input_tokens": { "name": "Cumulative input tokens" },
+      "cumulative_output_cost": { "name": "Cumulative output cost" },
+      "cumulative_output_tokens": { "name": "Cumulative output tokens" },
+      "cumulative_total_cost": { "name": "Cumulative total cost" },
+      "cumulative_total_tokens": { "name": "Cumulative total tokens" },
+      "last_error_type": { "name": "Last error type" },
+      "last_run_cache_read_cost": { "name": "Last run cache read cost" },
+      "last_run_cache_read_tokens": { "name": "Last run cache read tokens" },
+      "last_run_duration": { "name": "Last run duration" },
+      "last_run_input_cost": { "name": "Last run input cost" },
+      "last_run_input_tokens": { "name": "Last run input tokens" },
+      "last_run_model_profile": { "name": "Last run model profile" },
+      "last_run_model_request_count": {
+        "name": "Last run model request count"
+      },
+      "last_run_output_cost": { "name": "Last run output cost" },
+      "last_run_output_tokens": { "name": "Last run output tokens" },
+      "last_run_tool_use_count": { "name": "Last run tool use count" },
+      "last_run_total_cost": { "name": "Last run total cost" },
+      "last_run_total_tokens": { "name": "Last run total tokens" },
+      "mcp_servers_enabled": { "name": "MCP servers enabled" },
+      "primary_language_model": { "name": "Primary language model" },
+      "skills_enabled": { "name": "Skills enabled" },
+      "structured_output_mode": { "name": "Structured output mode" }
+    }
+  },
+  "exceptions": {
+    "config_entry_not_found": {
+      "message": "Pydantic AI Agent config entry {config_entry_id} was not found."
+    },
+    "subentry_not_found": {
+      "message": "Pydantic AI Agent subentry {subentry_id} was not found in config entry {config_entry_id}."
+    }
+  },
   "issues": {
     "logfire_token_conflict": {
       "description": "Provider connection {entry_title} has a Logfire token that differs from the token already active in this Home Assistant process. Logfire traces are disabled for this entry until Home Assistant restarts with only one token configured, or this entry is reconfigured to use the active token.",
@@ -683,6 +733,10 @@
     "model_validation_failed": {
       "description": "Provider connection {entry_title}: model {model} failed validation - {error_message}: {reason}. Check affected agents, tasks, or credentials, then reload the integration.",
       "title": "Pydantic AI Agent model validation failed"
+    },
+    "provider_auth_failed": {
+      "description": "Provider connection {provider_title} in workspace {entry_title} rejected credentials or permissions - {error_message}: {reason}. Reconfigure the provider connection, then reload the integration.",
+      "title": "Pydantic AI Agent provider authentication failed"
     }
   },
   "selector": {
@@ -715,24 +769,85 @@
     }
   },
   "services": {
-    "get_agent_run_diagnostics": {
-      "description": "Return a compact slice of latest run diagnostics for one conversation or AI task subentry.",
-      "fields": {
-        "config_entry_id": {"description": "Pydantic AI Agent workspace config entry.", "name": "Config entry"},
-        "limit": {"description": "Maximum number of timeline or tool-call events to return.", "name": "Limit"},
-        "offset": {"description": "Number of timeline or tool-call events to skip.", "name": "Offset"},
-        "section": {"description": "Optional diagnostic section. Omit for a compact summary.", "name": "Section"},
-        "subentry_id": {"description": "Conversation or AI task subentry ID whose latest run diagnostics should be returned.", "name": "Subentry ID"}
-      },
-      "name": "Get agent run diagnostics"
-    },
     "get_agent_metrics": {
       "description": "Return the current in-memory metrics snapshot for conversation and AI task subentries.",
       "fields": {
-        "config_entry_id": {"description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.", "name": "Config entry"},
-        "subentry_id": {"description": "Optional conversation or AI task subentry ID to filter metrics.", "name": "Subentry ID"}
+        "config_entry_id": {
+          "description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.",
+          "name": "Config entry"
+        },
+        "subentry_id": {
+          "description": "Optional conversation or AI task subentry ID to filter metrics.",
+          "name": "Subentry ID"
+        }
       },
       "name": "Get agent metrics"
+    },
+    "get_agent_run_diagnostics": {
+      "description": "Return a compact slice of latest run diagnostics for one conversation or AI task subentry.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Pydantic AI Agent workspace config entry.",
+          "name": "Config entry"
+        },
+        "limit": {
+          "description": "Maximum number of timeline or tool-call events to return.",
+          "name": "Limit"
+        },
+        "offset": {
+          "description": "Number of timeline or tool-call events to skip.",
+          "name": "Offset"
+        },
+        "section": {
+          "description": "Optional diagnostic section. Omit for a compact summary.",
+          "name": "Section"
+        },
+        "subentry_id": {
+          "description": "Conversation or AI task subentry ID whose latest run diagnostics should be returned.",
+          "name": "Subentry ID"
+        }
+      },
+      "name": "Get agent run diagnostics"
+    },
+    "get_tool_source_status": {
+      "description": "Return cached MCP tool and native Skill status without refreshing or executing tools.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.",
+          "name": "Config entry"
+        },
+        "include_tool_names": {
+          "description": "Include cached MCP tool names when available.",
+          "name": "Include tool names"
+        },
+        "limit": {
+          "description": "Maximum number of cached tool names to return for each MCP server.",
+          "name": "Limit"
+        },
+        "subentry_id": {
+          "description": "Optional MCP server or Skill subentry ID to filter tool sources.",
+          "name": "Subentry ID"
+        }
+      },
+      "name": "Get tool source status"
+    },
+    "get_workspace_status": {
+      "description": "Return compact config-entry, subentry, and runtime status for Pydantic AI Agent workspaces.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.",
+          "name": "Config entry"
+        },
+        "include_runtime": {
+          "description": "Include loaded runtime counts.",
+          "name": "Include runtime"
+        },
+        "include_subentries": {
+          "description": "Include provider, conversation, AI task, MCP server, and Skill subentry summaries.",
+          "name": "Include subentries"
+        }
+      },
+      "name": "Get workspace status"
     },
     "list_mcp_tools": {
       "description": "List cached MCP tools for a configured server, discovering them if no cache exists.",
@@ -748,31 +863,21 @@
       },
       "name": "List MCP tools"
     },
-    "get_tool_source_status": {
-      "description": "Return cached MCP tool and native Skill status without refreshing or executing tools.",
-      "fields": {
-        "config_entry_id": {"description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.", "name": "Config entry"},
-        "include_tool_names": {"description": "Include cached MCP tool names when available.", "name": "Include tool names"},
-        "limit": {"description": "Maximum number of cached tool names to return for each MCP server.", "name": "Limit"},
-        "subentry_id": {"description": "Optional MCP server or Skill subentry ID to filter tool sources.", "name": "Subentry ID"}
-      },
-      "name": "Get tool source status"
-    },
-    "get_workspace_status": {
-      "description": "Return compact config-entry, subentry, and runtime status for Pydantic AI Agent workspaces.",
-      "fields": {
-        "config_entry_id": {"description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.", "name": "Config entry"},
-        "include_runtime": {"description": "Include loaded runtime counts.", "name": "Include runtime"},
-        "include_subentries": {"description": "Include provider, conversation, AI task, MCP server, and Skill subentry summaries.", "name": "Include subentries"}
-      },
-      "name": "Get workspace status"
-    },
     "list_model_profiles": {
       "description": "List configured provider-owned model profiles without probing providers.",
       "fields": {
-        "config_entry_id": {"description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.", "name": "Config entry"},
-        "enabled_only": {"description": "Return only enabled model profiles.", "name": "Enabled only"},
-        "provider_subentry_id": {"description": "Optional provider subentry ID to filter the returned profiles.", "name": "Provider subentry ID"}
+        "config_entry_id": {
+          "description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.",
+          "name": "Config entry"
+        },
+        "enabled_only": {
+          "description": "Return only enabled model profiles.",
+          "name": "Enabled only"
+        },
+        "provider_subentry_id": {
+          "description": "Optional provider subentry ID to filter the returned profiles.",
+          "name": "Provider subentry ID"
+        }
       },
       "name": "List model profiles"
     },

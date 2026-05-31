@@ -145,7 +145,7 @@ def test_mcp_log_redaction_uses_shared_sensitive_key_handling() -> None:
         }
     )
 
-    assert redacted["mcp_url"] == "https://mcp.example.com/mcp?token=visible"
+    assert redacted["mcp_url"] == "**REDACTED**"
     assert redacted["headers"] == "**REDACTED**"
     assert redacted["result"]["token"] == "**REDACTED**"
     assert redacted["result"]["session_token"] == "visible"

@@ -15,6 +15,8 @@ class AgentRunOutcome:
     usage: Any
     duration: float
     model_profile: str
+    model_profile_ref: str
+    provider_subentry_id: str
     model_pricing: dict[str, float]
     run_recorder: Any | None = None
 

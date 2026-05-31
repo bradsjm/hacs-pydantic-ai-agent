@@ -3,6 +3,8 @@
 from typing import Any, cast
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
+import pytest
 
 from custom_components.pydantic_ai_agent import WorkspaceRuntimeData, async_setup
 from custom_components.pydantic_ai_agent.const import (
@@ -52,6 +54,21 @@ async def test_setup_registers_debug_response_services(hass: HomeAssistant) -> N
     assert hass.services.has_service(DOMAIN, SERVICE_LIST_MODEL_PROFILES)
     assert hass.services.has_service(DOMAIN, SERVICE_GET_AGENT_METRICS)
     assert hass.services.has_service(DOMAIN, SERVICE_GET_TOOL_SOURCE_STATUS)
+
+
+async def test_debug_response_services_raise_for_unknown_config_entry(
+    hass: HomeAssistant,
+) -> None:
+    """Test debug response services reject unknown explicit config entries."""
+    assert await async_setup(hass, {})
+
+    with pytest.raises(ServiceValidationError) as err:
+        await _call_service(
+            hass, SERVICE_GET_WORKSPACE_STATUS, {"config_entry_id": "missing-entry"}
+        )
+
+    assert err.value.translation_key == "config_entry_not_found"
+    assert err.value.translation_placeholders == {"config_entry_id": "missing-entry"}
 
 
 async def test_workspace_status_and_model_profiles_services(
@@ -146,7 +163,9 @@ async def test_metrics_and_tool_source_status_services(
     """Test metrics and tool-source services read runtime state without side effects."""
     entry = workspace_entry(
         (
-            mcp_server_subentry_data(subentry_id="mcp-server-1", allowed_tools=["a", "b"]),
+            mcp_server_subentry_data(
+                subentry_id="mcp-server-1", allowed_tools=["a", "b"]
+            ),
             skill_subentry_data(subentry_id="skill-1", content="Use concise answers."),
         )
     )

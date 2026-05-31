@@ -54,9 +54,7 @@ class PydanticAIConversationEntity(
     ) -> None:
         """Initialize the conversation entity."""
         name = subentry.data[CONF_AGENT_NAME]
-        super().__init__(
-            entry, subentry, name=name, device_name=f"{name} Configuration"
-        )
+        super().__init__(entry, subentry, name=name, device_name=name)
         self._attr_supports_streaming = True
         if subentry.data.get(CONF_LLM_HASS_API):
             # CONTROL means the agent can call HA tools/services, which is only

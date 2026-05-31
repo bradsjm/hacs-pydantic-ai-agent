@@ -58,14 +58,14 @@ class PydanticAIConfigSensorDescription(SensorEntityDescription):
 SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     PydanticAIMetricSensorDescription(
         key="last_run_model_profile",
-        name="Last run model profile",
+        translation_key="last_run_model_profile",
         icon="mdi:brain",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda record: metric_value(record, "last_run_model_profile"),
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_input_tokens",
-        name="Last run input tokens",
+        translation_key="last_run_input_tokens",
         icon="mdi:calculator",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.MEASUREMENT,
@@ -74,7 +74,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_output_tokens",
-        name="Last run output tokens",
+        translation_key="last_run_output_tokens",
         icon="mdi:calculator",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.MEASUREMENT,
@@ -83,7 +83,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_cache_read_tokens",
-        name="Last run cache read tokens",
+        translation_key="last_run_cache_read_tokens",
         icon="mdi:cached",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.MEASUREMENT,
@@ -92,7 +92,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_total_tokens",
-        name="Last run total tokens",
+        translation_key="last_run_total_tokens",
         icon="mdi:counter",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.MEASUREMENT,
@@ -101,7 +101,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_input_cost",
-        name="Last run input cost",
+        translation_key="last_run_input_cost",
         icon="mdi:cash",
         native_unit_of_measurement="USD",
         device_class=SensorDeviceClass.MONETARY,
@@ -111,7 +111,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_output_cost",
-        name="Last run output cost",
+        translation_key="last_run_output_cost",
         icon="mdi:cash",
         native_unit_of_measurement="USD",
         device_class=SensorDeviceClass.MONETARY,
@@ -121,7 +121,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_cache_read_cost",
-        name="Last run cache read cost",
+        translation_key="last_run_cache_read_cost",
         icon="mdi:cash-sync",
         native_unit_of_measurement="USD",
         device_class=SensorDeviceClass.MONETARY,
@@ -131,7 +131,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_total_cost",
-        name="Last run total cost",
+        translation_key="last_run_total_cost",
         icon="mdi:cash-multiple",
         native_unit_of_measurement="USD",
         device_class=SensorDeviceClass.MONETARY,
@@ -141,7 +141,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_model_request_count",
-        name="Last run model request count",
+        translation_key="last_run_model_request_count",
         icon="mdi:api",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -149,7 +149,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_tool_use_count",
-        name="Last run tool use count",
+        translation_key="last_run_tool_use_count",
         icon="mdi:toolbox-outline",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -157,7 +157,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="cumulative_input_tokens",
-        name="Cumulative input tokens",
+        translation_key="cumulative_input_tokens",
         icon="mdi:calculator",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.TOTAL_INCREASING,
@@ -166,7 +166,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="cumulative_output_tokens",
-        name="Cumulative output tokens",
+        translation_key="cumulative_output_tokens",
         icon="mdi:calculator",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.TOTAL_INCREASING,
@@ -175,7 +175,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="cumulative_cache_read_tokens",
-        name="Cumulative cache read tokens",
+        translation_key="cumulative_cache_read_tokens",
         icon="mdi:cached",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.TOTAL_INCREASING,
@@ -184,7 +184,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="cumulative_total_tokens",
-        name="Cumulative total tokens",
+        translation_key="cumulative_total_tokens",
         icon="mdi:counter",
         native_unit_of_measurement="tokens",
         state_class=SensorStateClass.TOTAL_INCREASING,
@@ -194,7 +194,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="cumulative_input_cost",
-        name="Cumulative input cost",
+        translation_key="cumulative_input_cost",
         icon="mdi:cash",
         native_unit_of_measurement="USD",
         device_class=SensorDeviceClass.MONETARY,
@@ -205,7 +205,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="cumulative_output_cost",
-        name="Cumulative output cost",
+        translation_key="cumulative_output_cost",
         icon="mdi:cash",
         native_unit_of_measurement="USD",
         device_class=SensorDeviceClass.MONETARY,
@@ -216,7 +216,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="cumulative_cache_read_cost",
-        name="Cumulative cache read cost",
+        translation_key="cumulative_cache_read_cost",
         icon="mdi:cash-sync",
         native_unit_of_measurement="USD",
         device_class=SensorDeviceClass.MONETARY,
@@ -227,7 +227,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="cumulative_total_cost",
-        name="Cumulative total cost",
+        translation_key="cumulative_total_cost",
         icon="mdi:cash-multiple",
         native_unit_of_measurement="USD",
         device_class=SensorDeviceClass.MONETARY,
@@ -239,7 +239,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="last_run_duration",
-        name="Last run duration",
+        translation_key="last_run_duration",
         native_unit_of_measurement=UnitOfTime.SECONDS,
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
@@ -249,7 +249,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="last_error_type",
-        name="Last error type",
+        translation_key="last_error_type",
         icon="mdi:alert-circle-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=True,
@@ -257,7 +257,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
     ),
     PydanticAIMetricSensorDescription(
         key="consecutive_failures",
-        name="Consecutive failures",
+        translation_key="consecutive_failures",
         icon="mdi:alert-circle-outline",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -269,7 +269,7 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
 CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
     PydanticAIConfigSensorDescription(
         key="primary_language_model",
-        name="Primary language model",
+        translation_key="primary_language_model",
         icon="mdi:brain",
         value_fn=lambda entry, subentry: (
             primary_model_profile(entry, subentry).model_name
@@ -277,7 +277,7 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
     ),
     PydanticAIConfigSensorDescription(
         key="mcp_servers_enabled",
-        name="MCP servers enabled",
+        translation_key="mcp_servers_enabled",
         icon="mdi:server-network-outline",
         native_unit_of_measurement="servers",
         state_class=SensorStateClass.MEASUREMENT,
@@ -288,7 +288,7 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
     ),
     PydanticAIConfigSensorDescription(
         key="skills_enabled",
-        name="Skills enabled",
+        translation_key="skills_enabled",
         icon="mdi:school-outline",
         native_unit_of_measurement="skills",
         state_class=SensorStateClass.MEASUREMENT,
@@ -297,7 +297,7 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
     ),
     PydanticAIConfigSensorDescription(
         key="structured_output_mode",
-        name="Structured output mode",
+        translation_key="structured_output_mode",
         icon="mdi:code-json",
         subentry_types=(SUBENTRY_TYPE_AI_TASK,),
         entity_registry_enabled_default=True,
@@ -306,6 +306,7 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
         ),
     ),
 )
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -447,4 +448,3 @@ def _subentry_name(subentry: ConfigSubentry) -> str:
     if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
         return str(subentry.data[CONF_AGENT_NAME])
     return str(subentry.data.get(CONF_AI_TASK_NAME, subentry.title))
-

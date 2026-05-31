@@ -104,7 +104,9 @@ class RunDiagnosticsRecorder:
             "total_count": self._sequence,
             "head": self._timeline_head,
             "tail": tail,
-            "omitted_middle_count": self._sequence - len(self._timeline_head) - len(tail),
+            "omitted_middle_count": self._sequence
+            - len(self._timeline_head)
+            - len(tail),
         }
 
 
@@ -131,9 +133,7 @@ def bound_diagnostics_data(value: Any, *, _depth: int = 0) -> Any:
     model_dump = getattr(value, "model_dump", None)
     if callable(model_dump):
         try:
-            return bound_diagnostics_data(
-                model_dump(mode="json"), _depth=_depth + 1
-            )
+            return bound_diagnostics_data(model_dump(mode="json"), _depth=_depth + 1)
         except Exception:  # noqa: BLE001 - diagnostics must not break runs.
             pass
     if isinstance(value, Mapping):

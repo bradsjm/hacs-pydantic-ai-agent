@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.exceptions import ServiceValidationError
 import voluptuous as vol
 
 from .const import (
@@ -87,7 +88,9 @@ _TOOL_SOURCE_STATUS_SCHEMA = vol.Schema(
         **_OPTIONAL_ENTRY_SCHEMA,
         vol.Optional(ATTR_SUBENTRY_ID): str,
         vol.Optional(ATTR_INCLUDE_TOOL_NAMES, default=True): bool,
-        vol.Optional(ATTR_LIMIT, default=50): vol.All(vol.Coerce(int), vol.Range(min=1, max=200)),
+        vol.Optional(ATTR_LIMIT, default=50): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=200)
+        ),
     }
 )
 
@@ -182,8 +185,7 @@ def _get_agent_metrics(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]
         "success": True,
         "count": len(entries),
         "entries": [
-            _metrics_status(entry, subentry_id=subentry_id)
-            for entry in entries
+            _metrics_status(entry, subentry_id=subentry_id) for entry in entries
         ],
     }
 
@@ -213,7 +215,13 @@ def _entries_for_service(
     """Return matching Pydantic AI Agent config entries."""
     if entry_id is not None:
         entry = hass.config_entries.async_get_entry(entry_id)
-        return [entry] if entry is not None and entry.domain == DOMAIN else []
+        if entry is None or entry.domain != DOMAIN:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="config_entry_not_found",
+                translation_placeholders={"config_entry_id": entry_id},
+            )
+        return [entry]
     return [entry for entry in hass.config_entries.async_entries(DOMAIN)]
 
 
@@ -253,7 +261,9 @@ def _subentry_counts(entry: ConfigEntry) -> dict[str, int]:
 def _subentries_status(entry: ConfigEntry) -> dict[str, list[dict[str, Any]]]:
     """Return compact subentry summaries grouped by type."""
     return {
-        "providers": [_provider_status(entry, subentry) for subentry in provider_subentries(entry)],
+        "providers": [
+            _provider_status(entry, subentry) for subentry in provider_subentries(entry)
+        ],
         "conversations": [
             _agent_subentry_status(subentry)
             for subentry in entry.subentries.values()
@@ -264,7 +274,9 @@ def _subentries_status(entry: ConfigEntry) -> dict[str, list[dict[str, Any]]]:
             for subentry in entry.subentries.values()
             if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
         ],
-        "mcp_servers": [_mcp_subentry_status(entry, subentry) for subentry in mcp_subentries(entry)],
+        "mcp_servers": [
+            _mcp_subentry_status(entry, subentry) for subentry in mcp_subentries(entry)
+        ],
         "skills": [
             _skill_subentry_status(subentry)
             for subentry in entry.subentries.values()
@@ -307,13 +319,17 @@ def _agent_subentry_status(subentry: ConfigSubentry) -> dict[str, Any]:
         "skill_count": _list_count(data.get(CONF_SKILLS)),
         "ha_llm_api_count": _list_count(data.get(CONF_LLM_HASS_API)),
         "web_fetch_enabled": bool(data.get(CONF_WEB_FETCH_ENABLED, False)),
-        "virtual_workspace_enabled": bool(data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)),
+        "virtual_workspace_enabled": bool(
+            data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)
+        ),
         "todo_workspace_enabled": bool(data.get(CONF_TODO_LIST_ENTITY_ID)),
         "output_mode": data.get(CONF_OUTPUT_MODE),
     }
 
 
-def _mcp_subentry_status(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str, Any]:
+def _mcp_subentry_status(
+    entry: ConfigEntry, subentry: ConfigSubentry
+) -> dict[str, Any]:
     """Return compact MCP subentry status without URL or headers."""
     tools = _cached_tools(entry, subentry.subentry_id)
     allowed_tools = subentry.data.get(CONF_MCP_ALLOWED_TOOLS)
@@ -352,12 +368,17 @@ def _runtime_status(runtime_data: Any) -> dict[str, Any] | None:
         "workspace_name": getattr(runtime_data, "workspace_name", None),
         "provider_count": len(getattr(runtime_data, "providers", {})),
         "model_profile_count": len(getattr(runtime_data, "model_profiles", {})),
+        "model_validation_failure_count": len(
+            getattr(runtime_data, "model_validation_failures", {})
+        ),
         "mcp_server_count": len(getattr(runtime_data, "mcp_servers", {})),
         "mcp_cached_server_count": len(getattr(runtime_data, "mcp_tool_cache", {})),
         "metrics_record_count": len(records),
         "latest_run_diagnostic_count": len(latest_run_diagnostics),
         "logfire_enabled": bool(getattr(runtime_data, "logfire_enabled", False)),
-        "logfire_include_content": bool(getattr(runtime_data, "logfire_include_content", False)),
+        "logfire_include_content": bool(
+            getattr(runtime_data, "logfire_include_content", False)
+        ),
     }
 
 
@@ -366,7 +387,9 @@ def _model_profile_summaries(
 ) -> list[dict[str, Any]]:
     """Return model profile summaries for one provider subentry."""
     runtime_data = getattr(entry, "runtime_data", None)
-    runtime_profiles = getattr(runtime_data, "model_profiles", {}) if runtime_data else {}
+    runtime_profiles = (
+        getattr(runtime_data, "model_profiles", {}) if runtime_data else {}
+    )
     summaries: list[dict[str, Any]] = []
     default_profile_id = provider_subentry.data.get(CONF_DEFAULT_MODEL_PROFILE_ID)
     for profile_id, profile in provider_model_profiles(provider_subentry).items():
@@ -399,8 +422,12 @@ def _model_profile_summaries(
 def _metrics_status(entry: ConfigEntry, *, subentry_id: str | None) -> dict[str, Any]:
     """Return metrics status for one workspace."""
     runtime_data = getattr(entry, "runtime_data", None)
-    metrics = getattr(runtime_data, "metrics", None) if runtime_data is not None else None
-    records: Mapping[str, Any] = getattr(metrics, "_records", {}) if metrics is not None else {}
+    metrics = (
+        getattr(runtime_data, "metrics", None) if runtime_data is not None else None
+    )
+    records: Mapping[str, Any] = (
+        getattr(metrics, "_records", {}) if metrics is not None else {}
+    )
     selected_ids = [subentry_id] if subentry_id is not None else sorted(records)
     return {
         "config_entry_id": entry.entry_id,
@@ -463,9 +490,7 @@ def _mcp_tool_source_status(
     tools = _cached_tools(entry, subentry.subentry_id) or []
     if include_tool_names:
         base["tool_names"] = [
-            tool["name"]
-            for tool in tools[:limit]
-            if isinstance(tool.get("name"), str)
+            tool["name"] for tool in tools[:limit] if isinstance(tool.get("name"), str)
         ]
         base["tool_name_limit"] = limit
     return base

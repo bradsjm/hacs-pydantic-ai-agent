@@ -180,9 +180,7 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
     provider_data = diagnostics["subentries"][1]["data"]
     assert provider_data[CONF_API_KEY] == REDACTED
     assert provider_data[CONF_PROVIDER_HEADERS] == REDACTED
-    assert provider_data[CONF_PROVIDER_EXTRA_BODY] == {
-        "api_key": REDACTED
-    }
+    assert provider_data[CONF_PROVIDER_EXTRA_BODY] == {"api_key": REDACTED}
     assert provider_data[CONF_BASE_URL] == "http://localhost:11434/v1"
     model_data = provider_data[CONF_MODEL_PROFILES][_MODEL_PROFILE_ID]
     assert model_data[CONF_MODEL_SETTINGS]["max_tokens"] == 500
@@ -193,14 +191,11 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
             CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ states('sensor.secret') }}",
         }
     ]
-    assert model_data[CONF_MODEL_SETTINGS]["extra_body"] == {
-        "api_key": REDACTED
-    }
+    assert model_data[CONF_MODEL_SETTINGS]["extra_body"] == {"api_key": REDACTED}
     mcp_data = diagnostics["subentries"][2]["data"]
-    assert mcp_data[CONF_MCP_URL] == (
-        "https://user:pass@mcp.example.com/mcp?token=visible"
-    )
+    assert mcp_data[CONF_MCP_URL] == REDACTED
     assert mcp_data[CONF_MCP_HEADERS] == REDACTED
+    assert diagnostics["subentries"][2]["configuration_summary"]["mcp_url"] == REDACTED
     skill_data = diagnostics["subentries"][3]["data"]
     assert skill_data[CONF_NAME] == "Kitchen Skill"
     assert skill_data[CONF_SKILL_CONTENT] == REDACTED
@@ -257,6 +252,8 @@ async def test_diagnostics_exposes_safe_runtime_mcp_counts(
         "loaded": True,
         "configured_mcp_server_count": 1,
         "cached_mcp_server_count": 1,
+        "model_validation_failure_count": 0,
+        "model_validation_failures": {},
         "cached_mcp_tool_counts": {mcp_subentry_id: 2},
     }
     assert "mcp.example.com" not in str(diagnostics["runtime"])
@@ -297,7 +294,7 @@ async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> Non
     assert model_settings["session_token"] == "visible"
     stream_trace = runtime["latest_stream_traces"]["conversation-1"]
     assert stream_trace["headers"] == REDACTED
-    assert stream_trace[CONF_MCP_URL] == "https://mcp.example.com/mcp?token=visible"
+    assert stream_trace[CONF_MCP_URL] == REDACTED
     assert "runtime-secret" not in json.dumps(diagnostics)
     assert "stream-secret" not in json.dumps(diagnostics)
 
