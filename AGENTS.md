@@ -316,3 +316,16 @@
   Python tests.
 - Do not amend, squash, or rebase commits that have already been pushed to a PR
   branch; reviewers need incremental history.
+
+## Development Home Assistant Instance
+
+- Start the shared development instance from this repository with a Paseo terminal:
+  `paseo_create_terminal` using `cwd=/home/opencode/Workspaces/hacs-semantic-home`,
+  then send `.venv/bin/hass -c ~/config`.
+- `~/config/custom_components/semantic_home` is expected to point at this repo's
+  `custom_components/semantic_home`.
+- Stop the instance gracefully by sending Ctrl-C to the Paseo terminal. If the
+  terminal remains open at a shell prompt after Home Assistant exits, clean up the
+  terminal session with `paseo_kill_terminal`.
+- Do not start a second Home Assistant process if `~/config/.ha_run.lock` points
+  to a live `hass` process; stop the existing terminal/process first.
