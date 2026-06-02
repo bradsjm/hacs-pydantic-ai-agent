@@ -93,8 +93,7 @@
   with `ha-dev`: `get_workspace_status` for entry/subentry/runtime inventory,
   `list_model_profiles` for configured provider-owned profiles,
   `get_agent_metrics` for runtime metric snapshots,
-  `get_tool_source_status` for cached MCP and Skill tool sources,
-  `list_mcp_tools` / `refresh_mcp_tools` for MCP catalogs, and
+  `get_tool_source_status` for Skill tool sources, and
   `get_agent_run_diagnostics` for latest conversation or AI task run slices.
 - `ha-dev` tools may be available even when the development Home Assistant server
   is not running. If a connection/read-only health call fails because the server
@@ -132,19 +131,18 @@
 - `__init__.py` owns setup/unload/remove/migrate, typed `entry.runtime_data`,
   update reloads, setup-time validation of configured subentry models,
   repair issue creation/cleanup, platform forwarding for `conversation`,
-  `ai_task`, `sensor`, and `binary_sensor`, and response actions for MCP tool
-  listing/refresh.
+  `ai_task`, `sensor`, and `binary_sensor`, and shared response services.
 - `config_flow.py` re-exports the split flow handlers in `config_flows/`.
 - `config_flows/provider_flow.py` owns provider subentry setup/reconfigure,
   guided provider/model selection, model discovery, `models.dev` catalog sync,
   model profile management, model settings, pricing preservation, and provider
   probing.
-- `config_flows/conversation_flow.py`, `ai_task_flow.py`, `mcp_server_flow.py`,
-  and `skill_flow.py` own their corresponding config subentry flows and
+- `config_flows/conversation_flow.py`, `ai_task_flow.py`, and `skill_flow.py`
+  own their corresponding config subentry flows and
   validation.
 - `config_flows/common.py` owns shared selectors, schema helpers, model profile
-  selection validation, MCP URL/header/tool parsing, Skill selection, todo
-  workspace validation, provider data normalization, and model cache helpers.
+  selection validation, Skill selection, todo workspace validation, provider
+  data normalization, and model cache helpers.
 - `model_profiles.py` resolves enabled provider-owned model profiles, builds
   Pydantic AI model settings, carries pricing, chooses the provider model class,
   and returns max-iteration limits.
@@ -162,9 +160,9 @@
   supports data generation and attachments, validates structured output against
   the HA-provided schema, and optionally uses a todo workspace toolset.
 - `entity.py` owns the shared Pydantic AI `Agent` runtime, fallback profile
-  execution, HA LLM API tools, MCP toolsets, native Skill capabilities,
-  WebFetch, context trimming, thinking/reasoning preservation, Logfire spans,
-  runtime metrics, and streaming/non-streaming response handling.
+  execution, HA LLM API tools, native Skill capabilities, WebFetch, context
+  trimming, thinking/reasoning preservation, Logfire spans, runtime metrics,
+  and streaming/non-streaming response handling.
 - `ha_toolset.py` converts HA LLM API tools to Pydantic AI tools through
   `Tool.from_schema` and executes them through HA's LLM API instance.
 - `ha_todo_tools.py` owns AI Task todo workspace tooling through HA `todo.*`
@@ -176,8 +174,6 @@
 - `metrics.py`, `sensor.py`, and `binary_sensor.py` own runtime run metrics,
   pricing-derived monetary sensors, provider health, last-run success, and
   config diagnostic entities.
-- `mcp.py` owns remote Streamable HTTP MCP validation, discovery, entry-scoped
-  caches, runtime allowlist enforcement, and MCP toolset construction.
 - `skills.py` owns native no-script Skill capabilities and exposes only
   `list_skills` and `load_skill` tools for selected Skill subentries.
 - `diagnostics.py` and `system_health.py` own redacted config/device diagnostics
@@ -217,7 +213,7 @@
 - Mock provider probes in flow/setup tests unless the test explicitly covers
   `async_probe_model`. Do not hit real providers in unit tests.
 - Live provider tests live in `tests/components/pydantic_ai_agent/integration/`,
-  use the `provider_integration` marker, require provider/MCP environment
+  use the `provider_integration` marker, require provider environment
   variables, and should run through `scripts/test-provider-integration`.
 - When writing or modifying tests, annotate all test function parameters and
   prefer concrete types such as `HomeAssistant`, `MockConfigEntry`, and
@@ -289,7 +285,7 @@
 - For UI flows, selectors, validation, reauth/reconfigure, translations, and
   config-flow tests, read
   `.agents/skills/ha-integration-dev/references/config-flow.md`.
-- For workspace/provider/conversation/AI task/MCP/Skill child resources, read
+- For workspace/provider/conversation/AI task/Skill child resources, read
   `.agents/skills/ha-integration-dev/references/subentries.md`.
 - For Assist, `ConversationEntity`, `ChatLog`, LLM API tools, and voice-agent
   behavior, read

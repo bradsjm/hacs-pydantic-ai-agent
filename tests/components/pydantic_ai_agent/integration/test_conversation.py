@@ -13,8 +13,6 @@ from custom_components.pydantic_ai_agent import entity as agent_entity_module
 
 from .config import (
     CONVERSATION_SENTINEL,
-    MCP_SECOND_SENTINEL,
-    MCP_SENTINEL,
     SKILL_SENTINEL,
     TEST_LLM_API_ID,
     TOOL_SENTINEL,
@@ -83,76 +81,6 @@ async def test_conversation_uses_ha_llm_tool(
     assert tool_calls == [TOOL_SENTINEL]
     speech = result.response.speech["plain"]["speech"]
     assert TOOL_SENTINEL in speech
-
-
-async def test_conversation_uses_hosted_mcp_echo_tool(
-    hass: HomeAssistant,
-    provider_config: ProviderIntegrationConfig,
-    mcp_echo_url: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test a live provider can call a hosted MCP echo tool through Agent."""
-    captured_tool_names: list[str] = []
-    tool_result_seen = False
-    second_turn_tool_call_seen = False
-    original_agent_events_to_chat_deltas = (
-        agent_entity_module._agent_events_to_chat_deltas
-    )
-
-    async def capture_agent_events_to_chat_deltas(
-        events: Any,
-        output_tool_names: set[str],
-        state: Any,
-    ) -> Any:
-        nonlocal second_turn_tool_call_seen, tool_result_seen
-        async for delta in original_agent_events_to_chat_deltas(
-            events, output_tool_names, state
-        ):
-            if tool_calls := delta.get("tool_calls"):
-                for tool_input in tool_calls:
-                    tool_name = tool_input.tool_name
-                    captured_tool_names.append(tool_name)
-                    if tool_result_seen and tool_name.endswith("echo"):
-                        second_turn_tool_call_seen = True
-            if delta.get("role") == "tool_result":
-                tool_name = str(delta["tool_name"])
-                captured_tool_names.append(tool_name)
-                if tool_name.endswith("echo"):
-                    tool_result_seen = True
-            yield delta
-
-    monkeypatch.setattr(
-        agent_entity_module,
-        "_agent_events_to_chat_deltas",
-        capture_agent_events_to_chat_deltas,
-    )
-    entity_id = await conversation_entity_id(
-        hass,
-        provider_config,
-        mcp_echo_url=mcp_echo_url,
-    )
-
-    result = await conversation.async_converse(
-        hass,
-        (
-            "Use the available MCP echo tool twice. First call it with message "
-            f"{MCP_SENTINEL}. After that tool result returns, call the same "
-            f"tool a second time with message {MCP_SECOND_SENTINEL}. Reply "
-            "with exactly both tool results. Do not answer without both tool calls."
-        ),
-        None,
-        Context(),
-        agent_id=entity_id,
-    )
-
-    await drain_stream_cleanup(hass)
-    speech = result.response.speech["plain"]["speech"]
-    assert sum(name.endswith("echo") for name in captured_tool_names) >= 4, (
-        f"captured tools={captured_tool_names!r}; speech={speech!r}"
-    )
-    assert second_turn_tool_call_seen, captured_tool_names
-    assert MCP_SENTINEL in speech
-    assert MCP_SECOND_SENTINEL in speech
 
 
 async def test_conversation_uses_workspace_skill(

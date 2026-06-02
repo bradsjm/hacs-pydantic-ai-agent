@@ -24,7 +24,6 @@ from homeassistant.util import slugify
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pydantic_ai import (
     AgentRunResultEvent,
-    FunctionToolset,
     ModelRequest,
     ModelResponse,
     PartDeltaEvent,
@@ -33,7 +32,7 @@ from pydantic_ai import (
     ThinkingPartDelta,
     ThinkingPart,
 )
-from pydantic_ai.capabilities import Thinking, ToolSearch
+from pydantic_ai.capabilities import Thinking
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.exceptions import UsageLimitExceeded
@@ -88,7 +87,6 @@ def _entry(
     llm_hass_api: list[str] | None,
     skills: list[str] | None = None,
     *,
-    mcp_server_ids: list[str] | None = None,
     virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
     model_settings: dict[str, object] | None = None,
@@ -101,7 +99,6 @@ def _entry(
                 _MODEL_PROFILE_REF,
                 llm_hass_api=llm_hass_api,
                 skills=skills,
-                mcp_server_ids=mcp_server_ids,
                 virtual_workspace_enabled=virtual_workspace_enabled,
                 web_fetch_enabled=web_fetch_enabled,
                 extra_data=extra_data,
@@ -285,7 +282,6 @@ def test_conversation_entity_advertises_streaming() -> None:
 @pytest.mark.parametrize(
     (
         "llm_hass_api",
-        "mcp_server_ids",
         "virtual_workspace_enabled",
         "web_fetch_enabled",
         "skills",
@@ -294,21 +290,18 @@ def test_conversation_entity_advertises_streaming() -> None:
     [
         (
             [llm.LLM_API_ASSIST],
-            None,
             False,
             False,
             None,
             conversation.ConversationEntityFeature.CONTROL,
         ),
-        (None, ["mcp-server-1"], False, False, None, 0),
-        (None, None, True, False, None, 0),
-        (None, None, False, True, None, 0),
-        (None, None, False, False, ["kitchen-skill"], 0),
+        (None, True, False, None, 0),
+        (None, False, True, None, 0),
+        (None, False, False, ["kitchen-skill"], 0),
     ],
 )
 def test_conversation_entity_advertises_streaming_for_tool_sources(
     llm_hass_api: list[str] | None,
-    mcp_server_ids: list[str] | None,
     virtual_workspace_enabled: bool,
     web_fetch_enabled: bool,
     skills: list[str] | None,
@@ -318,7 +311,6 @@ def test_conversation_entity_advertises_streaming_for_tool_sources(
     entry = _entry(
         llm_hass_api,
         skills=skills,
-        mcp_server_ids=mcp_server_ids,
         virtual_workspace_enabled=virtual_workspace_enabled,
         web_fetch_enabled=web_fetch_enabled,
     )
@@ -549,7 +541,6 @@ async def test_diagnostic_entity_defaults_are_respected(
         assert registry_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
         assert hass.states.get(entity_id) is None
     for entity_id in (
-        "sensor.kitchen_agent_mcp_servers_enabled",
         "sensor.kitchen_agent_skills_enabled",
         "binary_sensor.kitchen_agent_provider_healthy",
         "binary_sensor.kitchen_agent_assist_enabled",
@@ -560,7 +551,6 @@ async def test_diagnostic_entity_defaults_are_respected(
         assert registry_entry is not None
         assert registry_entry.disabled_by is None
         assert hass.states.get(entity_id) is not None
-    assert _state(hass, "sensor.kitchen_agent_mcp_servers_enabled") == "0"
     assert _state(hass, "sensor.kitchen_agent_skills_enabled") == "2"
     assert _state(hass, "binary_sensor.kitchen_agent_virtual_workspace_enabled") == "on"
 
@@ -1466,57 +1456,6 @@ async def test_conversation_runtime_recreates_virtual_workspace_for_fallback(
     assert workspace_parts.call_count == 2
     assert agent_class.call_args_list[0].kwargs["toolsets"] == [first_toolset]
     assert agent_class.call_args_list[1].kwargs["toolsets"] == [second_toolset]
-
-
-async def test_conversation_runtime_adds_keyword_tool_search_for_deferred_mcp(
-    hass: HomeAssistant,
-) -> None:
-    """Test deferred MCP toolsets force local keyword tool search."""
-    entry = _entry(None)
-    entry.add_to_hass(hass)
-    deferred_toolset = FunctionToolset().defer_loading()
-
-    with patch(
-        "custom_components.pydantic_ai_agent.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
-    )
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
-            return_value=object(),
-        ),
-        patch(
-            "custom_components.pydantic_ai_agent.entity.async_runtime_mcp_toolsets",
-            new_callable=AsyncMock,
-            return_value=[deferred_toolset],
-        ),
-        patch(
-            "custom_components.pydantic_ai_agent.entity.Agent",
-            return_value=_Agent(),
-        ) as agent_class,
-    ):
-        await conversation.async_converse(
-            hass,
-            "hello",
-            None,
-            Context(),
-            agent_id=entity_id,
-        )
-
-    capabilities = agent_class.call_args.kwargs["capabilities"]
-    assert any(
-        isinstance(capability, ToolSearch) and capability.strategy == "keywords"
-        for capability in capabilities
-    )
-    _assert_context_management_capability(capabilities)
 
 
 async def test_conversation_logfire_instruments_agent_with_ha_metadata(

@@ -78,9 +78,6 @@ Relevant dependency decisions:
   extras.
 - `anthropic>=0.97.0` and `google-genai>=1.70.0` are declared explicitly for
   native Anthropic and Google Gemini provider modes.
-- `fastmcp-slim[client,server]>=3.3.0` is required for remote MCP runtime use
-  because Pydantic AI's `MCPToolset` imports FastMCP symbols that require the
-  server extra, even when connecting to remote Streamable HTTP servers.
 - `markdownify>=1.2` supports WebFetch content conversion.
 - The OpenAI SDK is intentionally absent.
 
@@ -222,7 +219,7 @@ Streaming implementation details:
 - Home Assistant plain-conversation runtime consumes Pydantic AI
   `run_stream_events(...)` so visible assistant deltas are emitted live while the
   final `AgentRunResultEvent` is used only for usage and health metrics;
-- conversations that can call HA LLM tools, MCP tools, Web fetch, or skills use
+- conversations that can call HA LLM tools, Web fetch, or skills use
   non-streamed requests for provider-compatible tool-result follow-up handling;
 - streamed conversation handling does not append final `new_messages()` after
   live deltas, preventing duplicate final assistant text;

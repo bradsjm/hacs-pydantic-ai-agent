@@ -22,7 +22,6 @@ from .agent_subentries import ValidAgentSubentry, iter_valid_agent_subentries
 from .const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
-    CONF_MCP_SERVER_IDS,
     CONF_OUTPUT_MODE,
     CONF_SKILLS,
     DOMAIN,
@@ -273,17 +272,6 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
         icon="mdi:brain",
         value_fn=lambda entry, subentry: (
             primary_model_profile(entry, subentry).model_name
-        ),
-    ),
-    PydanticAIConfigSensorDescription(
-        key="mcp_servers_enabled",
-        translation_key="mcp_servers_enabled",
-        icon="mdi:server-network-outline",
-        native_unit_of_measurement="servers",
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=True,
-        value_fn=lambda _entry, subentry: len(
-            subentry.data.get(CONF_MCP_SERVER_IDS, [])
         ),
     ),
     PydanticAIConfigSensorDescription(

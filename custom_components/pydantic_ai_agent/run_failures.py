@@ -16,7 +16,6 @@ from pydantic_ai.usage import UsageLimits
 from homeassistant.exceptions import HomeAssistantError
 
 from .error_classification import has_connection_failure
-from .mcp import MCPValidationError
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -128,8 +127,6 @@ def _classify_run_failure(
             f"{prefix}the provider request timed out. Check network "
             "connectivity or try again later."
         )
-    elif isinstance(cause, MCPValidationError):
-        message = cause.message
     elif isinstance(cause, NotImplementedError | UserError):
         message = f"Invalid provider configuration: {cause}"
     elif isinstance(cause, HomeAssistantError):

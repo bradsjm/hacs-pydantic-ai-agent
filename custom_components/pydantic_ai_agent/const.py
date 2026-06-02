@@ -27,12 +27,6 @@ CONF_MODEL = "model"
 CONF_MODEL_PRICING = "model_pricing"
 CONF_MODEL_PROFILES = "model_profiles"
 CONF_MODEL_SETTINGS = "model_settings"
-CONF_MCP_ALLOWED_TOOLS = "mcp_allowed_tools"
-CONF_MCP_DEFERRED_LOADING = "mcp_deferred_loading"
-CONF_MCP_HEADERS = "mcp_headers"
-CONF_MCP_INCLUDE_RETURN_SCHEMA = "mcp_include_return_schema"
-CONF_MCP_SERVER_IDS = "mcp_server_ids"
-CONF_MCP_URL = "mcp_url"
 CONF_OUTPUT_MODE = "output_mode"
 CONF_PRIMARY_MODEL_REF = "primary_model_ref"
 CONF_PROMPT = "prompt"
@@ -63,7 +57,6 @@ PROVIDER_MODES = (
 
 SUBENTRY_TYPE_AI_TASK = "ai_task_data"
 SUBENTRY_TYPE_CONVERSATION = "conversation"
-SUBENTRY_TYPE_MCP_SERVER = "mcp_server"
 SUBENTRY_TYPE_PROVIDER = "provider"
 SUBENTRY_TYPE_SKILL = "skill"
 
@@ -83,9 +76,6 @@ DEFAULT_SERVICE_NAME = "OpenAI-compatible"
 DEFAULT_SKILL_NAME = "Skill"
 DEFAULT_WORKSPACE_NAME = "Pydantic AI Agent"
 DEFAULT_TIMEOUT = 10.0
-DEFAULT_MCP_TIMEOUT = 10.0
-
-
 def default_conversation_options() -> dict[str, object]:
     """Return default conversation subentry options."""
     return {

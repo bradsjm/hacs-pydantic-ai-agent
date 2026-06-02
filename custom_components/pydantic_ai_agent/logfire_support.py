@@ -16,7 +16,6 @@ from homeassistant.core import HomeAssistant
 from .const import (
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
-    CONF_MCP_SERVER_IDS,
     CONF_OUTPUT_MODE,
     DOMAIN,
 )
@@ -278,11 +277,8 @@ def _span_attributes(
     except Exception:
         provider_mode = None
     llm_api_ids = subentry.data.get(CONF_LLM_HASS_API)
-    mcp_server_ids = subentry.data.get(CONF_MCP_SERVER_IDS)
     if not isinstance(llm_api_ids, list):
         llm_api_ids = []
-    if not isinstance(mcp_server_ids, list):
-        mcp_server_ids = []
     return {
         "ha.domain": DOMAIN,
         "ha.version": __version__,
@@ -300,6 +296,5 @@ def _span_attributes(
         ),
         "ha.ha_tools_enabled": bool(llm_api_ids),
         "ha.llm_api_ids": llm_api_ids,
-        "ha.mcp_server_count": len(mcp_server_ids),
         "ha.logfire_include_content": logfire_include_content(hass, entry),
     }

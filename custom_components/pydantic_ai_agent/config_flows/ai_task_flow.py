@@ -8,7 +8,6 @@ from .common import (
     Any,
     CONF_AI_TASK_NAME,
     CONF_FALLBACK_MODEL_REFS,
-    CONF_MCP_SERVER_IDS,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
@@ -42,7 +41,6 @@ from .common import (
     provider_model_profiles,
 )
 from .helpers import _flatten_section_data
-from .mcp_helpers import _selected_mcp_server_error
 from .skill_helpers import _selected_skill_error
 from ..generated_titles import DEFAULT_AI_TASK_TITLE_SUFFIX, generated_default_title
 from ..model_settings import validation_probe_model_settings
@@ -132,15 +130,6 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                     ),
                     errors={CONF_PRIMARY_MODEL_REF: model_error},
                 )
-            if mcp_error := _selected_mcp_server_error(entry, data):
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=self.add_suggested_values_to_schema(
-                        _ai_task_data_schema(self.hass, self._options | data, entry),
-                        _agent_form_suggested_values(self._options | data, self.hass),
-                    ),
-                    errors={CONF_MCP_SERVER_IDS: mcp_error},
-                )
             if todo_error := _selected_todo_workspace_error(self.hass, data):
                 return self.async_show_form(
                     step_id="init",
@@ -175,14 +164,6 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Probe the selected AI task model, then create or update the subentry."""
         entry = self._get_entry()
-        if mcp_error := _selected_mcp_server_error(entry, data):
-            return self.async_show_form(
-                step_id="init",
-                data_schema=_ai_task_data_schema(
-                    self.hass, self._options | data, entry
-                ),
-                errors={CONF_MCP_SERVER_IDS: mcp_error},
-            )
         if skill_error := _selected_skill_error(entry, data):
             return self.async_show_form(
                 step_id="init",

@@ -13,7 +13,6 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
-    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
@@ -40,17 +39,8 @@ async def system_health_info(hass: HomeAssistant) -> dict[str, Any]:
         "model_profile_count": _model_profile_count(entries),
         "conversation_count": _subentry_count(entries, SUBENTRY_TYPE_CONVERSATION),
         "ai_task_count": _subentry_count(entries, SUBENTRY_TYPE_AI_TASK),
-        "mcp_server_count": _subentry_count(entries, SUBENTRY_TYPE_MCP_SERVER),
         "skill_count": _subentry_count(entries, SUBENTRY_TYPE_SKILL),
         "selected_skill_count": _selected_skill_count(entries),
-        "cached_mcp_server_count": sum(
-            len(entry.runtime_data.mcp_tool_cache) for entry in loaded_entries
-        ),
-        "cached_mcp_tool_count": sum(
-            len(tools)
-            for entry in loaded_entries
-            for tools in entry.runtime_data.mcp_tool_cache.values()
-        ),
         "logfire_enabled_count": sum(
             1 for entry in entries if logfire_enabled(hass, entry)
         ),

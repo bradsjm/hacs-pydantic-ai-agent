@@ -14,10 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pydantic_ai_agent import (
-    MCPServerRuntimeData,
-    WorkspaceRuntimeData,
-)
+from custom_components.pydantic_ai_agent import WorkspaceRuntimeData
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
@@ -28,8 +25,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_ENABLED,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
-    CONF_MCP_HEADERS,
-    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
@@ -43,7 +38,6 @@ from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
-    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
@@ -128,19 +122,6 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
             },
             {
                 "data": {
-                    CONF_NAME: "Filesystem MCP",
-                    CONF_MCP_URL: "https://user:pass@mcp.example.com/mcp?token=visible",
-                    CONF_MCP_HEADERS: {
-                        "Authorization": "Bearer mcp-secret",
-                        "X-API-Key": "nested-secret",
-                    },
-                },
-                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
-                "title": "Filesystem MCP",
-                "unique_id": None,
-            },
-            {
-                "data": {
                     CONF_NAME: "Kitchen Skill",
                     CONF_SKILL_CONTENT: "Private skill body",
                     CONF_SKILL_REFERENCES: [
@@ -171,7 +152,6 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
         "name": "Kitchen Agent",
         CONF_PRIMARY_MODEL_REF: _MODEL_PROFILE_REF,
         "fallback_model_profile_count": 0,
-        "mcp_server_count": 0,
         "skill_count": 0,
         CONF_LLM_HASS_API: ["assist"],
         "web_fetch_enabled": False,
@@ -192,11 +172,7 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
         }
     ]
     assert model_data[CONF_MODEL_SETTINGS]["extra_body"] == {"api_key": REDACTED}
-    mcp_data = diagnostics["subentries"][2]["data"]
-    assert mcp_data[CONF_MCP_URL] == REDACTED
-    assert mcp_data[CONF_MCP_HEADERS] == REDACTED
-    assert diagnostics["subentries"][2]["configuration_summary"]["mcp_url"] == REDACTED
-    skill_data = diagnostics["subentries"][3]["data"]
+    skill_data = diagnostics["subentries"][2]["data"]
     assert skill_data[CONF_NAME] == "Kitchen Skill"
     assert skill_data[CONF_SKILL_CONTENT] == REDACTED
     assert skill_data[CONF_SKILL_REFERENCES] == [
@@ -204,60 +180,6 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
     ]
     assert "sk-secret" not in json.dumps(diagnostics)
     assert "Private system prompt" not in json.dumps(diagnostics)
-
-
-async def test_diagnostics_exposes_safe_runtime_mcp_counts(
-    hass: HomeAssistant,
-) -> None:
-    """Test config-entry diagnostics expose only safe MCP runtime counts."""
-    entry = MockConfigEntry(
-        version=2,
-        minor_version=0,
-        domain=DOMAIN,
-        title="Workspace",
-        data={CONF_NAME: "Workspace"},
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "subentry_id": "mcp-server-1",
-                "data": {
-                    CONF_NAME: "Filesystem MCP",
-                    CONF_MCP_URL: "https://mcp.example.com/mcp",
-                    CONF_MCP_HEADERS: {"Authorization": "Bearer mcp-secret"},
-                },
-                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
-                "title": "Filesystem MCP",
-                "unique_id": None,
-            },
-        ),
-        unique_id=None,
-    )
-    entry.add_to_hass(hass)
-    mcp_subentry_id = next(iter(entry.subentries))
-    entry.runtime_data = WorkspaceRuntimeData(
-        workspace_name="Workspace",
-        mcp_servers={
-            mcp_subentry_id: MCPServerRuntimeData(
-                subentry_id=mcp_subentry_id,
-                name="Filesystem MCP",
-                url="https://mcp.example.com/mcp",
-            )
-        },
-        mcp_tool_cache={mcp_subentry_id: [{"name": "secret_tool"}, {"name": "x"}]},
-    )
-
-    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
-
-    assert diagnostics["runtime"] == {
-        "loaded": True,
-        "configured_mcp_server_count": 1,
-        "cached_mcp_server_count": 1,
-        "model_validation_failure_count": 0,
-        "model_validation_failures": {},
-        "cached_mcp_tool_counts": {mcp_subentry_id: 2},
-    }
-    assert "mcp.example.com" not in str(diagnostics["runtime"])
-    assert "secret_tool" not in str(diagnostics["runtime"])
 
 
 async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> None:
@@ -281,7 +203,7 @@ async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> Non
     }
     entry.runtime_data.latest_stream_traces["conversation-1"] = {
         "headers": {"Authorization": "Bearer stream-secret"},
-        CONF_MCP_URL: "https://mcp.example.com/mcp?token=visible",
+        "request_url": "https://provider.example.com/path?token=visible",
     }
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
@@ -294,11 +216,9 @@ async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> Non
     assert model_settings["session_token"] == "visible"
     stream_trace = runtime["latest_stream_traces"]["conversation-1"]
     assert stream_trace["headers"] == REDACTED
-    assert stream_trace[CONF_MCP_URL] == REDACTED
+    assert stream_trace["request_url"] == "https://provider.example.com/path?token=visible"
     assert "runtime-secret" not in json.dumps(diagnostics)
     assert "stream-secret" not in json.dumps(diagnostics)
-
-
 async def test_diagnostics_bounds_large_values(hass: HomeAssistant) -> None:
     """Test diagnostics bound large values without redacting them."""
     entry = MockConfigEntry(

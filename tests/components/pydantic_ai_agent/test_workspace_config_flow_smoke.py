@@ -42,11 +42,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_MCP_ALLOWED_TOOLS,
-    CONF_MCP_DEFERRED_LOADING,
-    CONF_MCP_HEADERS,
-    CONF_MCP_INCLUDE_RETURN_SCHEMA,
-    CONF_MCP_URL,
     CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_HEADERS,
@@ -58,7 +53,6 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_AI_TASK,
-    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
@@ -87,8 +81,8 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types impo
 from custom_components.pydantic_ai_agent.config_flows.common import (
     _SECTION_HASS_CONTROL,
 )
-from custom_components.pydantic_ai_agent.config_flows.mcp_helpers import (
-    _SECTION_ADVANCED_MCP,
+from custom_components.pydantic_ai_agent.config_flows.workspace_flow import (
+    PydanticAIAgentConfigFlow,
 )
 from tests.components.pydantic_ai_agent.support.schemas import (
     schema_default as _schema_default,
@@ -436,91 +430,15 @@ async def test_conversation_reconfigure_assist_round_trips_to_form_section(
     ) == {CONF_LLM_HASS_API: ["assist"]}
 
 
-async def test_mcp_server_subentry_flow_discovers_and_allowlists_tools(
+async def test_workspace_flow_no_longer_offers_mcp_subentries(
     hass: HomeAssistant,
 ) -> None:
-    """Test the MCP server subentry create flow validates and selects tools."""
+    """Test workspace subentry menus no longer expose repo-owned MCP support."""
     entry = await _loaded_workspace_entry(hass)
 
-    async def fake_validate_mcp_url(_hass: HomeAssistant, url: str) -> str:
-        assert url == "https://mcp.example.com/mcp"
-        return url
+    supported = PydanticAIAgentConfigFlow.async_get_supported_subentry_types(entry)
 
-    async def fake_discover_mcp_tools_from_config(
-        _hass: HomeAssistant,
-        data: dict[str, Any],
-        *,
-        server_id: str | None = None,
-        apply_allowlist: bool = True,
-    ) -> list[dict[str, Any]]:
-        assert server_id == "Echo MCP"
-        assert apply_allowlist is False
-        assert data[CONF_MCP_HEADERS] == {"Authorization": "Bearer demo"}
-        return [
-            {"name": "status", "description": "Read server status"},
-            {"name": "echo", "description": "Echo text"},
-        ]
-
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent.config_flows.mcp_server_flow.async_validate_mcp_url",
-            new=fake_validate_mcp_url,
-        ),
-        patch(
-            "custom_components.pydantic_ai_agent.config_flows.mcp_server_flow.async_discover_mcp_tools_from_config",
-            new=fake_discover_mcp_tools_from_config,
-        ),
-    ):
-        result = await hass.config_entries.subentries.async_init(
-            (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
-            context={"source": config_entries.SOURCE_USER},
-        )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
-
-        result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"],
-            {
-                CONF_NAME: "Echo MCP",
-                CONF_MCP_URL: "https://mcp.example.com/mcp",
-                _SECTION_ADVANCED_MCP: {
-                    CONF_MCP_HEADERS: "Authorization: Bearer demo",
-                    CONF_MCP_INCLUDE_RETURN_SCHEMA: False,
-                    CONF_MCP_DEFERRED_LOADING: True,
-                },
-            },
-        )
-        assert result["type"] is FlowResultType.SHOW_PROGRESS
-        assert result["step_id"] == "mcp_validation_progress"
-
-        await hass.async_block_till_done()
-        result = await hass.config_entries.subentries.async_configure(result["flow_id"])
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "tools"
-    assert _schema_select_options(result["data_schema"], CONF_MCP_ALLOWED_TOOLS) == [
-        {"label": "echo (Echo text)", "value": "echo"},
-        {"label": "status (Read server status)", "value": "status"},
-    ]
-    assert _schema_default(result["data_schema"], CONF_MCP_ALLOWED_TOOLS) == [
-        "echo",
-        "status",
-    ]
-
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_MCP_ALLOWED_TOOLS: ["echo"]}
-    )
-
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    data = cast(dict[str, Any], result["data"])
-    assert data == {
-        CONF_NAME: "Echo MCP",
-        CONF_MCP_URL: "https://mcp.example.com/mcp",
-        CONF_MCP_INCLUDE_RETURN_SCHEMA: False,
-        CONF_MCP_DEFERRED_LOADING: True,
-        CONF_MCP_HEADERS: {"Authorization": "Bearer demo"},
-        CONF_MCP_ALLOWED_TOOLS: ["echo"],
-    }
+    assert "mcp_server" not in supported
 
 
 async def test_provider_edit_connection_preserves_catalog_metadata(

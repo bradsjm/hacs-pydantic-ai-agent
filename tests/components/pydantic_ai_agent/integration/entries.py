@@ -15,9 +15,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_DESCRIPTION,
     CONF_DISCOVERED,
     CONF_ENABLED,
-    CONF_MCP_ALLOWED_TOOLS,
-    CONF_MCP_SERVER_IDS,
-    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
@@ -31,13 +28,11 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
-    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
 
 from .config import (
-    MCP_ECHO_SERVER_ID,
     MODEL_PROFILE_ID,
     MODEL_REF,
     PROVIDER_ID,
@@ -50,7 +45,6 @@ from .config import (
 
 def conversation_subentry(
     llm_hass_api: list[str] | None = None,
-    mcp_server_ids: list[str] | None = None,
     skill_ids: list[str] | None = None,
 ) -> dict[str, object]:
     """Return a provider integration conversation subentry."""
@@ -60,8 +54,6 @@ def conversation_subentry(
     }
     if llm_hass_api is not None:
         data[CONF_LLM_HASS_API] = llm_hass_api
-    if mcp_server_ids is not None:
-        data[CONF_MCP_SERVER_IDS] = mcp_server_ids
     if skill_ids is not None:
         data[CONF_SKILLS] = skill_ids
 
@@ -84,37 +76,6 @@ def ai_task_subentry(output_mode: str | None = None) -> dict[str, object]:
         "title": "Integration AI Task",
         "unique_id": None,
     }
-
-
-def mcp_ai_task_subentry(output_mode: str | None = None) -> dict[str, object]:
-    """Return a provider integration AI task subentry with MCP echo access."""
-    data: dict[str, object] = {
-        CONF_PRIMARY_MODEL_REF: MODEL_REF,
-        CONF_MCP_SERVER_IDS: [MCP_ECHO_SERVER_ID],
-    }
-    if output_mode is not None:
-        data[CONF_OUTPUT_MODE] = output_mode
-    return {
-        "data": data,
-        "subentry_type": SUBENTRY_TYPE_AI_TASK,
-        "title": "Integration MCP AI Task",
-        "unique_id": None,
-    }
-
-
-def mcp_echo_subentry(mcp_echo_url: str) -> dict[str, object]:
-    """Return a hosted MCP echo server subentry."""
-    return {
-        "data": {
-            CONF_MCP_URL: mcp_echo_url,
-            CONF_MCP_ALLOWED_TOOLS: ["echo"],
-        },
-        "subentry_id": MCP_ECHO_SERVER_ID,
-        "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
-        "title": "Hosted MCP Echo",
-        "unique_id": None,
-    }
-
 
 def skill_subentry() -> dict[str, object]:
     """Return a native workspace Skill subentry."""
@@ -216,14 +177,9 @@ async def conversation_entity_id(
     hass: HomeAssistant,
     provider_config: ProviderIntegrationConfig,
     llm_hass_api: list[str] | None = None,
-    mcp_echo_url: str | None = None,
 ) -> str:
     """Set up a conversation agent and return its entity ID."""
-    mcp_server_ids = [MCP_ECHO_SERVER_ID] if mcp_echo_url is not None else None
-    subentries = [conversation_subentry(llm_hass_api, mcp_server_ids)]
-    if mcp_echo_url is not None:
-        subentries.append(mcp_echo_subentry(mcp_echo_url))
-    await setup_entry(hass, entry(provider_config, *subentries))
+    await setup_entry(hass, entry(provider_config, conversation_subentry(llm_hass_api)))
     entity_ids = [
         state.entity_id
         for state in hass.states.async_all("conversation")
@@ -262,26 +218,6 @@ async def ai_task_entity_id(
 ) -> str:
     """Set up an AI task entity and return its entity ID."""
     await setup_entry(hass, entry(provider_config, ai_task_subentry(output_mode)))
-    entity_ids = [state.entity_id for state in hass.states.async_all("ai_task")]
-    assert len(entity_ids) == 1
-    return entity_ids[0]
-
-
-async def mcp_ai_task_entity_id(
-    hass: HomeAssistant,
-    provider_config: ProviderIntegrationConfig,
-    mcp_echo_url: str,
-    output_mode: str | None = None,
-) -> str:
-    """Set up an AI task entity with hosted MCP echo access."""
-    await setup_entry(
-        hass,
-        entry(
-            provider_config,
-            mcp_ai_task_subentry(output_mode),
-            mcp_echo_subentry(mcp_echo_url),
-        ),
-    )
     entity_ids = [state.entity_id for state in hass.states.async_all("ai_task")]
     assert len(entity_ids) == 1
     return entity_ids[0]

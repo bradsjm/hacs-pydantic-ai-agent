@@ -8,7 +8,6 @@ from homeassistant.const import CONF_API_KEY, CONF_NAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent import (
-    MCPServerRuntimeData,
     ProviderRuntimeData,
     WorkspaceRuntimeData,
 )
@@ -20,12 +19,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_DESCRIPTION,
     CONF_DISCOVERED,
     CONF_ENABLED,
-    CONF_MCP_ALLOWED_TOOLS,
-    CONF_MCP_DEFERRED_LOADING,
-    CONF_MCP_HEADERS,
-    CONF_MCP_INCLUDE_RETURN_SCHEMA,
-    CONF_MCP_SERVER_IDS,
-    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
@@ -45,7 +38,6 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
-    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
@@ -143,7 +135,6 @@ def conversation_subentry_data(
     agent_name: str | None = "Kitchen Agent",
     llm_hass_api: Sequence[str] | None = None,
     skills: Sequence[str] | None = None,
-    mcp_server_ids: Sequence[str] | None = None,
     virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
     extra_data: Mapping[str, object] | None = None,
@@ -156,8 +147,6 @@ def conversation_subentry_data(
         data["llm_hass_api"] = list(llm_hass_api)
     if skills is not None:
         data[CONF_SKILLS] = list(skills)
-    if mcp_server_ids is not None:
-        data[CONF_MCP_SERVER_IDS] = list(mcp_server_ids)
     if web_fetch_enabled:
         data[CONF_WEB_FETCH_ENABLED] = True
     if virtual_workspace_enabled:
@@ -213,39 +202,6 @@ def ai_task_subentry_data(
     if subentry_id is not None:
         payload["subentry_id"] = subentry_id
     return payload
-
-
-def mcp_server_subentry_data(
-    *,
-    subentry_id: str = "mcp-server-1",
-    title: str = "Filesystem MCP",
-    name: str | None = None,
-    url: str = "https://mcp.example.com/mcp",
-    headers: Mapping[str, str] | None = None,
-    allowed_tools: Sequence[str] | None = None,
-    include_return_schema: bool | None = None,
-    deferred_loading: bool | None = None,
-) -> dict[str, object]:
-    """Return an MCP server config subentry payload."""
-    data: dict[str, object] = {
-        CONF_NAME: title if name is None else name,
-        CONF_MCP_URL: url,
-    }
-    if headers is not None:
-        data[CONF_MCP_HEADERS] = dict(headers)
-    if allowed_tools is not None:
-        data[CONF_MCP_ALLOWED_TOOLS] = list(allowed_tools)
-    if include_return_schema is not None:
-        data[CONF_MCP_INCLUDE_RETURN_SCHEMA] = include_return_schema
-    if deferred_loading is not None:
-        data[CONF_MCP_DEFERRED_LOADING] = deferred_loading
-    return {
-        "subentry_id": subentry_id,
-        "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
-        "title": title,
-        "unique_id": None,
-        "data": data,
-    }
 
 
 def skill_subentry_data(
@@ -319,31 +275,10 @@ def provider_runtime_data(
     )
 
 
-def mcp_runtime_data(
-    *,
-    subentry_id: str = "mcp-server-1",
-    name: str = "Filesystem MCP",
-    url: str = "https://mcp.example.com/mcp",
-    headers: Mapping[str, str] | None = None,
-    discovered_tools: Sequence[Mapping[str, Any]] | None = None,
-    allowed_tools: Sequence[str] | None = None,
-) -> MCPServerRuntimeData:
-    """Return MCP server runtime data."""
-    return MCPServerRuntimeData(
-        subentry_id=subentry_id,
-        name=name,
-        url=url,
-        headers={} if headers is None else dict(headers),
-        discovered_tools=[dict(tool) for tool in discovered_tools or ()],
-        allowed_tools=list(allowed_tools or ()),
-    )
-
-
 def workspace_runtime_data(
     *,
     workspace_name: str = "Workspace",
     providers: Mapping[str, ProviderRuntimeData] | None = None,
-    mcp_servers: Mapping[str, MCPServerRuntimeData] | None = None,
     logfire_enabled: bool = False,
     logfire_include_content: bool = False,
 ) -> WorkspaceRuntimeData:
@@ -351,7 +286,6 @@ def workspace_runtime_data(
     return WorkspaceRuntimeData(
         workspace_name=workspace_name,
         providers={} if providers is None else dict(providers),
-        mcp_servers={} if mcp_servers is None else dict(mcp_servers),
         logfire_enabled=logfire_enabled,
         logfire_include_content=logfire_include_content,
     )

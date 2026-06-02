@@ -7,6 +7,7 @@ from __future__ import annotations
 import errno
 import json
 import logging
+import re
 import socket
 import ssl
 from collections.abc import AsyncIterable, Iterable, Mapping
@@ -98,7 +99,6 @@ from ..const import (
     CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
     CONF_MAX_TOKENS,
-    CONF_MCP_SERVER_IDS,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
@@ -133,13 +133,9 @@ from ..const import (
     STRUCTURED_OUTPUT_MODES,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
-    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
     default_conversation_options,
-)
-from ..mcp import (
-    parse_mcp_headers,
 )
 from ..model_profiles import (
     configured_model_profile_exists,
@@ -185,6 +181,7 @@ from ..structured_output import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+_HTTP_HEADER_NAME_PATTERN = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 
 _HTTP_STATUS_LABELS = {
     400: "invalid request",
@@ -330,12 +327,41 @@ def _agent_form_suggested_values(
 def _parse_provider_headers(value: object) -> dict[str, str]:
     """Return provider HTTP headers from form input."""
     try:
-        return parse_mcp_headers(value)
+        return _parse_http_headers(value)
     except vol.Invalid as err:
         raise ProviderValidationError(
             "invalid_provider_headers",
             "Enter HTTP headers one per line using 'Header-Name: value'.",
         ) from err
+
+
+def _parse_http_headers(value: object) -> dict[str, str]:
+    """Return HTTP headers from a multiline text field or mapping."""
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        headers: dict[str, str] = {}
+        for line in value.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            name, separator, header_value = line.partition(":")
+            name = name.strip()
+            if not separator or not _HTTP_HEADER_NAME_PATTERN.fullmatch(name):
+                raise vol.Invalid("invalid_headers")
+            headers[name] = header_value.strip()
+        return headers
+    if not isinstance(value, Mapping):
+        raise vol.Invalid("invalid_headers")
+    headers = dict(value)
+    if not all(
+        isinstance(key, str)
+        and _HTTP_HEADER_NAME_PATTERN.fullmatch(key)
+        and isinstance(item, str)
+        for key, item in headers.items()
+    ):
+        raise vol.Invalid("invalid_headers")
+    return headers
 
 
 def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
@@ -852,19 +878,6 @@ def _provider_data_matches(left: Mapping[str, Any], right: Mapping[str, Any]) ->
     return _dedupe_data(left) == _dedupe_data(right)
 
 
-def _mcp_server_select_options(entry: ConfigEntry | None) -> list[SelectOptionDict]:
-    """Return configured MCP servers as select options."""
-    if entry is None:
-        return []
-    return _sorted_select_options(
-        [
-            SelectOptionDict(label=subentry.title, value=subentry.subentry_id)
-            for subentry in entry.subentries.values()
-            if subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER
-        ]
-    )
-
-
 def _model_profile_select_options(entry: ConfigEntry | None) -> list[SelectOptionDict]:
     """Return enabled workspace model profiles as select options."""
     if entry is None:
@@ -1055,24 +1068,6 @@ def _conversation_schema(
         vol.Schema(hass_control_schema), {"collapsed": True}
     )
     external_tools_schema: VolDictType = {}
-    mcp_servers = _mcp_server_select_options(entry)
-    if mcp_servers:
-        mcp_schema_key = vol.Optional(CONF_MCP_SERVER_IDS)
-        if CONF_MCP_SERVER_IDS in options:
-            configured_servers = {
-                option["value"] for option in mcp_servers if "value" in option
-            }
-            mcp_schema_key = vol.Optional(
-                CONF_MCP_SERVER_IDS,
-                default=[
-                    server_id
-                    for server_id in options[CONF_MCP_SERVER_IDS]
-                    if server_id in configured_servers
-                ],
-            )
-        external_tools_schema[mcp_schema_key] = SelectSelector(
-            SelectSelectorConfig(options=mcp_servers, multiple=True)
-        )
     external_tools_schema[
         vol.Optional(
             CONF_WEB_FETCH_ENABLED,
@@ -1640,8 +1635,6 @@ def _conversation_data_from_user_input(
     data = {key: value for key, value in user_input.items()}
     if not data.get(CONF_LLM_HASS_API):
         data.pop(CONF_LLM_HASS_API, None)
-    if not data.get(CONF_MCP_SERVER_IDS):
-        data.pop(CONF_MCP_SERVER_IDS, None)
     if not data.get(CONF_WEB_FETCH_ENABLED):
         data.pop(CONF_WEB_FETCH_ENABLED, None)
     if data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is not True:
@@ -1805,24 +1798,6 @@ def _ai_task_data_schema(
         vol.Schema(hass_control_schema), {"collapsed": True}
     )
     external_tools_schema: VolDictType = {}
-    mcp_servers = _mcp_server_select_options(entry)
-    if mcp_servers:
-        mcp_schema_key = vol.Optional(CONF_MCP_SERVER_IDS)
-        if CONF_MCP_SERVER_IDS in options:
-            configured_servers = {
-                option["value"] for option in mcp_servers if "value" in option
-            }
-            mcp_schema_key = vol.Optional(
-                CONF_MCP_SERVER_IDS,
-                default=[
-                    server_id
-                    for server_id in options[CONF_MCP_SERVER_IDS]
-                    if server_id in configured_servers
-                ],
-            )
-        external_tools_schema[mcp_schema_key] = SelectSelector(
-            SelectSelectorConfig(options=mcp_servers, multiple=True)
-        )
     todo_schema_key = vol.Optional(CONF_TODO_LIST_ENTITY_ID)
     if CONF_TODO_LIST_ENTITY_ID in options:
         todo_schema_key = vol.Optional(
@@ -1889,8 +1864,6 @@ def _ai_task_data_from_user_input(
         CONF_OUTPUT_MODE,
         normalise_structured_output_mode(options.get(CONF_OUTPUT_MODE)),
     )
-    if not data.get(CONF_MCP_SERVER_IDS):
-        data.pop(CONF_MCP_SERVER_IDS, None)
     if not data.get(CONF_WEB_FETCH_ENABLED):
         data.pop(CONF_WEB_FETCH_ENABLED, None)
     if data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is not True:

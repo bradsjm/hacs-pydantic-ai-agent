@@ -3,7 +3,6 @@
 from collections.abc import Mapping
 from typing import Any
 
-from homeassistant.components.diagnostics import REDACTED
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
@@ -15,9 +14,6 @@ from .const import (
     CONF_AGENT_NAME,
     CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_FALLBACK_MODEL_REFS,
-    CONF_MCP_HEADERS,
-    CONF_MCP_SERVER_IDS,
-    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
@@ -32,7 +28,6 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
-    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
@@ -123,19 +118,12 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
     runtime_data = getattr(entry, "runtime_data", None)
     if runtime_data is None:
         return {
-            "configured_mcp_server_count": 0,
-            "cached_mcp_server_count": 0,
-            "cached_mcp_tool_counts": {},
+            "model_validation_failure_count": 0,
+            "model_validation_failures": {},
         }
     diagnostics = {
-        "configured_mcp_server_count": len(runtime_data.mcp_servers),
-        "cached_mcp_server_count": len(runtime_data.mcp_tool_cache),
         "model_validation_failure_count": len(runtime_data.model_validation_failures),
         "model_validation_failures": dict(runtime_data.model_validation_failures),
-        "cached_mcp_tool_counts": {
-            server_id: len(tools)
-            for server_id, tools in runtime_data.mcp_tool_cache.items()
-        },
     }
     if runtime_data.latest_run_diagnostics:
         diagnostics["latest_run_diagnostics"] = redact_data(
@@ -155,7 +143,6 @@ def _configuration_summary(subentry: Any) -> dict[str, Any]:
         "subentry_type": subentry.subentry_type,
     }
     if subentry.subentry_type in {SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK}:
-        mcp_server_ids = data.get(CONF_MCP_SERVER_IDS)
         skill_ids = data.get(CONF_SKILLS)
         fallback_refs = data.get(CONF_FALLBACK_MODEL_REFS)
         summary.update(
@@ -164,9 +151,6 @@ def _configuration_summary(subentry: Any) -> dict[str, Any]:
                 CONF_PRIMARY_MODEL_REF: data.get(CONF_PRIMARY_MODEL_REF),
                 "fallback_model_profile_count": len(fallback_refs)
                 if isinstance(fallback_refs, list)
-                else 0,
-                "mcp_server_count": len(mcp_server_ids)
-                if isinstance(mcp_server_ids, list)
                 else 0,
                 "skill_count": len(skill_ids) if isinstance(skill_ids, list) else 0,
                 CONF_LLM_HASS_API: data.get(CONF_LLM_HASS_API),
@@ -187,13 +171,6 @@ def _configuration_summary(subentry: Any) -> dict[str, Any]:
                 "model_profile_count": len(model_profiles)
                 if isinstance(model_profiles, Mapping)
                 else 0,
-            }
-        )
-    elif subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER:
-        summary.update(
-            {
-                "mcp_url": REDACTED if data.get(CONF_MCP_URL) else None,
-                "has_mcp_headers": bool(data.get(CONF_MCP_HEADERS)),
             }
         )
     elif subentry.subentry_type == SUBENTRY_TYPE_SKILL:

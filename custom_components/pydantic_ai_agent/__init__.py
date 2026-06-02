@@ -18,9 +18,6 @@ from .const import (
     CONF_BASE_URL,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
-    CONF_MCP_ALLOWED_TOOLS,
-    CONF_MCP_HEADERS,
-    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
@@ -40,21 +37,10 @@ from .logfire_support import (
     logfire_enabled,
     logfire_include_content,
 )
-from .metrics import (
-    EVENT_MCP_TOOL_REFRESH_COMPLETED,
-    EVENT_MCP_TOOL_REFRESH_FAILED,
-    MetricsStore,
-    fire_integration_event,
-)
+from .metrics import MetricsStore
 from .model_settings import (
     normalise_applied_model_settings,
     validation_probe_model_settings,
-)
-from .mcp import (
-    MCPValidationError,
-    async_refresh_mcp_tools,
-    cached_mcp_tools,
-    mcp_subentries,
 )
 from .model_profiles import (
     enabled_model_profile_refs,
@@ -110,11 +96,8 @@ PLATFORMS: tuple[Platform, ...] = (
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
 )
-SERVICE_LIST_MCP_TOOLS = "list_mcp_tools"
-SERVICE_REFRESH_MCP_TOOLS = "refresh_mcp_tools"
 SERVICE_GET_AGENT_RUN_DIAGNOSTICS = "get_agent_run_diagnostics"
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
-ATTR_MCP_SERVER_ID = "mcp_server_id"
 ATTR_SUBENTRY_ID = "subentry_id"
 ATTR_SECTION = "section"
 ATTR_OFFSET = "offset"
@@ -131,12 +114,6 @@ _RUN_DIAGNOSTIC_SECTIONS = (
     "timeline",
 )
 
-_MCP_SERVICE_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): str,
-        vol.Optional(ATTR_MCP_SERVER_ID): str,
-    }
-)
 _RUN_DIAGNOSTICS_SERVICE_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_CONFIG_ENTRY_ID): str,
@@ -168,27 +145,12 @@ class ProviderRuntimeData:
 
 
 @dataclass(frozen=True, kw_only=True)
-class MCPServerRuntimeData:
-    """MCP runtime data owned by one workspace MCP subentry."""
-
-    subentry_id: str
-    name: str
-    url: str
-    headers: dict[str, str] = field(default_factory=dict)
-    discovered_tools: list[dict[str, Any]] = field(default_factory=list)
-    allowed_tools: list[str] = field(default_factory=list)
-    client: Any | None = None
-
-
-@dataclass(frozen=True, kw_only=True)
 class WorkspaceRuntimeData:
     """Workspace data shared by subentry-backed entities."""
 
     workspace_name: str
     providers: dict[str, ProviderRuntimeData] = field(default_factory=dict)
-    mcp_servers: dict[str, MCPServerRuntimeData] = field(default_factory=dict)
     model_profiles: dict[str, ResolvedModelProfile] = field(default_factory=dict)
-    mcp_tool_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     metrics: MetricsStore = field(default_factory=MetricsStore)
     latest_stream_traces: dict[str, dict[str, Any]] = field(default_factory=dict)
     latest_run_diagnostics: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -202,34 +164,12 @@ type PydanticAIAgentConfigEntry = ConfigEntry[WorkspaceRuntimeData]
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
-    """Set up integration-wide MCP discovery services."""
-
-    async def async_list_mcp_tools(call: ServiceCall) -> dict[str, Any]:
-        """Return cached MCP tools, discovering them if needed."""
-        return await _async_mcp_tools_service(hass, call, refresh=False)
-
-    async def async_refresh_mcp_tools(call: ServiceCall) -> dict[str, Any]:
-        """Refresh and return MCP tools."""
-        return await _async_mcp_tools_service(hass, call, refresh=True)
+    """Set up integration-wide services."""
 
     async def async_get_agent_run_diagnostics(call: ServiceCall) -> dict[str, Any]:
         """Return targeted latest-run diagnostics for one agent subentry."""
         return _agent_run_diagnostics_service(hass, call)
 
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_LIST_MCP_TOOLS,
-        async_list_mcp_tools,
-        schema=_MCP_SERVICE_SCHEMA,
-        supports_response=SupportsResponse.ONLY,
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_REFRESH_MCP_TOOLS,
-        async_refresh_mcp_tools,
-        schema=_MCP_SERVICE_SCHEMA,
-        supports_response=SupportsResponse.ONLY,
-    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_AGENT_RUN_DIAGNOSTICS,
@@ -246,14 +186,12 @@ async def async_setup_entry(
 ) -> bool:
     """Build workspace runtime data, then set up entity platforms."""
     provider_runtimes = _provider_runtimes(entry)
-    mcp_runtime = _mcp_server_runtimes(entry)
     model_profiles = _resolved_model_profiles(entry, provider_runtimes)
     await async_configure_logfire(hass, entry)
     try:
         entry.runtime_data = WorkspaceRuntimeData(
             workspace_name=entry.data[CONF_NAME],
             providers=provider_runtimes,
-            mcp_servers=mcp_runtime,
             model_profiles=model_profiles,
             logfire_enabled=logfire_enabled(hass, entry),
             logfire_include_content=logfire_include_content(hass, entry),
@@ -462,22 +400,10 @@ async def async_update_entry(
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-def _mcp_error_response(err: MCPValidationError) -> dict[str, Any]:
-    """Return a response-service error payload for an expected MCP failure."""
-    return {
-        "reason": err.reason,
-        "message": err.message,
-        "action": "Check the MCP server configuration and try again.",
-        "status_code": err.status_code,
-        "server_id": err.server_id,
-        "tool_name": err.tool_name,
-    }
-
-
 def _config_entry_for_service(
     hass: HomeAssistant, entry_id: str
 ) -> PydanticAIAgentConfigEntry:
-    """Return a config entry for an MCP response service."""
+    """Return a config entry for a response service."""
     entry = hass.config_entries.async_get_entry(entry_id)
     if entry is None or entry.domain != DOMAIN:
         raise ServiceValidationError(
@@ -486,70 +412,6 @@ def _config_entry_for_service(
             translation_placeholders={"config_entry_id": entry_id},
         )
     return entry
-
-
-def _mcp_service_subentry_ids(
-    entry: PydanticAIAgentConfigEntry, requested_id: str | None
-) -> list[str]:
-    """Return target MCP subentry IDs for a response service call."""
-    if requested_id is not None:
-        return [requested_id]
-    return [subentry.subentry_id for subentry in mcp_subentries(entry)]
-
-
-async def _async_mcp_tools_service(
-    hass: HomeAssistant,
-    call: ServiceCall,
-    *,
-    refresh: bool,
-) -> dict[str, Any]:
-    """List or refresh MCP tools for one config entry."""
-    errors: list[dict[str, Any]] = []
-    tools_by_server: dict[str, list[dict[str, Any]]] = {}
-    entry = _config_entry_for_service(hass, call.data[ATTR_CONFIG_ENTRY_ID])
-    subentry_ids = _mcp_service_subentry_ids(entry, call.data.get(ATTR_MCP_SERVER_ID))
-    if not subentry_ids:
-        return {"success": True, "servers": {}, "tools": []}
-    for subentry_id in subentry_ids:
-        try:
-            tools = None if refresh else cached_mcp_tools(entry, subentry_id)
-            if tools is None:
-                tools = await async_refresh_mcp_tools(hass, entry, subentry_id)
-            tools_by_server[subentry_id] = tools
-            if refresh:
-                fire_integration_event(
-                    hass,
-                    EVENT_MCP_TOOL_REFRESH_COMPLETED,
-                    {
-                        "config_entry_id": entry.entry_id,
-                        "mcp_server_id": subentry_id,
-                        "tool_count": len(tools),
-                    },
-                )
-        except MCPValidationError as err:
-            _LOGGER.warning(
-                "MCP tool discovery failed: reason=%s server_id=%s",
-                err.reason,
-                err.server_id,
-            )
-            errors.append(_mcp_error_response(err))
-            if refresh:
-                fire_integration_event(
-                    hass,
-                    EVENT_MCP_TOOL_REFRESH_FAILED,
-                    {
-                        "config_entry_id": entry.entry_id,
-                        "mcp_server_id": subentry_id,
-                        "reason": err.reason,
-                    },
-                )
-    flat_tools = [tool for tools in tools_by_server.values() for tool in tools]
-    return {
-        "success": not errors,
-        "servers": tools_by_server,
-        "tools": flat_tools,
-        "errors": errors,
-    }
 
 
 def _agent_run_diagnostics_service(
@@ -745,26 +607,6 @@ def _provider_runtimes(
             provider_extra_body=dict(provider_extra_body)
             if isinstance(provider_extra_body, Mapping)
             else {},
-        )
-    return runtimes
-
-
-def _mcp_server_runtimes(
-    entry: PydanticAIAgentConfigEntry,
-) -> dict[str, MCPServerRuntimeData]:
-    """Return runtime MCP server data for configured MCP subentries."""
-    runtimes: dict[str, MCPServerRuntimeData] = {}
-    for subentry in mcp_subentries(entry):
-        headers = subentry.data.get(CONF_MCP_HEADERS)
-        allowed_tools = subentry.data.get(CONF_MCP_ALLOWED_TOOLS)
-        runtimes[subentry.subentry_id] = MCPServerRuntimeData(
-            subentry_id=subentry.subentry_id,
-            name=subentry.title,
-            url=str(subentry.data.get(CONF_MCP_URL, "")),
-            headers=dict(headers) if isinstance(headers, Mapping) else {},
-            allowed_tools=list(allowed_tools)
-            if isinstance(allowed_tools, list)
-            else [],
         )
     return runtimes
 

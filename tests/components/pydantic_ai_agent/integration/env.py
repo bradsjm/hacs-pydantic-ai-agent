@@ -13,8 +13,6 @@ import pytest_socket
 from .config import (
     DEFAULT_MODEL_LIMIT,
     ENV_FILE,
-    MCP_ECHO_URL,
-    MCP_ECHO_URL_ENV,
     MODEL_LIST_TIMEOUT,
     ModelParam,
     REQUIRED_CONNECTION_ENV,
@@ -191,10 +189,3 @@ def provider_model_params(config: pytest.Config) -> list[object]:
         for model in model_ids
     ]
 
-
-def mcp_echo_url() -> str:
-    """Return the hosted MCP echo server URL for provider integration tests."""
-    file_values = load_dotenv_values()
-    return os.environ.get(
-        MCP_ECHO_URL_ENV, file_values.get(MCP_ECHO_URL_ENV, MCP_ECHO_URL)
-    )

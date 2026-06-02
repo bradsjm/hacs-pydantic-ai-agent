@@ -13,8 +13,8 @@ and its `provider_wizard` subpackage.
   runtime consumers when stored data changes.
 - Prefer changing shared schema and normalization helpers in `common.py` only
   when more than one flow genuinely uses the behavior.
-- Never add provider probes, catalog fetches, or MCP discovery paths outside the
-  existing HA-managed async validation steps.
+- Never add provider probes or catalog fetches outside the existing HA-managed
+  async validation steps.
 
 ## Read First
 
@@ -27,8 +27,6 @@ and its `provider_wizard` subpackage.
   setting parsing.
 - `conversation_flow.py` - conversation subentry setup and validation.
 - `ai_task_flow.py` - AI task subentry setup and model liveness probing.
-- `mcp_server_flow.py` and `mcp_helpers.py` - remote MCP URL, header, discovery,
-  and allowlist flow.
 - `skill_flow.py` and `skill_helpers.py` - native Skill subentry forms and
   selection helpers.
 - `provider_wizard/` - models.dev catalog loading, filtering, schemas, and
@@ -46,8 +44,6 @@ and its `provider_wizard` subpackage.
 - Provider validation must use `provider_validation.async_probe_model()` or
   `async_list_provider_model_names()` through the existing progress steps.
 - AI task subentries probe the primary and fallback model refs before saving.
-- MCP server subentries must validate the normalized URL, discover tools, and
-  require an explicit allowlist before saving.
 - Use `_flatten_section_data()` when processing Home Assistant `section()` form
   input. Do not read nested form sections directly in new flow code.
 - Keep selector options deterministic with `_sorted_select_options()` or sorted

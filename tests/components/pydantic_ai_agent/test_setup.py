@@ -14,7 +14,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent import (
     PLATFORMS,
-    SERVICE_REFRESH_MCP_TOOLS,
     async_remove_entry,
     async_setup,
     async_setup_entry,
@@ -34,7 +33,6 @@ from custom_components.pydantic_ai_agent.logfire_support import (
     logfire_active_for_entry,
     logfire_include_content,
 )
-from custom_components.pydantic_ai_agent.metrics import EVENT_MCP_TOOL_REFRESH_COMPLETED
 from custom_components.pydantic_ai_agent.model_profiles import model_profile_ref
 from custom_components.pydantic_ai_agent.provider_validation import (
     ProviderValidationError,
@@ -44,7 +42,6 @@ from custom_components.pydantic_ai_agent.repairs import provider_auth_issue_id
 from tests.components.pydantic_ai_agent.support.builders import (
     ai_task_subentry_data,
     conversation_subentry_data,
-    mcp_server_subentry_data,
     model_profile_data,
     provider_subentry_data,
     workspace_entry,
@@ -91,11 +88,6 @@ def _ai_task_subentry(
     )
 
 
-def _mcp_server_subentry() -> dict[str, object]:
-    """Return an MCP server subentry using setup-specific defaults."""
-    return mcp_server_subentry_data()
-
-
 def _workspace_entry(
     subentries_data: tuple[dict[str, object], ...] = (),
     data: Mapping[str, object] | None = None,
@@ -112,7 +104,6 @@ async def test_setup_entry_stores_workspace_runtime_data(hass: HomeAssistant) ->
             _provider_subentry(),
             _conversation_subentry(profile_ref),
             _ai_task_subentry(profile_ref),
-            _mcp_server_subentry(),
         )
     )
     entry.add_to_hass(hass)
@@ -135,10 +126,6 @@ async def test_setup_entry_stores_workspace_runtime_data(hass: HomeAssistant) ->
     assert entry.runtime_data.providers["provider-1"].api_key == "sk-test"
     assert entry.runtime_data.providers["provider-1"].name == "OpenAI-compatible"
     assert entry.runtime_data.model_profiles[profile_ref].model_name == "gpt-test"
-    assert (
-        entry.runtime_data.mcp_servers["mcp-server-1"].url
-        == "https://mcp.example.com/mcp"
-    )
     forward_setups.assert_awaited_once_with(entry, PLATFORMS)
     probe_model.assert_has_awaits(
         [
@@ -785,67 +772,6 @@ async def test_setup_entry_success_clears_model_validation_repair_issue(
     assert ir.async_get(hass).async_get_issue(DOMAIN, provider_issue_id) is None
 
 
-async def test_setup_registers_mcp_response_services(hass: HomeAssistant) -> None:
-    """Test async setup registers MCP discovery response services."""
-    assert await async_setup(hass, {})
-
-    assert hass.services.has_service(DOMAIN, "list_mcp_tools")
-    assert hass.services.has_service(DOMAIN, SERVICE_REFRESH_MCP_TOOLS)
-
-
-async def test_refresh_mcp_tools_service_returns_discovered_tools(
-    hass: HomeAssistant,
-) -> None:
-    """Test refresh_mcp_tools returns tools for a configured MCP server."""
-    entry = _workspace_entry((_mcp_server_subentry(),))
-    entry.add_to_hass(hass)
-    await async_setup(hass, {})
-    tools = [
-        {
-            "server_id": "mcp-server-1",
-            "name": "list_files",
-            "schema_hash": "abc123",
-        }
-    ]
-    events: list[dict[str, object]] = []
-    hass.bus.async_listen(
-        f"{DOMAIN}_{EVENT_MCP_TOOL_REFRESH_COMPLETED}",
-        lambda event: events.append(dict(event.data)),
-    )
-
-    with patch(
-        "custom_components.pydantic_ai_agent.async_refresh_mcp_tools",
-        new_callable=AsyncMock,
-        return_value=tools,
-    ) as refresh_tools:
-        response = await hass.services.async_call(
-            DOMAIN,
-            SERVICE_REFRESH_MCP_TOOLS,
-            {
-                "config_entry_id": entry.entry_id,
-                "mcp_server_id": "mcp-server-1",
-            },
-            blocking=True,
-            return_response=True,
-        )
-        await hass.async_block_till_done()
-
-    assert response == {
-        "success": True,
-        "servers": {"mcp-server-1": tools},
-        "tools": tools,
-        "errors": [],
-    }
-    refresh_tools.assert_awaited_once_with(hass, entry, "mcp-server-1")
-    assert events == [
-        {
-            "config_entry_id": entry.entry_id,
-            "mcp_server_id": "mcp-server-1",
-            "tool_count": 1,
-        }
-    ]
-
-
 async def test_response_services_raise_for_unknown_config_entry(
     hass: HomeAssistant,
 ) -> None:
@@ -855,8 +781,8 @@ async def test_response_services_raise_for_unknown_config_entry(
     with pytest.raises(ServiceValidationError) as err:
         await hass.services.async_call(
             DOMAIN,
-            SERVICE_REFRESH_MCP_TOOLS,
-            {"config_entry_id": "missing-entry"},
+            "get_agent_run_diagnostics",
+            {"config_entry_id": "missing-entry", "subentry_id": "missing-subentry"},
             blocking=True,
             return_response=True,
         )

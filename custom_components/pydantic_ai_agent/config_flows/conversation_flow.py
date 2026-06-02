@@ -7,7 +7,6 @@ from __future__ import annotations
 from .common import (
     Any,
     CONF_AGENT_NAME,
-    CONF_MCP_SERVER_IDS,
     CONF_PRIMARY_MODEL_REF,
     ConfigEntryState,
     ConfigSubentryFlow,
@@ -27,7 +26,6 @@ from .common import (
     default_conversation_options,
 )
 from .helpers import _flatten_section_data
-from .mcp_helpers import _selected_mcp_server_error
 from .skill_helpers import _selected_skill_error
 from ..generated_titles import DEFAULT_AGENT_TITLE_SUFFIX, generated_default_title
 
@@ -113,19 +111,6 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                         _agent_form_suggested_values(self._options | data, self.hass),
                     ),
                     errors={CONF_PRIMARY_MODEL_REF: model_error},
-                )
-            if mcp_error := _selected_mcp_server_error(entry, data):
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=self.add_suggested_values_to_schema(
-                        _conversation_schema(
-                            self.hass,
-                            self._options | data,
-                            entry,
-                        ),
-                        _agent_form_suggested_values(self._options | data, self.hass),
-                    ),
-                    errors={CONF_MCP_SERVER_IDS: mcp_error},
                 )
             if skill_error := _selected_skill_error(entry, data):
                 return self.async_show_form(

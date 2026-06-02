@@ -34,19 +34,14 @@ AI_TASK_SENTINEL = "PAI_E2E_AI_TASK_OK"
 AI_TASK_STRUCTURED_SENTINEL = "PAI_E2E_AI_TASK_STRUCTURED_OK"
 STREAM_SENTINEL = "PAI_E2E_STREAM_OK"
 TOOL_SENTINEL = "PAI_E2E_TOOL_OK"
-MCP_SENTINEL = "PAI_E2E_MCP_TOOL_OK"
-MCP_SECOND_SENTINEL = "PAI_E2E_MCP_TOOL_SECOND_OK"
 SKILL_SENTINEL = "PAI_E2E_SKILL_OK"
 
 TEST_LLM_API_ID = "pydantic-ai-agent-integration-test"
 PROVIDER_ID = "provider_integration_provider"
 MODEL_PROFILE_ID = "provider_integration_model_profile"
 MODEL_REF = f"{PROVIDER_ID}:{MODEL_PROFILE_ID}"
-MCP_ECHO_SERVER_ID = "pydantic_ai_agent_integration_mcp_echo"
 WORKSPACE_SKILL_ID = "pydantic_ai_agent_integration_skill"
 UNSELECTED_WORKSPACE_SKILL_ID = "pydantic_ai_agent_integration_unselected_skill"
-MCP_ECHO_URL_ENV = "MCP_ECHO_SERVER_URL"
-MCP_ECHO_URL = "https://mcpplaygroundonline.com/mcp-echo-server"
 
 STRUCTURED_OUTPUT_SKIP_REASONS = {
     "invalid_model",

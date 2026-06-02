@@ -2,7 +2,7 @@
 
 This package implements the Home Assistant configuration UI for the
 `pydantic_ai_agent` integration. It owns the workspace config entry flow and the
-provider, conversation, AI task, MCP server, and Skill config subentry flows.
+provider, conversation, AI task, and Skill config subentry flows.
 
 ## Runtime Shape
 
@@ -12,8 +12,6 @@ provider, conversation, AI task, MCP server, and Skill config subentry flows.
 - `ConversationSubentryFlowHandler` creates conversation agent subentries.
 - `AITaskDataSubentryFlowHandler` creates AI task data-generation subentries and
   probes selected models before saving.
-- `MCPServerSubentryFlowHandler` validates remote Streamable HTTP MCP servers,
-  discovers tools, and saves an explicit runtime allowlist.
 - `SkillSubentryFlowHandler` creates native text-only Skill subentries.
 
 ## Module Map
@@ -25,13 +23,10 @@ provider, conversation, AI task, MCP server, and Skill config subentry flows.
 - `conversation_flow.py` - conversation form validation and persistence.
 - `ai_task_flow.py` - AI task form validation, todo workspace selection, and
   model probe progress steps.
-- `mcp_server_flow.py` - MCP server validation progress and tool allowlist
-  selection.
 - `skill_flow.py` - native Skill create and reconfigure flow.
 - `common.py` - shared schemas, parsing, normalization, selector options, model
   profile refs, run settings, pricing, and provider validation helpers.
 - `helpers.py` - generic section flattening and selector sorting helpers.
-- `mcp_helpers.py` - MCP URL, header, and tool allowlist helpers.
 - `skill_helpers.py` - Skill validation and selected Skill reference helpers.
 - `provider_wizard/` - models.dev catalog cache, normalization, filtering,
   selectors, and storage builders.
@@ -44,7 +39,6 @@ provider, conversation, AI task, MCP server, and Skill config subentry flows.
 - Conversation and AI task data store primary and fallback model profile refs,
   prompts, run settings, external tool choices, Skill refs, and virtual
   workspace or web-fetch flags.
-- MCP server data stores a normalized URL, headers, and allowed tool names.
 - Skill data stores a name, description, and content template.
 
 ## Provider Wizard
@@ -64,8 +58,6 @@ shape used by the manual flow.
 - Provider models are probed through `provider_validation.py`.
 - Model profile refs are checked against loaded provider subentries.
 - Todo workspace selection is checked against HA todo entities and features.
-- MCP URLs and headers are parsed by `mcp.py` helpers and validated before tool
-  selection.
 - Skill references are checked against Skill subentries before save.
 
 ## Testing

@@ -6,7 +6,6 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pydantic_ai_agent import (
-    MCPServerRuntimeData,
     ProviderRuntimeData,
     WorkspaceRuntimeData,
 )
@@ -15,8 +14,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_DISCOVERED,
     CONF_ENABLED,
-    CONF_MCP_HEADERS,
-    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_PRIMARY_MODEL_REF,
@@ -28,7 +25,6 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
-    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
@@ -89,17 +85,6 @@ async def test_system_health_reports_safe_workspace_aggregate_counts(
                 "unique_id": None,
             },
             {
-                "subentry_id": "mcp-1",
-                "data": {
-                    CONF_NAME: "Filesystem MCP",
-                    CONF_MCP_URL: "https://mcp.example.com/mcp",
-                    CONF_MCP_HEADERS: {"Authorization": "Bearer mcp-secret"},
-                },
-                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
-                "title": "Filesystem MCP",
-                "unique_id": None,
-            },
-            {
                 "subentry_id": "skill-1",
                 "data": {
                     CONF_NAME: "Skill",
@@ -124,14 +109,6 @@ async def test_system_health_reports_safe_workspace_aggregate_counts(
                 base_url="https://provider.example.com/v1",
             )
         },
-        mcp_servers={
-            "mcp-1": MCPServerRuntimeData(
-                subentry_id="mcp-1",
-                name="Filesystem MCP",
-                url="https://mcp.example.com/mcp",
-            )
-        },
-        mcp_tool_cache={"mcp-1": [{"name": "secret_tool"}]},
     )
     other_entry = MockConfigEntry(
         version=2,
@@ -180,14 +157,9 @@ async def test_system_health_reports_safe_workspace_aggregate_counts(
         "model_profile_count": 2,
         "conversation_count": 1,
         "ai_task_count": 1,
-        "mcp_server_count": 1,
-        "cached_mcp_server_count": 1,
-        "cached_mcp_tool_count": 1,
         "logfire_enabled_count": 0,
         "skill_count": 1,
         "selected_skill_count": 2,
     }
     assert "sk-secret" not in str(info)
     assert "provider.example.com" not in str(info)
-    assert "mcp.example.com" not in str(info)
-    assert "secret_tool" not in str(info)

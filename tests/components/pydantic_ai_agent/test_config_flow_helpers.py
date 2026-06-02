@@ -29,7 +29,6 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _conversation_data_from_user_input,
     _conversation_schema,
     _fallback_model_profile_select_options,
-    _mcp_server_select_options,
     _model_settings_from_options,
     _model_settings_schema,
     _model_pricing_from_options,
@@ -41,12 +40,6 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _provider_data_matches,
     _provider_model_profiles_for_discovery_mode,
     _validate_provider_data,
-)
-from custom_components.pydantic_ai_agent.config_flows.mcp_helpers import (
-    _format_mcp_headers,
-    _mcp_tool_options,
-    _mcp_url_already_configured,
-    _mcp_url_identity,
 )
 from custom_components.pydantic_ai_agent.config_flows.skill_helpers import (
     SkillDataValidationError,
@@ -72,7 +65,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
     CONF_MAX_TOKENS,
-    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
@@ -86,6 +78,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_SKILLS,
     CONF_THINKING,
     CONF_TIMEOUT,
+    CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
     DOMAIN,
@@ -93,13 +86,10 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
-from custom_components.pydantic_ai_agent.mcp import MCPValidationError
 from tests.components.pydantic_ai_agent.support.builders import (
-    mcp_server_subentry_data,
     provider_subentry_data,
     skill_subentry_data,
     workspace_entry,
@@ -453,8 +443,6 @@ def test_agent_selector_options_are_sorted_with_stale_values_last(
                     },
                 },
             ),
-            mcp_server_subentry_data(subentry_id="mcp-z", title="zeta MCP"),
-            mcp_server_subentry_data(subentry_id="mcp-a", title="Alpha MCP"),
             skill_subentry_data(subentry_id="skill-z", title="zeta Skill"),
             skill_subentry_data(subentry_id="skill-a", title="Alpha Skill"),
         )
@@ -476,10 +464,6 @@ def test_agent_selector_options_are_sorted_with_stale_values_last(
             "Unavailable / missing-provider:missing-profile",
             "missing-provider:missing-profile",
         ),
-    ]
-    assert [option["label"] for option in _mcp_server_select_options(entry)] == [
-        "Alpha MCP",
-        "zeta MCP",
     ]
     assert [
         (option["label"], option["value"])
@@ -926,100 +910,27 @@ def test_discovery_mode_profiles_drop_unreferenced_custom_profiles() -> None:
     assert set(profiles) == {"discovered", "referenced-custom"}
 
 
-def test_format_mcp_headers_uses_multiline_header_syntax() -> None:
-    """Test stored MCP headers render as one header per line."""
-    assert _format_mcp_headers({"X-Z": "last", "Authorization": "Bearer token"}) == (
-        "Authorization: Bearer token\nX-Z: last"
+def test_conversation_and_ai_task_schemas_hide_private_mcp_selection(
+    hass: HomeAssistant,
+) -> None:
+    """Test agent schemas no longer expose repo-owned MCP selectors."""
+    entry = workspace_entry((provider_subentry_data(), skill_subentry_data()))
+
+    conversation_fields = _section_key_names(
+        _conversation_schema(hass, {CONF_PRIMARY_MODEL_REF: "provider-1:profile-1"}, entry),
+        _SECTION_EXTERNAL_TOOLS,
     )
-    assert _format_mcp_headers("X-Raw: value") == "X-Raw: value"
-    assert _format_mcp_headers(None) == ""
-
-
-def test_mcp_tool_options_include_truncated_descriptions() -> None:
-    """Test MCP tool selector options show descriptions without changing values."""
-    options = _mcp_tool_options(
-        [
-            {"name": "echo", "description": "Return text"},
-            {"name": "long_tool", "description": " ".join(["long"] * 30)},
-            {"name": "plain"},
-        ],
-        extra_tool_names=["stale_tool"],
+    ai_task_fields = _section_key_names(
+        _ai_task_data_schema(hass, {CONF_PRIMARY_MODEL_REF: "provider-1:profile-1"}, entry),
+        _SECTION_EXTERNAL_TOOLS,
     )
 
-    assert options[0] == {"label": "echo (Return text)", "value": "echo"}
-    assert options[1]["value"] == "long_tool"
-    assert options[1]["label"].startswith("long_tool (long long")
-    assert options[1]["label"].endswith("...)")
-    assert options[2] == {"label": "plain", "value": "plain"}
-    assert options[3] == {"label": "stale_tool", "value": "stale_tool"}
-
-
-def test_mcp_url_identity_rejects_userinfo() -> None:
-    """Test duplicate MCP URL checks reject URL credentials."""
-    with pytest.raises(MCPValidationError):
-        _mcp_url_identity("https://alice:one@mcp.example.com/mcp")
-    assert _mcp_url_identity("https://mcp.example.com/mcp?a=1&b=2") == (
-        _mcp_url_identity("https://mcp.example.com:443/mcp?b=2&a=1")
-    )
-
-
-def test_mcp_duplicate_check_ignores_invalid_stale_urls() -> None:
-    """Test stale stored MCP URLs do not break duplicate checks."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Workspace",
-        data={CONF_NAME: "Workspace"},
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "data": {
-                    CONF_NAME: "Stale MCP",
-                    CONF_MCP_URL: "https://user:pass@mcp.example.com/mcp",
-                },
-                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
-                "title": "Stale MCP",
-                "unique_id": None,
-            },
-        ),
-        options={},
-        unique_id=None,
-        version=2,
-    )
-
-    assert not _mcp_url_already_configured(entry, "https://mcp.example.com/mcp")
-
-
-def test_mcp_url_identity_rejects_invalid_url_values() -> None:
-    """Test MCP URL identity rejects invalid URL values."""
-    with pytest.raises(MCPValidationError):
-        _mcp_url_identity("not a url")
-
-
-def test_workspace_duplicate_mcp_identity_uses_normalized_url() -> None:
-    """Test duplicate detection normalizes URL query and default port."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Workspace",
-        data={
-            CONF_NAME: "Workspace",
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-            CONF_API_KEY: "sk-test",
-        },
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "data": {
-                    CONF_NAME: "MCP",
-                    CONF_MCP_URL: "https://mcp.example.com:443/mcp?b=2&a=1",
-                },
-                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
-                "title": "MCP",
-                "unique_id": None,
-            },
-        ),
-        options={},
-        unique_id=None,
-        version=2,
-    )
-
-    assert _mcp_url_already_configured(entry, "https://mcp.example.com/mcp?a=1&b=2")
+    assert conversation_fields == {
+        CONF_VIRTUAL_WORKSPACE_ENABLED,
+        CONF_WEB_FETCH_ENABLED,
+    }
+    assert ai_task_fields == {
+        CONF_TODO_LIST_ENTITY_ID,
+        CONF_VIRTUAL_WORKSPACE_ENABLED,
+        CONF_WEB_FETCH_ENABLED,
+    }

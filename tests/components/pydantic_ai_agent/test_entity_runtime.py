@@ -77,7 +77,6 @@ from custom_components.pydantic_ai_agent.metrics import (
     record_run_failure,
     record_run_success,
 )
-from custom_components.pydantic_ai_agent.mcp import MCPValidationError
 from custom_components.pydantic_ai_agent.model_profiles import ModelProfile
 from custom_components.pydantic_ai_agent.repairs import provider_auth_issue_id
 from custom_components.pydantic_ai_agent.virtual_workspace.const import (
@@ -405,10 +404,6 @@ def test_has_connection_failure_stops_on_cycles() -> None:
             UsageLimitExceeded("too many"),
             "Terminated because the model exceeded a configured usage limit. "
             "Increase the relevant run limit or reduce the request.",
-        ),
-        (
-            MCPValidationError("invalid", "MCP failed"),
-            "MCP failed",
         ),
         (
             NotImplementedError("missing config"),

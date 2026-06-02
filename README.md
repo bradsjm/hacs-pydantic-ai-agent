@@ -23,9 +23,6 @@ Implemented capabilities include:
   support and structured output validation.
 - Configurable structured output modes for AI tasks: tool, native, and prompted,
   subject to the configured provider/model capabilities.
-- Optional remote Streamable HTTP MCP server subentries, with tool discovery,
-  explicit runtime allowlists, and response services for listing or refreshing
-  discovered tools.
 - Optional Web fetch capability for individual conversation agents and AI tasks,
   disabled by default.
 - Native workspace Skill subentries that selected conversation agents and AI
@@ -66,12 +63,14 @@ This integration requires Home Assistant 2026.5.1 or newer.
 4. Enter a custom base URL when needed. OpenAI-compatible providers default to
    `https://api.openai.com/v1`; Anthropic and Google Gemini use their hosted API
    endpoints when no custom base URL is configured.
-5. Add provider, conversation, AI task, MCP server, and Skill subentries as
-   needed.
+5. Add provider, conversation, AI task, and Skill subentries as needed.
+6. To expose shared external tools, configure MCP servers in Home Assistant
+   Core, expose them through the Home Assistant LLM API you want this
+   integration to use, then select that API via `Control Home Assistant`.
 
 Workspace entries own shared Logfire settings. Provider credentials live on
-`provider` subentries, while conversation, AI task, MCP server, and Skill
-settings remain on their own subentries. Each provider subentry owns a stable
+`provider` subentries, while conversation, AI task, and Skill settings remain
+on their own subentries. Each provider subentry owns a stable
 `model_profiles` map, and conversation/AI task subentries reference profiles
 with workspace-local refs shaped like
 `<provider_subentry_id>:<model_profile_id>`. Anthropic entries also accept
@@ -98,10 +97,8 @@ Conversation agents support:
 - Optional Home Assistant LLM API selection. Selecting an API enables Home
   Assistant control tools and makes the entity advertise conversation control
   support.
-- Optional MCP server selection. Selected MCP servers must have at least one
-  allowed tool configured before runtime use.
 - Optional Web fetch URL content fetching. Web fetch is disabled by default and
-  can be enabled without selecting any MCP servers.
+  can be enabled independently of Home Assistant control tools.
 - Optional workspace Skill selection. Selected Skills are exposed through
   `list_skills` and `load_skill` tools and are not auto-loaded into every
   request.
@@ -119,7 +116,7 @@ Conversation agents support:
   `reasoning` and `reasoning_content` for OpenAI-compatible endpoints that
   require it.
 - Plain conversation entities stream Assist responses. Conversations that can
-  call tools, including HA LLM APIs, MCP servers, Web fetch, or skills, return
+  call tools, including HA LLM APIs, Web fetch, or skills, return
   non-streamed responses so provider tool-result follow-up requests stay on the
   compatibility path.
 
@@ -132,31 +129,26 @@ supports Home Assistant data generation and attachments.
 AI task entities can return plain text or validate structured results against
 the schema requested by Home Assistant. Structured output defaults to tool output
 and can be changed to native or prompted output in the advanced AI task settings.
-Each AI task can also enable Web fetch independently of MCP server selection.
+Each AI task can also enable Web fetch independently of Home Assistant control
+tool selection.
 AI task requests use the same automatic model-request context trimming as
 conversation agents, including active-run preservation.
 AI tasks default to 30 agent request iterations unless the selected language model
 profile sets a max iterations override.
 
-### MCP Servers
+### Home Assistant LLM APIs and shared tools
 
-Add an `MCP server` subentry to connect a remote Streamable HTTP MCP server.
-Stdio and local command MCP servers are not supported by this integration.
+This integration no longer manages its own MCP servers. Shared external tools
+must be configured in Home Assistant Core and exposed through a Home Assistant
+LLM API.
 
-MCP server configuration supports:
+Recommended setup:
 
-- HTTP or HTTPS MCP endpoint URLs.
-- Optional JSON HTTP headers.
-- Optional comma-separated allowed tool names.
-- Optional tool return schema inclusion, enabled by default.
-
-Use the `pydantic_ai_agent.list_mcp_tools` action to list cached discovered
-tools, or `pydantic_ai_agent.refresh_mcp_tools` to reconnect and refresh tool
-catalogs. Both actions require a Pydantic AI Agent config entry ID and can be
-limited to one MCP server subentry ID.
-
-MCP tools are available at runtime only when a conversation agent or AI task
-selects the server and the server has an explicit allowed-tools list.
+1. Configure any MCP servers in Home Assistant Core `mcp`.
+2. Expose those servers through the Home Assistant LLM API you want the model
+   to use.
+3. In this integration, select that API in the conversation agent or AI task
+   `Control Home Assistant` section.
 
 ### Skills
 
@@ -197,16 +189,15 @@ conversation responses stream only when the agent has no configured tool sources
 tool-capable conversations use non-streamed requests.
 
 Diagnostics redact API keys, Logfire tokens, prompts, sensitive model settings,
-provider headers, MCP URLs, MCP headers, Skill content, and Skill references.
-Runtime diagnostics expose only safe workspace/provider counts such as configured
-MCP server count, cached MCP server count, and cached tool counts per server.
+provider headers, Skill content, and Skill references.
+Runtime diagnostics expose safe workspace/provider state and latest bounded run
+snapshots.
 Device diagnostics are scoped to the matching agent or AI task subentry and
 include safe runtime metrics for that subentry.
 
 System health reports aggregate, non-secret counts for configured and loaded
-entries, provider modes, model profiles, conversation agents, AI tasks, MCP
-servers and caches, Logfire-enabled entries, workspace Skills, and selected Skill
-references.
+entries, provider modes, model profiles, conversation agents, AI tasks,
+Logfire-enabled entries, workspace Skills, and selected Skill references.
 
 Entity unique IDs use the prefixed format
 `pydantic_ai_agent_<entry_id>_<subentry_type>_<subentry_id>` for conversation and
@@ -220,17 +211,13 @@ subentries are cleaned up during workspace setup and entry removal.
 The integration does not poll devices or periodically fetch state. Conversation
 and AI task entities make provider requests only when Home Assistant asks them to
 handle a conversation turn or generate AI task data. Diagnostic sensors are
-updated from in-memory run metrics after each successful or failed run. MCP tool
-catalogs are refreshed when the MCP server is configured, when the cache is
-missing, or when the `pydantic_ai_agent.refresh_mcp_tools` action is called.
+updated from in-memory run metrics after each successful or failed run.
 
 ### Known Limitations
 
 - Provider credentials live on provider subentries, so credential repair is a
   provider reconfigure/repair workflow rather than a top-level workspace reauth
   flow.
-- Only remote Streamable HTTP MCP servers are supported. Local stdio MCP servers
-  and command execution MCP servers are intentionally unsupported.
 - Google support targets the Gemini Developer API. Vertex AI and Google Cloud IAM
   are not supported.
 - Native workspace Skills are static guidance. They do not execute code, read
@@ -245,9 +232,8 @@ missing, or when the `pydantic_ai_agent.refresh_mcp_tools` action is called.
 - If an agent entity is unavailable, check the repair issues and diagnostic
   sensors for provider validation failures. At least one primary or fallback
   model profile must validate successfully for the entity to become available.
-- If MCP tools are missing, call `pydantic_ai_agent.refresh_mcp_tools` for the
-  workspace or MCP server and confirm the MCP server has an explicit allowed-tool
-  list.
+- If shared external tools are missing, confirm the selected Home Assistant LLM
+  API exposes the expected Home Assistant Core MCP-backed tools.
 - If provider requests fail intermittently, check Home Assistant logs for the
   safe failure category and configure fallback model profiles for retryable
   timeout, rate-limit, or provider-server failures.
@@ -279,6 +265,8 @@ claiming official Home Assistant certification.
 
 ### Bronze
 
+<!-- markdownlint-disable MD060 -->
+
 | Criteria                                      | Status  | Proof                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | --------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | UI-based setup via config flow                | Done    | [`config_flow.py`](custom_components/pydantic_ai_agent/config_flow.py) — full multi-step workspace, provider, subentry, and reconfigure flows                                                                                                                                                                                                                                                                                                      |
@@ -291,7 +279,7 @@ claiming official Home Assistant certification.
 | Every entity has a unique ID                  | Done    | [`entity.py`](custom_components/pydantic_ai_agent/entity.py) [`sensor.py`](custom_components/pydantic_ai_agent/sensor.py) — every entity has a stable `unique_id`                                                                                                                                                                                                                                                                                  |
 | Entities use `has_entity_name = True`         | Done    | [`conversation.py`](custom_components/pydantic_ai_agent/conversation.py), [`ai_task.py`](custom_components/pydantic_ai_agent/ai_task.py), [`sensor.py`](custom_components/pydantic_ai_agent/sensor.py), and [`binary_sensor.py`](custom_components/pydantic_ai_agent/binary_sensor.py) preserve `has_entity_name` on entity instances                                                                                                              |
 | Runtime data stored on `entry.runtime_data`   | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) — `WorkspaceRuntimeData` dataclass stored on `entry.runtime_data`                                                                                                                                                                                                                                                                                                                 |
-| Service actions registered in `async_setup`   | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) — `list_mcp_tools` and `refresh_mcp_tools` registered in `async_setup`                                                                                                                                                                                                                                                                                                            |
+| Service actions registered in `async_setup`   | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) — response services are registered in `async_setup`                                                                                                                                                                                                                                                                                                                                                              |
 | Shared logic in common modules                | Done    | [`entity.py`](custom_components/pydantic_ai_agent/entity.py) — shared `PydanticAIBaseLLMEntity` base; [`model_profiles.py`](custom_components/pydantic_ai_agent/model_profiles.py) — profile resolution helpers                                                                                                                                                                                                                                    |
 | Dependencies fully declared                   | Done    | [`manifest.json`](custom_components/pydantic_ai_agent/manifest.json) — all runtime dependencies are explicit, no extras or transitive requires                                                                                                                                                                                                                                                                                                     |
 | Entity events in correct lifecycle hooks      | Done    | [`sensor.py`](custom_components/pydantic_ai_agent/sensor.py) — `async_added_to_hass` subscribes to dispatcher signals                                                                                                                                                                                                                                                                                                                              |
@@ -304,10 +292,10 @@ claiming official Home Assistant certification.
 | Active integration code owner                                 | Done    | [`manifest.json`](custom_components/pydantic_ai_agent/manifest.json) — `codeowners: ["@bradsjm"]`                                                                                                             |
 | Config entry unloading supported                              | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) — `async_unload_entry` unloads platforms; `async_remove_entry` cleans up repair issues                                                       |
 | Reauthentication flow available                               | Partial | Provider credentials are subentry-owned; provider auth failures create repair issues that direct the user to provider reconfiguration instead of a top-level workspace reauth flow                            |
-| Reconfiguration flow available                                | Done    | [`config_flow.py`](custom_components/pydantic_ai_agent/config_flow.py) — reconfigure step plus per-subentry-type reconfigure flows (model, conversation, AI task, MCP server)                                 |
+| Reconfiguration flow available                                | Done    | [`config_flow.py`](custom_components/pydantic_ai_agent/config_flow.py) — reconfigure step plus per-subentry-type reconfigure flows (provider, conversation, AI task, Skill)                                                           |
 | Service actions raise exceptions on failure                   | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) and [`debug_services.py`](custom_components/pydantic_ai_agent/debug_services.py) raise translated service errors for invalid service targets |
 | Entity marked unavailable when appropriate                    | Done    | [`entity.py`](custom_components/pydantic_ai_agent/entity.py) marks agent entities unavailable when all configured model profiles failed setup validation                                                      |
-| Log once when service becomes unavailable and again when back | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) — MCP tool refresh failures logged at warning; provider validation failures logged at warning                                                |
+| Log once when service becomes unavailable and again when back | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) — provider validation failures are logged at warning                                                                                                                   |
 | Parallel update concurrency specified                         | N/A     | No `DataUpdateCoordinator`; agent runs are serialized per entity with `max_concurrency=1`                                                                                                                     |
 | Above 95% test coverage                                       | Partial | [`tests/components/pydantic_ai_agent/`](tests/components/pydantic_ai_agent/) — focused coverage exists, but the normal suite currently measures below the Silver target                                       |
 
@@ -321,18 +309,20 @@ aspirational because coverage and top-level reauth semantics remain partial.
 | Devices created for entities                | Done    | [`entity.py`](custom_components/pydantic_ai_agent/entity.py) — `DeviceInfo` with `identifiers`, `manufacturer`, `model`, and `entry_type` for every agent subentry                                                                                                          |
 | Entities assigned appropriate categories    | Done    | [`sensor.py`](custom_components/pydantic_ai_agent/sensor.py) — all metric and config sensors use `EntityCategory.DIAGNOSTIC`                                                                                                                                                |
 | Entities use device classes where possible  | Done    | [`sensor.py`](custom_components/pydantic_ai_agent/sensor.py) — `SensorDeviceClass.DURATION` and `SensorStateClass` set where applicable                                                                                                                                     |
-| Diagnostics implemented                     | Done    | [`diagnostics.py`](custom_components/pydantic_ai_agent/diagnostics.py) — config-entry and device-level diagnostics with comprehensive redaction, including MCP URLs                                                                                                         |
+| Diagnostics implemented                     | Done    | [`diagnostics.py`](custom_components/pydantic_ai_agent/diagnostics.py) — config-entry and device-level diagnostics with comprehensive redaction                                                                                                                                            |
 | Repair issues for user-actionable problems  | Done    | [`repairs.py`](custom_components/pydantic_ai_agent/repairs.py) — provider auth issues, model-validation issues, process-global Logfire-token-conflict warnings, and automatic issue lifecycle cleanup                                                                       |
 | Exception messages translatable             | Done    | [`translations/en.json`](custom_components/pydantic_ai_agent/translations/en.json) — per-reason error and abort translations with placeholders                                                                                                                              |
 | Entity names translatable                   | Done    | [`translations/en.json`](custom_components/pydantic_ai_agent/translations/en.json), [`sensor.py`](custom_components/pydantic_ai_agent/sensor.py), and [`binary_sensor.py`](custom_components/pydantic_ai_agent/binary_sensor.py) — diagnostic entities use translation keys |
 | Stale devices removed                       | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) removes orphaned registry entities and empty subentry devices during setup and entry removal                                                                                                               |
 | Devices added after integration setup       | N/A     | Devices are created at subentry load time, not discovered at runtime                                                                                                                                                                                                        |
 | Device/service auto-discovery               | N/A     | LLM-based integration; no device or hardware discovery                                                                                                                                                                                                                      |
-| Documentation describes supported functions | Done    | README §Configuration details provider, conversation, AI task, MCP server, Skill, validation, diagnostics, and runtime behavior                                                                                                                                             |
+| Documentation describes supported functions | Done    | README §Configuration details provider, conversation, AI task, Skill, validation, diagnostics, and runtime behavior                                                                                                                                                                              |
 | Documentation includes troubleshooting      | Done    | README §Troubleshooting                                                                                                                                                                                                                                                     |
 | Documentation includes automation examples  | Pending | Examples remain pending                                                                                                                                                                                                                                                     |
 | Documentation describes known limitations   | Done    | README §Known Limitations                                                                                                                                                                                                                                                   |
 | Documentation describes how data is updated | Done    | README §Data Updates And Runtime Behavior                                                                                                                                                                                                                                   |
+
+<!-- markdownlint-enable MD060 -->
 
 ## Development
 
@@ -341,7 +331,7 @@ Use Python 3.14.2 or newer.
 Runtime dependencies are declared in both `pyproject.toml` and
 `custom_components/pydantic_ai_agent/manifest.json`. The integration uses
 `pydantic-ai-slim`, explicit native provider SDK dependencies for Anthropic and
-Google Gemini, `fastmcp-slim[client,server]`, and the in-repo
+Google Gemini and the in-repo
 OpenAI-compatible adapter instead of the OpenAI SDK.
 
 The OpenAI-compatible adapter design is documented in

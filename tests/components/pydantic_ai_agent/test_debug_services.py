@@ -19,12 +19,9 @@ from custom_components.pydantic_ai_agent.debug_services import (
     SERVICE_GET_WORKSPACE_STATUS,
     SERVICE_LIST_MODEL_PROFILES,
 )
-from custom_components.pydantic_ai_agent.mcp import _cache_key
 from tests.components.pydantic_ai_agent.support.builders import (
     ai_task_subentry_data,
     conversation_subentry_data,
-    mcp_runtime_data,
-    mcp_server_subentry_data,
     provider_runtime_data,
     provider_subentry_data,
     skill_subentry_data,
@@ -103,15 +100,9 @@ async def test_workspace_status_and_model_profiles_services(
                 profile_ref,
                 subentry_id="conversation-1",
                 llm_hass_api=["assist-api"],
-                mcp_server_ids=["mcp-server-1"],
                 skills=["skill-1"],
             ),
             ai_task_subentry_data(profile_ref, subentry_id="ai-task-1"),
-            mcp_server_subentry_data(
-                subentry_id="mcp-server-1",
-                headers={"Authorization": "Bearer secret"},
-                allowed_tools=["search"],
-            ),
             skill_subentry_data(subentry_id="skill-1", description="Useful skill"),
         )
     )
@@ -119,12 +110,8 @@ async def test_workspace_status_and_model_profiles_services(
     runtime_data = WorkspaceRuntimeData(
         workspace_name="Workspace",
         providers={"provider-1": provider_runtime_data(subentry_id="provider-1")},
-        mcp_servers={"mcp-server-1": mcp_runtime_data(subentry_id="mcp-server-1")},
         logfire_enabled=True,
     )
-    runtime_data.mcp_tool_cache[_cache_key(entry, "mcp-server-1")] = [
-        {"name": "search", "schema_hash": "abc123"}
-    ]
     entry.runtime_data = runtime_data
     assert await async_setup(hass, {})
 
@@ -138,12 +125,10 @@ async def test_workspace_status_and_model_profiles_services(
         "provider": 1,
         "conversation": 1,
         "ai_task_data": 1,
-        "mcp_server": 1,
         "skill": 1,
     }
     assert status["subentries"]["providers"][0]["has_api_key"] is True
     assert "api_key" not in status["subentries"]["providers"][0]
-    assert status["subentries"]["mcp_servers"][0]["cached_tool_count"] == 1
     assert status["runtime"]["provider_count"] == 1
     assert status["runtime"]["logfire_enabled"] is True
 
@@ -162,22 +147,10 @@ async def test_metrics_and_tool_source_status_services(
 ) -> None:
     """Test metrics and tool-source services read runtime state without side effects."""
     entry = workspace_entry(
-        (
-            mcp_server_subentry_data(
-                subentry_id="mcp-server-1", allowed_tools=["a", "b"]
-            ),
-            skill_subentry_data(subentry_id="skill-1", content="Use concise answers."),
-        )
+        (skill_subentry_data(subentry_id="skill-1", content="Use concise answers."),)
     )
     entry.add_to_hass(hass)
-    runtime_data = WorkspaceRuntimeData(
-        workspace_name="Workspace",
-        mcp_servers={"mcp-server-1": mcp_runtime_data(subentry_id="mcp-server-1")},
-    )
-    runtime_data.mcp_tool_cache[_cache_key(entry, "mcp-server-1")] = [
-        {"name": "a", "schema_hash": "hash-a"},
-        {"name": "b", "schema_hash": "hash-b"},
-    ]
+    runtime_data = WorkspaceRuntimeData(workspace_name="Workspace")
     metrics = runtime_data.metrics.record_for("conversation-1")
     metrics.last_run_total_tokens = 42
     metrics.last_run_succeeded = True
@@ -227,5 +200,4 @@ async def test_metrics_and_tool_source_status_services(
         SERVICE_GET_TOOL_SOURCE_STATUS,
         {"config_entry_id": entry.entry_id, "limit": 1},
     )
-    assert tool_status["entries"][0]["mcp_servers"][0]["tool_names"] == ["a"]
     assert tool_status["entries"][0]["skills"][0]["content_length"] == 20
