@@ -1,4 +1,0 @@
-interface:
-  display_name: "HA Custom Component Dev"
-  short_description: "Architecture playbook for HA custom components"
-  default_prompt: "Use $home-assistant-custom-component-dev to design or review a Home Assistant custom integration for production-quality lifecycle, config, runtime, diagnostics, and tests."
