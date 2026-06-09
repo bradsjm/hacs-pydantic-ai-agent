@@ -1,5 +1,5 @@
 .DS_Store
-.cocoindex_code/
+.opencode.json
 .env
 .idea/
 .mypy_cache/
@@ -17,4 +17,3 @@ config/
 dist/
 htmlcov/
 node_modules/
-opencode.json
