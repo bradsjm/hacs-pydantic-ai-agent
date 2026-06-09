@@ -1,22 +1,25 @@
 """Chat Completions resource."""
 
-from typing import Any, Literal, overload
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 from pydantic import ValidationError
 
 from ._exceptions import APIConnectionError, APITimeoutError
-from ._sentinels import NOT_GIVEN, is_omitted
+from ._sentinels import NOT_GIVEN, NotGiven, is_omitted
 from ._streaming import ChatCompletionStream, raise_for_status
 from ._types import ChatCompletion
 
+if TYPE_CHECKING:
+    from ._client import AsyncOpenAICompatible
 
-def serialize_payload(value: Any) -> Any:
+
+def serialize_payload(value: object) -> object:
     """Serialize request payloads while preserving None and omitting sentinels."""
     if is_omitted(value):
         return NOT_GIVEN
     if isinstance(value, dict):
-        result: dict[str, Any] = {}
+        result: dict[str, object] = {}
         for key, item in value.items():
             serialized = serialize_payload(item)
             if not is_omitted(serialized):
@@ -34,24 +37,9 @@ def serialize_payload(value: Any) -> Any:
 class ChatCompletionsResource:
     """OpenAI-compatible ``chat.completions`` resource."""
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: AsyncOpenAICompatible) -> None:
         """Initialize the resource."""
         self._client = client
-
-    @overload
-    async def create(
-        self, *, stream: Literal[False] = False, **kwargs: Any
-    ) -> ChatCompletion: ...
-
-    @overload
-    async def create(
-        self, *, stream: Literal[True], **kwargs: Any
-    ) -> ChatCompletionStream: ...
-
-    @overload
-    async def create(
-        self, *, stream: bool, **kwargs: Any
-    ) -> ChatCompletion | ChatCompletionStream: ...
 
     async def create(
         self,
@@ -59,18 +47,22 @@ class ChatCompletionsResource:
         stream: bool = False,
         extra_headers: dict[str, str] | None = None,
         extra_body: dict[str, Any] | None = None,
-        timeout: float | httpx.Timeout | None | object = NOT_GIVEN,
-        **kwargs: Any,
+        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        **kwargs: object,
     ) -> ChatCompletion | ChatCompletionStream:
         """Create a chat completion."""
         body = serialize_payload(kwargs)
         assert isinstance(body, dict)
         body["stream"] = stream
         if extra_body:
-            body.update(serialize_payload(extra_body))
+            body.update(cast(dict[str, object], serialize_payload(extra_body)))
 
         headers = self._client.auth_headers | (extra_headers or {})
-        request_timeout = None if is_omitted(timeout) else timeout
+        request_timeout = (
+            None
+            if is_omitted(timeout)
+            else cast(float | httpx.Timeout | None, timeout)
+        )
         url = self._client.url_for("/chat/completions")
         if stream:
             return ChatCompletionStream(
@@ -103,6 +95,6 @@ class ChatCompletionsResource:
 class ChatResource:
     """OpenAI-compatible ``chat`` resource."""
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: AsyncOpenAICompatible) -> None:
         """Initialize the resource."""
         self.completions = ChatCompletionsResource(client)

@@ -1,29 +1,36 @@
 """Models resource."""
 
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, cast
 
 import httpx
 
 from ._exceptions import APIConnectionError, APITimeoutError
-from ._sentinels import NOT_GIVEN, is_omitted
+from ._sentinels import NOT_GIVEN, NotGiven, is_omitted
 from ._streaming import raise_for_status
+
+if TYPE_CHECKING:
+    from ._client import AsyncOpenAICompatible
 
 
 class ModelsResource:
     """OpenAI-compatible ``models`` resource."""
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: AsyncOpenAICompatible) -> None:
         """Initialize the resource."""
         self._client = client
 
     async def list(
         self,
         *,
-        timeout: float | httpx.Timeout | None | object = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
     ) -> list[str]:
         """Return available model IDs."""
-        request_timeout = None if is_omitted(timeout) else timeout
+        request_timeout = (
+            None
+            if is_omitted(timeout)
+            else cast(float | httpx.Timeout | None, timeout)
+        )
         try:
             response = await self._client.http_client.get(
                 self._client.url_for("/models"),

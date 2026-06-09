@@ -1,11 +1,10 @@
 """Bashkit-backed in-memory virtual workspace."""
 
-from collections.abc import Mapping
 import logging
+from collections.abc import Mapping
 from typing import Any, cast
 
 from bashkit import BashTool
-
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -365,11 +364,11 @@ class VirtualWorkspace:
         """Return whether a normalized virtual path exists."""
         return bool(self._tool.exists(path))
 
-    def snapshot(self) -> Any:
+    def snapshot(self) -> bytes:
         """Return a Bashkit filesystem snapshot."""
         return self._tool.snapshot()
 
-    def restore_snapshot(self, snapshot: Any) -> None:
+    def restore_snapshot(self, snapshot: bytes) -> None:
         """Restore a Bashkit filesystem snapshot."""
         self._tool.restore_snapshot(snapshot)
 

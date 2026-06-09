@@ -3,14 +3,13 @@
 from types import SimpleNamespace
 from typing import cast
 
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
-
 from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
     SUBENTRY_TYPE_CONVERSATION,
 )
 from custom_components.pydantic_ai_agent.diagnostics import async_get_device_diagnostics
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from tests.components.pydantic_ai_agent.support.builders import (
     conversation_subentry_data,
     workspace_entry,

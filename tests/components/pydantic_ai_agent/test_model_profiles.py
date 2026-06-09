@@ -4,14 +4,7 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import patch
 
-from homeassistant import config_entries
-from homeassistant.config_entries import ConfigSubentry
-from homeassistant.const import CONF_API_KEY, CONF_NAME
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.pydantic_ai_agent import (
     ProviderRuntimeData,
     WorkspaceRuntimeData,
@@ -49,6 +42,12 @@ from custom_components.pydantic_ai_agent.model_profiles import (
     resolve_model_profile,
     thinking_capability,
 )
+from homeassistant import config_entries
+from homeassistant.config_entries import ConfigSubentry
+from homeassistant.const import CONF_API_KEY, CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
 def _provider_subentry(

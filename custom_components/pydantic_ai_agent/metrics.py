@@ -9,7 +9,6 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import DOMAIN
 
-
 EVENT_AGENT_RUN_COMPLETED = "agent_run_completed"
 EVENT_AGENT_RUN_FAILED = "agent_run_failed"
 EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED = "structured_ai_task_output_generated"
@@ -69,7 +68,7 @@ def record_run_success(
     *,
     model_profile: str,
     duration: float,
-    usage: Any,
+    usage: object,
     model_pricing: Mapping[str, float] | None = None,
 ) -> None:
     """Record a successful agent run."""
@@ -164,7 +163,7 @@ def metric_bool(record: AgentRunMetrics, key: str) -> bool | None:
     return bool(value)
 
 
-def _int_usage_value(usage: Any, attr: str) -> int:
+def _int_usage_value(usage: object, attr: str) -> int:
     """Return an integer Pydantic AI usage value from a result test double safely."""
     value = getattr(usage, attr, 0)
     if callable(value):
@@ -174,7 +173,7 @@ def _int_usage_value(usage: Any, attr: str) -> int:
     return 0
 
 
-def _cache_read_token_usage(usage: Any) -> int:
+def _cache_read_token_usage(usage: object) -> int:
     """Return cached input tokens from Pydantic AI usage or provider details."""
     return max(
         _int_usage_value(usage, "cache_read_tokens"),
@@ -185,7 +184,7 @@ def _cache_read_token_usage(usage: Any) -> int:
     )
 
 
-def _unsupported_cost_token_usage(usage: Any) -> int:
+def _unsupported_cost_token_usage(usage: object) -> int:
     """Return known token buckets this integration cannot price separately."""
     return sum(
         (
@@ -209,7 +208,7 @@ def _unsupported_cost_token_usage(usage: Any) -> int:
     )
 
 
-def _int_usage_detail(usage: Any, key: str) -> int:
+def _int_usage_detail(usage: object, key: str) -> int:
     """Return an integer Pydantic AI usage detail value safely."""
     details = getattr(usage, "details", {})
     if callable(details):

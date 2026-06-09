@@ -5,9 +5,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
-
-from homeassistant.const import CONF_API_KEY, CONF_NAME
-
 from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
     CONF_PROVIDER_MODE,
@@ -19,6 +16,7 @@ from custom_components.pydantic_ai_agent.const import (
 from custom_components.pydantic_ai_agent.provider_validation import (
     ProviderValidationError,
 )
+from homeassistant.const import CONF_API_KEY, CONF_NAME
 
 REPO_ROOT = Path(__file__).parents[4]
 ENV_FILE = REPO_ROOT / ".env"

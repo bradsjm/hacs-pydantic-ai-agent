@@ -1,10 +1,10 @@
 """Pydantic AI Chat Completions model without the OpenAI SDK."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, assert_never, cast
 
 from pydantic_ai.exceptions import (
     ModelAPIError,
@@ -30,14 +30,14 @@ from pydantic_ai.profiles import ModelProfileSpec
 from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT
-from typing_extensions import assert_never
 
 from ..openai_compatible_client import (
+    NOT_GIVEN,
     APIConnectionError,
     APIStatusError,
     AsyncOpenAICompatible,
     ChatCompletion,
-    NOT_GIVEN,
+    ChatCompletionStream,
     omit,
 )
 from ._message_mapping import map_json_schema, map_messages, map_tool_definition
@@ -55,7 +55,7 @@ _FINISH_REASON_MAP: dict[str, FinishReason] = {
 
 
 @contextmanager
-def _map_api_errors(model_name: str):
+def _map_api_errors(model_name: str) -> Iterator[None]:
     """Map low-level client errors to Pydantic AI errors."""
     try:
         yield
@@ -128,7 +128,7 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
             response = await self._completions_create(
                 messages, False, settings, model_request_parameters
             )
-        return self._process_response(response)
+        return self._process_response(cast(ChatCompletion, response))
 
     @asynccontextmanager
     async def request_stream(
@@ -149,11 +149,12 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
             response = await self._completions_create(
                 messages, True, settings, model_request_parameters
             )
-            async with response:
+            streamed_response = cast(ChatCompletionStream, response)
+            async with streamed_response:
                 yield OpenAICompatibleStreamedResponse(
                     model_request_parameters=model_request_parameters,
                     _model_name=self.model_name,
-                    _response=response,
+                    _response=streamed_response,
                     _provider_name=self._provider.name,
                     _provider_url=self._provider.base_url,
                 )
@@ -164,7 +165,7 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
         stream: bool,
         model_settings: ModelSettings,
         model_request_parameters: ModelRequestParameters,
-    ) -> Any:
+    ) -> ChatCompletion | ChatCompletionStream:
         """Create a Chat Completions request using the low-level client."""
         tools, tool_choice = self._get_tools_and_tool_choice(
             model_settings, model_request_parameters
@@ -205,7 +206,7 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
             if tools
             else omit,
             extra_headers=extra_headers,
-            extra_body=model_settings.get("extra_body"),
+            extra_body=cast(dict[str, Any] | None, model_settings.get("extra_body")),
         )
 
     def _get_tools_and_tool_choice(

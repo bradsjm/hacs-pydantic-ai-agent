@@ -1,25 +1,26 @@
 """Home Assistant todo workspace tools for AI tasks."""
 
-from dataclasses import dataclass
-from typing import Any
 import asyncio
 import weakref
-
-from pydantic_ai import FunctionToolset
+from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.todo import (
     ATTR_DESCRIPTION,
     ATTR_ITEM,
     ATTR_RENAME,
     ATTR_STATUS,
-    DOMAIN as TODO_DOMAIN,
     TodoItemStatus,
     TodoServices,
+)
+from homeassistant.components.todo import (
+    DOMAIN as TODO_DOMAIN,
 )
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
+from pydantic_ai import FunctionToolset
 
 _TODO_COMPLETE_SEPARATOR = "---"
 
@@ -47,7 +48,8 @@ Do not use this to mark a task completed; use ha_todo_complete_item so completio
 always includes a completion note.
 """
 
-_COMPLETE_DESCRIPTION = """Complete one workspace task by UID with a required completion note.
+_COMPLETE_DESCRIPTION = """Complete one workspace task by UID with a required
+completion note.
 
 Use this immediately after finishing a task; do not batch completions. Never mark
 a task completed while implementation is partial, validation is failing, or the
@@ -194,29 +196,40 @@ class TodoWorkspace:
 
     def instructions(self, initial_state: str) -> str:
         """Return the todo workspace behavioral contract for this run."""
-        return f"""You have access to Home Assistant todo workspace tools for this AI Task run:
-- ha_todo_read_items: view current tasks with UIDs and status
-- ha_todo_add_item: add one needs_action task
-- ha_todo_update_item: rename or clarify one task by UID
-- ha_todo_complete_item: complete one task by UID with required completion_note
-- ha_todo_remove_items: remove irrelevant tasks by UID
-
-The configured todo list {self.entity_id} was cleared before this run. These tools affect only that todo list. Treat it as a temporary scratch workspace; do not imply persistence across runs.
-
-Rules:
-1. Use the todo tools for complex, multi-step, or non-trivial work; skip them for a single straightforward response.
-2. Break complex work into smaller imperative task summaries.
-3. Keep exactly one task conceptually in progress at a time, even though Home Assistant only stores needs_action and completed statuses.
-4. Mark tasks completed immediately after finishing; do not batch completions.
-5. Never complete a task if implementation is partial, validation is failing, or work is only planned.
-6. Use UIDs from ha_todo_read_items for update, complete, and remove.
-7. Completing an item requires a completion_note explaining what was done and how it was verified.
-8. After completing or removing an item, inspect the returned summary to choose the next task.
-9. The final AI Task output must still satisfy the requested structured output schema.
-
-## Current Todo Workspace
-{initial_state}
-"""
+        return (
+            "You have access to Home Assistant todo workspace tools for this AI "
+            "Task run:\n"
+            "- ha_todo_read_items: view current tasks with UIDs and status\n"
+            "- ha_todo_add_item: add one needs_action task\n"
+            "- ha_todo_update_item: rename or clarify one task by UID\n"
+            "- ha_todo_complete_item: complete one task by UID with required "
+            "completion_note\n"
+            "- ha_todo_remove_items: remove irrelevant tasks by UID\n\n"
+            f"The configured todo list {self.entity_id} was cleared before this run. "
+            "These tools affect only that todo list. Treat it as a temporary "
+            "scratch workspace; do not imply persistence across runs.\n\n"
+            "Rules:\n"
+            "1. Use the todo tools for complex, multi-step, or non-trivial work; "
+            "skip them for a single straightforward response.\n"
+            "2. Break complex work into smaller imperative task summaries.\n"
+            "3. Keep exactly one task conceptually in progress at a time, even "
+            "though Home Assistant only stores needs_action and completed "
+            "statuses.\n"
+            "4. Mark tasks completed immediately after finishing; do not batch "
+            "completions.\n"
+            "5. Never complete a task if implementation is partial, validation is "
+            "failing, or work is only planned.\n"
+            "6. Use UIDs from ha_todo_read_items for update, complete, and "
+            "remove.\n"
+            "7. Completing an item requires a completion_note explaining what was "
+            "done and how it was verified.\n"
+            "8. After completing or removing an item, inspect the returned summary "
+            "to choose the next task.\n"
+            "9. The final AI Task output must still satisfy the requested "
+            "structured output schema.\n\n"
+            "## Current Todo Workspace\n"
+            f"{initial_state}\n"
+        )
 
     async def _items(self) -> list[dict[str, str]]:
         """Fetch all todo items from the configured list."""
@@ -249,7 +262,7 @@ Rules:
         data: dict[str, Any],
         *,
         return_response: bool = False,
-    ) -> Any:
+    ) -> object:
         """Call a Home Assistant todo service for this workspace."""
         return await self.hass.services.async_call(
             TODO_DOMAIN,
@@ -269,7 +282,8 @@ Rules:
             item for item in items if item.get("status") != TodoItemStatus.COMPLETED
         ]
         lines = [
-            f"Summary: {len(completed)} completed, 0 in progress, {len(pending)} pending"
+            f"Summary: {len(completed)} completed, 0 in progress, "
+            f"{len(pending)} pending"
         ]
         if not items:
             lines.append("No todo items exist yet.")

@@ -14,16 +14,18 @@ from ._exceptions import (
     OpenAICompatibleError,
 )
 from ._sentinels import NOT_GIVEN, NotGiven, Omit, omit
+from ._streaming import ChatCompletionStream
 from ._types import ChatCompletion, ChatCompletionChunk, Response, ResponseStreamEvent
 
 __all__ = [
+    "NOT_GIVEN",
     "APIConnectionError",
     "APIStatusError",
     "APITimeoutError",
     "AsyncOpenAICompatible",
     "ChatCompletion",
     "ChatCompletionChunk",
-    "NOT_GIVEN",
+    "ChatCompletionStream",
     "NotGiven",
     "Omit",
     "OpenAICompatibleError",

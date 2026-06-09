@@ -26,8 +26,8 @@ from pydantic_ai.exceptions import (
     UserError,
 )
 from pydantic_ai.messages import ModelResponseStreamEvent
-from pydantic_ai.models import ModelRequestParameters
-from pydantic_ai.settings import ModelSettings
+from pydantic_ai.models import Model, ModelRequestParameters
+from pydantic_ai.settings import ModelSettings, ThinkingLevel
 
 from ._redaction import redact_data
 from .chat_template_kwargs import (
@@ -37,11 +37,11 @@ from .chat_template_kwargs import (
 from .const import (
     CONF_BASE_URL,
     CONF_CHAT_TEMPLATE_KWARGS,
-    CONF_THINKING,
-    CONF_TIMEOUT,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    CONF_THINKING,
+    CONF_TIMEOUT,
     DEFAULT_TIMEOUT,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
@@ -69,8 +69,10 @@ from .provider import (
 )
 from .structured_output import (
     structured_model_request_parameters,
-    structured_output_mode as normalise_structured_output_mode,
     structured_output_name,
+)
+from .structured_output import (
+    structured_output_mode as normalise_structured_output_mode,
 )
 
 _HTTP_STATUS_LABELS = {
@@ -141,8 +143,9 @@ def _status_label(status_code: int) -> str:
 def _format_http_error(err: ModelHTTPError) -> str:
     """Return a compact user-facing message for a provider HTTP error."""
     message = (
-        f"The provider returned error {err.status_code} ({_status_label(err.status_code)}) "
-        f'for model "{err.model_name}".'
+        f"The provider returned error {err.status_code}"
+        f" ({_status_label(err.status_code)})"
+        f' for model "{err.model_name}".'
     )
     if isinstance(err.body, Mapping) and (metadata := err.body.get("metadata")):
         message = f"{message} Metadata: {_format_metadata(metadata)}."
@@ -210,7 +213,7 @@ def _map_structured_http_error(
 
 def _openai_compatible_model(
     hass: HomeAssistant, data: Mapping[str, Any], model_name: str
-) -> Any:
+) -> Model:
     """Build a Pydantic AI model for validation."""
     provider_mode = data[CONF_PROVIDER_MODE]
     try:
@@ -262,6 +265,105 @@ def _structured_probe_request_parameters(
     )
 
 
+def _prepare_probe_settings(
+    hass: HomeAssistant,
+    data: Mapping[str, Any],
+    model_settings: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Prepare model settings dict for a probe request."""
+    settings = strip_model_settings(
+        model_settings, PROBE_STRIPPED_MODEL_SETTING_KEYS
+    )
+    provider_extra_body = data.get(CONF_PROVIDER_EXTRA_BODY)
+    if isinstance(provider_extra_body, Mapping) and provider_extra_body:
+        if not provider_extra_body_supported(data):
+            raise ProviderValidationError(
+                "provider_extra_body_unsupported",
+                "Extra body is only supported by OpenAI-compatible"
+                " and Anthropic provider modes.",
+            )
+        reject_chat_template_kwargs_in_extra_body(provider_extra_body)
+        settings[_MODEL_SETTING_EXTRA_BODY] = dict(provider_extra_body)
+    chat_template_kwargs = settings.pop(_MODEL_SETTING_CHAT_TEMPLATE_KWARGS, None)
+    reject_chat_template_kwargs_in_extra_body(
+        settings.get(_MODEL_SETTING_EXTRA_BODY)
+    )
+    if rendered_kwargs := render_chat_template_kwargs(hass, chat_template_kwargs):
+        extra_body = dict(settings.get(_MODEL_SETTING_EXTRA_BODY) or {})
+        extra_body[CONF_CHAT_TEMPLATE_KWARGS] = rendered_kwargs
+        settings[_MODEL_SETTING_EXTRA_BODY] = extra_body
+    settings.setdefault(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT)
+    return settings
+
+
+def _probe_messages(
+    structured_output_mode: str | None,
+) -> list[ModelRequest]:
+    """Return probe messages for the given structured output mode."""
+    return [
+        ModelRequest.user_text_prompt(
+            (
+                'Reply with exactly "OK". No explanation.'
+                if structured_output_mode is None
+                else 'Return structured data where "ok" is true.'
+            ),
+            instructions=(
+                "Reply only with OK."
+                if structured_output_mode is None
+                else "Return only data matching the requested schema."
+            ),
+        )
+    ]
+
+
+async def _run_probe_stream(
+    model: Model,
+    settings: dict[str, Any],
+    model_request_parameters: ModelRequestParameters | None,
+    structured_output_mode: str | None,
+) -> None:
+    """Run a probe request stream and validate the response."""
+    model_settings_obj = ModelSettings(**settings)
+    async with model_request_stream(
+        model,
+        _probe_messages(structured_output_mode),
+        model_settings=model_settings_obj,
+        model_request_parameters=model_request_parameters,
+    ) as stream:
+        if structured_output_mode is not None:
+            await _validate_structured_probe_stream(
+                stream,
+                normalise_structured_output_mode(structured_output_mode),
+            )
+            return
+        saw_event = False
+        async for _event in stream:
+            saw_event = True
+        if not saw_event:
+            raise ProviderValidationError(
+                "provider_error",
+                "The provider returned an empty streamed response.",
+            )
+
+
+def _build_probe_request_parameters(
+    structured_output_mode: str | None,
+    thinking: ThinkingLevel | None,
+) -> ModelRequestParameters | None:
+    """Build model request parameters for a probe request."""
+    params: ModelRequestParameters | None = None
+    if structured_output_mode is not None:
+        output_mode = normalise_structured_output_mode(structured_output_mode)
+        params = _structured_probe_request_parameters(output_mode)
+    if thinking is not None:
+        params = (
+            ModelRequestParameters(thinking=thinking)
+            if params is None
+            else replace(params, thinking=thinking)
+        )
+    return params
+
+
 async def async_probe_model(
     hass: HomeAssistant,
     data: Mapping[str, Any],
@@ -272,79 +374,19 @@ async def async_probe_model(
 ) -> None:
     """Probe model access with the same streaming path used at runtime."""
     try:
-        settings = strip_model_settings(
-            model_settings, PROBE_STRIPPED_MODEL_SETTING_KEYS
-        )
+        settings = _prepare_probe_settings(hass, data, model_settings)
         thinking = (
             None
             if model_settings is None
             else model_settings.get(_MODEL_SETTING_THINKING)
         )
-        provider_extra_body = data.get(CONF_PROVIDER_EXTRA_BODY)
-        if isinstance(provider_extra_body, Mapping) and provider_extra_body:
-            if not provider_extra_body_supported(data):
-                raise ProviderValidationError(
-                    "provider_extra_body_unsupported",
-                    "Extra body is only supported by OpenAI-compatible and Anthropic provider modes.",
-                )
-            reject_chat_template_kwargs_in_extra_body(provider_extra_body)
-            settings[_MODEL_SETTING_EXTRA_BODY] = dict(provider_extra_body)
-        chat_template_kwargs = settings.pop(_MODEL_SETTING_CHAT_TEMPLATE_KWARGS, None)
-        reject_chat_template_kwargs_in_extra_body(
-            settings.get(_MODEL_SETTING_EXTRA_BODY)
-        )
-        if rendered_kwargs := render_chat_template_kwargs(hass, chat_template_kwargs):
-            extra_body = dict(settings.get(_MODEL_SETTING_EXTRA_BODY) or {})
-            extra_body[CONF_CHAT_TEMPLATE_KWARGS] = rendered_kwargs
-            settings[_MODEL_SETTING_EXTRA_BODY] = extra_body
-        settings.setdefault(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT)
         model = _openai_compatible_model(hass, data, model_name)
-        model_request_parameters = None
-        if structured_output_mode is not None:
-            output_mode = normalise_structured_output_mode(structured_output_mode)
-            model_request_parameters = _structured_probe_request_parameters(output_mode)
-        if thinking is not None:
-            model_request_parameters = (
-                ModelRequestParameters(thinking=thinking)
-                if model_request_parameters is None
-                else replace(model_request_parameters, thinking=thinking)
-            )
-        messages = [
-            ModelRequest.user_text_prompt(
-                (
-                    'Reply with exactly "OK". No explanation.'
-                    if structured_output_mode is None
-                    else 'Return structured data where "ok" is true.'
-                ),
-                instructions=(
-                    "Reply only with OK."
-                    if structured_output_mode is None
-                    else "Return only data matching the requested schema."
-                ),
-            )
-        ]
-        model_settings_obj = ModelSettings(**settings)
-        async with model_request_stream(
-            model,
-            messages,
-            model_settings=model_settings_obj,
-            model_request_parameters=model_request_parameters,
-        ) as stream:
-            if structured_output_mode is not None:
-                await _validate_structured_probe_stream(
-                    stream,
-                    normalise_structured_output_mode(structured_output_mode),
-                )
-                return
-            saw_event = False
-            async for _event in stream:
-                saw_event = True
-            if not saw_event:
-                raise ProviderValidationError(
-                    "provider_error",
-                    "The provider returned an empty streamed response.",
-                )
-            return
+        model_request_parameters = _build_probe_request_parameters(
+            structured_output_mode, thinking
+        )
+        await _run_probe_stream(
+            model, settings, model_request_parameters, structured_output_mode
+        )
     except ModelHTTPError as err:
         if structured_output_mode is not None:
             raise _map_structured_http_error(

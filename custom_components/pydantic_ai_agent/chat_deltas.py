@@ -1,24 +1,26 @@
 """Convert Pydantic AI messages and events to Home Assistant ChatLog deltas."""
 
+import json
+import logging
 from collections import deque
 from collections.abc import AsyncIterable, AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-import json
-import logging
 from typing import Any, cast
 
+from homeassistant.components import conversation
+from homeassistant.helpers import llm
 from pydantic_ai import AgentRunResultEvent
 from pydantic_ai.messages import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
     OutputToolCallEvent,
     OutputToolResultEvent,
     PartDeltaEvent,
     PartEndEvent,
     PartStartEvent,
-    ModelMessage,
-    ModelRequest,
-    ModelResponse,
     RetryPromptPart,
     TextPart,
     TextPartDelta,
@@ -27,9 +29,6 @@ from pydantic_ai.messages import (
     ToolCallPart,
     ToolReturnPart,
 )
-
-from homeassistant.components import conversation
-from homeassistant.helpers import llm
 
 from .run_failures import _ToolProblem
 from .run_state import _StreamRunState
@@ -156,85 +155,164 @@ async def _single_text(text: str) -> AsyncIterator[str]:
     yield text
 
 
+def _maybe_record_event(
+    event: object, trace_recorder: _StreamTraceRecorder | None
+) -> None:
+    """Record an event if a trace recorder is active."""
+    if trace_recorder is not None:
+        trace_recorder.record_event(event)
+
+
 async def _agent_events_to_chat_deltas(
     events: AsyncIterable[Any],
     output_tool_names: set[str],
     state: _StreamRunState,
-    trace_recorder: "_StreamTraceRecorder | None" = None,
+    trace_recorder: _StreamTraceRecorder | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield HA ChatLog deltas from live Pydantic AI Agent events."""
-    assistant_open = False
+    flags: dict[str, bool] = {"assistant_open": False}
     emitted_tool_call_ids: set[str] = set()
     async for event in events:
-        if trace_recorder is not None:
-            trace_recorder.record_event(event)
-        if isinstance(event, AgentRunResultEvent):
-            state.result = event.result
-            continue
-        if isinstance(event, PartStartEvent):
-            if event.index == 0:
-                state.emitted_deltas = True
-                delta = {"role": "assistant"}
-                if trace_recorder is not None:
-                    trace_recorder.record_chat_delta(delta)
-                yield delta
-                assistant_open = True
-            async for delta in _part_start_to_chat_deltas(event, output_tool_names):
-                state.emitted_deltas = True
-                if trace_recorder is not None:
-                    trace_recorder.record_chat_delta(delta)
-                yield delta
-            continue
-        if isinstance(event, PartDeltaEvent):
-            if not assistant_open:
-                state.emitted_deltas = True
-                delta = {"role": "assistant"}
-                if trace_recorder is not None:
-                    trace_recorder.record_chat_delta(delta)
-                yield delta
-                assistant_open = True
-            async for delta in _part_delta_to_chat_deltas(event):
-                state.emitted_deltas = True
-                if trace_recorder is not None:
-                    trace_recorder.record_chat_delta(delta)
-                yield delta
-            continue
-        if isinstance(event, FunctionToolCallEvent | OutputToolCallEvent):
-            if not assistant_open:
-                state.emitted_deltas = True
-                delta = {"role": "assistant"}
-                if trace_recorder is not None:
-                    trace_recorder.record_chat_delta(delta)
-                yield delta
-                assistant_open = True
-            async for delta in _tool_call_event_to_chat_deltas(
-                event.part,
-                output_tool_names,
-                emitted_tool_call_ids,
-            ):
-                state.emitted_deltas = True
-                if trace_recorder is not None:
-                    trace_recorder.record_chat_delta(delta)
-                yield delta
-            continue
-        if isinstance(event, FunctionToolResultEvent | OutputToolResultEvent):
-            if event.part is None:
-                continue
-            tool_problem = _tool_problem_from_part(event.part)
-            if tool_problem is not None:
-                state.latest_tool_problem = tool_problem
-                _log_tool_problem(tool_problem)
-            state.emitted_deltas = True
-            delta = {
-                "role": "tool_result",
-                "tool_call_id": event.part.tool_call_id,
-                "tool_name": event.part.tool_name,
-                "tool_result": event.part.content,
-            }
-            if trace_recorder is not None:
-                trace_recorder.record_chat_delta(delta)
+        _maybe_record_event(event, trace_recorder)
+        async for delta in _process_agent_event(
+            event, output_tool_names, state, trace_recorder,
+            flags, emitted_tool_call_ids,
+        ):
             yield delta
-            assistant_open = False
+
+
+async def _process_agent_event(
+    event: object,
+    output_tool_names: set[str],
+    state: _StreamRunState,
+    trace_recorder: _StreamTraceRecorder | None,
+    flags: dict[str, bool],
+    emitted_tool_call_ids: set[str],
+) -> AsyncIterator[dict[str, Any]]:
+    """Dispatch one agent event to the appropriate handler."""
+    if isinstance(event, AgentRunResultEvent):
+        state.result = event.result
+        return
+    if isinstance(event, PartStartEvent):
+        async for delta in _handle_events_part_start(
+            event, output_tool_names, state, trace_recorder, flags
+        ):
+            yield delta
+        return
+    if isinstance(event, PartDeltaEvent):
+        async for delta in _handle_events_part_delta(
+            event, state, trace_recorder, flags
+        ):
+            yield delta
+        return
+    if isinstance(event, FunctionToolCallEvent | OutputToolCallEvent):
+        async for delta in _handle_events_tool_call(
+            event, output_tool_names, emitted_tool_call_ids,
+            state, trace_recorder, flags,
+        ):
+            yield delta
+        return
+    if isinstance(event, FunctionToolResultEvent | OutputToolResultEvent):
+        async for delta in _handle_events_tool_result(
+            event, state, trace_recorder, flags
+        ):
+            yield delta
+
+
+async def _handle_events_part_start(
+    event: PartStartEvent,
+    output_tool_names: set[str],
+    state: _StreamRunState,
+    trace_recorder: _StreamTraceRecorder | None,
+    flags: dict[str, bool],
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield assistant header and initial part content for a part start event."""
+    if event.index == 0:
+        state.emitted_deltas = True
+        delta = {"role": "assistant"}
+        if trace_recorder is not None:
+            trace_recorder.record_chat_delta(delta)
+        yield delta
+        flags["assistant_open"] = True
+    async for delta in _part_start_to_chat_deltas(event, output_tool_names):
+        state.emitted_deltas = True
+        if trace_recorder is not None:
+            trace_recorder.record_chat_delta(delta)
+        yield delta
+
+
+async def _handle_events_part_delta(
+    event: PartDeltaEvent,
+    state: _StreamRunState,
+    trace_recorder: _StreamTraceRecorder | None,
+    flags: dict[str, bool],
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield assistant header if needed and part delta content."""
+    if not flags["assistant_open"]:
+        state.emitted_deltas = True
+        delta = {"role": "assistant"}
+        if trace_recorder is not None:
+            trace_recorder.record_chat_delta(delta)
+        yield delta
+    flags["assistant_open"] = True
+    async for delta in _part_delta_to_chat_deltas(event):
+        state.emitted_deltas = True
+        if trace_recorder is not None:
+            trace_recorder.record_chat_delta(delta)
+        yield delta
+
+
+async def _handle_events_tool_call(
+    event: FunctionToolCallEvent | OutputToolCallEvent,
+    output_tool_names: set[str],
+    emitted_tool_call_ids: set[str],
+    state: _StreamRunState,
+    trace_recorder: _StreamTraceRecorder | None,
+    flags: dict[str, bool],
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield assistant header if needed and tool call deltas."""
+    if not flags["assistant_open"]:
+        state.emitted_deltas = True
+        delta = {"role": "assistant"}
+        if trace_recorder is not None:
+            trace_recorder.record_chat_delta(delta)
+        yield delta
+    flags["assistant_open"] = True
+    async for delta in _tool_call_event_to_chat_deltas(
+        event.part,
+        output_tool_names,
+        emitted_tool_call_ids,
+    ):
+        state.emitted_deltas = True
+        if trace_recorder is not None:
+            trace_recorder.record_chat_delta(delta)
+        yield delta
+
+
+async def _handle_events_tool_result(
+    event: FunctionToolResultEvent | OutputToolResultEvent,
+    state: _StreamRunState,
+    trace_recorder: _StreamTraceRecorder | None,
+    flags: dict[str, bool],
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield a tool result delta and update stream state."""
+    if event.part is None:
+        return
+    tool_problem = _tool_problem_from_part(event.part)
+    if tool_problem is not None:
+        state.latest_tool_problem = tool_problem
+        _log_tool_problem(tool_problem)
+    state.emitted_deltas = True
+    delta = {
+        "role": "tool_result",
+        "tool_call_id": event.part.tool_call_id,
+        "tool_name": event.part.tool_name,
+        "tool_result": event.part.content,
+    }
+    if trace_recorder is not None:
+        trace_recorder.record_chat_delta(delta)
+    yield delta
+    flags["assistant_open"] = False
 
 
 @dataclass
@@ -449,11 +527,7 @@ def _messages_summary(
             "index": index,
             "type": type(message).__name__,
         }
-        if isinstance(message, ModelResponse):
-            summary["parts"] = [
-                _part_summary(part, include_preview) for part in message.parts
-            ]
-        elif isinstance(message, ModelRequest):
+        if isinstance(message, (ModelResponse, ModelRequest)):
             summary["parts"] = [
                 _part_summary(part, include_preview) for part in message.parts
             ]
@@ -633,42 +707,61 @@ async def _agent_messages_to_chat_deltas(
     """Yield ChatLog deltas from Agent messages without re-executing tools."""
     for message in messages:
         if isinstance(message, ModelResponse):
-            content = ""
-            thinking_content = ""
-            tool_calls: list[llm.ToolInput] = []
-            for part in message.parts:
-                if isinstance(part, TextPart):
-                    content += part.content
-                elif isinstance(part, ThinkingPart):
-                    thinking_content += part.content
-                elif isinstance(part, ToolCallPart):
-                    if part.tool_name in output_tool_names:
-                        content += json.dumps(part.args_as_dict())
-                        continue
-                    tool_calls.append(
-                        llm.ToolInput(
-                            id=part.tool_call_id,
-                            tool_name=part.tool_name,
-                            tool_args=part.args_as_dict(),
-                            external=True,
-                        )
-                    )
-            if content or thinking_content or tool_calls:
-                yield {
-                    "role": "assistant",
-                    "content": content,
-                    "thinking_content": thinking_content,
-                    "tool_calls": tool_calls,
-                }
+            async for delta in _response_message_to_deltas(
+                message, output_tool_names
+            ):
+                yield delta
         elif isinstance(message, ModelRequest):
-            for part in message.parts:
-                if isinstance(part, ToolReturnPart | RetryPromptPart):
-                    tool_problem = _tool_problem_from_part(part)
-                    if tool_problem is not None:
-                        _log_tool_problem(tool_problem)
-                    yield {
-                        "role": "tool_result",
-                        "tool_call_id": part.tool_call_id,
-                        "tool_name": part.tool_name,
-                        "tool_result": part.content,
-                    }
+            async for delta in _request_message_to_deltas(message):
+                yield delta
+
+
+async def _response_message_to_deltas(
+    message: ModelResponse,
+    output_tool_names: set[str],
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield assistant deltas from one ModelResponse message."""
+    content = ""
+    thinking_content = ""
+    tool_calls: list[llm.ToolInput] = []
+    for part in message.parts:
+        if isinstance(part, TextPart):
+            content += part.content
+        elif isinstance(part, ThinkingPart):
+            thinking_content += part.content
+        elif isinstance(part, ToolCallPart):
+            if part.tool_name in output_tool_names:
+                content += json.dumps(part.args_as_dict())
+                continue
+            tool_calls.append(
+                llm.ToolInput(
+                    id=part.tool_call_id,
+                    tool_name=part.tool_name,
+                    tool_args=part.args_as_dict(),
+                    external=True,
+                )
+            )
+    if content or thinking_content or tool_calls:
+        yield {
+            "role": "assistant",
+            "content": content,
+            "thinking_content": thinking_content,
+            "tool_calls": tool_calls,
+        }
+
+
+async def _request_message_to_deltas(
+    message: ModelRequest,
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield tool result deltas from one ModelRequest message."""
+    for part in message.parts:
+        if isinstance(part, ToolReturnPart | RetryPromptPart):
+            tool_problem = _tool_problem_from_part(part)
+            if tool_problem is not None:
+                _log_tool_problem(tool_problem)
+            yield {
+                "role": "tool_result",
+                "tool_call_id": part.tool_call_id,
+                "tool_name": part.tool_name,
+                "tool_result": part.content,
+            }

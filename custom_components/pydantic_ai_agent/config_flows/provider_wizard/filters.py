@@ -29,9 +29,9 @@ def model_matches_filters(
         return False
     if filters.hide_without_tool_call and not model.tool_call:
         return False
-    if filters.hide_without_structured_output and model.structured_output is False:
-        return False
-    return True
+    return not (
+        filters.hide_without_structured_output and model.structured_output is False
+    )
 
 
 def filtered_models(

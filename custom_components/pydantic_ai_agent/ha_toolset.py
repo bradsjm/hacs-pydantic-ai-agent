@@ -2,10 +2,11 @@
 
 from typing import Any
 
+from homeassistant.helpers import llm
 from pydantic_ai import RunContext, Tool, ToolDefinition
 from voluptuous_openapi import convert
 
-from homeassistant.helpers import llm
+from .run_diagnostics import RunDiagnosticsRecorder
 
 
 def tool_definitions_from_llm_api(
@@ -36,7 +37,7 @@ def tools_from_llm_api(api_instance: llm.APIInstance | None) -> list[Tool[Any]]:
 
 
 def tools_from_llm_api_with_diagnostics(
-    api_instance: llm.APIInstance | None, run_recorder: Any | None
+    api_instance: llm.APIInstance | None, run_recorder: RunDiagnosticsRecorder | None
 ) -> list[Tool[Any]]:
     """Convert Home Assistant LLM tools and record execution diagnostics."""
     if api_instance is None:
@@ -49,7 +50,9 @@ def tools_from_llm_api_with_diagnostics(
 
 
 def _tool_from_ha_tool(
-    api_instance: llm.APIInstance, tool: llm.Tool, run_recorder: Any | None
+    api_instance: llm.APIInstance,
+    tool: llm.Tool,
+    run_recorder: RunDiagnosticsRecorder | None,
 ) -> Tool[Any]:
     """Return one executable Pydantic AI tool backed by an HA LLM API tool."""
     parameters_json_schema = convert(
@@ -57,7 +60,7 @@ def _tool_from_ha_tool(
         custom_serializer=api_instance.custom_serializer,
     )
 
-    async def execute(ctx: RunContext[Any], **tool_args: Any) -> Any:
+    async def execute(ctx: RunContext[Any], **tool_args: object) -> object:
         """Execute the Home Assistant LLM tool with model-provided arguments."""
         tool_input = llm.ToolInput(
             id=ctx.tool_call_id or "",

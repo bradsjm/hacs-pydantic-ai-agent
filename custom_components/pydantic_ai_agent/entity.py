@@ -1,39 +1,42 @@
 """Shared Pydantic AI entity runtime."""
 
-from collections.abc import AsyncIterable, Mapping, Sequence
 import logging
+from collections.abc import AsyncIterable, Mapping, Sequence
 from typing import Any, cast
 
-from pydantic_ai import Agent
+import voluptuous as vol
+from homeassistant.components import conversation
+from homeassistant.config_entries import ConfigSubentry
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import llm
+from opentelemetry.trace import Span
+from pydantic_ai import Agent, AgentRunResult
 from pydantic_ai.capabilities import AbstractCapability, WebFetch
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.toolsets import AbstractToolset
 from pydantic_ai.usage import UsageLimits
-import voluptuous as vol
-
-from homeassistant.components import conversation
-from homeassistant.config_entries import ConfigSubentry
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import device_registry as dr, llm
 
 from . import PydanticAIAgentConfigEntry
-from .const import (
-    CONF_OUTPUT_MODE,
-    CONF_SKILLS,
-    CONF_WEB_FETCH_ENABLED,
-    DOMAIN,
-)
 from .chat_deltas import (
     _agent_events_to_chat_deltas,
-    _agent_messages_to_chat_deltas as _agent_messages_to_chat_deltas,
     _append_agent_messages,
     _append_missing_final_text,
     _append_text,
     _json_output,
     _StreamTraceRecorder,
+)
+from .chat_deltas import (
+    _agent_messages_to_chat_deltas as _agent_messages_to_chat_deltas,
+)
+from .const import (
+    CONF_OUTPUT_MODE,
+    CONF_SKILLS,
+    CONF_WEB_FETCH_ENABLED,
+    DOMAIN,
 )
 from .context_management import SlidingWindowContextCapability
 from .ha_toolset import (
@@ -49,32 +52,38 @@ from .metrics import (
     record_run_failure,
     record_run_success,
 )
-from .model_request_settings import (
-    _model_settings_with_chat_template_kwargs,
-    _model_settings_with_provider_extra_body,
-)
 from .model_profiles import (
     ModelProfile,
     chat_model_for_profile,
-    max_iterations as run_max_iterations,
     model_display_names,
     model_profile_chain,
     model_settings,
     primary_model_profile,
     thinking_capability,
 )
+from .model_profiles import (
+    max_iterations as run_max_iterations,
+)
+from .model_request_settings import (
+    _model_settings_with_chat_template_kwargs,
+    _model_settings_with_provider_extra_body,
+)
 from .provider_validation import ProviderValidationError
 from .repairs import async_create_provider_auth_issue, async_delete_provider_auth_issue
+from .run_diagnostics import RunDiagnosticsRecorder
 from .run_failures import (
     _AgentRunFailed,
     _AgentRunFailure,
     _classify_run_failure,
-    _has_connection_failure as _has_connection_failure,
-    _home_assistant_error as _home_assistant_error,
     _should_fallback,
 )
+from .run_failures import (
+    _has_connection_failure as _has_connection_failure,
+)
+from .run_failures import (
+    _home_assistant_error as _home_assistant_error,
+)
 from .run_state import AgentRunOutcome, _StreamRunState
-from .run_diagnostics import RunDiagnosticsRecorder
 from .skills import async_skills_capabilities
 from .structured_output import (
     default_structure_serializer,
@@ -115,7 +124,9 @@ def _has_provider_auth_failure(
     return _has_provider_auth_validation_failure(
         entry.runtime_data.model_validation_failures,
         provider_subentry_id,
-    ) or bool(entry.runtime_data.runtime_provider_auth_failures.get(provider_subentry_id))
+    ) or bool(
+        entry.runtime_data.runtime_provider_auth_failures.get(provider_subentry_id)
+    )
 
 
 def _record_runtime_auth_failure(
@@ -192,7 +203,7 @@ class PydanticAIBaseLLMEntity:
         failures = self.entry.runtime_data.model_validation_failures
         try:
             primary_profile = model_profile_chain(self.entry, self.subentry)[0]
-        except (HomeAssistantError, IndexError):
+        except HomeAssistantError, IndexError:
             return False
         return f"{self.subentry.subentry_id}:{primary_profile.ref}" not in failures
 
@@ -267,76 +278,28 @@ class PydanticAIBaseLLMEntity:
         if self.subentry.data.get(CONF_WEB_FETCH_ENABLED):
             capabilities.append(WebFetch(local=True))
         capabilities.append(SlidingWindowContextCapability())
-        use_virtual_workspace = virtual_workspace_enabled(self.subentry.data)
         errors: list[BaseException] = []
         for index, profile in enumerate(profiles):
             usage_limits = UsageLimits(
                 request_limit=run_max_iterations(self.subentry.data, max_iterations),
             )
             try:
-                virtual_toolsets: Sequence[AbstractToolset[Any]] = ()
-                virtual_instructions: str | None = None
-                if use_virtual_workspace:
-                    parts = virtual_workspace_parts()
-                    virtual_toolsets = parts.toolsets
-                    virtual_instructions = parts.instructions
-                instructions = _join_instructions(
-                    virtual_instructions, extra_instructions
-                )
-                settings = model_settings(profile, self.subentry.data)
-                settings = _model_settings_with_provider_extra_body(
-                    self.entry, profile, settings
-                )
-                settings = _model_settings_with_chat_template_kwargs(
-                    self.hass, profile, settings
-                )
-                toolsets = [*virtual_toolsets, *extra_toolsets]
-                run_capabilities = list(capabilities)
-                if thinking := thinking_capability(self.subentry.data):
-                    run_capabilities.append(thinking)
-                run_recorder.record(
-                    phase="attempt",
-                    event="model_profile_attempt_started",
-                    data={
-                        "attempt_index": index,
-                        "model_profile": profile,
-                        "model_settings": settings,
-                        "usage_limits": usage_limits,
-                        "extra_toolset_count": len(extra_toolsets),
-                        "virtual_workspace_enabled": use_virtual_workspace,
-                        "capability_types": [
-                            type(capability).__name__ for capability in run_capabilities
-                        ],
-                    },
-                )
-                agent = Agent(
-                    chat_model_for_profile(self.hass, self.entry, profile),
-                    output_type=cast(Any, agent_output_type),
-                    instructions=instructions,
-                    model_settings=settings,
-                    tool_retries=0,
-                    output_retries=2,
-                    tools=tools_from_llm_api_with_diagnostics(
-                        chat_log.llm_api, run_recorder
-                    ),
-                    toolsets=toolsets,
-                    max_concurrency=1,
-                    capabilities=run_capabilities,
-                )
-                instrument_agent(self.hass, self.entry, agent)
-                outcome = await self._async_run_agent(
-                    agent,
-                    profile,
-                    settings,
-                    chat_log,
-                    agent_id,
-                    user_prompt,
-                    message_history,
-                    usage_limits,
-                    structured_output_tool_names,
-                    structure is not None,
-                    stream,
-                    run_recorder,
+                outcome = await self._async_try_model_profile(
+                    index=index,
+                    profile=profile,
+                    usage_limits=usage_limits,
+                    chat_log=chat_log,
+                    agent_id=agent_id,
+                    user_prompt=user_prompt,
+                    message_history=message_history,
+                    structured_output_tool_names=structured_output_tool_names,
+                    has_structure=structure is not None,
+                    stream=stream,
+                    run_recorder=run_recorder,
+                    agent_output_type=agent_output_type,
+                    capabilities=capabilities,
+                    extra_toolsets=extra_toolsets,
+                    extra_instructions=extra_instructions,
                 )
                 if record_success:
                     _clear_runtime_auth_failure(self.hass, self.entry, profile)
@@ -354,63 +317,167 @@ class PydanticAIBaseLLMEntity:
                     return outcome.output
                 return outcome
             except Exception as err:
-                if _auth_status_code(err) is None:
-                    _clear_runtime_auth_failure(self.hass, self.entry, profile)
-                if index == len(profiles) - 1 or not _should_fallback(err):
-                    failure = _classify_run_failure(
-                        err,
-                        usage_limits=usage_limits,
-                    )
-                    if not _async_create_runtime_auth_issue(
-                        self.hass, self.entry, profile, err, failure.user_message
-                    ):
-                        _clear_runtime_auth_failure(self.hass, self.entry, profile)
-                    self._record_agent_run_failure(
-                        err,
-                        agent_id,
-                        model_profile=profile.title,
-                        failure=failure,
-                    )
-                    run_recorder.record(
-                        phase="failure",
-                        event="run_failed",
-                        data={
-                            "error": err,
-                            "failure": failure,
-                            "model_profile": profile.title,
-                        },
-                    )
-                    self._store_run_diagnostics(
-                        run_recorder,
-                        status="failed",
-                        summary={
-                            "error": err,
-                            "failure": failure,
-                            "model_profile": profile.title,
-                        },
-                    )
-                    raise _AgentRunFailed(failure) from err
-                errors.append(err)
-                failure = _classify_run_failure(err, usage_limits=usage_limits)
-                run_recorder.record(
-                    phase="attempt",
-                    event="model_profile_attempt_failed_retrying",
-                    data={
-                        "error": err,
-                        "failure": failure,
-                        "model_profile": profile.title,
-                    },
-                )
-                _LOGGER.warning(
-                    'Model profile "%s" failed with retryable %s; trying fallback: %s',
-                    profile.title,
-                    failure.error_type,
-                    failure.log_message,
+                self._async_handle_profile_error(
+                    err=err,
+                    index=index,
+                    is_last_attempt=index == len(profiles) - 1,
+                    profile=profile,
+                    usage_limits=usage_limits,
+                    agent_id=agent_id,
+                    run_recorder=run_recorder,
+                    errors=errors,
                 )
         raise HomeAssistantError(
             "All configured model profiles failed: "
             + ", ".join(model_display_names(profiles))
         ) from (errors[-1] if errors else None)
+
+    async def _async_try_model_profile(
+        self,
+        *,
+        index: int,
+        profile: ModelProfile,
+        usage_limits: UsageLimits,
+        chat_log: conversation.ChatLog,
+        agent_id: str,
+        user_prompt: str | Sequence[Any] | None,
+        message_history: list[ModelMessage],
+        structured_output_tool_names: set[str],
+        has_structure: bool,
+        stream: bool,
+        run_recorder: RunDiagnosticsRecorder,
+        agent_output_type: object,
+        capabilities: list[AbstractCapability],
+        extra_toolsets: Sequence[AbstractToolset[Any]],
+        extra_instructions: str | None,
+    ) -> AgentRunOutcome:
+        """Run one model profile attempt and return the outcome."""
+        virtual_toolsets: Sequence[AbstractToolset[Any]] = ()
+        virtual_instructions: str | None = None
+        if virtual_workspace_enabled(self.subentry.data):
+            parts = virtual_workspace_parts()
+            virtual_toolsets = parts.toolsets
+            virtual_instructions = parts.instructions
+        instructions = _join_instructions(virtual_instructions, extra_instructions)
+        settings = model_settings(profile, self.subentry.data)
+        settings = _model_settings_with_provider_extra_body(
+            self.entry, profile, settings
+        )
+        settings = _model_settings_with_chat_template_kwargs(
+            self.hass, profile, settings
+        )
+        toolsets = [*virtual_toolsets, *extra_toolsets]
+        run_capabilities = list(capabilities)
+        if thinking := thinking_capability(self.subentry.data):
+            run_capabilities.append(thinking)
+        run_recorder.record(
+            phase="attempt",
+            event="model_profile_attempt_started",
+            data={
+                "attempt_index": index,
+                "model_profile": profile,
+                "model_settings": settings,
+                "usage_limits": usage_limits,
+                "extra_toolset_count": len(extra_toolsets),
+                "virtual_workspace_enabled": virtual_workspace_enabled(
+                    self.subentry.data
+                ),
+                "capability_types": [
+                    type(capability).__name__ for capability in run_capabilities
+                ],
+            },
+        )
+        agent = Agent(
+            chat_model_for_profile(self.hass, self.entry, profile),
+            output_type=cast(Any, agent_output_type),
+            instructions=instructions,
+            model_settings=settings,
+            tool_retries=0,
+            output_retries=2,
+            tools=tools_from_llm_api_with_diagnostics(chat_log.llm_api, run_recorder),
+            toolsets=toolsets,
+            max_concurrency=1,
+            capabilities=run_capabilities,
+        )
+        instrument_agent(self.hass, self.entry, agent)
+        return await self._async_run_agent(
+            agent,
+            profile,
+            settings,
+            chat_log,
+            agent_id,
+            user_prompt,
+            message_history,
+            usage_limits,
+            structured_output_tool_names,
+            has_structure,
+            stream,
+            run_recorder,
+        )
+
+    def _async_handle_profile_error(
+        self,
+        *,
+        err: Exception,
+        index: int,
+        is_last_attempt: bool,
+        profile: ModelProfile,
+        usage_limits: UsageLimits,
+        agent_id: str,
+        run_recorder: RunDiagnosticsRecorder,
+        errors: list[BaseException],
+    ) -> None:
+        """Handle a model profile attempt failure with fallback logic."""
+        if _auth_status_code(err) is None:
+            _clear_runtime_auth_failure(self.hass, self.entry, profile)
+        if is_last_attempt or not _should_fallback(err):
+            failure = _classify_run_failure(err, usage_limits=usage_limits)
+            if not _async_create_runtime_auth_issue(
+                self.hass, self.entry, profile, err, failure.user_message
+            ):
+                _clear_runtime_auth_failure(self.hass, self.entry, profile)
+            self._record_agent_run_failure(
+                err,
+                agent_id,
+                model_profile=profile.title,
+                failure=failure,
+            )
+            run_recorder.record(
+                phase="failure",
+                event="run_failed",
+                data={
+                    "error": err,
+                    "failure": failure,
+                    "model_profile": profile.title,
+                },
+            )
+            self._store_run_diagnostics(
+                run_recorder,
+                status="failed",
+                summary={
+                    "error": err,
+                    "failure": failure,
+                    "model_profile": profile.title,
+                },
+            )
+            raise _AgentRunFailed(failure) from err
+        errors.append(err)
+        failure = _classify_run_failure(err, usage_limits=usage_limits)
+        run_recorder.record(
+            phase="attempt",
+            event="model_profile_attempt_failed_retrying",
+            data={
+                "error": err,
+                "failure": failure,
+                "model_profile": profile.title,
+            },
+        )
+        _LOGGER.warning(
+            'Model profile "%s" failed with retryable %s; trying fallback: %s',
+            profile.title,
+            failure.error_type,
+            failure.log_message,
+        )
 
     async def _async_run_agent(
         self,
@@ -583,7 +650,7 @@ class PydanticAIBaseLLMEntity:
         agent_id: str,
         structured_output_tool_names: set[str],
         run_recorder: RunDiagnosticsRecorder,
-    ) -> Any:
+    ) -> AgentRunResult[Any]:
         """Run one Agent attempt and stream live deltas into the HA ChatLog."""
         state = _StreamRunState()
         trace_recorder = _StreamTraceRecorder(
@@ -803,7 +870,7 @@ def device_identifier_for_subentry(
     )
 
 
-def _set_span_usage_attributes(span: Any, result: Any) -> None:
+def _set_span_usage_attributes(span: Span, result: AgentRunResult[Any]) -> None:
     """Copy aggregate Pydantic AI usage to the wrapper span without blocking runs."""
     try:
         usage_attributes = result.usage.opentelemetry_attributes()

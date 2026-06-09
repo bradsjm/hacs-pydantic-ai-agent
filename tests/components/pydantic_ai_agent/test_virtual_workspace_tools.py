@@ -3,7 +3,6 @@
 from typing import Any, cast
 
 import pytest
-
 from custom_components.pydantic_ai_agent.const import CONF_VIRTUAL_WORKSPACE_ENABLED
 from custom_components.pydantic_ai_agent.virtual_workspace import (
     virtual_workspace_enabled,

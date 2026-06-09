@@ -1,8 +1,8 @@
 """Map Pydantic AI messages to OpenAI-compatible Responses payloads."""
 
-from collections.abc import AsyncIterable, Sequence
 import base64
-from typing import Any
+from collections.abc import AsyncIterable, Sequence
+from typing import Any, assert_never
 
 from pydantic_ai.exceptions import UserError
 from pydantic_ai.messages import (
@@ -32,7 +32,6 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.tools import ToolDefinition
-from typing_extensions import assert_never
 
 from ..openai_compatible_client import omit
 
@@ -52,7 +51,7 @@ def map_tool_definition(
     return mapped
 
 
-def map_json_schema(output_object: Any, *, strict_supported: bool) -> dict[str, Any]:
+def map_json_schema(output_object: Any, *, strict_supported: bool) -> dict[str, Any]:  # noqa: ANN401
     """Map a native structured-output schema to Responses text.format."""
     mapped: dict[str, Any] = {
         "type": "json_schema",
@@ -228,7 +227,7 @@ def _map_user_prompt(model: Model[Any], part: UserPromptPart) -> dict[str, Any]:
     return {"role": "user", "content": content}
 
 
-def _map_content_item(model: Model[Any], item: Any) -> dict[str, Any] | None:
+def _map_content_item(model: Model[Any], item: Any) -> dict[str, Any] | None:  # noqa: ANN401
     """Map one multimodal user content item."""
     if isinstance(item, str | TextContent):
         text = item if isinstance(item, str) else item.content
@@ -266,7 +265,10 @@ def _map_binary_content(item: BinaryContent) -> dict[str, Any]:
         "application/yaml",
         "application/toml",
     }:
-        return {"type": "input_text", "text": item.data.decode("utf-8")}
+        return {
+            "type": "input_text",
+            "text": item.data.decode("utf-8", errors="replace"),
+        }
     if item.is_image:
         return {
             "type": "input_image",

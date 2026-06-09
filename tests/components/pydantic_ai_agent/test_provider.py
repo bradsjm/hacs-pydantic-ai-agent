@@ -2,25 +2,24 @@
 
 import httpx
 import pytest
-from homeassistant.const import CONF_API_KEY
-from homeassistant.core import HomeAssistant
-
 from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
     CONF_PROVIDER_HEADERS,
-)
-from custom_components.pydantic_ai_agent.provider import (
-    list_anthropic_model_names,
-    list_google_gemini_model_names,
-    normalise_base_url,
-    openai_compatible_completions_model_from_config,
-    openai_compatible_client_from_config,
-    openai_compatible_responses_model_from_config,
 )
 from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
     OpenAICompatibleChatModel,
     OpenAICompatibleResponsesModel,
 )
+from custom_components.pydantic_ai_agent.provider import (
+    list_anthropic_model_names,
+    list_google_gemini_model_names,
+    normalise_base_url,
+    openai_compatible_client_from_config,
+    openai_compatible_completions_model_from_config,
+    openai_compatible_responses_model_from_config,
+)
+from homeassistant.const import CONF_API_KEY
+from homeassistant.core import HomeAssistant
 
 
 def test_normalise_base_url_strips_trailing_slash_and_preserves_empty() -> None:

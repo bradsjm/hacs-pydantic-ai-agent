@@ -1,7 +1,7 @@
 """Templated chat-template keyword argument helpers."""
 
-from collections.abc import Mapping
 import json
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.core import HomeAssistant

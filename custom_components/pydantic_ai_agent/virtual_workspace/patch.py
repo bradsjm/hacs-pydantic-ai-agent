@@ -57,32 +57,34 @@ def _parse_patch(patch: str) -> list[_PatchOperation]:
     operations: list[_PatchOperation] = []
     current: _PatchOperation | None = None
     for line in lines[1:-1]:
-        if line.startswith(_ADD):
-            current = _append_operation(operations, "add", line.removeprefix(_ADD))
-            continue
-        if line.startswith(_UPDATE):
-            current = _append_operation(
-                operations, "update", line.removeprefix(_UPDATE)
-            )
-            continue
-        if line.startswith(_DELETE):
-            current = _append_operation(
-                operations, "delete", line.removeprefix(_DELETE)
-            )
-            continue
-        if line.startswith(_MOVE):
-            if current is None or current.kind != "update" or current.lines:
-                raise PatchApplyError(
-                    "Move to must immediately follow an update header"
-                )
-            current.move_to = line.removeprefix(_MOVE)
-            continue
-        if current is None:
-            raise PatchApplyError("patch content must follow a file header")
-        current.lines.append(line)
+        current = _process_patch_line(line, current, operations)
     if not operations:
         raise PatchApplyError("patch does not contain file operations")
     return operations
+
+
+def _process_patch_line(
+    line: str,
+    current: _PatchOperation | None,
+    operations: list[_PatchOperation],
+) -> _PatchOperation | None:
+    if line.startswith(_ADD):
+        return _append_operation(operations, "add", line.removeprefix(_ADD))
+    if line.startswith(_UPDATE):
+        return _append_operation(operations, "update", line.removeprefix(_UPDATE))
+    if line.startswith(_DELETE):
+        return _append_operation(operations, "delete", line.removeprefix(_DELETE))
+    if line.startswith(_MOVE):
+        if current is None or current.kind != "update" or current.lines:
+            raise PatchApplyError(
+                "Move to must immediately follow an update header"
+            )
+        current.move_to = line.removeprefix(_MOVE)
+        return current
+    if current is None:
+        raise PatchApplyError("patch content must follow a file header")
+    current.lines.append(line)
+    return current
 
 
 def _append_operation(

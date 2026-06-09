@@ -7,6 +7,7 @@ import httpx
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.httpx_client import get_async_client
+from pydantic_ai.models import Model
 
 from .const import (
     CONF_BASE_URL,
@@ -14,12 +15,12 @@ from .const import (
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
 )
-from .openai_compatible_client import AsyncOpenAICompatible
 from .openai_compatible_adapter import (
     OpenAICompatibleChatModel,
     OpenAICompatibleProvider,
     OpenAICompatibleResponsesModel,
 )
+from .openai_compatible_client import AsyncOpenAICompatible
 
 
 def normalise_base_url(value: object) -> str | None:
@@ -82,7 +83,7 @@ def anthropic_model(
     base_url: str | None,
     headers: dict[str, str] | None = None,
     model_name: str,
-) -> Any:
+) -> Model:
     """Build a Pydantic AI Anthropic model."""
     from anthropic import AsyncAnthropic
     from pydantic_ai.models.anthropic import AnthropicModel
@@ -107,7 +108,7 @@ def google_gemini_model(
     base_url: str | None,
     headers: dict[str, str] | None = None,
     model_name: str,
-) -> Any:
+) -> Model:
     """Build a Pydantic AI Google Gemini model."""
     from google.genai import Client
     from google.genai.types import HttpOptions
@@ -139,7 +140,7 @@ def openai_compatible_completions_model(
     base_url: str | None,
     headers: dict[str, str] | None = None,
     model_name: str,
-) -> Any:
+) -> Model:
     """Build a Pydantic AI OpenAI-compatible Completions model."""
     provider = OpenAICompatibleProvider(
         api_key=api_key,
@@ -160,7 +161,7 @@ def openai_compatible_responses_model(
     base_url: str | None,
     headers: dict[str, str] | None = None,
     model_name: str,
-) -> Any:
+) -> Model:
     """Build a Pydantic AI OpenAI-compatible Responses model."""
     provider = OpenAICompatibleProvider(
         api_key=api_key,
@@ -225,6 +226,23 @@ async def list_anthropic_model_names(
     return sorted(set(model_names))
 
 
+def _extract_google_model_name(item: object) -> str | None:
+    """Extract model name from a Gemini item that supports generateContent."""
+    if not isinstance(item, Mapping):
+        return None
+    methods = item.get("supportedGenerationMethods", [])
+    if "generateContent" not in methods:
+        return None
+    model_id = item.get("baseModelId")
+    if not isinstance(model_id, str) or not model_id:
+        name = item.get("name")
+        if isinstance(name, str):
+            model_id = name.removeprefix("models/")
+    if isinstance(model_id, str) and model_id:
+        return model_id
+    return None
+
+
 async def list_google_gemini_model_names(
     hass: HomeAssistant,
     data: Mapping[str, Any],
@@ -256,18 +274,9 @@ async def list_google_gemini_model_names(
         if not isinstance(payload, Mapping):
             return []
         for item in payload.get("models", []):
-            if not isinstance(item, Mapping):
-                continue
-            methods = item.get("supportedGenerationMethods", [])
-            if "generateContent" not in methods:
-                continue
-            model_id = item.get("baseModelId")
-            if not isinstance(model_id, str) or not model_id:
-                name = item.get("name")
-                if isinstance(name, str):
-                    model_id = name.removeprefix("models/")
-            if isinstance(model_id, str) and model_id:
-                model_names.append(model_id)
+            name = _extract_google_model_name(item)
+            if name is not None:
+                model_names.append(name)
         page_token = payload.get("nextPageToken")
         if not isinstance(page_token, str) or not page_token:
             break
@@ -290,7 +299,7 @@ def openai_compatible_client_from_config(
 
 def openai_compatible_completions_model_from_config(
     hass: HomeAssistant, data: Mapping[str, Any], model_name: str
-) -> Any:
+) -> Model:
     """Build a Pydantic AI Completions model from config entry data."""
     headers = data.get(CONF_PROVIDER_HEADERS)
     return openai_compatible_completions_model(
@@ -304,7 +313,7 @@ def openai_compatible_completions_model_from_config(
 
 def openai_compatible_responses_model_from_config(
     hass: HomeAssistant, data: Mapping[str, Any], model_name: str
-) -> Any:
+) -> Model:
     """Build a Pydantic AI Responses model from config entry data."""
     headers = data.get(CONF_PROVIDER_HEADERS)
     return openai_compatible_responses_model(

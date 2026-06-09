@@ -1,7 +1,5 @@
 """OpenAI-compatible client exceptions."""
 
-from typing import Any
-
 import httpx
 
 
@@ -31,7 +29,7 @@ class APIStatusError(OpenAICompatibleError):
         *,
         message: str,
         response: httpx.Response,
-        body: Any,
+        body: object,
     ) -> None:
         """Initialize the status error."""
         super().__init__(message)

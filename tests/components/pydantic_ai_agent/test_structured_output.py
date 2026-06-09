@@ -1,8 +1,6 @@
 """Test structured output helper behavior."""
 
 import pytest
-from pydantic_ai import ToolDefinition
-
 from custom_components.pydantic_ai_agent.const import (
     DEFAULT_OUTPUT_MODE,
     OUTPUT_MODE_NATIVE,
@@ -15,6 +13,7 @@ from custom_components.pydantic_ai_agent.structured_output import (
     structured_output_mode,
     structured_output_name,
 )
+from pydantic_ai import ToolDefinition
 
 
 def test_structured_output_mode_defaults_unknown_values() -> None:

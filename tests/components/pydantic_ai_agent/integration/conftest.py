@@ -5,14 +5,12 @@ from urllib.parse import urlparse
 
 import pytest
 import pytest_socket
-
-from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component import plugins as ha_pytest_plugins
-
 from custom_components.pydantic_ai_agent.provider_validation import (
     ProviderValidationError,
     async_probe_model,
 )
+from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component import plugins as ha_pytest_plugins
 
 from .config import (
     PROVIDER_INTEGRATION_TIMEOUT,
@@ -58,7 +56,7 @@ def enable_provider_network(
     monkeypatch.setattr(
         socket,
         "getaddrinfo",
-        getattr(ha_pytest_plugins, "_real_getaddrinfo"),
+        ha_pytest_plugins._real_getaddrinfo,
     )
     host = urlparse(provider_config.base_url).hostname
     if host is None:

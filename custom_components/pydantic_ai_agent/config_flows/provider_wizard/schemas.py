@@ -44,7 +44,6 @@ from .const import (
 from .filters import ModelFilterOptions, filtered_models
 from .types import CatalogModelOption, CatalogProviderOption, CompactCatalog
 
-
 _PROVIDER_EXTRA_BODY_MODES = {
     PROVIDER_ANTHROPIC,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,

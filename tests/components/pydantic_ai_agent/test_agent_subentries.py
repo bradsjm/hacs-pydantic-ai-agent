@@ -3,9 +3,6 @@
 import logging
 
 from _pytest.logging import LogCaptureFixture
-from homeassistant.config_entries import ConfigSubentry
-from homeassistant.exceptions import HomeAssistantError
-
 from custom_components.pydantic_ai_agent import PydanticAIAgentConfigEntry
 from custom_components.pydantic_ai_agent.agent_subentries import (
     iter_valid_agent_subentries,
@@ -14,6 +11,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_FALLBACK_MODEL_REFS,
     SUBENTRY_TYPE_CONVERSATION,
 )
+from homeassistant.config_entries import ConfigSubentry
+from homeassistant.exceptions import HomeAssistantError
 
 from .support.builders import conversation_subentry_data, workspace_entry
 

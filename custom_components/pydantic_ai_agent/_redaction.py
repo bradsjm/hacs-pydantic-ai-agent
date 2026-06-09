@@ -1,7 +1,6 @@
 """Shared redaction helpers for Pydantic AI Agent."""
 
 from collections.abc import Iterable
-from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_API_KEY, CONF_PASSWORD
@@ -42,12 +41,11 @@ TO_REDACT = frozenset(
     }
 )
 
-
 def redaction_keys(extra_sensitive_keys: Iterable[object] = ()) -> frozenset[object]:
     """Return the integration-wide set of sensitive mapping keys."""
     return TO_REDACT | frozenset(extra_sensitive_keys)
 
 
-def redact_data(data: Any, extra_sensitive_keys: Iterable[object] = ()) -> Any:
+def redact_data[T](data: T, extra_sensitive_keys: Iterable[object] = ()) -> T:
     """Return a copy of data with sensitive values redacted by Home Assistant."""
     return async_redact_data(data, redaction_keys(extra_sensitive_keys))

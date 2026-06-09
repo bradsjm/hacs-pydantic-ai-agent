@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 import voluptuous_serialize
+from homeassistant.helpers import config_validation as cv
 
 
 def schema_default(data_schema: vol.Schema | None, field: str) -> Any:

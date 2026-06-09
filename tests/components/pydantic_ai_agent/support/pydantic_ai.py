@@ -1,8 +1,8 @@
 """Reusable Pydantic AI test doubles."""
 
+import json
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
-import json
 from typing import Any, cast
 
 from pydantic_ai import (
@@ -47,7 +47,7 @@ class TextStream:
         """Initialize the event stream."""
         self._events = iter(events)
 
-    def __aiter__(self) -> "TextStream":
+    def __aiter__(self) -> TextStream:
         """Return the async iterator."""
         return self
 
@@ -143,7 +143,7 @@ class Agent:
         self.run_calls = 0
         self.run_stream_events_calls = 0
 
-    async def __aenter__(self) -> "Agent":
+    async def __aenter__(self) -> Agent:
         """Enter the agent context."""
         return self
 
@@ -203,7 +203,7 @@ class ConversationAgent:
         self.run_calls = 0
         self.run_stream_events_calls = 0
 
-    async def __aenter__(self) -> "ConversationAgent":
+    async def __aenter__(self) -> ConversationAgent:
         """Enter the agent context."""
         return self
 

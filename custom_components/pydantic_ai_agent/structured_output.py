@@ -1,9 +1,11 @@
 """Structured output helpers for Pydantic AI model and Agent requests."""
 
-from collections.abc import Iterable
 import hashlib
+from collections.abc import Callable, Iterable
 from typing import Any, cast
 
+from homeassistant.helpers import llm
+from homeassistant.util import slugify
 from pydantic_ai import ToolDefinition
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.output import (
@@ -15,9 +17,6 @@ from pydantic_ai.output import (
     ToolOutput,
 )
 from voluptuous_openapi import convert
-
-from homeassistant.helpers import llm
-from homeassistant.util import slugify
 
 from .const import (
     DEFAULT_OUTPUT_MODE,
@@ -68,7 +67,7 @@ def _bounded_output_name(value: str) -> str:
 
 def structured_output_json_schema(
     structure: object,
-    custom_serializer: Any,
+    custom_serializer: Callable[..., Any] | None,
 ) -> dict[str, Any]:
     """Return a JSON schema for a Home Assistant AI task structure."""
     return convert(structure, custom_serializer=custom_serializer)
@@ -118,7 +117,9 @@ def output_tool_names(output_mode: str, output_name: str) -> set[str]:
     return set()
 
 
-def default_structure_serializer(api_instance: llm.APIInstance | None) -> Any:
+def default_structure_serializer(
+    api_instance: llm.APIInstance | None,
+) -> Callable[..., Any] | None:
     """Return the serializer Home Assistant uses for AI task schemas."""
     return api_instance.custom_serializer if api_instance else llm.selector_serializer
 

@@ -3,6 +3,9 @@
 from collections.abc import Iterable, Sequence
 from typing import Any
 
+from homeassistant.components import conversation
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai import (
     BinaryContent,
     ModelMessage,
@@ -15,10 +18,6 @@ from pydantic_ai import (
     ToolReturnPart,
     UserPromptPart,
 )
-
-from homeassistant.components import conversation
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 
 _SUPPORTED_ATTACHMENT_MIME_TYPES = {"application/pdf"}
 _SUPPORTED_ATTACHMENT_MIME_PREFIXES = ("image/",)

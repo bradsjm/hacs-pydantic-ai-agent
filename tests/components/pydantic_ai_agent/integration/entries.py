@@ -2,12 +2,6 @@
 
 import asyncio
 
-from homeassistant import config_entries
-from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
-from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
@@ -31,15 +25,20 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
+from homeassistant import config_entries
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
+from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .config import (
     MODEL_PROFILE_ID,
     MODEL_REF,
     PROVIDER_ID,
     PROVIDER_INTEGRATION_TIMEOUT,
-    ProviderIntegrationConfig,
     UNSELECTED_WORKSPACE_SKILL_ID,
     WORKSPACE_SKILL_ID,
+    ProviderIntegrationConfig,
 )
 
 
@@ -76,6 +75,7 @@ def ai_task_subentry(output_mode: str | None = None) -> dict[str, object]:
         "title": "Integration AI Task",
         "unique_id": None,
     }
+
 
 def skill_subentry() -> dict[str, object]:
     """Return a native workspace Skill subentry."""

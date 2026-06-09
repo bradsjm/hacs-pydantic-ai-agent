@@ -4,16 +4,15 @@ from dataclasses import dataclass
 from typing import cast
 
 import httpx
+from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
     UnexpectedModelBehavior,
-    UserError,
     UsageLimitExceeded,
+    UserError,
 )
 from pydantic_ai.usage import UsageLimits
-
-from homeassistant.exceptions import HomeAssistantError
 
 from .error_classification import has_connection_failure
 
@@ -86,54 +85,12 @@ def _classify_run_failure(
     )
 
     if isinstance(cause, UsageLimitExceeded):
-        request_limit = usage_limits.request_limit if usage_limits is not None else None
-        if request_limit is not None:
-            message = (
-                f"{prefix}the model exceeded the configured maximum of "
-                f"{request_limit} iterations. Increase the run max "
-                "iterations or fix repeated tool failures."
-            )
-        else:
-            message = (
-                f"{prefix}the model exceeded a configured usage limit. "
-                "Increase the relevant run limit or reduce the request."
-            )
-        return _AgentRunFailure(
-            error_type=error_type,
-            user_message=message + context,
-            log_message=message + context,
-            partial_response=partial_response,
-            tool_problem=tool_problem,
+        return _build_usage_limit_failure(
+            cause, error_type, prefix, context, usage_limits,
+            partial_response, tool_problem,
         )
 
-    if isinstance(cause, ModelHTTPError):
-        message = _http_failure_message(cause, prefix)
-    elif isinstance(cause, ModelAPIError):
-        if _has_connection_failure(cause):
-            message = (
-                f"{prefix}the provider connection failed for model "
-                f'"{cause.model_name}". Check network connectivity and provider '
-                "availability."
-            )
-        else:
-            message = _format_api_error(cause)
-    elif isinstance(cause, UnexpectedModelBehavior):
-        message = (
-            f"{prefix}the provider returned an unexpected response. Check "
-            "model/provider compatibility or try a different model profile."
-        )
-    elif isinstance(cause, TimeoutError | httpx.TimeoutException):
-        message = (
-            f"{prefix}the provider request timed out. Check network "
-            "connectivity or try again later."
-        )
-    elif isinstance(cause, NotImplementedError | UserError):
-        message = f"Invalid provider configuration: {cause}"
-    elif isinstance(cause, HomeAssistantError):
-        message = str(cause)
-    else:
-        message = str(cause) or error_type
-
+    message = _build_failure_message(cause, prefix, error_type)
     return _AgentRunFailure(
         error_type=error_type,
         user_message=message + context,
@@ -141,6 +98,70 @@ def _classify_run_failure(
         partial_response=partial_response,
         tool_problem=tool_problem,
     )
+
+
+def _build_usage_limit_failure(
+    cause: UsageLimitExceeded,
+    error_type: str,
+    prefix: str,
+    context: str,
+    usage_limits: UsageLimits | None,
+    partial_response: bool,
+    tool_problem: _ToolProblem | None,
+) -> _AgentRunFailure:
+    """Build a failure result for usage limit exceeded errors."""
+    request_limit = usage_limits.request_limit if usage_limits is not None else None
+    if request_limit is not None:
+        message = (
+            f"{prefix}the model exceeded the configured maximum of "
+            f"{request_limit} iterations. Increase the run max "
+            "iterations or fix repeated tool failures."
+        )
+    else:
+        message = (
+            f"{prefix}the model exceeded a configured usage limit. "
+            "Increase the relevant run limit or reduce the request."
+        )
+    return _AgentRunFailure(
+        error_type=error_type,
+        user_message=message + context,
+        log_message=message + context,
+        partial_response=partial_response,
+        tool_problem=tool_problem,
+    )
+
+
+def _build_failure_message(
+    cause: BaseException,
+    prefix: str,
+    error_type: str,
+) -> str:
+    """Build a user-facing failure message from the root exception cause."""
+    if isinstance(cause, ModelHTTPError):
+        return _http_failure_message(cause, prefix)
+    if isinstance(cause, ModelAPIError):
+        if _has_connection_failure(cause):
+            return (
+                f"{prefix}the provider connection failed for model "
+                f'"{cause.model_name}". Check network connectivity and provider '
+                "availability."
+            )
+        return _format_api_error(cause)
+    if isinstance(cause, UnexpectedModelBehavior):
+        return (
+            f"{prefix}the provider returned an unexpected response. Check "
+            "model/provider compatibility or try a different model profile."
+        )
+    if isinstance(cause, TimeoutError | httpx.TimeoutException):
+        return (
+            f"{prefix}the provider request timed out. Check network "
+            "connectivity or try again later."
+        )
+    if isinstance(cause, NotImplementedError | UserError):
+        return f"Invalid provider configuration: {cause}"
+    if isinstance(cause, HomeAssistantError):
+        return str(cause)
+    return str(cause) or error_type
 
 
 def _http_failure_message(err: ModelHTTPError, prefix: str) -> str:

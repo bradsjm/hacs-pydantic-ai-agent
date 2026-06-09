@@ -3,10 +3,6 @@
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_NAME
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.pydantic_ai_agent import (
     ProviderRuntimeData,
     WorkspaceRuntimeData,
@@ -41,6 +37,9 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
+from homeassistant import config_entries
+from homeassistant.const import CONF_API_KEY, CONF_NAME
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
 def model_profile_data(

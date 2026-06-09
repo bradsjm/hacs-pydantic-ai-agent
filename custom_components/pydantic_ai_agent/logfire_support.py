@@ -1,17 +1,16 @@
 """Logfire support for Pydantic AI Agent."""
 
 import asyncio
+import logging
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-import logging
 from typing import Any
-
-from pydantic_ai import Agent
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigSubentry
 from homeassistant.const import CONF_LLM_HASS_API, __version__
 from homeassistant.core import HomeAssistant
+from pydantic_ai import Agent
 
 from .const import (
     CONF_LOGFIRE_INCLUDE_CONTENT,

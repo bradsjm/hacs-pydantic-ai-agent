@@ -1,9 +1,9 @@
 """SSE streaming support for OpenAI-compatible APIs."""
 
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import AbstractAsyncContextManager
 import json
-from typing import Any, Generic, Self, TypeVar, cast
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import AbstractAsyncContextManager
+from typing import Self, TypeVar, cast
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -12,7 +12,7 @@ from ._exceptions import APIConnectionError, APIStatusError, APITimeoutError
 from ._types import ChatCompletionChunk, ResponseStreamEvent
 
 
-async def response_body(response: httpx.Response) -> Any:
+async def response_body(response: httpx.Response) -> Mapping[str, object] | str:
     """Return JSON response body when possible, otherwise text."""
     await response.aread()
     try:
@@ -27,19 +27,22 @@ async def raise_for_status(response: httpx.Response) -> None:
         return
     body = await response_body(response)
     message = f"Error code: {response.status_code}"
-    if isinstance(body, dict) and isinstance(error := body.get("error"), dict):
-        if error_message := error.get("message"):
-            message = str(error_message)
+    if (
+        isinstance(body, dict)
+        and isinstance(error := body.get("error"), dict)
+        and (error_message := error.get("message"))
+    ):
+        message = str(error_message)
     raise APIStatusError(message=message, response=response, body=body)
 
 
 _EventT = TypeVar("_EventT", bound=BaseModel)
 
 
-class _SSEStream(Generic[_EventT]):
+class _SSEStream[EventT: BaseModel]:
     """Async iterator over typed Server-Sent Events."""
 
-    _event_type: type[_EventT]
+    _event_type: type[EventT]
 
     def __init__(
         self, response_context: AbstractAsyncContextManager[httpx.Response]
@@ -68,7 +71,7 @@ class _SSEStream(Generic[_EventT]):
         """Return the async stream iterator."""
         return self
 
-    async def __anext__(self) -> _EventT:
+    async def __anext__(self) -> EventT:
         """Return the next parsed SSE event."""
         await self._ensure_entered()
         assert self._lines is not None

@@ -7,26 +7,37 @@ from typing import Any, cast
 from unittest.mock import patch
 
 import voluptuous_serialize
-from homeassistant import config_entries
-from homeassistant.config_entries import ConfigSubentry
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.storage import Store
-from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.pydantic_ai_agent import (
     ProviderRuntimeData,
     WorkspaceRuntimeData,
     async_migrate_entry,
     async_remove_entry,
 )
-from custom_components.pydantic_ai_agent.conversation import (
-    PydanticAIConversationEntity,
+from custom_components.pydantic_ai_agent.config_flows.common import (
+    _SECTION_HASS_CONTROL,
+)
+from custom_components.pydantic_ai_agent.config_flows.provider_wizard import (
+    catalog_cache,
+    models_dev,
+)
+from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
+    CATALOG_RETRY_PROVIDER_ID,
+    CONF_CATALOG_PROVIDER_ID,
+    CONF_DRIVER,
+    CONF_PROVIDER_ID,
+    CONF_SELECTED_MODEL_IDS,
+    CUSTOM_PROVIDER_ID,
+)
+from custom_components.pydantic_ai_agent.config_flows.provider_wizard.schemas import (
+    SECTION_ADVANCED_MODELS,
+)
+from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types import (
+    CatalogModelOption,
+    CatalogProviderOption,
+    CompactCatalog,
+)
+from custom_components.pydantic_ai_agent.config_flows.workspace_flow import (
+    PydanticAIAgentConfigFlow,
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
@@ -51,45 +62,41 @@ from custom_components.pydantic_ai_agent.const import (
     DEFAULT_OUTPUT_MODE,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-    SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_AI_TASK,
+    SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
-from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
-    CATALOG_RETRY_PROVIDER_ID,
-    CONF_CATALOG_PROVIDER_ID,
-    CONF_DRIVER,
-    CONF_PROVIDER_ID,
-    CONF_SELECTED_MODEL_IDS,
-    CUSTOM_PROVIDER_ID,
+from custom_components.pydantic_ai_agent.conversation import (
+    PydanticAIConversationEntity,
 )
-from custom_components.pydantic_ai_agent.config_flows.provider_wizard.models_dev import (
-    CatalogLoadError,
-)
-from custom_components.pydantic_ai_agent.config_flows.provider_wizard.catalog_cache import (
-    catalog_manager,
-)
-from custom_components.pydantic_ai_agent.config_flows.provider_wizard.schemas import (
-    SECTION_ADVANCED_MODELS,
-)
-from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types import (
-    CatalogModelOption,
-    CatalogProviderOption,
-    CompactCatalog,
-)
-from custom_components.pydantic_ai_agent.config_flows.common import (
-    _SECTION_HASS_CONTROL,
-)
-from custom_components.pydantic_ai_agent.config_flows.workspace_flow import (
-    PydanticAIAgentConfigFlow,
-)
+from homeassistant import config_entries
+from homeassistant.config_entries import ConfigSubentry
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.schemas import (
     schema_default as _schema_default,
+)
+from tests.components.pydantic_ai_agent.support.schemas import (
     schema_key_names as _schema_key_names,
+)
+from tests.components.pydantic_ai_agent.support.schemas import (
     schema_select_options as _schema_select_options,
+)
+from tests.components.pydantic_ai_agent.support.schemas import (
     section_default as _section_default,
+)
+from tests.components.pydantic_ai_agent.support.schemas import (
     section_field_suggested_value as _section_field_suggested_value,
+)
+from tests.components.pydantic_ai_agent.support.schemas import (
     serialized_section_default as _serialized_section_default,
 )
 
@@ -248,7 +255,7 @@ async def test_remove_entry_removes_removed_memory_store(
 
 def _cache_provider_catalog(hass: HomeAssistant, catalog: CompactCatalog) -> None:
     """Cache a provider wizard catalog for flow tests."""
-    manager = catalog_manager(hass)
+    manager = catalog_cache.catalog_manager(hass)
     now = dt_util.utcnow()
     manager.catalog = catalog
     manager.loaded_at = now
@@ -499,7 +506,7 @@ async def test_provider_edit_connection_preserves_model_management_data(
     provider_config[CONF_DISCOVERED_MODELS_CACHE_KEY] = json.dumps(
         {
             CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-            CONF_API_KEY: sha256("sk-test".encode()).hexdigest(),
+            CONF_API_KEY: sha256(b"sk-test").hexdigest(),
             CONF_BASE_URL: None,
             CONF_PROVIDER_HEADERS: {},
         },
@@ -1405,7 +1412,7 @@ async def test_provider_catalog_failure_shows_fallback_picker(
     entry = await _loaded_workspace_entry(hass)
 
     async def fake_fetch_catalog(_hass: HomeAssistant) -> CompactCatalog:
-        raise CatalogLoadError("failed")
+        raise models_dev.CatalogLoadError("failed")
 
     with patch(
         "custom_components.pydantic_ai_agent.config_flows.provider_wizard.catalog_cache.async_fetch_catalog",
@@ -1447,7 +1454,7 @@ async def test_provider_catalog_failure_can_retry_catalog_load(
         nonlocal calls
         calls += 1
         if calls == 1:
-            raise CatalogLoadError("failed")
+            raise models_dev.CatalogLoadError("failed")
         return catalog
 
     with patch(

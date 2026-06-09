@@ -1,10 +1,11 @@
 """Pydantic AI Agent integration."""
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-import logging
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME, Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
@@ -12,7 +13,6 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
-import voluptuous as vol
 
 from .const import (
     CONF_BASE_URL,
@@ -30,7 +30,7 @@ from .const import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_PROVIDER,
 )
-from .provider_validation import ProviderValidationError, async_probe_model
+from .debug_services import async_setup_services as async_setup_debug_services
 from .logfire_support import (
     async_configure_logfire,
     async_release_logfire,
@@ -38,23 +38,24 @@ from .logfire_support import (
     logfire_include_content,
 )
 from .metrics import MetricsStore
-from .model_settings import (
-    normalise_applied_model_settings,
-    validation_probe_model_settings,
-)
 from .model_profiles import (
+    ResolvedModelProfile,
     enabled_model_profile_refs,
     parse_model_profile_ref,
     provider_model_profiles,
     provider_subentries,
     resolve_model_profile,
-    ResolvedModelProfile,
 )
+from .model_settings import (
+    normalise_applied_model_settings,
+    validation_probe_model_settings,
+)
+from .provider_validation import ProviderValidationError, async_probe_model
 from .repairs import (
-    async_delete_logfire_token_conflict_issue,
     async_create_model_validation_issue,
     async_create_provider_auth_issue,
     async_delete_entry_repair_issues,
+    async_delete_logfire_token_conflict_issue,
     async_delete_model_validation_issue,
     async_delete_provider_auth_issue,
     async_delete_stale_model_validation_issues,
@@ -63,7 +64,6 @@ from .repairs import (
     provider_validation_is_auth_failure,
 )
 from .structured_output import structured_output_mode
-from .debug_services import async_setup_services as async_setup_debug_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -187,6 +187,7 @@ async def async_setup_entry(
     """Build workspace runtime data, then set up entity platforms."""
     provider_runtimes = _provider_runtimes(entry)
     model_profiles = _resolved_model_profiles(entry, provider_runtimes)
+    forwarded_platforms = False
     await async_configure_logfire(hass, entry)
     try:
         entry.runtime_data = WorkspaceRuntimeData(
@@ -203,6 +204,7 @@ async def async_setup_entry(
         )
         _remove_stale_subentry_registry_entries(hass, entry)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        forwarded_platforms = True
         await async_configure_logfire(hass, entry)
         entry.runtime_data = replace(
             entry.runtime_data,
@@ -210,7 +212,11 @@ async def async_setup_entry(
             logfire_include_content=logfire_include_content(hass, entry),
         )
     except BaseException:
-        await async_release_logfire(hass, entry)
+        try:
+            if forwarded_platforms:
+                await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+        finally:
+            await async_release_logfire(hass, entry)
         raise
     entry.async_on_unload(entry.add_update_listener(async_update_entry))
     return True
@@ -502,12 +508,12 @@ def _agent_run_diagnostics_section(
     }
 
 
-def _mapping(value: Any) -> Mapping[str, Any]:
+def _mapping(value: object) -> Mapping[str, Any]:
     """Return value when it is a mapping, otherwise an empty mapping."""
     return value if isinstance(value, Mapping) else {}
 
 
-def _timeline_events(timeline: Any) -> tuple[list[dict[str, Any]], int, int]:
+def _timeline_events(timeline: object) -> tuple[list[dict[str, Any]], int, int]:
     """Return available timeline events, total count, and omitted middle count."""
     if isinstance(timeline, list):
         events = [event for event in timeline if isinstance(event, dict)]
@@ -524,7 +530,7 @@ def _timeline_events(timeline: Any) -> tuple[list[dict[str, Any]], int, int]:
     return [], 0, 0
 
 
-def _timeline_page(timeline: Any, *, offset: int, limit: int) -> dict[str, Any]:
+def _timeline_page(timeline: object, *, offset: int, limit: int) -> dict[str, Any]:
     """Return a compact page over the bounded available timeline."""
     events, total_count, omitted_middle_count = _timeline_events(timeline)
     page = events[offset : offset + limit] if limit else []
@@ -539,7 +545,7 @@ def _timeline_page(timeline: Any, *, offset: int, limit: int) -> dict[str, Any]:
     }
 
 
-def _tool_definitions(timeline: Any) -> list[Any]:
+def _tool_definitions(timeline: object) -> list[Any]:
     """Return model-visible HA tool definitions from the latest run."""
     events, _total_count, _omitted_middle_count = _timeline_events(timeline)
     for event in events:
@@ -551,7 +557,7 @@ def _tool_definitions(timeline: Any) -> list[Any]:
     return []
 
 
-def _tool_calls(timeline: Any, *, offset: int, limit: int) -> dict[str, Any]:
+def _tool_calls(timeline: object, *, offset: int, limit: int) -> dict[str, Any]:
     """Return a page of HA LLM API tool call diagnostics."""
     events, _total_count, _omitted_middle_count = _timeline_events(timeline)
     calls = [event for event in events if event.get("phase") == "tool_call"]
@@ -632,103 +638,136 @@ def _configured_subentry_models(
     models: list[_ConfiguredModelProbe] = []
     seen: dict[tuple[str, str, str, str | None], int] = {}
 
-    def add_model(
-        provider_subentry: ConfigSubentry,
-        subentry_id: str,
-        profile_ref: str,
-        subentry_data: Mapping[str, Any],
-        output_mode: str | None,
-    ) -> None:
-        provider_subentry_id, profile_id = parse_model_profile_ref(profile_ref)
-        if provider_subentry.subentry_id != provider_subentry_id:
-            return
-        profile = provider_model_profiles(provider_subentry).get(profile_id)
-        if profile is None or not bool(profile.get(CONF_ENABLED, False)):
-            return
-        model = profile.get(CONF_MODEL)
-        if not isinstance(model, str) or not model:
-            return
-        settings = profile.get(CONF_MODEL_SETTINGS)
-        model_settings = validation_probe_model_settings(
-            settings if isinstance(settings, Mapping) else {}, subentry_data
-        )
-        dedupe_key = (
-            provider_subentry.subentry_id,
-            model,
-            normalise_applied_model_settings(model_settings),
-            output_mode,
-        )
-        failure_key = f"{subentry_id}:{profile_ref}"
-        # Several subentries can target the same model/settings pair, so probe
-        # each unique runtime capability once during setup.
-        if dedupe_key in seen:
-            index = seen[dedupe_key]
-            probe = models[index]
-            models[index] = replace(
-                probe,
-                failure_keys=(*probe.failure_keys, failure_key),
-            )
-            return
-        seen[dedupe_key] = len(models)
-        models.append(
-            _ConfiguredModelProbe(
-                provider_subentry=provider_subentry,
-                issue_profile_id=profile_ref,
-                failure_keys=(failure_key,),
-                model=model,
-                model_settings=model_settings,
-                output_mode=output_mode,
-            )
-        )
-
     for subentry in entry.subentries.values():
         if subentry.subentry_type not in (
             SUBENTRY_TYPE_CONVERSATION,
             SUBENTRY_TYPE_AI_TASK,
         ):
             continue
-        primary_ref = subentry.data.get(CONF_PRIMARY_MODEL_REF)
-        if not isinstance(primary_ref, str) or not primary_ref:
+        if not isinstance(
+            primary_ref := subentry.data.get(CONF_PRIMARY_MODEL_REF),
+            str,
+        ) or not primary_ref:
             _LOGGER.warning(
                 "Skipping legacy %s subentry without model profile: %s",
                 subentry.subentry_type,
                 subentry.subentry_id,
             )
             continue
-        fallback_refs = subentry.data.get(CONF_FALLBACK_MODEL_REFS, [])
-        if isinstance(fallback_refs, str) or not isinstance(fallback_refs, list):
-            fallback_refs = []
-        output_mode = (
-            structured_output_mode(subentry.data.get(CONF_OUTPUT_MODE))
-            if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
-            else None
-        )
-        refs = [primary_ref, *[ref for ref in fallback_refs if isinstance(ref, str)]]
-        for ref in refs:
-            try:
-                provider_subentry_id, _profile_id = parse_model_profile_ref(ref)
-            except HomeAssistantError:
-                _LOGGER.warning(
-                    "Skipping malformed model profile reference %s for subentry %s",
-                    ref,
-                    subentry.subentry_id,
-                )
-                continue
-            provider_subentry = entry.subentries.get(provider_subentry_id)
-            if (
-                provider_subentry is None
-                or provider_subentry.subentry_type != SUBENTRY_TYPE_PROVIDER
-            ):
-                _LOGGER.warning(
-                    "Skipping stale model profile reference %s for subentry %s",
-                    ref,
-                    subentry.subentry_id,
-                )
-                continue
-            add_model(
-                provider_subentry, subentry.subentry_id, ref, subentry.data, output_mode
-            )
+        _append_configured_subentry_models(entry, subentry, primary_ref, models, seen)
     return models
+
+
+def _append_configured_subentry_models(
+    entry: PydanticAIAgentConfigEntry,
+    subentry: ConfigSubentry,
+    primary_ref: str,
+    models: list[_ConfiguredModelProbe],
+    seen: dict[tuple[str, str, str, str | None], int],
+) -> None:
+    """Append provider probes referenced by one conversation or AI task subentry."""
+    fallback_refs = subentry.data.get(CONF_FALLBACK_MODEL_REFS, [])
+    if isinstance(fallback_refs, str) or not isinstance(fallback_refs, list):
+        fallback_refs = []
+    output_mode = (
+        structured_output_mode(subentry.data.get(CONF_OUTPUT_MODE))
+        if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
+        else None
+    )
+    refs = [primary_ref, *[ref for ref in fallback_refs if isinstance(ref, str)]]
+    for ref in refs:
+        provider_subentry = _provider_subentry_for_profile_ref(entry, subentry, ref)
+        if provider_subentry is None:
+            continue
+        _add_configured_model_probe(
+            provider_subentry,
+            subentry.subentry_id,
+            ref,
+            subentry.data,
+            output_mode,
+            models,
+            seen,
+        )
+
+
+def _provider_subentry_for_profile_ref(
+    entry: PydanticAIAgentConfigEntry,
+    subentry: ConfigSubentry,
+    profile_ref: str,
+) -> ConfigSubentry | None:
+    """Return the provider subentry referenced by one stored model profile ref."""
+    try:
+        provider_subentry_id, _profile_id = parse_model_profile_ref(profile_ref)
+    except HomeAssistantError:
+        _LOGGER.warning(
+            "Skipping malformed model profile reference %s for subentry %s",
+            profile_ref,
+            subentry.subentry_id,
+        )
+        return None
+    provider_subentry = entry.subentries.get(provider_subentry_id)
+    if (
+        provider_subentry is None
+        or provider_subentry.subentry_type != SUBENTRY_TYPE_PROVIDER
+    ):
+        _LOGGER.warning(
+            "Skipping stale model profile reference %s for subentry %s",
+            profile_ref,
+            subentry.subentry_id,
+        )
+        return None
+    return provider_subentry
+
+
+def _add_configured_model_probe(
+    provider_subentry: ConfigSubentry,
+    subentry_id: str,
+    profile_ref: str,
+    subentry_data: Mapping[str, Any],
+    output_mode: str | None,
+    models: list[_ConfiguredModelProbe],
+    seen: dict[tuple[str, str, str, str | None], int],
+) -> None:
+    """Add or merge one unique configured-model probe for setup validation."""
+    provider_subentry_id, profile_id = parse_model_profile_ref(profile_ref)
+    if provider_subentry.subentry_id != provider_subentry_id:
+        return
+    profile = provider_model_profiles(provider_subentry).get(profile_id)
+    if profile is None or not bool(profile.get(CONF_ENABLED, False)):
+        return
+    model = profile.get(CONF_MODEL)
+    if not isinstance(model, str) or not model:
+        return
+    settings = profile.get(CONF_MODEL_SETTINGS)
+    model_settings = validation_probe_model_settings(
+        settings if isinstance(settings, Mapping) else {}, subentry_data
+    )
+    dedupe_key = (
+        provider_subentry.subentry_id,
+        model,
+        normalise_applied_model_settings(model_settings),
+        output_mode,
+    )
+    failure_key = f"{subentry_id}:{profile_ref}"
+    if dedupe_key in seen:
+        index = seen[dedupe_key]
+        probe = models[index]
+        models[index] = replace(
+            probe,
+            failure_keys=(*probe.failure_keys, failure_key),
+        )
+        return
+    seen[dedupe_key] = len(models)
+    models.append(
+        _ConfiguredModelProbe(
+            provider_subentry=provider_subentry,
+            issue_profile_id=profile_ref,
+            failure_keys=(failure_key,),
+            model=model,
+            model_settings=model_settings,
+            output_mode=output_mode,
+        )
+    )
 
 
 def _repair_issue_model_settings(

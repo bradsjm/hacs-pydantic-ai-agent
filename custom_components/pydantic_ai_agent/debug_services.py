@@ -4,11 +4,11 @@ from collections.abc import Mapping
 from dataclasses import asdict
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
-import voluptuous as vol
 
 from .const import (
     CONF_AGENT_NAME,
@@ -333,7 +333,7 @@ def _skill_subentry_status(subentry: ConfigSubentry) -> dict[str, Any]:
     }
 
 
-def _runtime_status(runtime_data: Any) -> dict[str, Any] | None:
+def _runtime_status(runtime_data: object) -> dict[str, Any] | None:
     """Return compact runtime status for a loaded workspace."""
     if runtime_data is None:
         return None
@@ -451,7 +451,7 @@ def _list_count(value: object) -> int:
     return len(value) if isinstance(value, list) else 0
 
 
-def _jsonable_dataclass(value: Any) -> dict[str, Any] | None:
+def _jsonable_dataclass(value: object) -> dict[str, Any] | None:
     """Return a JSON-safe dict for simple dataclass records."""
     if isinstance(value, AgentRunMetrics):
         return asdict(value)

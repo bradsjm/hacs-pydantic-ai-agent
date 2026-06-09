@@ -20,7 +20,6 @@ from ...const import (
 from .const import CONF_CATALOG_PROVIDER_ID
 from .types import CatalogModelOption, CatalogProviderOption
 
-
 type ProfileIdFactory = Callable[[], str]
 
 

@@ -1,14 +1,16 @@
 """Workspace-local provider-owned model profile helpers."""
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai.capabilities import Thinking
+from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings as PydanticAIModelSettings
 
 from .const import (
@@ -19,8 +21,8 @@ from .const import (
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_PROVIDER_EXTRA_BODY,
     CONF_PRIMARY_MODEL_REF,
+    CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_MODE,
     CONF_THINKING,
     CONF_TIMEOUT,
@@ -283,10 +285,10 @@ def model_profile_display_name(profile: Mapping[str, Any]) -> str:
 
 
 def chat_model_for_profile(
-    hass: Any,
+    hass: HomeAssistant,
     entry: PydanticAIAgentConfigEntry,
     profile: ResolvedModelProfile,
-) -> Any:
+) -> Model:
     """Build the configured Pydantic AI model for one profile."""
     provider_runtime = entry.runtime_data.providers.get(profile.provider_subentry_id)
     if provider_runtime is None:

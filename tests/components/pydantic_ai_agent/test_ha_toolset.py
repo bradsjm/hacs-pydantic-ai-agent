@@ -4,15 +4,13 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
-from pydantic_ai import RunContext
 import voluptuous as vol
-
-from homeassistant.helpers import llm
-
 from custom_components.pydantic_ai_agent.ha_toolset import (
     tool_definitions_from_llm_api,
     tools_from_llm_api,
 )
+from homeassistant.helpers import llm
+from pydantic_ai import RunContext
 
 
 class _TestTool(llm.Tool):

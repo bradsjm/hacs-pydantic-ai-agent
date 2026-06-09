@@ -1,8 +1,8 @@
 """Shared helpers for subentry-backed agent platforms."""
 
+import logging
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigSubentry
@@ -25,11 +25,11 @@ class ValidAgentSubentry[T]:
 
 
 def iter_valid_agent_subentries[T](
-    entry: "PydanticAIAgentConfigEntry",
+    entry: PydanticAIAgentConfigEntry,
     *,
     subentry_type: str,
     platform: str,
-    resolver: Callable[["PydanticAIAgentConfigEntry", ConfigSubentry], T],
+    resolver: Callable[[PydanticAIAgentConfigEntry, ConfigSubentry], T],
 ) -> Iterator[ValidAgentSubentry[T]]:
     """Yield subentries whose model references resolve for one platform."""
     for subentry in entry.subentries.values():
@@ -58,7 +58,7 @@ def iter_valid_agent_subentries[T](
 
 
 def _log_invalid_agent_subentry(
-    entry: "PydanticAIAgentConfigEntry",
+    entry: PydanticAIAgentConfigEntry,
     subentry: ConfigSubentry,
     platform: str,
     err: HomeAssistantError,

@@ -1,5 +1,8 @@
 """Test Pydantic AI context management helpers."""
 
+from custom_components.pydantic_ai_agent.context_management import (
+    SlidingWindowContextCapability,
+)
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -9,10 +12,6 @@ from pydantic_ai.messages import (
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
-)
-
-from custom_components.pydantic_ai_agent.context_management import (
-    SlidingWindowContextCapability,
 )
 
 

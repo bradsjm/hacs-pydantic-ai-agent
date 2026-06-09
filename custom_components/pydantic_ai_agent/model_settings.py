@@ -1,8 +1,8 @@
 """Model setting normalization helpers."""
 
-from collections.abc import Mapping
 import json
-from typing import AbstractSet, Any, Final
+from collections.abc import Mapping, Set
+from typing import Any, Final
 
 from .chat_template_kwargs import reject_chat_template_kwargs_in_extra_body
 from .const import (
@@ -33,7 +33,7 @@ PROBE_STRIPPED_MODEL_SETTING_KEYS: Final[frozenset[str]] = frozenset(
 
 
 def strip_model_settings(
-    settings: Mapping[str, Any] | None, keys: AbstractSet[str]
+    settings: Mapping[str, Any] | None, keys: Set[str]
 ) -> dict[str, Any]:
     """Return model settings with integration-owned keys removed."""
     stripped = dict(settings or {})

@@ -4,10 +4,8 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 import voluptuous as vol
-
-from homeassistant.helpers.typing import VolDictType
-
 from homeassistant.helpers.selector import SelectOptionDict
+from homeassistant.helpers.typing import VolDictType
 
 
 def _sorted_select_options(

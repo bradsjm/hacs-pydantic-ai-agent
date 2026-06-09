@@ -1,8 +1,7 @@
 """Test shared redaction helpers for Pydantic AI Agent."""
 
-from homeassistant.components.diagnostics import REDACTED
-
 from custom_components.pydantic_ai_agent._redaction import redact_data
+from homeassistant.components.diagnostics import REDACTED
 
 
 def test_redact_data_uses_explicit_shared_sensitive_keys() -> None:

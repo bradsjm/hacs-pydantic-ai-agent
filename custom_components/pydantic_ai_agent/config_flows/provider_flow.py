@@ -1,11 +1,20 @@
 """Config subentry flow handlers for Pydantic AI Agent."""
 
-# ruff: noqa: F403, F405
-
 from __future__ import annotations
 
+from typing import Literal
+
+from ..generated_titles import DEFAULT_SERVICE_TITLE_SUFFIX, generated_default_title
 from .common import (
-    Any,
+    _ADVANCED_MODEL_SETTING_KEYS,
+    _CONF_MODEL_PROFILE_ID,
+    _LOGGER,
+    _MAIN_MODEL_SETTING_KEYS,
+    _MODEL_PRICING_CACHE_READ,
+    _MODEL_PRICING_INPUT,
+    _MODEL_PRICING_OUTPUT,
+    _SECTION_ADVANCED_MODEL_SETTINGS,
+    _SECTION_MODEL_PRICING,
     CONF_API_KEY,
     CONF_BASE_URL,
     CONF_CUSTOM_MODEL_NAMES,
@@ -23,36 +32,32 @@ from .common import (
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_GOOGLE_GEMINI,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+    SOURCE_USER,
+    Any,
     ConfigEntryState,
     ConfigSubentry,
     ConfigSubentryFlow,
     Mapping,
     ProviderValidationError,
-    SOURCE_USER,
     SubentryFlowResult,
-    _ADVANCED_MODEL_SETTING_KEYS,
-    _CONF_MODEL_PROFILE_ID,
-    _LOGGER,
-    _MAIN_MODEL_SETTING_KEYS,
-    _MODEL_PRICING_CACHE_READ,
-    _MODEL_PRICING_INPUT,
-    _MODEL_PRICING_OUTPUT,
-    _SECTION_ADVANCED_MODEL_SETTINGS,
-    _SECTION_MODEL_PRICING,
     _cached_provider_model_names,
     _clear_provider_model_cache,
     _format_custom_model_names,
     _format_key_value_json_setting,
-    _merge_model_settings,
     _merge_model_pricing,
-    _normalise_base_url,
+    _merge_model_settings,
+    _model_pricing_from_options,
     _model_profile_data_from_user_input,
     _model_profile_edit_schema,
     _model_settings_from_options,
-    _model_pricing_from_options,
+    _normalise_base_url,
     _normalise_provider_data,
-    _parse_model_settings,
     _parse_model_pricing,
+    _parse_model_settings,
     _provider_custom_model_names,
     _provider_data_matches,
     _provider_profile_options,
@@ -60,18 +65,14 @@ from .common import (
     _provider_schema,
     _provider_validation_placeholders,
     _referenced_provider_profile_ids,
-    _store_model_settings,
     _store_model_pricing,
+    _store_model_settings,
     _store_provider_model_cache,
     _validate_provider_data,
     async_list_provider_model_names,
     model_profile_display_name,
     provider_model_profiles,
     provider_subentries,
-    PROVIDER_ANTHROPIC,
-    PROVIDER_GOOGLE_GEMINI,
-    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     vol,
 )
 from .helpers import _flatten_section_data
@@ -92,6 +93,7 @@ from .provider_wizard.flow import (
 )
 from .provider_wizard.models_dev import CatalogLoadError
 from .provider_wizard.schemas import (
+    SECTION_ADVANCED_MODELS,
     connection_schema,
     driver_selection_schema,
     filters_from_user_input,
@@ -99,14 +101,12 @@ from .provider_wizard.schemas import (
     model_selection_schema,
     needs_model_filter_step,
     provider_selection_schema,
-    SECTION_ADVANCED_MODELS,
 )
 from .provider_wizard.types import (
     CatalogModelOption,
     CatalogProviderOption,
     CompactCatalog,
 )
-from ..generated_titles import DEFAULT_SERVICE_TITLE_SUFFIX, generated_default_title
 
 _DISCOVERED_PROVIDER_ID = "__provider_discovery__"
 
@@ -742,13 +742,12 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         data = dict(self._get_reconfigure_subentry().data)
         self._profile_flow_data = data
         self._profile_filters = ModelFilterOptions()
-        if CONF_PROVIDER_METADATA not in data:
-            if discovered_models := await self._async_discovered_models_for_manage(
-                data
-            ):
-                self._profile_filter_provider = None
-                self._profile_models = discovered_models
-                return None
+        if CONF_PROVIDER_METADATA not in data and (
+            discovered_models := await self._async_discovered_models_for_manage(data)
+        ):
+            self._profile_filter_provider = None
+            self._profile_models = discovered_models
+            return None
         provider, models = await self._async_catalog_models_for_provider_data(data)
         if provider is None or not models:
             if discovered_models := await self._async_discovered_models_for_manage(
@@ -932,33 +931,22 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         synced_profiles: dict[str, dict[str, Any]] = {}
         selected_existing_model_ids: set[str] = set()
         for profile_id, profile in profiles.items():
-            if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+            sync_result = self._sync_existing_model_profile(
+                profile_id,
+                profile,
+                selected_model_ids=selected_model_ids,
+                managed_model_ids=managed_model_ids,
+                managed_models_by_id=managed_models_by_id,
+                referenced_profile_ids=referenced_profile_ids,
+                custom_model_ids=custom_model_ids,
+            )
+            if sync_result == "model_profile_in_use":
+                return "model_profile_in_use"
+            if sync_result is None:
                 continue
-            model_name = profile.get(CONF_MODEL)
-            if not isinstance(model_name, str) or not model_name.strip():
-                continue
-            profile_data = dict(profile)
-            profile_data["id"] = profile_id
-            if CONF_MODEL_PRICING not in profile_data:
-                model_pricing = _catalog_model_pricing(
-                    managed_models_by_id.get(model_name)
-                )
-                if model_pricing:
-                    profile_data[CONF_MODEL_PRICING] = model_pricing
-            if model_name in selected_model_ids:
-                profile_data[CONF_ENABLED] = True
+            profile_data, model_name, selected_existing = sync_result
+            if selected_existing:
                 selected_existing_model_ids.add(model_name)
-            elif model_name in managed_model_ids:
-                if profile_id in referenced_profile_ids:
-                    return "model_profile_in_use"
-                profile_data[CONF_ENABLED] = False
-            elif (
-                not bool(profile.get(CONF_DISCOVERED, False))
-                and model_name not in custom_model_ids
-            ):
-                if profile_id in referenced_profile_ids:
-                    return "model_profile_in_use"
-                continue
             synced_profiles[profile_id] = profile_data
         missing_selected_models = tuple(
             model
@@ -976,6 +964,43 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                 profile[CONF_DISCOVERED] = False
         synced_profiles.update(missing_profiles)
         data[CONF_MODEL_PROFILES] = synced_profiles
+        return None
+
+    def _sync_existing_model_profile(
+        self,
+        profile_id: object,
+        profile: object,
+        *,
+        selected_model_ids: set[str],
+        managed_model_ids: set[str],
+        managed_models_by_id: dict[str, CatalogModelOption],
+        referenced_profile_ids: set[str],
+        custom_model_ids: set[str],
+    ) -> tuple[dict[str, Any], str, bool] | Literal["model_profile_in_use"] | None:
+        """Return synced existing profile data or an in-use error marker."""
+        if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+            return None
+        model_name = profile.get(CONF_MODEL)
+        if not isinstance(model_name, str) or not model_name.strip():
+            return None
+        profile_data = dict(profile)
+        profile_data["id"] = profile_id
+        if CONF_MODEL_PRICING not in profile_data:
+            model_pricing = _catalog_model_pricing(managed_models_by_id.get(model_name))
+            if model_pricing:
+                profile_data[CONF_MODEL_PRICING] = model_pricing
+        if model_name in selected_model_ids:
+            profile_data[CONF_ENABLED] = True
+            return profile_data, model_name, True
+        if model_name in managed_model_ids:
+            if profile_id in referenced_profile_ids:
+                return "model_profile_in_use"
+            profile_data[CONF_ENABLED] = False
+            return profile_data, model_name, False
+        if bool(profile.get(CONF_DISCOVERED, False)) or model_name in custom_model_ids:
+            return profile_data, model_name, False
+        if profile_id in referenced_profile_ids:
+            return "model_profile_in_use"
         return None
 
     def _profile_needs_model_filter_step(self) -> bool:

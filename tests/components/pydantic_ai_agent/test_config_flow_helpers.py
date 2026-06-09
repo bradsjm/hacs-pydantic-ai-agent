@@ -5,52 +5,40 @@ import socket
 import ssl
 
 import httpx
-from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 import pytest
 import voluptuous as vol
-
-from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
-from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.pydantic_ai_agent.config_flows.common import (
+    _MODEL_PRICING_CACHE_READ,
+    _MODEL_PRICING_INPUT,
+    _MODEL_PRICING_OUTPUT,
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
     _SECTION_RUN_SETTINGS,
     _SECTION_SKILLS,
-    _MODEL_PRICING_CACHE_READ,
-    _MODEL_PRICING_INPUT,
-    _MODEL_PRICING_OUTPUT,
     RunSettingsValidationError,
     _ai_task_data_from_user_input,
     _ai_task_data_schema,
     _conversation_data_from_user_input,
     _conversation_schema,
     _fallback_model_profile_select_options,
-    _model_settings_from_options,
-    _model_settings_schema,
     _model_pricing_from_options,
     _model_profile_select_options,
+    _model_settings_from_options,
+    _model_settings_schema,
     _normalise_provider_model_profiles,
-    _provider_profile_options,
-    _parse_model_settings,
     _parse_model_pricing,
+    _parse_model_settings,
     _provider_data_matches,
     _provider_model_profiles_for_discovery_mode,
+    _provider_profile_options,
     _validate_provider_data,
 )
 from custom_components.pydantic_ai_agent.config_flows.skill_helpers import (
     SkillDataValidationError,
     _selected_skill_error,
-    _skill_select_options,
     _skill_data_from_user_input,
-)
-from custom_components.pydantic_ai_agent.provider_validation import (
-    ProviderValidationError,
-    _format_api_error,
-    _map_http_error,
+    _skill_select_options,
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
@@ -81,14 +69,24 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
-    DOMAIN,
     DEFAULT_OUTPUT_MODE,
+    DOMAIN,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
+from custom_components.pydantic_ai_agent.provider_validation import (
+    ProviderValidationError,
+    _format_api_error,
+    _map_http_error,
+)
+from homeassistant import config_entries
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
+from homeassistant.core import HomeAssistant
+from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     provider_subentry_data,
     skill_subentry_data,
@@ -917,11 +915,15 @@ def test_conversation_and_ai_task_schemas_hide_private_mcp_selection(
     entry = workspace_entry((provider_subentry_data(), skill_subentry_data()))
 
     conversation_fields = _section_key_names(
-        _conversation_schema(hass, {CONF_PRIMARY_MODEL_REF: "provider-1:profile-1"}, entry),
+        _conversation_schema(
+            hass, {CONF_PRIMARY_MODEL_REF: "provider-1:profile-1"}, entry
+        ),
         _SECTION_EXTERNAL_TOOLS,
     )
     ai_task_fields = _section_key_names(
-        _ai_task_data_schema(hass, {CONF_PRIMARY_MODEL_REF: "provider-1:profile-1"}, entry),
+        _ai_task_data_schema(
+            hass, {CONF_PRIMARY_MODEL_REF: "provider-1:profile-1"}, entry
+        ),
         _SECTION_EXTERNAL_TOOLS,
     )
 

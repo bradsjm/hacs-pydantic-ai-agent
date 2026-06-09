@@ -10,7 +10,7 @@ import logging
 import re
 import socket
 import ssl
-from collections.abc import AsyncIterable, Iterable, Mapping
+from collections.abc import AsyncIterable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from hashlib import sha256
@@ -145,6 +145,11 @@ from ..model_profiles import (
     provider_model_profiles,
     provider_subentries,
 )
+from ..model_settings import (
+    MODEL_SETTING_EXTRA_BODY,
+    REMOVED_PROFILE_MODEL_SETTING_KEYS,
+    RUN_SETTING_KEYS,
+)
 from ..provider import (
     anthropic_model,
     google_gemini_model,
@@ -162,22 +167,17 @@ from ..provider_validation import (
     async_list_provider_model_names,
     async_probe_model,
 )
-from ..model_settings import (
-    MODEL_SETTING_EXTRA_BODY,
-    REMOVED_PROFILE_MODEL_SETTING_KEYS,
-    RUN_SETTING_KEYS,
-)
-from .helpers import _flatten_section_data, _section_schema_key, _sorted_select_options
-from .skill_helpers import (
-    _append_skill_schema_fields,
-    _normalise_skill_selection,
-)
 from ..structured_output import (
     structured_model_request_parameters,
     structured_output_name,
 )
 from ..structured_output import (
     structured_output_mode as normalise_structured_output_mode,
+)
+from .helpers import _flatten_section_data, _section_schema_key, _sorted_select_options
+from .skill_helpers import (
+    _append_skill_schema_fields,
+    _normalise_skill_selection,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -674,54 +674,95 @@ def _normalise_provider_model_profiles(
     existing_by_model: dict[str, tuple[str, dict[str, Any]]] = {}
     kept_profiles: dict[str, dict[str, Any]] = {}
     for profile_id, profile in existing_profiles.items():
-        if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+        profile_info = _classify_existing_provider_profile(
+            profile_id,
+            profile,
+            model_set=model_set,
+            keep_profile_ids=keep_profile_ids,
+        )
+        if profile_info is None:
             continue
-        model_name = profile.get(CONF_MODEL)
-        if not isinstance(model_name, str) or not model_name.strip():
-            continue
-        profile = dict(profile)
-        if model_name in model_set:
-            existing_by_model.setdefault(model_name, (profile_id, profile))
-            continue
-        if profile_id in keep_profile_ids:
-            model_settings = profile.get(CONF_MODEL_SETTINGS)
-            if isinstance(model_settings, Mapping):
-                profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(profile)
-            else:
-                profile.pop(CONF_MODEL_SETTINGS, None)
-            profile[CONF_ENABLED] = bool(profile.get(CONF_ENABLED, False))
+        model_name, existing_profile_id, profile, keep_profile = profile_info
+        if keep_profile:
             kept_profiles[profile_id] = profile
+            continue
+        existing_by_model.setdefault(model_name, (existing_profile_id, profile))
 
     profiles: dict[str, dict[str, Any]] = dict(kept_profiles)
     for model_name in model_names:
         existing_profile = existing_by_model.get(model_name)
         if existing_profile is None:
             profile_id = uuid4().hex
-            profile = {
-                "id": profile_id,
-                CONF_NAME: model_labels.get(model_name, model_name),
-                CONF_MODEL: model_name,
-                CONF_ENABLED: False,
-                CONF_DISCOVERED: model_name in discovered_set,
-            }
+            profile = _normalised_provider_profile(
+                profile={},
+                profile_id=profile_id,
+                model_name=model_name,
+                label=model_labels.get(model_name, model_name),
+                discovered=model_name in discovered_set,
+            )
         else:
             profile_id, profile = existing_profile
-            profile = dict(profile)
-        profile["id"] = profile_id
-        profile_name = str(profile.get(CONF_NAME) or "").strip()
-        if not profile_name or profile_name == model_name:
-            profile_name = model_labels.get(model_name, model_name)
-        profile[CONF_NAME] = profile_name
-        profile[CONF_MODEL] = model_name
-        profile[CONF_ENABLED] = bool(profile.get(CONF_ENABLED, False))
-        profile[CONF_DISCOVERED] = model_name in discovered_set
-        model_settings = profile.get(CONF_MODEL_SETTINGS)
-        if isinstance(model_settings, Mapping):
-            profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(profile)
-        else:
-            profile.pop(CONF_MODEL_SETTINGS, None)
+            profile = _normalised_provider_profile(
+                profile=profile,
+                profile_id=profile_id,
+                model_name=model_name,
+                label=model_labels.get(model_name, model_name),
+                discovered=model_name in discovered_set,
+            )
         profiles[profile_id] = profile
     return profiles
+
+
+def _classify_existing_provider_profile(
+    profile_id: object,
+    profile: object,
+    *,
+    model_set: set[str],
+    keep_profile_ids: set[str],
+) -> tuple[str, str, dict[str, Any], bool] | None:
+    """Return normalized existing profile data and whether it should be kept."""
+    if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+        return None
+    model_name = profile.get(CONF_MODEL)
+    if not isinstance(model_name, str) or not model_name.strip():
+        return None
+    normalized_profile = _normalised_provider_profile(
+        profile=profile,
+        profile_id=profile_id,
+        model_name=model_name,
+        label=model_name,
+        discovered=bool(profile.get(CONF_DISCOVERED, False)),
+    )
+    keep_profile = model_name not in model_set and profile_id in keep_profile_ids
+    return model_name, profile_id, normalized_profile, keep_profile
+
+
+def _normalised_provider_profile(
+    *,
+    profile: Mapping[str, Any],
+    profile_id: str,
+    model_name: str,
+    label: str,
+    discovered: bool,
+) -> dict[str, Any]:
+    """Return one provider model profile in normalized stored form."""
+    normalized_profile = dict(profile)
+    normalized_profile["id"] = profile_id
+    profile_name = str(normalized_profile.get(CONF_NAME) or "").strip()
+    if not profile_name or profile_name == model_name:
+        profile_name = label
+    normalized_profile[CONF_NAME] = profile_name
+    normalized_profile[CONF_MODEL] = model_name
+    normalized_profile[CONF_ENABLED] = bool(normalized_profile.get(CONF_ENABLED, False))
+    normalized_profile[CONF_DISCOVERED] = discovered
+    model_settings = normalized_profile.get(CONF_MODEL_SETTINGS)
+    if isinstance(model_settings, Mapping):
+        normalized_profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(
+            normalized_profile
+        )
+    else:
+        normalized_profile.pop(CONF_MODEL_SETTINGS, None)
+    return normalized_profile
 
 
 def _provider_model_profiles_for_discovery_mode(
@@ -869,7 +910,8 @@ def _validate_provider_data(hass: HomeAssistant, data: Mapping[str, Any]) -> Non
     if data.get(CONF_PROVIDER_EXTRA_BODY) and not _provider_extra_body_supported(data):
         raise ProviderValidationError(
             "provider_extra_body_unsupported",
-            "Extra body is only supported by OpenAI-compatible and Anthropic provider modes.",
+            "Extra body is only supported by OpenAI-compatible and Anthropic "
+            "provider modes.",
         )
 
 
@@ -1106,9 +1148,9 @@ def _model_profile_schema(
     )
     if model_names:
         model_options = sorted(set(model_names))
-        if existing_model := options.get(CONF_MODEL):
-            if isinstance(existing_model, str) and existing_model not in model_options:
-                model_options.insert(0, existing_model)
+        existing_model = options.get(CONF_MODEL)
+        if isinstance(existing_model, str) and existing_model not in model_options:
+            model_options.insert(0, existing_model)
         default_model = options.get(CONF_MODEL, model_options[0])
         model_schema_key = vol.Required(CONF_MODEL, default=default_model)
         model_selector = SelectSelector(
@@ -1486,35 +1528,46 @@ def _parse_model_settings(
             cleared.add(key)
             continue
         try:
-            if key in {_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_MAX_ITERATIONS}:
-                settings[key] = _parse_positive_int_setting(value)
-            elif key == _MODEL_SETTING_SEED:
-                settings[key] = _parse_non_negative_int_setting(value)
-            elif key == _MODEL_SETTING_TIMEOUT:
-                settings[key] = _parse_positive_float_setting(value)
-            elif key in {
-                _MODEL_SETTING_TEMPERATURE,
-                _MODEL_SETTING_TOP_P,
-                _MODEL_SETTING_PRESENCE_PENALTY,
-                _MODEL_SETTING_FREQUENCY_PENALTY,
-            }:
-                settings[key] = _parse_float_setting(value)
-            elif key == _MODEL_SETTING_PARALLEL_TOOL_CALLS:
-                if not isinstance(value, bool):
-                    raise ValueError
-                settings[key] = value
-            elif key == _MODEL_SETTING_EXTRA_BODY:
-                settings[key] = _parse_key_value_json_setting(value)
-            elif key == _MODEL_SETTING_CHAT_TEMPLATE_KWARGS:
-                if parsed := _parse_chat_template_kwargs(hass, value):
-                    settings[key] = parsed
-                else:
-                    cleared.add(key)
-            elif key == _MODEL_SETTING_THINKING:
-                settings[key] = _parse_thinking_setting(value)
+            parsed_value, clear_key = _parse_model_setting_value(hass, key, value)
         except ValueError as err:
             errors[key] = _model_setting_error(key, str(err))
+        else:
+            if clear_key:
+                cleared.add(key)
+            elif parsed_value is not None:
+                settings[key] = parsed_value
     return settings, errors, cleared
+
+
+def _parse_model_setting_value(
+    hass: HomeAssistant, key: str, value: object
+) -> tuple[object | None, bool]:
+    """Return one parsed model setting and whether it should be cleared."""
+    if key in {_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_MAX_ITERATIONS}:
+        return _parse_positive_int_setting(value), False
+    if key == _MODEL_SETTING_SEED:
+        return _parse_non_negative_int_setting(value), False
+    if key == _MODEL_SETTING_TIMEOUT:
+        return _parse_positive_float_setting(value), False
+    if key in {
+        _MODEL_SETTING_TEMPERATURE,
+        _MODEL_SETTING_TOP_P,
+        _MODEL_SETTING_PRESENCE_PENALTY,
+        _MODEL_SETTING_FREQUENCY_PENALTY,
+    }:
+        return _parse_float_setting(value), False
+    if key == _MODEL_SETTING_PARALLEL_TOOL_CALLS:
+        if not isinstance(value, bool):
+            raise ValueError
+        return value, False
+    if key == _MODEL_SETTING_EXTRA_BODY:
+        return _parse_key_value_json_setting(value), False
+    if key == _MODEL_SETTING_CHAT_TEMPLATE_KWARGS:
+        parsed = _parse_chat_template_kwargs(hass, value)
+        return parsed or None, not parsed
+    if key == _MODEL_SETTING_THINKING:
+        return _parse_thinking_setting(value), False
+    return None, False
 
 
 def _normalise_run_settings(data: dict[str, Any]) -> None:
@@ -1523,32 +1576,30 @@ def _normalise_run_settings(data: dict[str, Any]) -> None:
     for key in (_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_THINKING):
         if _is_blank(data.get(key)):
             data.pop(key, None)
-    for key in (_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_MAX_ITERATIONS):
-        if key in data:
-            try:
-                data[key] = _parse_positive_int_setting(data[key])
-            except ValueError as err:
-                errors[key] = _model_setting_error(key, str(err))
-    if _MODEL_SETTING_TIMEOUT in data:
-        try:
-            data[_MODEL_SETTING_TIMEOUT] = _parse_positive_float_setting(
-                data[_MODEL_SETTING_TIMEOUT]
-            )
-        except ValueError as err:
-            errors[_MODEL_SETTING_TIMEOUT] = _model_setting_error(
-                _MODEL_SETTING_TIMEOUT, str(err)
-            )
-    if _MODEL_SETTING_THINKING in data:
-        try:
-            data[_MODEL_SETTING_THINKING] = _parse_thinking_setting(
-                data[_MODEL_SETTING_THINKING]
-            )
-        except ValueError as err:
-            errors[_MODEL_SETTING_THINKING] = _model_setting_error(
-                _MODEL_SETTING_THINKING, str(err)
-            )
+    for key, parser in (
+        (_MODEL_SETTING_MAX_TOKENS, _parse_positive_int_setting),
+        (_MODEL_SETTING_MAX_ITERATIONS, _parse_positive_int_setting),
+        (_MODEL_SETTING_TIMEOUT, _parse_positive_float_setting),
+        (_MODEL_SETTING_THINKING, _parse_thinking_setting),
+    ):
+        _normalise_run_setting(data, key, parser, errors)
     if errors:
         raise RunSettingsValidationError(errors)
+
+
+def _normalise_run_setting(
+    data: dict[str, Any],
+    key: str,
+    parser: Callable[[object], object],
+    errors: dict[str, str],
+) -> None:
+    """Parse one stored run setting in place and collect validation errors."""
+    if key not in data:
+        return
+    try:
+        data[key] = parser(data[key])
+    except ValueError as err:
+        errors[key] = _model_setting_error(key, str(err))
 
 
 def _parse_model_pricing(

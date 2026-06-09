@@ -10,6 +10,55 @@ from typing import Any, cast
 
 import httpx
 import pytest
+from custom_components.pydantic_ai_agent.ai_task import PydanticAIAgentAITaskEntity
+from custom_components.pydantic_ai_agent.binary_sensor import (
+    BINARY_SENSOR_DESCRIPTIONS,
+    CONFIG_BINARY_SENSOR_DESCRIPTIONS,
+)
+from custom_components.pydantic_ai_agent.const import (
+    CONF_CHAT_TEMPLATE_KWARG_KEY,
+    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_CHAT_TEMPLATE_KWARGS,
+    CONF_FALLBACK_MODEL_REFS,
+    CONF_PROVIDER_EXTRA_BODY,
+    DOMAIN,
+    PROVIDER_GOOGLE_GEMINI,
+)
+from custom_components.pydantic_ai_agent.conversation import (
+    PydanticAIConversationEntity,
+)
+from custom_components.pydantic_ai_agent.entity import (
+    PydanticAIBaseLLMEntity,
+    _agent_events_to_chat_deltas,
+    _agent_messages_to_chat_deltas,
+    _classify_run_failure,
+    _clear_runtime_auth_failure,
+    _has_connection_failure,
+    _has_provider_auth_validation_failure,
+    _home_assistant_error,
+    _model_settings_with_chat_template_kwargs,
+    _model_settings_with_provider_extra_body,
+    _record_runtime_auth_failure,
+    _should_fallback,
+    _StreamRunState,
+)
+from custom_components.pydantic_ai_agent.metrics import (
+    MetricsStore,
+    record_run_failure,
+    record_run_success,
+)
+from custom_components.pydantic_ai_agent.model_profiles import ModelProfile
+from custom_components.pydantic_ai_agent.repairs import provider_auth_issue_id
+from custom_components.pydantic_ai_agent.sensor import (
+    CONFIG_SENSOR_DESCRIPTIONS,
+    SENSOR_DESCRIPTIONS,
+)
+from custom_components.pydantic_ai_agent.virtual_workspace.const import (
+    TOOL_RETURN_METADATA_SOURCE,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import issue_registry as ir
 from pydantic_ai import (
     AgentRunResultEvent,
     FunctionToolCallEvent,
@@ -34,54 +83,6 @@ from pydantic_ai.exceptions import (
 )
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import UsageLimits
-
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import issue_registry as ir
-
-from custom_components.pydantic_ai_agent.const import (
-    CONF_CHAT_TEMPLATE_KWARG_KEY,
-    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
-    CONF_CHAT_TEMPLATE_KWARGS,
-    CONF_FALLBACK_MODEL_REFS,
-    CONF_PROVIDER_EXTRA_BODY,
-    DOMAIN,
-    PROVIDER_GOOGLE_GEMINI,
-)
-from custom_components.pydantic_ai_agent.ai_task import PydanticAIAgentAITaskEntity
-from custom_components.pydantic_ai_agent.binary_sensor import (
-    BINARY_SENSOR_DESCRIPTIONS,
-    CONFIG_BINARY_SENSOR_DESCRIPTIONS,
-)
-from custom_components.pydantic_ai_agent.conversation import (
-    PydanticAIConversationEntity,
-)
-
-from custom_components.pydantic_ai_agent.entity import (
-    PydanticAIBaseLLMEntity,
-    _StreamRunState,
-    _agent_events_to_chat_deltas,
-    _agent_messages_to_chat_deltas,
-    _classify_run_failure,
-    _clear_runtime_auth_failure,
-    _has_connection_failure,
-    _has_provider_auth_validation_failure,
-    _home_assistant_error,
-    _model_settings_with_chat_template_kwargs,
-    _model_settings_with_provider_extra_body,
-    _record_runtime_auth_failure,
-    _should_fallback,
-)
-from custom_components.pydantic_ai_agent.metrics import (
-    MetricsStore,
-    record_run_failure,
-    record_run_success,
-)
-from custom_components.pydantic_ai_agent.model_profiles import ModelProfile
-from custom_components.pydantic_ai_agent.repairs import provider_auth_issue_id
-from custom_components.pydantic_ai_agent.virtual_workspace.const import (
-    TOOL_RETURN_METADATA_SOURCE,
-)
 from tests.components.pydantic_ai_agent.support.builders import (
     ai_task_subentry_data,
     conversation_subentry_data,
@@ -89,11 +90,6 @@ from tests.components.pydantic_ai_agent.support.builders import (
     provider_subentry_data,
     workspace_entry,
     workspace_runtime_data,
-)
-
-from custom_components.pydantic_ai_agent.sensor import (
-    CONFIG_SENSOR_DESCRIPTIONS,
-    SENSOR_DESCRIPTIONS,
 )
 
 
@@ -176,7 +172,9 @@ def test_agent_entities_unavailable_when_all_profiles_failed_validation() -> Non
     runtime_data = workspace_runtime_data(
         providers={"provider-1": provider_runtime_data(subentry_id="provider-1")}
     )
-    runtime_data.model_validation_failures[f"conversation-1:{profile_ref}"] = "invalid_auth"
+    runtime_data.model_validation_failures[f"conversation-1:{profile_ref}"] = (
+        "invalid_auth"
+    )
     entry.runtime_data = runtime_data
 
     entity = PydanticAIConversationEntity(

@@ -1,10 +1,5 @@
 """Test system health for Pydantic AI Agent."""
 
-from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_NAME
-from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.pydantic_ai_agent import (
     ProviderRuntimeData,
     WorkspaceRuntimeData,
@@ -29,6 +24,10 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_SKILL,
 )
 from custom_components.pydantic_ai_agent.system_health import system_health_info
+from homeassistant import config_entries
+from homeassistant.const import CONF_API_KEY, CONF_NAME
+from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
 async def test_system_health_reports_safe_workspace_aggregate_counts(

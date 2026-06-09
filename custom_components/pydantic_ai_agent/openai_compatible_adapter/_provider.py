@@ -76,7 +76,8 @@ class OpenAICompatibleProvider(Provider[AsyncOpenAICompatible]):
                 or http_client is not None
             ):
                 raise ValueError(
-                    "client cannot be combined with api_key, base_url, headers, or http_client"
+                    "client cannot be combined with api_key, base_url,"
+                    " headers, or http_client"
                 )
             self._client = client
             return

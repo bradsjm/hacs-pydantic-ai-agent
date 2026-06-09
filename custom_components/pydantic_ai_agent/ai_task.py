@@ -3,10 +3,11 @@
 import json
 
 import voluptuous as vol
-
 from homeassistant.components import ai_task, conversation
 from homeassistant.components.ai_task.const import (
     DEFAULT_SYSTEM_PROMPT,
+)
+from homeassistant.components.ai_task.const import (
     DOMAIN as AI_TASK_DOMAIN,
 )
 from homeassistant.config_entries import ConfigSubentry
@@ -143,6 +144,22 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                 record_success=task.structure is None,
             )
 
+        data = await self._async_finalize_structured_output(
+            outcome, task, chat_log
+        )
+
+        return ai_task.GenDataTaskResult(
+            conversation_id=chat_log.conversation_id,
+            data=data,
+        )
+
+    async def _async_finalize_structured_output(
+        self,
+        outcome: object | None,
+        task: ai_task.GenDataTask,
+        chat_log: conversation.ChatLog,
+    ) -> object:
+        """Validate structured output or return raw assistant content."""
         structured_outcome: AgentRunOutcome | None = None
         if task.structure is not None:
             if not isinstance(outcome, AgentRunOutcome):
@@ -155,8 +172,6 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                 outcome.model_profile_ref,
             )
 
-        # After all tool calls resolve, ChatLog's final assistant message carries
-        # the model output that Home Assistant expects for the task result.
         last_content = chat_log.content[-1]
         if not isinstance(last_content, conversation.AssistantContent):
             raise HomeAssistantError("Provider did not return an assistant response")
@@ -164,55 +179,10 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
         data: object = last_content.content or ""
         if task.structure is not None:
             assert structured_outcome is not None
-            try:
-                # HA receives streamed assistant content for every structured
-                # output mode and validates the final JSON before returning it.
-                data = json.loads(last_content.content or "")
-                data = task.structure(data)
-            except json.JSONDecodeError as err:
-                self._record_agent_run_failure(err)
-                if structured_outcome is not None and structured_outcome.run_recorder:
-                    structured_outcome.run_recorder.record(
-                        phase="output_validation",
-                        event="json_decode_failed",
-                        data={"error": err, "content": last_content.content},
-                    )
-                    self._store_run_diagnostics(
-                        structured_outcome.run_recorder,
-                        status="failed",
-                        summary={
-                            "error": err,
-                            "model_profile": structured_outcome.model_profile,
-                            "output": structured_outcome.output,
-                        },
-                    )
-                raise HomeAssistantError(
-                    "Provider returned malformed structured data"
-                ) from err
-            except vol.Invalid as err:
-                self._record_agent_run_failure(err)
-                if structured_outcome is not None and structured_outcome.run_recorder:
-                    structured_outcome.run_recorder.record(
-                        phase="output_validation",
-                        event="schema_validation_failed",
-                        data={"error": err, "content": last_content.content},
-                    )
-                    self._store_run_diagnostics(
-                        structured_outcome.run_recorder,
-                        status="failed",
-                        summary={
-                            "error": err,
-                            "model_profile": structured_outcome.model_profile,
-                            "output": structured_outcome.output,
-                        },
-                    )
-                raise HomeAssistantError(
-                    "Provider returned structured data that does not match the schema"
-                ) from err
-            if (
-                structured_outcome is not None
-                and structured_outcome.run_recorder is not None
-            ):
+            data = await self._async_validate_structured_data(
+                structured_outcome, last_content, task.structure
+            )
+            if structured_outcome.run_recorder is not None:
                 structured_outcome.run_recorder.record(
                     phase="output_validation",
                     event="structured_output_validated",
@@ -228,7 +198,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                         "model_profile": structured_outcome.model_profile,
                         "duration": structured_outcome.duration,
                     },
-                    )
+                )
             self._record_agent_run_success(structured_outcome)
             fire_integration_event(
                 self.hass,
@@ -241,7 +211,57 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                 },
             )
 
-        return ai_task.GenDataTaskResult(
-            conversation_id=chat_log.conversation_id,
-            data=data,
-        )
+        return data
+
+    async def _async_validate_structured_data(
+        self,
+        structured_outcome: AgentRunOutcome,
+        last_content: conversation.AssistantContent,
+        structure: vol.Schema,
+    ) -> object:
+        """Validate structured data from model output against the schema."""
+        content_str = last_content.content or ""
+        try:
+            data = json.loads(content_str)
+            data = structure(data)
+        except json.JSONDecodeError as err:
+            self._record_agent_run_failure(err)
+            if structured_outcome.run_recorder:
+                structured_outcome.run_recorder.record(
+                    phase="output_validation",
+                    event="json_decode_failed",
+                    data={"error": err, "content": content_str},
+                )
+                self._store_run_diagnostics(
+                    structured_outcome.run_recorder,
+                    status="failed",
+                    summary={
+                        "error": err,
+                        "model_profile": structured_outcome.model_profile,
+                        "output": structured_outcome.output,
+                    },
+                )
+            raise HomeAssistantError(
+                "Provider returned malformed structured data"
+            ) from err
+        except vol.Invalid as err:
+            self._record_agent_run_failure(err)
+            if structured_outcome.run_recorder:
+                structured_outcome.run_recorder.record(
+                    phase="output_validation",
+                    event="schema_validation_failed",
+                    data={"error": err, "content": content_str},
+                )
+                self._store_run_diagnostics(
+                    structured_outcome.run_recorder,
+                    status="failed",
+                    summary={
+                        "error": err,
+                        "model_profile": structured_outcome.model_profile,
+                        "output": structured_outcome.output,
+                    },
+                )
+            raise HomeAssistantError(
+                "Provider returned structured data that does not match the schema"
+            ) from err
+        return data

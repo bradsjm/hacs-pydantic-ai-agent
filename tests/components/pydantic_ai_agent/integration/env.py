@@ -1,8 +1,8 @@
 """Environment loading and model selection for provider integration tests."""
 
-from collections.abc import Mapping
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -14,9 +14,9 @@ from .config import (
     DEFAULT_MODEL_LIMIT,
     ENV_FILE,
     MODEL_LIST_TIMEOUT,
-    ModelParam,
     REQUIRED_CONNECTION_ENV,
     TRUE_ENV_VALUES,
+    ModelParam,
 )
 
 
@@ -188,4 +188,3 @@ def provider_model_params(config: pytest.Config) -> list[object]:
         pytest.param(ModelParam(model=model), id=model_param_id(model))
         for model in model_ids
     ]
-

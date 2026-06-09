@@ -1,8 +1,8 @@
 """Map Pydantic AI messages to OpenAI-compatible Chat Completions payloads."""
 
-from collections.abc import AsyncIterable, Sequence
 import base64
-from typing import Any
+from collections.abc import AsyncIterable, Sequence
+from typing import Any, assert_never
 
 from pydantic_ai.exceptions import UserError
 from pydantic_ai.messages import (
@@ -32,7 +32,6 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.tools import ToolDefinition
-from typing_extensions import assert_never
 
 
 def map_tool_definition(
@@ -49,7 +48,7 @@ def map_tool_definition(
     return {"type": "function", "function": function}
 
 
-def map_json_schema(output_object: Any) -> dict[str, Any]:
+def map_json_schema(output_object: Any) -> dict[str, Any]:  # noqa: ANN401
     """Map a native structured-output schema to response_format."""
     json_schema: dict[str, Any] = {
         "name": output_object.name or "final_result",
@@ -159,7 +158,7 @@ def _map_model_response(message: ModelResponse) -> dict[str, Any] | None:
             pass
         else:
             assert_never(item)
-    if not texts and not tool_calls:
+    if not texts and not tool_calls and not thinking_fields:
         return None
     mapped: dict[str, Any] = {
         "role": "assistant",
@@ -194,7 +193,7 @@ def _map_user_prompt(part: UserPromptPart) -> dict[str, Any]:
     return {"role": "user", "content": content}
 
 
-def _map_content_item(item: Any) -> dict[str, Any] | None:
+def _map_content_item(item: Any) -> dict[str, Any] | None:  # noqa: ANN401
     """Map one multimodal user content item."""
     if isinstance(item, str | TextContent):
         text = item if isinstance(item, str) else item.content
@@ -217,7 +216,8 @@ def _map_content_item(item: Any) -> dict[str, Any] | None:
         return None
     if isinstance(item, AudioUrl | VideoUrl):
         raise UserError(
-            "Audio and video URL inputs are not supported by this Chat Completions adapter"
+            "Audio and video URL inputs are not supported"
+            " by this Chat Completions adapter"
         )
     assert_never(item)
 
@@ -230,7 +230,7 @@ def _map_binary_content(item: BinaryContent) -> dict[str, Any]:
         "application/yaml",
         "application/toml",
     }:
-        return {"type": "text", "text": item.data.decode("utf-8")}
+        return {"type": "text", "text": item.data.decode("utf-8", errors="replace")}
     if item.is_image:
         image_url: dict[str, Any] = {"url": item.data_uri}
         if item.vendor_metadata:

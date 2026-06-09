@@ -1,10 +1,8 @@
 """Provider probe integration tests."""
 
 import pytest
-
-from homeassistant.core import HomeAssistant
-
 from custom_components.pydantic_ai_agent.provider_validation import async_probe_model
+from homeassistant.core import HomeAssistant
 
 from .config import PROVIDER_INTEGRATION_TIMEOUT, ProviderIntegrationConfig
 from .entries import drain_stream_cleanup

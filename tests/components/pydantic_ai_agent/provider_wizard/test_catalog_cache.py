@@ -3,30 +3,15 @@
 import asyncio
 
 import pytest
-from homeassistant.core import HomeAssistant
-from homeassistant.util import dt as dt_util
-
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard import (
     catalog_cache,
-)
-from custom_components.pydantic_ai_agent.config_flows.provider_wizard.catalog_cache import (
-    ProviderWizardCatalogManager,
-    catalog_manager,
-)
-from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
-    DATA_CATALOG_MANAGER,
-    MODEL_CATALOG_HARD_TTL,
-    MODEL_CATALOG_IDLE_TTL,
-)
-from custom_components.pydantic_ai_agent.config_flows.provider_wizard.models_dev import (
-    CatalogLoadError,
-    _decode_catalog,
-)
-from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types import (
-    CatalogProviderOption,
-    CompactCatalog,
+    const,
+    models_dev,
+    types,
 )
 from custom_components.pydantic_ai_agent.const import DOMAIN
+from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 
 async def test_catalog_manager_reuses_single_inflight_fetch(
@@ -37,14 +22,14 @@ async def test_catalog_manager_reuses_single_inflight_fetch(
     release = asyncio.Event()
     catalog = _catalog()
 
-    async def fake_fetch_catalog(hass: HomeAssistant) -> CompactCatalog:
+    async def fake_fetch_catalog(hass: HomeAssistant) -> types.CompactCatalog:
         nonlocal calls
         calls += 1
         await release.wait()
         return catalog
 
     monkeypatch.setattr(catalog_cache, "async_fetch_catalog", fake_fetch_catalog)
-    manager = ProviderWizardCatalogManager(hass)
+    manager = catalog_cache.ProviderWizardCatalogManager(hass)
 
     first_task = manager.load_task()
     second_task = manager.load_task()
@@ -65,14 +50,14 @@ async def test_catalog_manager_flow_task_cancel_does_not_cancel_shared_fetch(
     release = asyncio.Event()
     catalog = _catalog()
 
-    async def fake_fetch_catalog(hass: HomeAssistant) -> CompactCatalog:
+    async def fake_fetch_catalog(hass: HomeAssistant) -> types.CompactCatalog:
         nonlocal calls
         calls += 1
         await release.wait()
         return catalog
 
     monkeypatch.setattr(catalog_cache, "async_fetch_catalog", fake_fetch_catalog)
-    manager = ProviderWizardCatalogManager(hass)
+    manager = catalog_cache.ProviderWizardCatalogManager(hass)
 
     cancelled_task = manager.load_task()
     surviving_task = manager.load_task()
@@ -93,13 +78,13 @@ async def test_catalog_manager_clear_cancels_inflight_fetch(
     started = asyncio.Event()
     catalog = _catalog()
 
-    async def fake_fetch_catalog(hass: HomeAssistant) -> CompactCatalog:
+    async def fake_fetch_catalog(hass: HomeAssistant) -> types.CompactCatalog:
         started.set()
         await asyncio.Event().wait()
         return catalog
 
     monkeypatch.setattr(catalog_cache, "async_fetch_catalog", fake_fetch_catalog)
-    manager = ProviderWizardCatalogManager(hass)
+    manager = catalog_cache.ProviderWizardCatalogManager(hass)
 
     flow_task = manager.load_task()
     await started.wait()
@@ -121,7 +106,7 @@ async def test_catalog_manager_clear_allows_new_fetch(
     first_started = asyncio.Event()
     catalog = _catalog()
 
-    async def fake_fetch_catalog(hass: HomeAssistant) -> CompactCatalog:
+    async def fake_fetch_catalog(hass: HomeAssistant) -> types.CompactCatalog:
         nonlocal calls
         calls += 1
         if calls == 1:
@@ -130,7 +115,7 @@ async def test_catalog_manager_clear_allows_new_fetch(
         return catalog
 
     monkeypatch.setattr(catalog_cache, "async_fetch_catalog", fake_fetch_catalog)
-    manager = ProviderWizardCatalogManager(hass)
+    manager = catalog_cache.ProviderWizardCatalogManager(hass)
 
     first_task = manager.load_task()
     await first_started.wait()
@@ -148,17 +133,17 @@ async def test_catalog_manager_expired_cleanup_does_not_cancel_new_fetch(
     release = asyncio.Event()
     catalog = _catalog()
 
-    async def fake_fetch_catalog(hass: HomeAssistant) -> CompactCatalog:
+    async def fake_fetch_catalog(hass: HomeAssistant) -> types.CompactCatalog:
         await release.wait()
         return catalog
 
     monkeypatch.setattr(catalog_cache, "async_fetch_catalog", fake_fetch_catalog)
-    manager = ProviderWizardCatalogManager(hass)
+    manager = catalog_cache.ProviderWizardCatalogManager(hass)
     manager.catalog = _catalog()
     manager.loaded_at = (
-        dt_util.utcnow() - MODEL_CATALOG_HARD_TTL - MODEL_CATALOG_IDLE_TTL
+        dt_util.utcnow() - const.MODEL_CATALOG_HARD_TTL - const.MODEL_CATALOG_IDLE_TTL
     )
-    manager.last_used_at = dt_util.utcnow() - MODEL_CATALOG_IDLE_TTL
+    manager.last_used_at = dt_util.utcnow() - const.MODEL_CATALOG_IDLE_TTL
 
     flow_task = manager.load_task()
     shared_task = manager.inflight_task
@@ -178,13 +163,13 @@ async def test_catalog_manager_reuses_fresh_memory_catalog(
     calls = 0
     catalog = _catalog()
 
-    async def fake_fetch_catalog(hass: HomeAssistant) -> CompactCatalog:
+    async def fake_fetch_catalog(hass: HomeAssistant) -> types.CompactCatalog:
         nonlocal calls
         calls += 1
         return catalog
 
     monkeypatch.setattr(catalog_cache, "async_fetch_catalog", fake_fetch_catalog)
-    manager = ProviderWizardCatalogManager(hass)
+    manager = catalog_cache.ProviderWizardCatalogManager(hass)
 
     assert await manager.async_get_catalog() is catalog
     assert await manager.async_get_catalog() is catalog
@@ -195,28 +180,28 @@ def test_catalog_manager_expiration_uses_idle_and_hard_cap(
     hass: HomeAssistant,
 ) -> None:
     """Test cache expiration uses the earlier idle or hard-cap expiry."""
-    manager = ProviderWizardCatalogManager(hass)
+    manager = catalog_cache.ProviderWizardCatalogManager(hass)
     now = dt_util.utcnow()
     manager.catalog = _catalog()
     manager.loaded_at = now
-    manager.last_used_at = now + MODEL_CATALOG_HARD_TTL
+    manager.last_used_at = now + const.MODEL_CATALOG_HARD_TTL
 
-    assert manager.expires_at() == now + MODEL_CATALOG_HARD_TTL
+    assert manager.expires_at() == now + const.MODEL_CATALOG_HARD_TTL
 
     manager.last_used_at = now
-    assert manager.expires_at() == now + MODEL_CATALOG_IDLE_TTL
+    assert manager.expires_at() == now + const.MODEL_CATALOG_IDLE_TTL
 
 
 def test_catalog_manager_clear_expired_drops_stale_catalog(
     hass: HomeAssistant,
 ) -> None:
     """Test stale compact catalog data is dropped."""
-    manager = ProviderWizardCatalogManager(hass)
+    manager = catalog_cache.ProviderWizardCatalogManager(hass)
     manager.catalog = _catalog()
     manager.loaded_at = (
-        dt_util.utcnow() - MODEL_CATALOG_HARD_TTL - MODEL_CATALOG_IDLE_TTL
+        dt_util.utcnow() - const.MODEL_CATALOG_HARD_TTL - const.MODEL_CATALOG_IDLE_TTL
     )
-    manager.last_used_at = dt_util.utcnow() - MODEL_CATALOG_IDLE_TTL
+    manager.last_used_at = dt_util.utcnow() - const.MODEL_CATALOG_IDLE_TTL
 
     manager.clear_expired()
 
@@ -232,17 +217,17 @@ async def test_catalog_manager_fetch_failure_is_retriable(
     calls = 0
     catalog = _catalog()
 
-    async def fake_fetch_catalog(hass: HomeAssistant) -> CompactCatalog:
+    async def fake_fetch_catalog(hass: HomeAssistant) -> types.CompactCatalog:
         nonlocal calls
         calls += 1
         if calls == 1:
-            raise CatalogLoadError("failed")
+            raise models_dev.CatalogLoadError("failed")
         return catalog
 
     monkeypatch.setattr(catalog_cache, "async_fetch_catalog", fake_fetch_catalog)
-    manager = ProviderWizardCatalogManager(hass)
+    manager = catalog_cache.ProviderWizardCatalogManager(hass)
 
-    with pytest.raises(CatalogLoadError):
+    with pytest.raises(models_dev.CatalogLoadError):
         await manager.async_get_catalog()
 
     assert manager.catalog is None
@@ -252,21 +237,21 @@ async def test_catalog_manager_fetch_failure_is_retriable(
 
 def test_catalog_manager_is_stored_in_domain_data(hass: HomeAssistant) -> None:
     """Test catalog manager is shared through domain process-global data."""
-    manager = catalog_manager(hass)
+    manager = catalog_cache.catalog_manager(hass)
 
-    assert catalog_manager(hass) is manager
-    assert hass.data[DOMAIN][DATA_CATALOG_MANAGER] is manager
+    assert catalog_cache.catalog_manager(hass) is manager
+    assert hass.data[DOMAIN][const.DATA_CATALOG_MANAGER] is manager
 
 
 def test_decode_catalog_rejects_invalid_shape() -> None:
     """Test raw catalog parser rejects unexpected JSON shapes."""
-    with pytest.raises(CatalogLoadError):
-        _decode_catalog("[]")
+    with pytest.raises(models_dev.CatalogLoadError):
+        models_dev._decode_catalog("[]")
 
 
-def _catalog() -> CompactCatalog:
+def _catalog() -> types.CompactCatalog:
     """Return a compact catalog fixture."""
-    provider = CatalogProviderOption(
+    provider = types.CatalogProviderOption(
         id="openai",
         name="OpenAI",
         doc_url="https://models.dev/providers/openai",
@@ -276,4 +261,4 @@ def _catalog() -> CompactCatalog:
         model_count=0,
         families=(),
     )
-    return CompactCatalog(providers={"openai": provider}, models_by_provider={})
+    return types.CompactCatalog(providers={"openai": provider}, models_by_provider={})

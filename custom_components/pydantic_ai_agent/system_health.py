@@ -7,9 +7,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
-    CONF_SKILLS,
     CONF_MODEL_PROFILES,
     CONF_PROVIDER_MODE,
+    CONF_SKILLS,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,

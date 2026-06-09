@@ -1,27 +1,27 @@
 """Diagnostics for Pydantic AI Agent."""
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
 from ._redaction import redact_data
 from .const import (
-    CONF_AI_TASK_NAME,
     CONF_AGENT_NAME,
+    CONF_AI_TASK_NAME,
     CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
+    CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
-    CONF_SKILLS,
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
-    CONF_OUTPUT_MODE,
+    CONF_SKILLS,
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
@@ -31,13 +31,13 @@ from .const import (
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
-from .run_diagnostics import bound_diagnostics_data
 from .logfire_support import (
     logfire_active_for_entry,
     logfire_enabled,
     logfire_include_content,
     logfire_token_conflict,
 )
+from .run_diagnostics import bound_diagnostics_data
 
 
 async def async_get_config_entry_diagnostics(
@@ -65,7 +65,7 @@ async def async_get_config_entry_diagnostics(
             **_runtime_diagnostics(entry),
         },
     }
-    return bound_diagnostics_data(diagnostics)
+    return cast(dict[str, Any], bound_diagnostics_data(diagnostics))
 
 
 async def async_get_device_diagnostics(
@@ -88,10 +88,10 @@ async def async_get_device_diagnostics(
         "subentries": subentries,
         "runtime": {"loaded": hasattr(entry, "runtime_data")},
     }
-    return bound_diagnostics_data(diagnostics)
+    return cast(dict[str, Any], bound_diagnostics_data(diagnostics))
 
 
-def _subentry_diagnostics(subentry: Any) -> dict[str, Any]:
+def _subentry_diagnostics(subentry: ConfigSubentry) -> dict[str, Any]:
     """Return redacted diagnostics for one config subentry."""
     model_settings = subentry.data.get(CONF_MODEL_SETTINGS)
     model_profiles = subentry.data.get(CONF_MODEL_PROFILES)
@@ -136,7 +136,7 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
     return diagnostics
 
 
-def _configuration_summary(subentry: Any) -> dict[str, Any]:
+def _configuration_summary(subentry: ConfigSubentry) -> dict[str, Any]:
     """Return a compact, unredacted configuration summary for one subentry."""
     data = subentry.data
     summary: dict[str, Any] = {

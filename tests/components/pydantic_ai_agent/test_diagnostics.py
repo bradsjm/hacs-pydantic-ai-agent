@@ -7,13 +7,6 @@ from typing import cast
 from unittest.mock import Mock
 
 import pytest
-from homeassistant import config_entries
-from homeassistant.components.diagnostics import REDACTED
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.pydantic_ai_agent import WorkspaceRuntimeData
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
@@ -29,8 +22,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_PRIMARY_MODEL_REF,
-    CONF_PROVIDER_EXTRA_BODY,
     CONF_PROMPT,
+    CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
     CONF_SKILL_CONTENT,
@@ -47,6 +40,12 @@ from custom_components.pydantic_ai_agent.diagnostics import (
 )
 from custom_components.pydantic_ai_agent.logfire_support import async_configure_logfire
 from custom_components.pydantic_ai_agent.metrics import record_run_success
+from homeassistant import config_entries
+from homeassistant.components.diagnostics import REDACTED
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 _PROVIDER_SUBENTRY_ID = "provider-1"
 _MODEL_PROFILE_ID = "profile-1"
@@ -105,7 +104,9 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
                                 CONF_CHAT_TEMPLATE_KWARGS: [
                                     {
                                         CONF_CHAT_TEMPLATE_KWARG_KEY: "secret_arg",
-                                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ states('sensor.secret') }}",
+                                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: (
+                                            "{{ states('sensor.secret') }}"
+                                        ),
                                     }
                                 ],
                                 "max_tokens": 500,
@@ -216,9 +217,13 @@ async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> Non
     assert model_settings["session_token"] == "visible"
     stream_trace = runtime["latest_stream_traces"]["conversation-1"]
     assert stream_trace["headers"] == REDACTED
-    assert stream_trace["request_url"] == "https://provider.example.com/path?token=visible"
+    assert (
+        stream_trace["request_url"] == "https://provider.example.com/path?token=visible"
+    )
     assert "runtime-secret" not in json.dumps(diagnostics)
     assert "stream-secret" not in json.dumps(diagnostics)
+
+
 async def test_diagnostics_bounds_large_values(hass: HomeAssistant) -> None:
     """Test diagnostics bound large values without redacting them."""
     entry = MockConfigEntry(

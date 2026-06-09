@@ -2,15 +2,16 @@
 
 from typing import Any
 
+from custom_components.pydantic_ai_agent.ha_todo_tools import TodoWorkspace
 from homeassistant.components.todo import (
     DOMAIN as TODO_DOMAIN,
+)
+from homeassistant.components.todo import (
     TodoItemStatus,
     TodoServices,
 )
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
-
-from custom_components.pydantic_ai_agent.ha_todo_tools import TodoWorkspace
 
 
 async def test_prepare_run_clears_all_items_by_uid(hass: HomeAssistant) -> None:

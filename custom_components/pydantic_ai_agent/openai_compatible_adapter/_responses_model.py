@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.messages import (
@@ -27,7 +27,7 @@ from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT
 
-from ..openai_compatible_client import AsyncOpenAICompatible, NOT_GIVEN, Response, omit
+from ..openai_compatible_client import NOT_GIVEN, AsyncOpenAICompatible, Response, omit
 from ..openai_compatible_client._streaming import ResponseStream
 from ._chat_model import _map_api_errors
 from ._provider import OpenAICompatibleProvider
@@ -209,7 +209,7 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
             top_p=model_settings.get("top_p", omit),
             text=text or omit,
             extra_headers=extra_headers,
-            extra_body=model_settings.get("extra_body"),
+            extra_body=cast(dict[str, Any] | None, model_settings.get("extra_body")),
         )
         return response
 

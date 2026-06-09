@@ -76,6 +76,8 @@ DEFAULT_SERVICE_NAME = "OpenAI-compatible"
 DEFAULT_SKILL_NAME = "Skill"
 DEFAULT_WORKSPACE_NAME = "Pydantic AI Agent"
 DEFAULT_TIMEOUT = 10.0
+
+
 def default_conversation_options() -> dict[str, object]:
     """Return default conversation subentry options."""
     return {

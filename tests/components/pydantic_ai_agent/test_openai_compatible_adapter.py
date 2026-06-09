@@ -1,16 +1,28 @@
 """Test the Pydantic AI OpenAI-compatible adapter."""
 
-from pathlib import Path
 import json
 import re
+from pathlib import Path
 from typing import cast
 
 import httpx
 import pytest
+from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
+    OpenAICompatibleChatModel,
+    OpenAICompatibleProvider,
+    OpenAICompatibleResponsesModel,
+)
+from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
+    _message_mapping as chat_message_mapping,
+)
+from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
+    _responses_message_mapping as responses_message_mapping,
+)
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.messages import (
     BinaryContent,
     ModelRequest,
+    ModelResponse,
     PartDeltaEvent,
     PartEndEvent,
     PartStartEvent,
@@ -23,12 +35,6 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.output import OutputObjectDefinition
 from pydantic_ai.tools import ToolDefinition
-
-from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
-    OpenAICompatibleChatModel,
-    OpenAICompatibleProvider,
-    OpenAICompatibleResponsesModel,
-)
 
 _REPO_ROOT = Path(__file__).parents[3]
 
@@ -59,6 +65,11 @@ def _responses_model_with_transport(
         name="openai-compatible-responses",
     )
     return OpenAICompatibleResponsesModel(model_name, provider=provider), http_client
+
+
+async def _unused_handler(request: httpx.Request) -> httpx.Response:
+    """Fail if a mapping-only test unexpectedly issues an HTTP request."""
+    raise AssertionError(f"Unexpected request during mapping test: {request.url}")
 
 
 async def test_request_returns_text_model_response() -> None:
@@ -313,6 +324,86 @@ async def test_request_maps_tools_and_binary_content() -> None:
     await http_client.aclose()
 
 
+async def test_chat_history_keeps_reasoning_only_assistant_message() -> None:
+    """Test Chat Completions history preserves reasoning-only assistant items."""
+    model, http_client = _model_with_transport(httpx.MockTransport(_unused_handler))
+
+    messages = await chat_message_mapping.map_messages(
+        model,
+        [ModelResponse(parts=[ThinkingPart(id="reasoning_content", content="think")])],
+        ModelRequestParameters(),
+    )
+
+    assert messages == [
+        {
+            "role": "assistant",
+            "content": "",
+            "reasoning_content": "think",
+        }
+    ]
+    await http_client.aclose()
+
+
+async def test_chat_text_like_binary_content_decodes_invalid_utf8() -> None:
+    """Test Chat Completions text attachments tolerate invalid UTF-8."""
+    model, http_client = _model_with_transport(httpx.MockTransport(_unused_handler))
+
+    mapped_messages = await chat_message_mapping.map_messages(
+        model,
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content=[
+                            BinaryContent(data=b"bad\xffutf8", media_type="text/plain")
+                        ]
+                    )
+                ]
+            )
+        ],
+        ModelRequestParameters(),
+    )
+
+    assert mapped_messages == [
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": "bad\ufffdutf8"}],
+        }
+    ]
+    await http_client.aclose()
+
+
+async def test_responses_text_like_binary_content_decodes_invalid_utf8() -> None:
+    """Test Responses text attachments tolerate invalid UTF-8."""
+    model, http_client = _responses_model_with_transport(
+        httpx.MockTransport(_unused_handler)
+    )
+
+    _, mapped_messages = await responses_message_mapping.map_messages(
+        model,
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content=[
+                            BinaryContent(data=b"bad\xffutf8", media_type="text/plain")
+                        ]
+                    )
+                ]
+            )
+        ],
+        ModelRequestParameters(),
+    )
+
+    assert mapped_messages == [
+        {
+            "role": "user",
+            "content": [{"type": "input_text", "text": "bad\ufffdutf8"}],
+        }
+    ]
+    await http_client.aclose()
+
+
 async def test_output_tool_uses_auto_tool_choice() -> None:
     """Test output tools do not require provider-specific tool_choice support."""
     captured: dict[str, object] = {}
@@ -452,8 +543,11 @@ async def test_streamed_tool_follow_up_preserves_reasoning_content() -> None:
     captured_bodies: list[dict[str, object]] = []
     stream_body = "".join(
         [
-            'data: {"id":"chatcmpl-1","model":"test-model","choices":[{"index":0,"delta":{"reasoning_content":"I should call the echo tool."}}]}\n\n',
-            'data: {"id":"chatcmpl-1","model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"echo","arguments":"{\\"token\\":\\"ok\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
+            'data: {"id":"chatcmpl-1","model":"test-model",'
+            '"choices":[{"index":0,'
+            '"delta":{"reasoning_content":"I should call the echo tool."}}]}\n\n',
+            'data: {"id":"chatcmpl-1","model":"test-model",'
+            '"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"echo","arguments":"{\\"token\\":\\"ok\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
             "data: [DONE]\n\n",
         ]
     )
@@ -525,9 +619,12 @@ async def test_request_stream_yields_text_and_usage() -> None:
     """Test streamed text deltas are exposed as Pydantic AI stream events."""
     body = "".join(
         [
-            'data: {"id":"1","model":"test-model","choices":[{"index":0,"delta":{"content":"O"}}]}\n\n',
-            'data: {"id":"1","model":"test-model","choices":[{"index":0,"delta":{"content":"K"},"finish_reason":"stop"}]}\n\n',
-            'data: {"id":"1","model":"test-model","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}\n\n',
+            'data: {"id":"1","model":"test-model",'
+            '"choices":[{"index":0,"delta":{"content":"O"}}]}\n\n',
+            'data: {"id":"1","model":"test-model",'
+            '"choices":[{"index":0,"delta":{"content":"K"},"finish_reason":"stop"}]}\n\n',
+            'data: {"id":"1","model":"test-model",'
+            '"choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}\n\n',
             "data: [DONE]\n\n",
         ]
     )
@@ -714,8 +811,10 @@ async def test_request_stream_accumulates_tool_call_deltas() -> None:
     """Test streamed function tool call argument fragments are accumulated."""
     body = "".join(
         [
-            'data: {"id":"1","model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"turn_on","arguments":"{\\"entity"}}]}}]}\n\n',
-            'data: {"id":"1","model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\":\\"light.kitchen\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
+            'data: {"id":"1","model":"test-model",'
+            '"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"turn_on","arguments":"{\\"entity"}}]}}]}\n\n',
+            'data: {"id":"1","model":"test-model",'
+            '"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\":\\"light.kitchen\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
             "data: [DONE]\n\n",
         ]
     )

@@ -27,4 +27,4 @@ class _StreamRunState:
 
     result: Any | None = None
     emitted_deltas: bool = False
-    latest_tool_problem: "_ToolProblem | None" = None
+    latest_tool_problem: _ToolProblem | None = None

@@ -3,6 +3,14 @@
 from pathlib import Path
 
 import pytest
+from custom_components.pydantic_ai_agent.history import (
+    chat_log_content_to_model_messages,
+    split_last_user_prompt,
+)
+from homeassistant.components import conversation
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import llm
 from pydantic_ai import (
     BinaryContent,
     ModelMessage,
@@ -14,16 +22,6 @@ from pydantic_ai import (
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
-)
-
-from homeassistant.components import conversation
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import llm
-
-from custom_components.pydantic_ai_agent.history import (
-    chat_log_content_to_model_messages,
-    split_last_user_prompt,
 )
 
 

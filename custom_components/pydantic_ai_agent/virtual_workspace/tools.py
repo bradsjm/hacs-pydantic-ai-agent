@@ -1,12 +1,13 @@
 """Pydantic AI tools for the virtual workspace."""
 
+from collections.abc import Callable
 from typing import Any
 
 from pydantic_ai import Tool, ToolReturn
 from pydantic_ai.toolsets import FunctionToolset
 
-from .patch import apply_patch
 from .const import MAX_COMMAND_BYTES, TOOL_RETURN_METADATA_SOURCE
+from .patch import apply_patch
 from .workspace import VirtualWorkspace
 
 
@@ -82,7 +83,7 @@ def _tool(
     name: str,
     description: str,
     schema: dict[str, Any],
-    function: Any,
+    function: Callable[..., object],
 ) -> Tool[None]:
     return Tool.from_schema(
         function,
@@ -93,8 +94,8 @@ def _tool(
     )
 
 
-def _bash(workspace: VirtualWorkspace) -> Any:
-    async def execute(**tool_args: Any) -> Any:
+def _bash(workspace: VirtualWorkspace) -> Callable[..., object]:
+    async def execute(**tool_args: object) -> object:
         return await workspace.bash(
             _string_arg(tool_args, "command"),
             working_directory=_optional_string_arg(tool_args, "workingDirectory"),
@@ -103,15 +104,15 @@ def _bash(workspace: VirtualWorkspace) -> Any:
     return execute
 
 
-def _read_file(workspace: VirtualWorkspace) -> Any:
-    def execute(**tool_args: Any) -> Any:
+def _read_file(workspace: VirtualWorkspace) -> Callable[..., object]:
+    def execute(**tool_args: object) -> object:
         return workspace.read_file(_string_arg(tool_args, "path"))
 
     return execute
 
 
-def _write_file(workspace: VirtualWorkspace) -> Any:
-    def execute(**tool_args: Any) -> Any:
+def _write_file(workspace: VirtualWorkspace) -> Callable[..., object]:
+    def execute(**tool_args: object) -> object:
         return workspace.write_file(
             _string_arg(tool_args, "path"),
             _string_arg(tool_args, "content"),
@@ -122,8 +123,8 @@ def _write_file(workspace: VirtualWorkspace) -> Any:
     return execute
 
 
-def _create_directory(workspace: VirtualWorkspace) -> Any:
-    def execute(**tool_args: Any) -> Any:
+def _create_directory(workspace: VirtualWorkspace) -> Callable[..., object]:
+    def execute(**tool_args: object) -> object:
         return workspace.create_directory(
             _string_arg(tool_args, "path"),
             parents=_bool_arg(tool_args, "parents"),
@@ -132,15 +133,15 @@ def _create_directory(workspace: VirtualWorkspace) -> Any:
     return execute
 
 
-def _metadata(workspace: VirtualWorkspace) -> Any:
-    def execute(**tool_args: Any) -> Any:
+def _metadata(workspace: VirtualWorkspace) -> Callable[..., object]:
+    def execute(**tool_args: object) -> object:
         return workspace.metadata(_string_arg(tool_args, "path"))
 
     return execute
 
 
-def _read_directory(workspace: VirtualWorkspace) -> Any:
-    def execute(**tool_args: Any) -> Any:
+def _read_directory(workspace: VirtualWorkspace) -> Callable[..., object]:
+    def execute(**tool_args: object) -> object:
         try:
             limit = _int_arg(tool_args, "limit", 100)
         except ValueError as err:
@@ -159,8 +160,8 @@ def _read_directory(workspace: VirtualWorkspace) -> Any:
     return execute
 
 
-def _remove(workspace: VirtualWorkspace) -> Any:
-    def execute(**tool_args: Any) -> Any:
+def _remove(workspace: VirtualWorkspace) -> Callable[..., object]:
+    def execute(**tool_args: object) -> object:
         return workspace.remove(
             _string_arg(tool_args, "path"),
             recursive=_bool_arg(tool_args, "recursive"),
@@ -170,8 +171,8 @@ def _remove(workspace: VirtualWorkspace) -> Any:
     return execute
 
 
-def _copy(workspace: VirtualWorkspace) -> Any:
-    def execute(**tool_args: Any) -> Any:
+def _copy(workspace: VirtualWorkspace) -> Callable[..., object]:
+    def execute(**tool_args: object) -> object:
         return workspace.copy(
             _string_arg(tool_args, "source"),
             _string_arg(tool_args, "destination"),
@@ -182,8 +183,8 @@ def _copy(workspace: VirtualWorkspace) -> Any:
     return execute
 
 
-def _move(workspace: VirtualWorkspace) -> Any:
-    def execute(**tool_args: Any) -> Any:
+def _move(workspace: VirtualWorkspace) -> Callable[..., object]:
+    def execute(**tool_args: object) -> object:
         return workspace.move(
             _string_arg(tool_args, "source"),
             _string_arg(tool_args, "destination"),
@@ -194,8 +195,8 @@ def _move(workspace: VirtualWorkspace) -> Any:
     return execute
 
 
-def _apply_patch(workspace: VirtualWorkspace) -> Any:
-    def execute(**tool_args: Any) -> Any:
+def _apply_patch(workspace: VirtualWorkspace) -> Callable[..., object]:
+    def execute(**tool_args: object) -> object:
         return ToolReturn(
             apply_patch(
                 workspace,
@@ -208,26 +209,26 @@ def _apply_patch(workspace: VirtualWorkspace) -> Any:
     return execute
 
 
-def _string_arg(tool_args: dict[str, Any], key: str) -> str:
+def _string_arg(tool_args: dict[str, object], key: str) -> str:
     value = tool_args.get(key, "")
     return value if isinstance(value, str) else ""
 
 
-def _optional_string_arg(tool_args: dict[str, Any], key: str) -> str | None:
+def _optional_string_arg(tool_args: dict[str, object], key: str) -> str | None:
     value = tool_args.get(key)
     return value if isinstance(value, str) else None
 
 
-def _bool_arg(tool_args: dict[str, Any], key: str) -> bool:
+def _bool_arg(tool_args: dict[str, object], key: str) -> bool:
     return tool_args.get(key) is True
 
 
-def _int_arg(tool_args: dict[str, Any], key: str, default: int) -> int:
+def _int_arg(tool_args: dict[str, object], key: str, default: int) -> int:
     value = tool_args.get(key, default)
     if isinstance(value, bool):
         raise ValueError(f"{key} must be an integer")
     try:
-        return int(value)
+        return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError) as err:
         raise ValueError(f"{key} must be an integer") from err
 

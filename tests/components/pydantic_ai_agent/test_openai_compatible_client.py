@@ -4,13 +4,12 @@ import json
 
 import httpx
 import pytest
-
 from custom_components.pydantic_ai_agent.openai_compatible_client import (
+    NOT_GIVEN,
     APIConnectionError,
     APIStatusError,
     APITimeoutError,
     AsyncOpenAICompatible,
-    NOT_GIVEN,
     omit,
 )
 
@@ -194,9 +193,12 @@ async def test_chat_completion_stream_parses_sse_chunks() -> None:
     """Test streaming SSE parsing including a final usage-only chunk."""
     body = "".join(
         [
-            'data: {"id":"1","model":"m","choices":[{"index":0,"delta":{"content":"O"}}]}\n\n',
-            'data: {"id":"1","model":"m","choices":[{"index":0,"delta":{"content":"K"},"finish_reason":"stop"}]}\n\n',
-            'data: {"id":"1","model":"m","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}\n\n',
+            'data: {"id":"1","model":"m",'
+            '"choices":[{"index":0,"delta":{"content":"O"}}]}\n\n',
+            'data: {"id":"1","model":"m",'
+            '"choices":[{"index":0,"delta":{"content":"K"},"finish_reason":"stop"}]}\n\n',
+            'data: {"id":"1","model":"m",'
+            '"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}\n\n',
             "data: [DONE]\n\n",
         ]
     )
@@ -252,9 +254,12 @@ async def test_responses_stream_parses_sse_events() -> None:
     """Test Responses streaming SSE parsing."""
     body = "".join(
         [
-            'data: {"type":"response.created","response":{"id":"resp-1","model":"m","status":"in_progress","output":[]}}\n\n',
-            'data: {"type":"response.output_text.delta","item_id":"msg-1","delta":"OK"}\n\n',
-            'data: {"type":"response.completed","response":{"id":"resp-1","model":"m","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}}\n\n',
+            'data: {"type":"response.created",'
+            '"response":{"id":"resp-1","model":"m","status":"in_progress","output":[]}}\n\n',
+            'data: {"type":"response.output_text.delta",'
+            '"item_id":"msg-1","delta":"OK"}\n\n',
+            'data: {"type":"response.completed",'
+            '"response":{"id":"resp-1","model":"m","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}}\n\n',
             "data: [DONE]\n\n",
         ]
     )

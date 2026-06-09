@@ -3,10 +3,9 @@
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, cast
 
-from pydantic_ai.settings import ModelSettings
-
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from pydantic_ai.settings import ModelSettings
 
 from .chat_template_kwargs import (
     reject_chat_template_kwargs_in_extra_body,
@@ -57,7 +56,8 @@ def _model_settings_with_provider_extra_body(
         PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     }:
         raise HomeAssistantError(
-            "Provider extra body is only supported by OpenAI-compatible and Anthropic provider modes"
+            "Provider extra body is only supported by OpenAI-compatible"
+            " and Anthropic provider modes"
         )
     reject_chat_template_kwargs_in_extra_body(extra_body)
     request_settings = dict(settings)

@@ -1,7 +1,6 @@
 """Home Assistant LLM echo API for provider integration tests."""
 
 import voluptuous as vol
-
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import llm
 
@@ -46,7 +45,8 @@ class EchoAPI(llm.API):
         """Return the API instance with the test echo tool."""
         return llm.APIInstance(
             self,
-            "Use pydantic_ai_integration_echo when the user asks to call the integration tool.",
+            "Use pydantic_ai_integration_echo "
+            "when the user asks to call the integration tool.",
             llm_context,
             [EchoTool(self._calls)],
         )

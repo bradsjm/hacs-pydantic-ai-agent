@@ -1,33 +1,26 @@
 """Responses resource."""
 
-from typing import Any, Literal, overload
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 from pydantic import ValidationError
 
 from ._chat import serialize_payload
 from ._exceptions import APIConnectionError, APITimeoutError
-from ._sentinels import NOT_GIVEN, is_omitted
+from ._sentinels import NOT_GIVEN, NotGiven, is_omitted
 from ._streaming import ResponseStream, raise_for_status
 from ._types import Response
+
+if TYPE_CHECKING:
+    from ._client import AsyncOpenAICompatible
 
 
 class ResponsesResource:
     """OpenAI-compatible ``responses`` resource."""
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: AsyncOpenAICompatible) -> None:
         """Initialize the resource."""
         self._client = client
-
-    @overload
-    async def create(
-        self, *, stream: Literal[False] = False, **kwargs: Any
-    ) -> Response: ...
-
-    @overload
-    async def create(
-        self, *, stream: Literal[True], **kwargs: Any
-    ) -> ResponseStream: ...
 
     async def create(
         self,
@@ -35,18 +28,22 @@ class ResponsesResource:
         stream: bool = False,
         extra_headers: dict[str, str] | None = None,
         extra_body: dict[str, Any] | None = None,
-        timeout: float | httpx.Timeout | None | object = NOT_GIVEN,
-        **kwargs: Any,
+        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        **kwargs: object,
     ) -> Response | ResponseStream:
         """Create a response."""
         body = serialize_payload(kwargs)
         assert isinstance(body, dict)
         body["stream"] = stream
         if extra_body:
-            body.update(serialize_payload(extra_body))
+            body.update(cast(dict[str, object], serialize_payload(extra_body)))
 
         headers = self._client.auth_headers | (extra_headers or {})
-        request_timeout = None if is_omitted(timeout) else timeout
+        request_timeout = (
+            None
+            if is_omitted(timeout)
+            else cast(float | httpx.Timeout | None, timeout)
+        )
         if stream:
             return ResponseStream(
                 self._client.http_client.stream(

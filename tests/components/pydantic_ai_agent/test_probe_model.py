@@ -6,26 +6,16 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
-from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
-from pydantic_ai.exceptions import ModelHTTPError
 import pytest
-
-from homeassistant.const import CONF_API_KEY, CONF_NAME
-from homeassistant.core import HomeAssistant
-
-from custom_components.pydantic_ai_agent.provider_validation import (
-    ProviderValidationError,
-    async_probe_model,
-)
 from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
     CONF_MAX_ITERATIONS,
-    CONF_THINKING,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_MODE,
+    CONF_THINKING,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
@@ -33,6 +23,14 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
+from custom_components.pydantic_ai_agent.provider_validation import (
+    ProviderValidationError,
+    async_probe_model,
+)
+from homeassistant.const import CONF_API_KEY, CONF_NAME
+from homeassistant.core import HomeAssistant
+from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
+from pydantic_ai.exceptions import ModelHTTPError
 
 
 class _SingleEventStream:
@@ -43,7 +41,7 @@ class _SingleEventStream:
         self._yielded = False
         self.events_yielded = 0
 
-    def __aiter__(self) -> "_SingleEventStream":
+    def __aiter__(self) -> _SingleEventStream:
         """Return the async iterator."""
         return self
 
@@ -68,7 +66,7 @@ class _StructuredTextStream:
             )
         )
 
-    def __aiter__(self) -> "_StructuredTextStream":
+    def __aiter__(self) -> _StructuredTextStream:
         """Return the async iterator."""
         return self
 
@@ -98,7 +96,7 @@ class _StructuredToolStream:
             )
         )
 
-    def __aiter__(self) -> "_StructuredToolStream":
+    def __aiter__(self) -> _StructuredToolStream:
         """Return the async iterator."""
         return self
 

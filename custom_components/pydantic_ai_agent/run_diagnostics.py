@@ -6,7 +6,7 @@ from dataclasses import fields, is_dataclass
 from datetime import UTC
 from itertools import islice
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from homeassistant.util import dt as dt_util
@@ -45,7 +45,7 @@ class RunDiagnosticsRecorder:
         phase: str,
         event: str,
         source: str = "integration",
-        data: Any | None = None,
+        data: object | None = None,
     ) -> None:
         """Record one ordered timeline event."""
         self._sequence += 1
@@ -75,23 +75,26 @@ class RunDiagnosticsRecorder:
     ) -> dict[str, Any]:
         """Return the bounded diagnostics payload for the run."""
         finished_at = dt_util.utcnow().replace(tzinfo=UTC)
-        return bound_diagnostics_data(
-            {
-                "schema_version": 1,
-                "run_id": self.run_id,
-                "subentry_id": self.subentry_id,
-                "subentry_type": self.subentry_type,
-                "conversation_id": self.conversation_id,
-                "status": status,
-                "started_at": self.started_at.isoformat(),
-                "finished_at": finished_at.isoformat(),
-                "duration_ms": round(
-                    (finished_at - self.started_at).total_seconds() * 1000, 3
-                ),
-                "timeline_event_count": self._sequence,
-                "timeline": self._timeline(),
-                "summary": dict(summary or {}),
-            }
+        return cast(
+            dict[str, Any],
+            bound_diagnostics_data(
+                {
+                    "schema_version": 1,
+                    "run_id": self.run_id,
+                    "subentry_id": self.subentry_id,
+                    "subentry_type": self.subentry_type,
+                    "conversation_id": self.conversation_id,
+                    "status": status,
+                    "started_at": self.started_at.isoformat(),
+                    "finished_at": finished_at.isoformat(),
+                    "duration_ms": round(
+                        (finished_at - self.started_at).total_seconds() * 1000, 3
+                    ),
+                    "timeline_event_count": self._sequence,
+                    "timeline": self._timeline(),
+                    "summary": dict(summary or {}),
+                }
+            ),
         )
 
     def _timeline(self) -> list[dict[str, Any]] | dict[str, Any]:
@@ -110,7 +113,7 @@ class RunDiagnosticsRecorder:
         }
 
 
-def bound_diagnostics_data(value: Any, *, _depth: int = 0) -> Any:
+def bound_diagnostics_data(value: object, *, _depth: int = 0) -> object:
     """Return a JSON-safe diagnostics value with large content bounded."""
     if _depth > _MAX_DEPTH:
         return {"__diagnostics_bounded__": "max_depth", "type": type(value).__name__}
@@ -134,7 +137,7 @@ def bound_diagnostics_data(value: Any, *, _depth: int = 0) -> Any:
     if callable(model_dump):
         try:
             return bound_diagnostics_data(model_dump(mode="json"), _depth=_depth + 1)
-        except Exception:  # noqa: BLE001 - diagnostics must not break runs.
+        except Exception:
             pass
     if isinstance(value, Mapping):
         return _bound_mapping(value, _depth=_depth)
@@ -159,7 +162,7 @@ def _bound_string(value: str) -> str | dict[str, Any]:
     }
 
 
-def _bound_sequence(value: Sequence[Any], *, _depth: int) -> Any:
+def _bound_sequence(value: Sequence[Any], *, _depth: int) -> object:
     """Return a list or a head/tail representation for large sequences."""
     total = len(value)
     if total <= _SEQUENCE_EDGE_ITEMS * 2:
@@ -179,7 +182,7 @@ def _bound_sequence(value: Sequence[Any], *, _depth: int) -> Any:
     }
 
 
-def _bound_mapping(value: Mapping[Any, Any], *, _depth: int) -> Any:
+def _bound_mapping(value: Mapping[Any, Any], *, _depth: int) -> object:
     """Return a mapping or a head/tail representation for large mappings."""
     total = len(value)
     if total <= _MAPPING_EDGE_ITEMS * 2:

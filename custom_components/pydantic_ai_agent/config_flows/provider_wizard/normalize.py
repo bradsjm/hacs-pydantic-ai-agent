@@ -1,8 +1,7 @@
 """Normalize models.dev catalog data for the provider setup wizard."""
 
 from collections.abc import Mapping
-from urllib.parse import urlparse
-from urllib.parse import urlunparse
+from urllib.parse import urlparse, urlunparse
 
 from .mapping import supported_drivers_for_provider
 from .types import (
@@ -11,7 +10,6 @@ from .types import (
     CompactCatalog,
     sorted_unique_strings,
 )
-
 
 _ENDPOINT_SUFFIXES = (
     ("audio", "speech"),

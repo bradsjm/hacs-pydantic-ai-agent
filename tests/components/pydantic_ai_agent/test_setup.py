@@ -4,14 +4,7 @@ import asyncio
 from collections.abc import Mapping
 from unittest.mock import AsyncMock, call, patch
 
-from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.helpers import issue_registry as ir
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.pydantic_ai_agent import (
     PLATFORMS,
     async_remove_entry,
@@ -37,8 +30,17 @@ from custom_components.pydantic_ai_agent.model_profiles import model_profile_ref
 from custom_components.pydantic_ai_agent.provider_validation import (
     ProviderValidationError,
 )
-from custom_components.pydantic_ai_agent.repairs import model_validation_issue_id
-from custom_components.pydantic_ai_agent.repairs import provider_auth_issue_id
+from custom_components.pydantic_ai_agent.repairs import (
+    model_validation_issue_id,
+    provider_auth_issue_id,
+)
+from homeassistant import config_entries
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     ai_task_subentry_data,
     conversation_subentry_data,
@@ -312,6 +314,44 @@ async def test_setup_failure_releases_logfire_owner(
 
         assert logfire_active_for_entry(hass, second_entry)
         assert configure_logfire.call_count == 2
+
+
+async def test_setup_failure_after_forward_unloads_platforms(
+    hass: HomeAssistant,
+) -> None:
+    """Test setup rolls back forwarded platforms if a later step fails."""
+    entry = _workspace_entry(data={CONF_LOGFIRE_TOKEN: "token-a"})
+    entry.add_to_hass(hass)
+
+    with (
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ) as forward_entry_setups,
+        patch.object(
+            hass.config_entries,
+            "async_unload_platforms",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as unload_platforms,
+        patch(
+            "custom_components.pydantic_ai_agent.async_configure_logfire",
+            new_callable=AsyncMock,
+            side_effect=[True, RuntimeError("logfire reconfigure failed")],
+        ) as configure_logfire,
+        patch(
+            "custom_components.pydantic_ai_agent.async_release_logfire",
+            new_callable=AsyncMock,
+        ) as release_logfire,
+        pytest.raises(RuntimeError, match="logfire reconfigure failed"),
+    ):
+        await async_setup_entry(hass, entry)
+
+    forward_entry_setups.assert_awaited_once_with(entry, PLATFORMS)
+    unload_platforms.assert_awaited_once_with(entry, PLATFORMS)
+    release_logfire.assert_awaited_once_with(hass, entry)
+    assert configure_logfire.await_count == 2
 
 
 async def test_setup_cancellation_releases_logfire_owner(
@@ -595,7 +635,9 @@ async def test_setup_entry_model_errors_create_repair_issue(
         "reason": "invalid_model",
         "error_message": "model unavailable",
     }
-    assert entry.runtime_data.model_validation_failures == {failure_key: "invalid_model"}
+    assert entry.runtime_data.model_validation_failures == {
+        failure_key: "invalid_model"
+    }
 
 
 async def test_setup_entry_auth_errors_create_provider_auth_repair_issue(

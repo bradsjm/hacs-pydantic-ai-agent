@@ -1,43 +1,15 @@
 """Test Pydantic AI Agent conversation entities."""
 
-from collections.abc import AsyncIterator, Iterable
-from contextlib import asynccontextmanager
 import json
 import sys
-from typing import Any, cast
+from collections.abc import AsyncIterator, Iterable
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from homeassistant.components import conversation
-from homeassistant.components.conversation.chat_log import (
-    DATA_CHAT_LOGS,
-    AssistantContent,
-)
-from homeassistant.config_entries import ConfigSubentry
-from homeassistant.const import CONF_NAME, __version__
-from homeassistant.core import Context, HomeAssistant
-from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.helpers.entity import Entity
-from homeassistant.helpers import llm
-from homeassistant.util import slugify
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-from pydantic_ai import (
-    AgentRunResultEvent,
-    ModelRequest,
-    ModelResponse,
-    PartDeltaEvent,
-    PartStartEvent,
-    TextPart,
-    ThinkingPartDelta,
-    ThinkingPart,
-)
-from pydantic_ai.capabilities import Thinking
-from pydantic_ai.models.function import AgentInfo, FunctionModel
-from pydantic_ai.models.test import TestModel
-from pydantic_ai.exceptions import UsageLimitExceeded
-from homeassistant.components.conversation.trace import async_get_traces
-
+from custom_components.pydantic_ai_agent.chat_deltas import _StreamTraceRecorder
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_FALLBACK_MODEL_REFS,
@@ -52,7 +24,6 @@ from custom_components.pydantic_ai_agent.const import (
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
 )
-from custom_components.pydantic_ai_agent.chat_deltas import _StreamTraceRecorder
 from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
     async_setup_entry,
@@ -65,6 +36,35 @@ from custom_components.pydantic_ai_agent.metrics import (
     EVENT_AGENT_RUN_COMPLETED,
     EVENT_AGENT_RUN_FAILED,
 )
+from homeassistant.components import conversation
+from homeassistant.components.conversation.chat_log import (
+    DATA_CHAT_LOGS,
+    AssistantContent,
+)
+from homeassistant.components.conversation.trace import async_get_traces
+from homeassistant.config_entries import ConfigSubentry
+from homeassistant.const import CONF_NAME, __version__
+from homeassistant.core import Context, HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import llm
+from homeassistant.helpers.entity import Entity
+from homeassistant.util import slugify
+from pydantic_ai import (
+    AgentRunResultEvent,
+    ModelRequest,
+    ModelResponse,
+    PartDeltaEvent,
+    PartStartEvent,
+    TextPart,
+    ThinkingPart,
+    ThinkingPartDelta,
+)
+from pydantic_ai.capabilities import Thinking
+from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.models.test import TestModel
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     conversation_subentry_data,
     model_profile_data,
@@ -75,6 +75,8 @@ from tests.components.pydantic_ai_agent.support.builders import (
 )
 from tests.components.pydantic_ai_agent.support.pydantic_ai import (
     ConversationAgent as _Agent,
+)
+from tests.components.pydantic_ai_agent.support.pydantic_ai import (
     Usage,
 )
 
@@ -593,7 +595,7 @@ async def test_conversation_runtime_uses_configured_max_iterations(
             agent_id=entity_id,
         )
 
-    assert getattr(agent.run_kwargs["usage_limits"], "request_limit") == 24
+    assert agent.run_kwargs["usage_limits"].request_limit == 24
 
 
 async def test_streaming_iteration_failure_updates_chat_and_sensors(
@@ -1201,7 +1203,7 @@ async def test_conversation_runtime_defaults_max_iterations(
             agent_id=entity_id,
         )
 
-    assert getattr(agent.run_kwargs["usage_limits"], "request_limit") == 10
+    assert agent.run_kwargs["usage_limits"].request_limit == 10
 
 
 async def test_conversation_runtime_passes_selected_skills_capabilities(
@@ -1397,7 +1399,7 @@ async def test_conversation_runtime_recreates_virtual_workspace_for_fallback(
     entry.add_to_hass(hass)
 
     class FailingAgent:
-        async def __aenter__(self) -> "FailingAgent":
+        async def __aenter__(self) -> FailingAgent:
             return self
 
         async def __aexit__(self, *_args: object) -> None:

@@ -10,8 +10,14 @@ from ..const import CONF_VIRTUAL_WORKSPACE_ENABLED
 from .tools import build_virtual_workspace_toolset
 from .workspace import VirtualWorkspace
 
-VIRTUAL_WORKSPACE_INSTRUCTIONS = """A temporary in-memory virtual workspace is available for this run.
-Use `/workspace` as the default working directory. Files, directories, shell state, and environment changes persist only during this model run and are discarded after the response. The workspace has no host filesystem mounts and no network access. Destructive file operations require `confirm: true`."""
+VIRTUAL_WORKSPACE_INSTRUCTIONS = (
+    "A temporary in-memory virtual workspace is available for this run."
+    " Use `/workspace` as the default working directory."
+    " Files, directories, shell state, and environment changes persist only"
+    " during this model run and are discarded after the response."
+    " The workspace has no host filesystem mounts and no network access."
+    " Destructive file operations require `confirm: true`."
+)
 
 
 @dataclass(frozen=True, kw_only=True)

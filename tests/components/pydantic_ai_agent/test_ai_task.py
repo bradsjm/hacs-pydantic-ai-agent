@@ -5,21 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from pydantic_ai import ModelResponse, ToolCallPart
-from pydantic_ai.capabilities import Thinking
-from pydantic_ai.models.test import TestModel
-from pydantic_ai.output import NativeOutput, PromptedOutput, ToolOutput
 import voluptuous as vol
-
-from homeassistant.components import ai_task
-from homeassistant.config_entries import ConfigSubentry
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.entity import Entity
-from homeassistant.util import slugify
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from custom_components.pydantic_ai_agent.ai_task import (
     PydanticAIAgentAITaskEntity,
     async_setup_entry,
@@ -43,6 +29,18 @@ from custom_components.pydantic_ai_agent.metrics import (
     EVENT_AGENT_RUN_FAILED,
     EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED,
 )
+from homeassistant.components import ai_task
+from homeassistant.config_entries import ConfigSubentry
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity import Entity
+from homeassistant.util import slugify
+from pydantic_ai import ModelResponse, ToolCallPart
+from pydantic_ai.capabilities import Thinking
+from pydantic_ai.models.test import TestModel
+from pydantic_ai.output import NativeOutput, PromptedOutput, ToolOutput
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     ai_task_subentry_data,
     provider_runtime_data,
@@ -52,6 +50,8 @@ from tests.components.pydantic_ai_agent.support.builders import (
 )
 from tests.components.pydantic_ai_agent.support.pydantic_ai import (
     Agent as _Agent,
+)
+from tests.components.pydantic_ai_agent.support.pydantic_ai import (
     agent_factory as _agent_factory,
 )
 
@@ -595,7 +595,7 @@ async def test_ai_task_runtime_uses_configured_max_iterations(
         )
 
     assert result.data == "plain result"
-    assert getattr(agent.run_kwargs["usage_limits"], "request_limit") == 26
+    assert agent.run_kwargs["usage_limits"].request_limit == 26
 
 
 async def test_ai_task_runtime_defaults_max_iterations(hass: HomeAssistant) -> None:
@@ -621,7 +621,7 @@ async def test_ai_task_runtime_defaults_max_iterations(hass: HomeAssistant) -> N
         )
 
     assert result.data == "plain result"
-    assert getattr(agent.run_kwargs["usage_limits"], "request_limit") == 30
+    assert agent.run_kwargs["usage_limits"].request_limit == 30
 
 
 async def test_ai_task_runtime_passes_selected_skills_capabilities(
