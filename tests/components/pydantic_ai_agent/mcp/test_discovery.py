@@ -1,5 +1,6 @@
 """Tests for MCP discovery helpers."""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -192,3 +193,34 @@ async def test_discover_mcp_tools_from_config_maps_connection_errors(
         )
 
     assert err.value.reason == reason
+
+
+async def test_discover_mcp_tools_from_config_times_out_cleanly(
+    hass: HomeAssistant,
+) -> None:
+    class FakeMCPToolset:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def list_tools(self) -> list[dict[str, object]]:
+            await asyncio.sleep(0.05)
+            return []
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.mcp.discovery.MCPToolset",
+            FakeMCPToolset,
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.mcp.discovery._mcp_client",
+            return_value=object(),
+        ),
+        pytest.raises(MCPValidationError) as err,
+    ):
+        await async_discover_mcp_tools_from_config(
+            hass,
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+            timeout=0.01,
+        )
+
+    assert err.value.reason == "timeout"

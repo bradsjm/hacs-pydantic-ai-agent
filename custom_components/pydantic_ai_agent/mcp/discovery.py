@@ -2,6 +2,7 @@
 
 # ruff: noqa: ANN401
 
+import asyncio
 import json
 import logging
 from collections.abc import Mapping
@@ -98,7 +99,10 @@ async def async_discover_mcp_tools_from_config(
             id=server_id,
             tool_error_behavior="error",
         )
-        async with toolset:
+        # FastMCP uses the configured timeout for both session initialization and
+        # the subsequent tools/list request, so the watchdog here must cover both
+        # phases without allowing the config-flow progress task to hang forever.
+        async with asyncio.timeout(timeout * 2):
             tools = await toolset.list_tools()
     except TimeoutError as err:
         raise MCPValidationError(

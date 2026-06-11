@@ -151,10 +151,10 @@
             },
             "hass_control": {
               "data": {
-                "llm_hass_api": ""
+                "llm_hass_api": "Select Capabilities"
               },
               "data_description": {
-                "llm_hass_api": "Select which tools the model can use to interact with your devices and entities."
+                "llm_hass_api": "Select which tools the model can use to interact with."
               },
               "name": "Capabilities"
             },
@@ -244,7 +244,7 @@
                 "web_fetch_enabled": "Web fetch"
               },
               "data_description": {
-                "mcp_server_ids": "Optional MCP servers this conversation agent may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
+                "mcp_server_ids": "Optional MCP servers this conversation agent may use.",
                 "virtual_workspace_enabled": "Allow this conversation agent to use a temporary in-memory bash and file workspace during each model run. The workspace is discarded after the response.",
                 "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
               },
@@ -261,10 +261,10 @@
             },
             "hass_control": {
               "data": {
-                "llm_hass_api": ""
+                "llm_hass_api": "Select Capabilities"
               },
               "data_description": {
-                "llm_hass_api": "Select which tools the model can use to interact with your devices and entities."
+                "llm_hass_api": "Select which tools the model can use to interact with."
               },
               "name": "Capabilities"
             },
@@ -677,44 +677,104 @@
   },
   "entity": {
     "binary_sensor": {
-      "assist_enabled": { "name": "Assist enabled" },
-      "last_run_succeeded": { "name": "Last run succeeded" },
-      "provider_healthy": { "name": "Provider healthy" },
-      "todo_workspace_enabled": { "name": "Todo workspace enabled" },
-      "virtual_workspace_enabled": { "name": "Virtual workspace enabled" },
-      "web_fetch_enabled": { "name": "Web fetch enabled" }
+      "assist_enabled": {
+        "name": "Assist enabled"
+      },
+      "last_run_succeeded": {
+        "name": "Last run succeeded"
+      },
+      "provider_healthy": {
+        "name": "Provider healthy"
+      },
+      "todo_workspace_enabled": {
+        "name": "Todo workspace enabled"
+      },
+      "virtual_workspace_enabled": {
+        "name": "Virtual workspace enabled"
+      },
+      "web_fetch_enabled": {
+        "name": "Web fetch enabled"
+      }
     },
     "sensor": {
-      "consecutive_failures": { "name": "Consecutive failures" },
-      "cumulative_cache_read_cost": { "name": "Cumulative cache read cost" },
+      "consecutive_failures": {
+        "name": "Consecutive failures"
+      },
+      "cumulative_cache_read_cost": {
+        "name": "Cumulative cache read cost"
+      },
       "cumulative_cache_read_tokens": {
         "name": "Cumulative cache read tokens"
       },
-      "cumulative_input_cost": { "name": "Cumulative input cost" },
-      "cumulative_input_tokens": { "name": "Cumulative input tokens" },
-      "cumulative_output_cost": { "name": "Cumulative output cost" },
-      "cumulative_output_tokens": { "name": "Cumulative output tokens" },
-      "cumulative_total_cost": { "name": "Cumulative total cost" },
-      "cumulative_total_tokens": { "name": "Cumulative total tokens" },
-      "last_error_type": { "name": "Last error type" },
-      "last_run_cache_read_cost": { "name": "Last run cache read cost" },
-      "last_run_cache_read_tokens": { "name": "Last run cache read tokens" },
-      "last_run_duration": { "name": "Last run duration" },
-      "last_run_input_cost": { "name": "Last run input cost" },
-      "last_run_input_tokens": { "name": "Last run input tokens" },
-      "last_run_model_profile": { "name": "Last run model profile" },
+      "cumulative_input_cost": {
+        "name": "Cumulative input cost"
+      },
+      "cumulative_input_tokens": {
+        "name": "Cumulative input tokens"
+      },
+      "cumulative_output_cost": {
+        "name": "Cumulative output cost"
+      },
+      "cumulative_output_tokens": {
+        "name": "Cumulative output tokens"
+      },
+      "cumulative_total_cost": {
+        "name": "Cumulative total cost"
+      },
+      "cumulative_total_tokens": {
+        "name": "Cumulative total tokens"
+      },
+      "last_error_type": {
+        "name": "Last error type"
+      },
+      "last_run_cache_read_cost": {
+        "name": "Last run cache read cost"
+      },
+      "last_run_cache_read_tokens": {
+        "name": "Last run cache read tokens"
+      },
+      "last_run_duration": {
+        "name": "Last run duration"
+      },
+      "last_run_input_cost": {
+        "name": "Last run input cost"
+      },
+      "last_run_input_tokens": {
+        "name": "Last run input tokens"
+      },
+      "last_run_model_profile": {
+        "name": "Last run model profile"
+      },
       "last_run_model_request_count": {
         "name": "Last run model request count"
       },
-      "last_run_output_cost": { "name": "Last run output cost" },
-      "last_run_output_tokens": { "name": "Last run output tokens" },
-      "last_run_tool_use_count": { "name": "Last run tool use count" },
-      "last_run_total_cost": { "name": "Last run total cost" },
-      "last_run_total_tokens": { "name": "Last run total tokens" },
-      "mcp_servers_enabled": { "name": "MCP servers enabled" },
-      "primary_language_model": { "name": "Primary language model" },
-      "skills_enabled": { "name": "Skills enabled" },
-      "structured_output_mode": { "name": "Structured output mode" }
+      "last_run_output_cost": {
+        "name": "Last run output cost"
+      },
+      "last_run_output_tokens": {
+        "name": "Last run output tokens"
+      },
+      "last_run_tool_use_count": {
+        "name": "Last run tool use count"
+      },
+      "last_run_total_cost": {
+        "name": "Last run total cost"
+      },
+      "last_run_total_tokens": {
+        "name": "Last run total tokens"
+      },
+      "mcp_servers_enabled": {
+        "name": "MCP servers enabled"
+      },
+      "primary_language_model": {
+        "name": "Primary language model"
+      },
+      "skills_enabled": {
+        "name": "Skills enabled"
+      },
+      "structured_output_mode": {
+        "name": "Structured output mode"
+      }
     }
   },
   "exceptions": {

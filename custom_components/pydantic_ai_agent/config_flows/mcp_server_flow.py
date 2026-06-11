@@ -1,8 +1,16 @@
 """Config subentry flow handlers for MCP servers."""
 
+import asyncio
+import logging
+
 from homeassistant.helpers.selector import SelectOptionDict
 
-from ..const import CONF_MCP_ALLOWED_TOOLS, CONF_MCP_HEADERS, CONF_MCP_URL
+from ..const import (
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_HEADERS,
+    CONF_MCP_URL,
+    DEFAULT_MCP_TIMEOUT,
+)
 from ..mcp import (
     MCPValidationError,
     async_discover_mcp_tools_from_config,
@@ -28,6 +36,8 @@ from .mcp_helpers import (
     _mcp_url_already_configured,
     _mcp_validation_placeholders,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
@@ -131,29 +141,57 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         tuple[str, str, dict[str, str]] | None,
     ]:
         """Validate MCP connectivity and return discovered tool options."""
+        server_id = current_subentry_id or str(data[CONF_NAME])
+        _LOGGER.debug("Validating MCP server %s", server_id)
         try:
-            data = dict(data)
-            data[CONF_MCP_URL] = await async_validate_mcp_url(
-                self.hass, data[CONF_MCP_URL]
-            )
-            tools = await async_discover_mcp_tools_from_config(
-                self.hass,
-                data,
-                server_id=current_subentry_id or data[CONF_NAME],
-                apply_allowlist=False,
-            )
-            existing_allowed_tools = parse_allowed_tools(
-                self._options.get(CONF_MCP_ALLOWED_TOOLS)
-            )
-            tool_options = _mcp_tool_options(tools, existing_allowed_tools)
-            if not tool_options:
-                raise MCPValidationError(
-                    "no_mcp_tools",
-                    "The MCP server did not expose any tools.",
+            async with asyncio.timeout(DEFAULT_MCP_TIMEOUT * 3):
+                data = dict(data)
+                data[CONF_MCP_URL] = await async_validate_mcp_url(
+                    self.hass, data[CONF_MCP_URL]
                 )
+                tools = await async_discover_mcp_tools_from_config(
+                    self.hass,
+                    data,
+                    server_id=server_id,
+                    apply_allowlist=False,
+                )
+                existing_allowed_tools = parse_allowed_tools(
+                    self._options.get(CONF_MCP_ALLOWED_TOOLS)
+                )
+                tool_options = _mcp_tool_options(tools, existing_allowed_tools)
+                if not tool_options:
+                    raise MCPValidationError(
+                        "no_mcp_tools",
+                        "The MCP server did not expose any tools.",
+                    )
+        except TimeoutError:
+            validation_error = MCPValidationError(
+                "timeout",
+                "Timed out validating the MCP server.",
+                server_id=server_id,
+            )
+            _LOGGER.warning("Timed out validating MCP server %s", server_id)
+            return None, [], (
+                "base",
+                validation_error.reason,
+                _mcp_validation_placeholders(validation_error),
+            )
         except MCPValidationError as err:
             target = CONF_MCP_URL if err.reason == "invalid_mcp_url" else "base"
+            _LOGGER.warning(
+                "MCP server validation failed for %s: %s",
+                server_id,
+                err.reason,
+            )
             return None, [], (target, err.reason, _mcp_validation_placeholders(err))
+        except Exception:
+            _LOGGER.exception("Unexpected exception validating MCP server")
+            return None, [], ("base", "unknown", {})
+        _LOGGER.debug(
+            "Validated MCP server %s with %s available tools",
+            server_id,
+            len(tool_options),
+        )
         return data, tool_options, None
 
     async def async_step_mcp_validation_progress(

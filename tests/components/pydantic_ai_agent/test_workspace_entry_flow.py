@@ -1,13 +1,17 @@
 """Tests for workspace entry creation and subentry creation flows."""
 
+import asyncio
 from types import SimpleNamespace
 from typing import cast
+from unittest.mock import patch
 
+import pytest
 import voluptuous_serialize
 from custom_components.pydantic_ai_agent import (
     ProviderRuntimeData,
     WorkspaceRuntimeData,
 )
+from custom_components.pydantic_ai_agent.config_flows import mcp_server_flow
 from custom_components.pydantic_ai_agent.config_flows.workspace_flow import (
     PydanticAIAgentConfigFlow,
 )
@@ -16,6 +20,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_API_KEY,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_NAME,
@@ -26,12 +32,14 @@ from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
 from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
 )
+from custom_components.pydantic_ai_agent.mcp import MCPValidationError
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_LLM_HASS_API
@@ -242,6 +250,174 @@ async def test_workspace_flow_offers_mcp_subentries(
     supported = PydanticAIAgentConfigFlow.async_get_supported_subentry_types(entry)
 
     assert "mcp_server" in supported
+
+
+async def test_mcp_server_validation_success_advances_to_tools(
+    hass: HomeAssistant,
+) -> None:
+    """Test MCP validation success advances from progress to tool selection."""
+    entry = await loaded_workspace_entry(hass)
+
+    async def discover_tools(
+        *_args: object, **_kwargs: object
+    ) -> list[dict[str, object]]:
+        return [
+            {
+                "name": "echo",
+                "description": "Echo a message",
+                "input_schema": {"type": "object"},
+            }
+        ]
+
+    result = await subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flows.mcp_server_flow.async_discover_mcp_tools_from_config",
+        new=discover_tools,
+    ):
+        result = await subentry_configure_result(
+            hass,
+            result["flow_id"],
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+        assert result["type"] is FlowResultType.SHOW_PROGRESS
+
+        await hass.async_block_till_done()
+        result = await subentry_configure_result(hass, result["flow_id"])
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "tools"
+    assert result.get("errors") is None
+
+    result = await subentry_configure_result(
+        hass,
+        result["flow_id"],
+        {CONF_MCP_ALLOWED_TOOLS: ["echo"]},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Echo MCP"
+    assert result["data"][CONF_MCP_ALLOWED_TOOLS] == ["echo"]
+
+
+async def test_mcp_server_validation_known_failure_returns_form_error(
+    hass: HomeAssistant,
+) -> None:
+    """Test MCP validation errors return to the form instead of hanging."""
+    entry = await loaded_workspace_entry(hass)
+
+    async def fail_discovery(*_args: object, **_kwargs: object) -> list[dict[str, str]]:
+        raise MCPValidationError(
+            "cannot_connect",
+            "Could not connect to the MCP server.",
+            status_code=502,
+        )
+
+    result = await subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flows.mcp_server_flow.async_discover_mcp_tools_from_config",
+        new=fail_discovery,
+    ):
+        result = await subentry_configure_result(
+            hass,
+            result["flow_id"],
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+        assert result["type"] is FlowResultType.SHOW_PROGRESS
+
+        await hass.async_block_till_done()
+        result = await subentry_configure_result(hass, result["flow_id"])
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    assert result["errors"] == {"base": "cannot_connect"}
+    assert result["description_placeholders"] == {
+        "error_message": "Could not connect to the MCP server.",
+        "status_code": "502",
+    }
+
+
+async def test_mcp_server_validation_hard_timeout_returns_form_error(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test flow-level MCP validation timeout returns to the form."""
+    entry = await loaded_workspace_entry(hass)
+    monkeypatch.setattr(mcp_server_flow, "DEFAULT_MCP_TIMEOUT", 0.001)
+
+    async def hang_discovery(*_args: object, **_kwargs: object) -> list[dict[str, str]]:
+        await asyncio.sleep(60)
+        return []
+
+    result = await subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flows.mcp_server_flow.async_discover_mcp_tools_from_config",
+        new=hang_discovery,
+    ):
+        result = await subentry_configure_result(
+            hass,
+            result["flow_id"],
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+        assert result["type"] is FlowResultType.SHOW_PROGRESS
+
+        await hass.async_block_till_done()
+        result = await subentry_configure_result(hass, result["flow_id"])
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    assert result["errors"] == {"base": "timeout"}
+
+
+async def test_mcp_server_validation_exception_returns_form_error(
+    hass: HomeAssistant,
+) -> None:
+    """Test MCP validation task failures return to the form instead of hanging."""
+    entry = await loaded_workspace_entry(hass)
+
+    async def fail_discovery(*_args: object, **_kwargs: object) -> list[dict[str, str]]:
+        raise RuntimeError("boom")
+
+    result = await subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flows.mcp_server_flow.async_discover_mcp_tools_from_config",
+        new=fail_discovery,
+    ):
+        result = await subentry_configure_result(
+            hass,
+            result["flow_id"],
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+        assert result["type"] is FlowResultType.SHOW_PROGRESS
+
+        await hass.async_block_till_done()
+        result = await subentry_configure_result(hass, result["flow_id"])
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    assert result["errors"] == {"base": "unknown"}
 
 
 async def test_create_workspace_entry(hass: HomeAssistant) -> None:
