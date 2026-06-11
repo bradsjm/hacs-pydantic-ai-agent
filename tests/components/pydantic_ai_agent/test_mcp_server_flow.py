@@ -166,6 +166,45 @@ async def test_mcp_server_validation_exception_returns_form_error(
     assert result["errors"] == {"base": "unknown"}
 
 
+async def test_mcp_server_validation_logs_underlying_import_error(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test MCP validation logs the underlying import error type."""
+    entry = await loaded_workspace_entry(hass)
+
+    async def fail_discovery(*_args: object, **_kwargs: object) -> list[dict[str, str]]:
+        try:
+            raise ImportError("FastMCP server support is not installed")
+        except ImportError as err:
+            raise MCPValidationError(
+                "cannot_connect",
+                "Could not connect to the MCP server.",
+            ) from err
+
+    result = await subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.config_flows.mcp_server_flow.async_discover_mcp_tools_from_config",
+            new=fail_discovery,
+        ),
+        caplog.at_level("WARNING"),
+    ):
+        await subentry_configure_result(
+            hass,
+            result["flow_id"],
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+
+    assert "cause=ImportError" in caplog.text
+    assert "FastMCP server support is not installed" in caplog.text
+
+
 async def test_mcp_server_reconfigure_menu_exposes_tool_management(
     hass: HomeAssistant,
 ) -> None:

@@ -40,6 +40,21 @@ from .mcp_helpers import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _validation_failure_log_details(
+    err: MCPValidationError,
+) -> tuple[str, tuple[object, ...]]:
+    """Return extra secret-safe details for MCP validation warning logs."""
+    cause = err.__cause__
+    if cause is None:
+        return "reason=%s", (err.reason,)
+    if isinstance(cause, ImportError):
+        return (
+            "reason=%s cause=%s message=%s",
+            (err.reason, type(cause).__name__, str(cause)),
+        )
+    return "reason=%s cause=%s", (err.reason, type(cause).__name__)
+
+
 class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing remote MCP server subentries."""
 
@@ -245,10 +260,11 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
             )
         except MCPValidationError as err:
             target = CONF_MCP_URL if err.reason == "invalid_mcp_url" else "base"
+            log_message, log_args = _validation_failure_log_details(err)
             _LOGGER.warning(
-                "MCP server validation failed for %s: %s",
+                "MCP server validation failed for %s: " + log_message,
                 server_id,
-                err.reason,
+                *log_args,
             )
             return None, [], (target, err.reason, _mcp_validation_placeholders(err))
         except Exception:
