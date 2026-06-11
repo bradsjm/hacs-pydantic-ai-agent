@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+docker run --rm \
+  -v ~/config:/config \
+  -v ./custom_components:/config/custom_components \
+  -p 8123:8123 \
+  homeassistant/home-assistant:latest \
+  "$@"
