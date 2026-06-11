@@ -19,6 +19,8 @@ from pydantic_ai import (
     UserPromptPart,
 )
 
+from .multimodal_tool_result import normalize_multimodal_tool_result
+
 _SUPPORTED_ATTACHMENT_MIME_TYPES = {"application/pdf"}
 _SUPPORTED_ATTACHMENT_MIME_PREFIXES = ("image/",)
 
@@ -55,7 +57,7 @@ async def chat_log_content_to_model_messages(
                     parts=[
                         ToolReturnPart(
                             tool_name=item.tool_name,
-                            content=item.tool_result,
+                            content=normalize_multimodal_tool_result(item.tool_result),
                             tool_call_id=item.tool_call_id,
                         )
                     ]

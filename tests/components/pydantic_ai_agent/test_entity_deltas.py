@@ -1,5 +1,6 @@
 """Test entity chat delta streaming/mapping."""
 
+import base64
 import logging
 from collections.abc import AsyncIterator
 from typing import Any, cast
@@ -15,6 +16,7 @@ from custom_components.pydantic_ai_agent.virtual_workspace.const import (
 )
 from pydantic_ai import (
     AgentRunResultEvent,
+    BinaryContent,
     FunctionToolCallEvent,
     FunctionToolResultEvent,
     ModelRequest,
@@ -297,5 +299,46 @@ async def test_agent_messages_to_chat_deltas_preserves_tool_returns() -> None:
             "tool_call_id": "tool-1",
             "tool_name": "HassTurnOn",
             "tool_result": {"success": True},
+        }
+    ]
+
+
+async def test_agent_messages_to_chat_deltas_serializes_multimodal_tool_returns(
+) -> None:
+    """Test multimodal tool result parts persist as JSON-safe sentinel data."""
+    deltas = await _collect_deltas(
+        [
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name="camera_snapshot",
+                        content=[
+                            "Snapshot",
+                            BinaryContent(data=b"jpeg-bytes", media_type="image/jpeg"),
+                        ],
+                        tool_call_id="tool-1",
+                    )
+                ]
+            )
+        ],
+        output_tool_names=set(),
+    )
+
+    assert deltas == [
+        {
+            "role": "tool_result",
+            "tool_call_id": "tool-1",
+            "tool_name": "camera_snapshot",
+            "tool_result": {
+                "_type": "ha_multimodal_tool_result",
+                "text": "Snapshot",
+                "attachments": [
+                    {
+                        "kind": "inline_image",
+                        "mime_type": "image/jpeg",
+                        "base64": base64.b64encode(b"jpeg-bytes").decode(),
+                    }
+                ],
+            },
         }
     ]

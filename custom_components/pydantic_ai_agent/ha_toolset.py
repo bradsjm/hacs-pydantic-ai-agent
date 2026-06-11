@@ -6,6 +6,7 @@ from homeassistant.helpers import llm
 from pydantic_ai import RunContext, Tool, ToolDefinition
 from voluptuous_openapi import convert
 
+from .multimodal_tool_result import normalize_multimodal_tool_result
 from .run_diagnostics import RunDiagnosticsRecorder
 
 
@@ -92,7 +93,7 @@ def _tool_from_ha_tool(
                 event="call_finished",
                 data={"tool_name": tool.name, "result": result},
             )
-        return result
+        return normalize_multimodal_tool_result(result)
 
     return Tool.from_schema(
         execute,

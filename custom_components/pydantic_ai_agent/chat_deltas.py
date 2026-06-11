@@ -30,6 +30,7 @@ from pydantic_ai.messages import (
 
 from ._stream_trace import _StreamTraceRecorder
 from ._tool_utils import _log_tool_problem, _tool_problem_from_part
+from .multimodal_tool_result import serialize_multimodal_tool_result
 from .run_state import _StreamRunState
 
 _LOGGER = logging.getLogger(__name__)
@@ -309,7 +310,7 @@ async def _handle_events_tool_result(
         "role": "tool_result",
         "tool_call_id": event.part.tool_call_id,
         "tool_name": event.part.tool_name,
-        "tool_result": event.part.content,
+        "tool_result": serialize_multimodal_tool_result(event.part.content),
     }
     if trace_recorder is not None:
         trace_recorder.record_chat_delta(delta)
@@ -434,5 +435,5 @@ async def _request_message_to_deltas(
                 "role": "tool_result",
                 "tool_call_id": part.tool_call_id,
                 "tool_name": part.tool_name,
-                "tool_result": part.content,
+                "tool_result": serialize_multimodal_tool_result(part.content),
             }

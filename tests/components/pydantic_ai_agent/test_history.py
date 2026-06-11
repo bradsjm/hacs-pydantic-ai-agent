@@ -1,5 +1,6 @@
 """Test Home Assistant ChatLog history conversion."""
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -145,6 +146,42 @@ async def test_unsupported_attachment_type_raises(
                 )
             ],
         )
+
+
+async def test_tool_result_multimodal_sentinel_rehydrates_to_binary_content(
+    hass: HomeAssistant,
+) -> None:
+    """Test stored multimodal tool results replay as text plus binary content."""
+    messages = await chat_log_content_to_model_messages(
+        hass,
+        [
+            conversation.ToolResultContent(
+                agent_id="conversation.test",
+                tool_call_id="tool-1",
+                tool_name="camera_snapshot",
+                tool_result={
+                    "_type": "ha_multimodal_tool_result",
+                    "text": "Snapshot",
+                    "attachments": [
+                        {
+                            "kind": "inline_image",
+                            "mime_type": "image/jpeg",
+                            "base64": base64.b64encode(b"jpeg-bytes").decode(),
+                        }
+                    ],
+                },
+            )
+        ],
+    )
+
+    message = messages[0]
+    assert isinstance(message, ModelRequest)
+    tool_part = message.parts[0]
+    assert isinstance(tool_part, ToolReturnPart)
+    assert tool_part.content == [
+        "Snapshot",
+        BinaryContent(data=b"jpeg-bytes", media_type="image/jpeg"),
+    ]
 
 
 def test_split_last_user_prompt_returns_none_without_user_prompt() -> None:

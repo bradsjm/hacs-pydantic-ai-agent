@@ -106,11 +106,14 @@ async def _map_model_request(
             yield _map_user_prompt(model, part)
         elif isinstance(part, ToolReturnPart):
             call_id = _split_combined_tool_call_id(part.tool_call_id)[0]
+            tool_text, tool_file_content = part.model_response_str_and_user_content()
             yield {
                 "type": "function_call_output",
                 "call_id": call_id,
-                "output": part.model_response_str(),
+                "output": tool_text,
             }
+            if tool_file_content:
+                yield _map_user_prompt(model, UserPromptPart(content=tool_file_content))
         elif isinstance(part, RetryPromptPart):
             if part.tool_name is None:
                 yield {

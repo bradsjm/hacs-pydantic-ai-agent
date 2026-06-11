@@ -18,6 +18,7 @@ from pydantic_ai.messages import (
     ModelResponse,
     ThinkingPart,
     ToolCallPart,
+    ToolReturnPart,
     UserPromptPart,
 )
 from pydantic_ai.models import ModelRequestParameters
@@ -201,6 +202,37 @@ async def test_chat_text_like_binary_content_decodes_invalid_utf8() -> None:
             "content": [{"type": "text", "text": "bad\ufffdutf8"}],
         }
     ]
+    await http_client.aclose()
+
+
+async def test_chat_tool_return_with_multimodal_content_maps_text_and_image() -> None:
+    """Test Chat Completions tool returns forward both text and images."""
+    model, http_client = _model_with_transport(httpx.MockTransport(_unused_handler))
+
+    mapped_messages = await chat_message_mapping.map_messages(
+        model,
+        [
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name="camera_snapshot",
+                        content=[
+                            "Snapshot",
+                            BinaryContent(data=b"image", media_type="image/png"),
+                        ],
+                        tool_call_id="call-1",
+                    )
+                ]
+            )
+        ],
+        ModelRequestParameters(),
+    )
+
+    assert mapped_messages[0]["role"] == "tool"
+    assert "Snapshot" in mapped_messages[0]["content"]
+    assert "See file" in mapped_messages[0]["content"]
+    assert mapped_messages[1]["role"] == "user"
+    assert mapped_messages[1]["content"][1]["type"] == "image_url"
     await http_client.aclose()
 
 
