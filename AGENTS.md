@@ -178,7 +178,7 @@
   `list_skills` and `load_skill` tools for selected Skill subentries.
 - `diagnostics.py` and `system_health.py` own redacted config/device diagnostics
   and aggregate non-secret system health data.
-- `repairs.py` owns model validation and Logfire conflict repair issue helpers.
+- `repair_issues.py` owns model validation and Logfire conflict repair issue helpers.
 - `logfire_support.py` owns HA-managed process-global Logfire configuration,
   conflict handling, instrumentation, and safe run-span metadata.
 - `openai_compatible_client/` owns the lightweight async Chat Completions and

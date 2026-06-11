@@ -8,7 +8,10 @@ from pydantic_ai.exceptions import ModelHTTPError
 
 from ._types import PydanticAIAgentConfigEntry
 from .provider_validation import ProviderValidationError
-from .repairs import async_create_provider_auth_issue, async_delete_provider_auth_issue
+from .repair_issues import (
+    async_create_provider_auth_issue,
+    async_delete_provider_auth_issue,
+)
 
 _AUTH_VALIDATION_FAILURE_REASONS = {"invalid_auth", "permission_denied"}
 

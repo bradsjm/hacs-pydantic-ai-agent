@@ -63,7 +63,7 @@ def async_create_model_validation_issue(
             "reason": err.reason,
             "status_code": err.status_code,
         },
-        is_fixable=True,
+        is_fixable=False,
         is_persistent=False,
         severity=ir.IssueSeverity.ERROR,
         translation_key="model_validation_failed",
@@ -95,7 +95,7 @@ def async_create_provider_auth_issue(
             "reason": err.reason,
             "status_code": err.status_code,
         },
-        is_fixable=True,
+        is_fixable=False,
         is_persistent=False,
         severity=ir.IssueSeverity.ERROR,
         translation_key="provider_auth_failed",
@@ -175,7 +175,6 @@ def async_delete_model_validation_issue(
     hass: HomeAssistant,
     entry: ConfigEntry,
     model_subentry_id: str,
-    model: str,
     model_settings: Mapping[str, Any],
 ) -> None:
     """Delete one model validation repair issue for a successful validation."""

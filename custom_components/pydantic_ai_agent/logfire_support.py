@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import warnings
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -19,7 +20,7 @@ from .const import (
     DOMAIN,
 )
 from .model_profiles import primary_model_profile
-from .repairs import (
+from .repair_issues import (
     async_create_logfire_token_conflict_issue,
     async_delete_logfire_token_conflict_issue,
 )
@@ -135,15 +136,26 @@ async def _async_configure_next_logfire_owner(
 
 def _configure_logfire_sync(token: str) -> None:
     """Configure Logfire in an executor because it performs blocking file I/O."""
-    import logfire
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=(
+                r"^handler names should be lower-case, and use underscores "
+                r"instead of hyphens: 'LambdaRuntimeClient' => "
+                r"'lambdaruntimeclient'$"
+            ),
+            category=Warning,
+            module=r"^passlib\.registry$",
+        )
+        import logfire
 
-    logfire.configure(
-        send_to_logfire=True,
-        token=token,
-        service_name=DOMAIN,
-        console=False,
-        inspect_arguments=False,
-    )
+        logfire.configure(
+            send_to_logfire=True,
+            token=token,
+            service_name=DOMAIN,
+            console=False,
+            inspect_arguments=False,
+        )
 
 
 def logfire_enabled(hass: HomeAssistant, entry: ConfigEntry) -> bool:

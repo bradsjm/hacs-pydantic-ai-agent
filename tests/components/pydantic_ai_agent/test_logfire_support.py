@@ -1,6 +1,7 @@
 """Focused tests for Logfire support state management."""
 
 import sys
+import warnings
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock, patch
@@ -13,6 +14,7 @@ from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
 )
 from custom_components.pydantic_ai_agent.logfire_support import (
+    _configure_logfire_sync,
     _entry_logfire_token,
     _logfire_state,
     agent_run_span,
@@ -171,6 +173,68 @@ def test_entry_logfire_token_normalizes_strings() -> None:
         _entry_logfire_token(workspace_entry(data={CONF_LOGFIRE_TOKEN: "   "})) is None
     )
     assert _entry_logfire_token(workspace_entry(data={CONF_LOGFIRE_TOKEN: 123})) is None
+
+
+def test_configure_logfire_sync_suppresses_known_passlib_warning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test Logfire setup suppresses only the known passlib warning."""
+
+    def configure(**kwargs: object) -> None:
+        del kwargs
+        warnings.warn_explicit(
+            (
+                "handler names should be lower-case, and use underscores instead "
+                "of hyphens: 'LambdaRuntimeClient' => 'lambdaruntimeclient'"
+            ),
+            category=Warning,
+            filename="/tmp/passlib/registry.py",
+            lineno=43,
+            module="passlib.registry",
+        )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "logfire",
+        SimpleNamespace(configure=Mock(side_effect=configure)),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _configure_logfire_sync("token-a")
+
+    assert not caught
+    logfire = cast(Any, sys.modules["logfire"])
+    logfire.configure.assert_called_once_with(
+        send_to_logfire=True,
+        token="token-a",
+        service_name=DOMAIN,
+        console=False,
+        inspect_arguments=False,
+    )
+
+
+def test_configure_logfire_sync_does_not_suppress_unrelated_warnings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test Logfire setup still surfaces unrelated warnings."""
+
+    def configure(**kwargs: object) -> None:
+        del kwargs
+        warnings.warn("another warning", UserWarning, stacklevel=2)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "logfire",
+        SimpleNamespace(configure=Mock(side_effect=configure)),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _configure_logfire_sync("token-a")
+
+    assert len(caught) == 1
+    assert str(caught[0].message) == "another warning"
 
 
 async def test_instrument_agent_only_runs_for_active_owner(

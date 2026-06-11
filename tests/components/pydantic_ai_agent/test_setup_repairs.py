@@ -14,7 +14,7 @@ from custom_components.pydantic_ai_agent.model_profiles import model_profile_ref
 from custom_components.pydantic_ai_agent.provider_validation import (
     ProviderValidationError,
 )
-from custom_components.pydantic_ai_agent.repairs import (
+from custom_components.pydantic_ai_agent.repair_issues import (
     model_validation_issue_id,
     provider_auth_issue_id,
 )
@@ -89,6 +89,7 @@ async def test_setup_entry_model_errors_create_repair_issue(
         DOMAIN, model_validation_issue_id(entry, profile_ref, {})
     )
     assert issue is not None
+    assert issue.is_fixable is False
     assert issue.translation_key == "model_validation_failed"
     assert entry.runtime_data.model_validation_failures == {
         failure_key: "invalid_model"
@@ -122,6 +123,7 @@ async def test_setup_entry_auth_errors_create_provider_auth_repair_issue(
         DOMAIN, provider_auth_issue_id(entry, "provider-1")
     )
     assert issue is not None
+    assert issue.is_fixable is False
     assert issue.translation_key == "provider_auth_failed"
 
 
@@ -139,7 +141,7 @@ async def test_setup_entry_non_auth_model_error_clears_provider_auth_issue(
         hass,
         DOMAIN,
         issue_id,
-        is_fixable=True,
+        is_fixable=False,
         severity=ir.IssueSeverity.ERROR,
         translation_key="provider_auth_failed",
     )
@@ -171,7 +173,7 @@ async def test_setup_entry_success_clears_model_validation_repair_issue(
         hass,
         DOMAIN,
         model_validation_issue_id(entry, profile_ref, {}),
-        is_fixable=True,
+        is_fixable=False,
         severity=ir.IssueSeverity.ERROR,
         translation_key="model_validation_failed",
     )
@@ -179,7 +181,7 @@ async def test_setup_entry_success_clears_model_validation_repair_issue(
         hass,
         DOMAIN,
         provider_auth_issue_id(entry, "provider-1"),
-        is_fixable=True,
+        is_fixable=False,
         severity=ir.IssueSeverity.ERROR,
         translation_key="provider_auth_failed",
     )

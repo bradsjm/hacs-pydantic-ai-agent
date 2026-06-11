@@ -34,7 +34,7 @@ from .logfire_support import (
     logfire_enabled,
     logfire_include_content,
 )
-from .repairs import (
+from .repair_issues import (
     async_delete_entry_repair_issues,
     async_delete_logfire_token_conflict_issue,
 )

@@ -70,7 +70,10 @@ from .model_request_settings import (
     _model_settings_with_provider_extra_body,
 )
 from .provider_validation import ProviderValidationError
-from .repairs import async_create_provider_auth_issue, async_delete_provider_auth_issue
+from .repair_issues import (
+    async_create_provider_auth_issue,
+    async_delete_provider_auth_issue,
+)
 from .run_diagnostics import RunDiagnosticsRecorder
 from .run_failures import (
     _AgentRunFailed,

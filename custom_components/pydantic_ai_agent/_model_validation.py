@@ -27,7 +27,7 @@ from .model_settings import (
     validation_probe_model_settings,
 )
 from .provider_validation import ProviderValidationError, async_probe_model
-from .repairs import (
+from .repair_issues import (
     async_create_model_validation_issue,
     async_create_provider_auth_issue,
     async_delete_model_validation_issue,
@@ -270,7 +270,10 @@ async def _async_validate_configured_models(
                 )
             continue
         async_delete_model_validation_issue(
-            hass, entry, probe.issue_profile_id, probe.model, repair_settings
+            hass,
+            entry,
+            probe.issue_profile_id,
+            repair_settings,
         )
     async_delete_stale_model_validation_issues(hass, entry, current_issue_ids)
     current_provider_ids = {
