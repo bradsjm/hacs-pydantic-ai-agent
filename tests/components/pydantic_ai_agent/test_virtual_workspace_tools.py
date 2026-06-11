@@ -44,7 +44,7 @@ async def test_bash_rolls_back_when_command_exceeds_workspace_size(
     result = await workspace.bash("printf 123456 > big.txt")
 
     assert result["ok"] is False
-    assert "workspace size limit" in result["error"]
+    assert "workspace size limit" in result.get("error", "")
     assert workspace.read_file("big.txt")["ok"] is False
 
 
@@ -72,7 +72,7 @@ async def test_bash_rolls_back_when_execution_raises() -> None:
     result = await workspace.bash("boom")
 
     assert result["ok"] is False
-    assert result["error"] == "boom"
+    assert result.get("error", "") == "boom"
     assert workspace.read_file("partial.txt")["ok"] is False
 
 
@@ -84,7 +84,7 @@ async def test_bash_rejects_oversize_commands(monkeypatch: pytest.MonkeyPatch) -
     result = await workspace.bash("1234")
 
     assert result["ok"] is False
-    assert "command exceeds" in result["error"]
+    assert "command exceeds" in result.get("error", "")
 
 
 def test_read_file_truncates_with_utf8_replacement(
@@ -136,7 +136,7 @@ def test_file_operations_require_confirmation_for_overwrite() -> None:
 
     assert created["ok"] is True
     assert blocked["ok"] is False
-    assert "confirm=true" in blocked["error"]
+    assert "confirm=true" in blocked.get("error", "")
     assert replaced["ok"] is True
     assert read["content"] == "two"
 
@@ -153,7 +153,7 @@ def test_write_file_enforces_total_workspace_size(
 
     assert first["ok"] is True
     assert blocked["ok"] is False
-    assert "workspace size limit" in blocked["error"]
+    assert "workspace size limit" in blocked.get("error", "")
     assert workspace.read_file("two.txt")["ok"] is False
 
 
@@ -165,10 +165,12 @@ def test_directory_pagination_is_name_sorted() -> None:
     workspace.write_file("c.txt", "c")
 
     first = workspace.read_directory("/workspace", limit=2)
-    second = workspace.read_directory("/workspace", cursor=first["nextCursor"], limit=2)
+    second = workspace.read_directory(
+        "/workspace", cursor=first.get("nextCursor", ""), limit=2
+    )
 
     assert [entry["name"] for entry in first["entries"]] == ["a.txt", "b.txt"]
-    assert first["nextCursor"] == "2"
+    assert first.get("nextCursor", "") == "2"
     assert [entry["name"] for entry in second["entries"]] == ["c.txt"]
 
 
@@ -199,7 +201,7 @@ def test_copy_and_move_require_confirmed_overwrite() -> None:
     moved = workspace.move("source.txt", "moved.txt", confirm=True)
 
     assert blocked["ok"] is False
-    assert "confirm=true" in blocked["error"]
+    assert "confirm=true" in blocked.get("error", "")
     assert copied["ok"] is True
     assert moved["ok"] is True
     assert workspace.read_file("moved.txt")["content"] == "source"
@@ -213,7 +215,7 @@ def test_move_requires_confirmation_without_overwrite() -> None:
     result = workspace.move("source.txt", "moved.txt")
 
     assert result["ok"] is False
-    assert "confirm=true" in result["error"]
+    assert "confirm=true" in result.get("error", "")
     assert workspace.read_file("source.txt")["content"] == "source"
     assert workspace.read_file("moved.txt")["ok"] is False
 
@@ -251,7 +253,7 @@ def test_copy_overwrite_failure_restores_destination() -> None:
     )
 
     assert result["ok"] is False
-    assert result["error"] == "copy failed"
+    assert result.get("error", "") == "copy failed"
     assert workspace.read_file("source.txt")["content"] == "source"
     assert workspace.read_file("destination.txt")["content"] == "destination"
 
@@ -289,7 +291,7 @@ def test_move_overwrite_failure_restores_source_and_destination() -> None:
     )
 
     assert result["ok"] is False
-    assert result["error"] == "rename failed"
+    assert result.get("error", "") == "rename failed"
     assert workspace.read_file("source.txt")["content"] == "source"
     assert workspace.read_file("destination.txt")["content"] == "destination"
 
@@ -303,7 +305,7 @@ def test_copy_enforces_total_workspace_size(monkeypatch: pytest.MonkeyPatch) -> 
     copied = workspace.copy("source.txt", "copy.txt")
 
     assert copied["ok"] is False
-    assert "workspace size limit" in copied["error"]
+    assert "workspace size limit" in copied.get("error", "")
     assert workspace.read_file("copy.txt")["ok"] is False
 
 

@@ -18,6 +18,7 @@ from homeassistant.helpers import llm
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
+from ._entity_auth import _clear_runtime_auth_failure_for_ref
 from .agent_subentries import iter_valid_agent_subentries
 from .const import (
     CONF_AI_TASK_NAME,
@@ -26,14 +27,11 @@ from .const import (
     CONF_WEB_FETCH_ENABLED,
     SUBENTRY_TYPE_AI_TASK,
 )
-from .entity import (
-    AgentRunOutcome,
-    PydanticAIBaseLLMEntity,
-    _clear_runtime_auth_failure_for_ref,
-)
+from .entity import PydanticAIBaseLLMEntity
 from .ha_todo_tools import TodoWorkspace, todo_workspace_lock
 from .metrics import EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED, fire_integration_event
 from .model_profiles import model_display_names, model_profile_chain
+from .run_state import AgentRunOutcome
 from .structured_output import structured_output_mode
 from .virtual_workspace import virtual_workspace_enabled
 
@@ -73,12 +71,8 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
         """Initialize the AI task entity."""
         name = str(subentry.data.get(CONF_AI_TASK_NAME, subentry.title))
         super().__init__(entry, subentry, name=name, device_name=name)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, str | bool | list[str] | None]:
-        """Return observability attributes."""
         profiles = model_profile_chain(self.entry, self.subentry)
-        return {
+        self._attr_extra_state_attributes = {
             "provider_mode": profiles[0].provider_mode,
             "model": profiles[0].model_name,
             "model_profile": profiles[0].title,
@@ -144,9 +138,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                 record_success=task.structure is None,
             )
 
-        data = await self._async_finalize_structured_output(
-            outcome, task, chat_log
-        )
+        data = await self._async_finalize_structured_output(outcome, task, chat_log)
 
         return ai_task.GenDataTaskResult(
             conversation_id=chat_log.conversation_id,

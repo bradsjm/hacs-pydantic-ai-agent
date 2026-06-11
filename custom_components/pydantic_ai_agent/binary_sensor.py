@@ -8,11 +8,10 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigSubentry
-from homeassistant.const import CONF_LLM_HASS_API
+from homeassistant.const import CONF_LLM_HASS_API, EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
@@ -141,7 +140,7 @@ class PydanticAIMetricBinarySensor(BinarySensorEntity):
 
     _attr_has_entity_name = True
 
-    entity_description: PydanticAIMetricBinarySensorDescription
+    entity_description: BinarySensorEntityDescription
 
     def __init__(
         self,
@@ -152,6 +151,7 @@ class PydanticAIMetricBinarySensor(BinarySensorEntity):
         """Initialize the metric binary sensor."""
         self.entry = entry
         self.subentry = subentry
+        self._description = description
         self.entity_description = description
         self._attr_entity_registry_enabled_default = (
             description.entity_registry_enabled_default
@@ -166,6 +166,9 @@ class PydanticAIMetricBinarySensor(BinarySensorEntity):
             manufacturer="Pydantic AI",
             model=profile.model_name,
             entry_type=dr.DeviceEntryType.SERVICE,
+        )
+        self._attr_is_on = self._description.value_fn(
+            self.entry.runtime_data.metrics.record_for(self.subentry.subentry_id)
         )
 
     async def async_added_to_hass(self) -> None:
@@ -178,15 +181,12 @@ class PydanticAIMetricBinarySensor(BinarySensorEntity):
             )
         )
 
-    @property
-    def is_on(self) -> bool | None:
-        """Return the current binary metric value."""
-        record = self.entry.runtime_data.metrics.record_for(self.subentry.subentry_id)
-        return self.entity_description.value_fn(record)
-
     @callback
     def _handle_metrics_update(self) -> None:
         """Write the updated metric state."""
+        self._attr_is_on = self._description.value_fn(
+            self.entry.runtime_data.metrics.record_for(self.subentry.subentry_id)
+        )
         self.async_write_ha_state()
 
 
@@ -195,7 +195,7 @@ class PydanticAIConfigBinarySensor(BinarySensorEntity):
 
     _attr_has_entity_name = True
 
-    entity_description: PydanticAIConfigBinarySensorDescription
+    entity_description: BinarySensorEntityDescription
 
     def __init__(
         self,
@@ -205,6 +205,7 @@ class PydanticAIConfigBinarySensor(BinarySensorEntity):
     ) -> None:
         """Initialize the configuration binary sensor."""
         self.subentry = subentry
+        self._description = description
         self.entity_description = description
         self._attr_entity_registry_enabled_default = (
             description.entity_registry_enabled_default
@@ -220,11 +221,7 @@ class PydanticAIConfigBinarySensor(BinarySensorEntity):
             model=profile.model_name,
             entry_type=dr.DeviceEntryType.SERVICE,
         )
-
-    @property
-    def is_on(self) -> bool:
-        """Return the configured boolean value."""
-        return self.entity_description.value_fn(self.subentry)
+        self._attr_is_on = self._description.value_fn(self.subentry)
 
 
 def _agent_subentries(

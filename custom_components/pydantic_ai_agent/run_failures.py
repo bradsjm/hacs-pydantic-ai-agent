@@ -86,8 +86,13 @@ def _classify_run_failure(
 
     if isinstance(cause, UsageLimitExceeded):
         return _build_usage_limit_failure(
-            cause, error_type, prefix, context, usage_limits,
-            partial_response, tool_problem,
+            cause,
+            error_type,
+            prefix,
+            context,
+            usage_limits,
+            partial_response,
+            tool_problem,
         )
 
     message = _build_failure_message(cause, prefix, error_type)

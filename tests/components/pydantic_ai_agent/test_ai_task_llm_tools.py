@@ -107,17 +107,21 @@ async def _fake_handle_chat_log(
 def test_ai_task_entity_observability_attributes_include_ha_tools() -> None:
     """Test AI task state attributes expose configured HA LLM APIs."""
     entity = _ai_task_entity([llm.LLM_API_ASSIST])
+    attributes = entity.extra_state_attributes
 
-    assert entity.extra_state_attributes["ha_tools_enabled"] is True
-    assert entity.extra_state_attributes["ha_llm_api"] == [llm.LLM_API_ASSIST]
+    assert attributes is not None
+    assert attributes["ha_tools_enabled"] is True
+    assert attributes["ha_llm_api"] == [llm.LLM_API_ASSIST]
 
 
 def test_ai_task_entity_observability_attributes_without_ha_tools() -> None:
     """Test AI task state attributes report missing HA LLM API selection."""
     entity = _ai_task_entity()
+    attributes = entity.extra_state_attributes
 
-    assert entity.extra_state_attributes["ha_tools_enabled"] is False
-    assert entity.extra_state_attributes["ha_llm_api"] is None
+    assert attributes is not None
+    assert attributes["ha_tools_enabled"] is False
+    assert attributes["ha_llm_api"] is None
 
 
 async def test_ai_task_uses_configured_llm_api_when_task_has_none(

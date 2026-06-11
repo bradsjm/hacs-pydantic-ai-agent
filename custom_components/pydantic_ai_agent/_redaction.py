@@ -41,6 +41,7 @@ TO_REDACT = frozenset(
     }
 )
 
+
 def redaction_keys(extra_sensitive_keys: Iterable[object] = ()) -> frozenset[object]:
     """Return the integration-wide set of sensitive mapping keys."""
     return TO_REDACT | frozenset(extra_sensitive_keys)

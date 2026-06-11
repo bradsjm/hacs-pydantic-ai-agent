@@ -76,9 +76,7 @@ def _process_patch_line(
         return _append_operation(operations, "delete", line.removeprefix(_DELETE))
     if line.startswith(_MOVE):
         if current is None or current.kind != "update" or current.lines:
-            raise PatchApplyError(
-                "Move to must immediately follow an update header"
-            )
+            raise PatchApplyError("Move to must immediately follow an update header")
         current.move_to = line.removeprefix(_MOVE)
         return current
     if current is None:

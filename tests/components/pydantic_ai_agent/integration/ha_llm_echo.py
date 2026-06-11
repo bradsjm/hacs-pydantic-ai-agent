@@ -3,6 +3,7 @@
 import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import llm
+from homeassistant.util.json import JsonObjectType
 
 from .config import TEST_LLM_API_ID
 
@@ -23,7 +24,7 @@ class EchoTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> dict[str, str]:
+    ) -> JsonObjectType:
         """Return the token supplied by the model."""
         del hass, llm_context
         token = str(tool_input.tool_args["token"])

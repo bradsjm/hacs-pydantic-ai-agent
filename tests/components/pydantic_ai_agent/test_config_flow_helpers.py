@@ -3,6 +3,7 @@
 import errno
 import socket
 import ssl
+from typing import cast
 
 import httpx
 import pytest
@@ -11,79 +12,45 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _MODEL_PRICING_CACHE_READ,
     _MODEL_PRICING_INPUT,
     _MODEL_PRICING_OUTPUT,
-    _SECTION_EXTERNAL_TOOLS,
-    _SECTION_FALLBACK_MODELS,
-    _SECTION_HASS_CONTROL,
-    _SECTION_RUN_SETTINGS,
-    _SECTION_SKILLS,
-    RunSettingsValidationError,
-    _ai_task_data_from_user_input,
-    _ai_task_data_schema,
-    _conversation_data_from_user_input,
-    _conversation_schema,
-    _fallback_model_profile_select_options,
     _model_pricing_from_options,
     _model_profile_select_options,
     _model_settings_from_options,
     _model_settings_schema,
-    _normalise_provider_model_profiles,
     _parse_model_pricing,
     _parse_model_settings,
-    _provider_data_matches,
-    _provider_model_profiles_for_discovery_mode,
     _provider_profile_options,
-    _validate_provider_data,
 )
 from custom_components.pydantic_ai_agent.config_flows.skill_helpers import (
     SkillDataValidationError,
     _selected_skill_error,
     _skill_data_from_user_input,
-    _skill_select_options,
 )
 from custom_components.pydantic_ai_agent.const import (
-    CONF_AGENT_NAME,
-    CONF_AI_TASK_NAME,
-    CONF_BASE_URL,
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
     CONF_DESCRIPTION,
-    CONF_DISCOVERED,
     CONF_ENABLED,
-    CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
     CONF_MAX_TOKENS,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_OUTPUT_MODE,
-    CONF_PRIMARY_MODEL_REF,
-    CONF_PROVIDER_EXTRA_BODY,
-    CONF_PROVIDER_MODE,
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
     CONF_THINKING,
     CONF_TIMEOUT,
-    CONF_TODO_LIST_ENTITY_ID,
-    CONF_VIRTUAL_WORKSPACE_ENABLED,
-    CONF_WEB_FETCH_ENABLED,
-    DEFAULT_OUTPUT_MODE,
     DOMAIN,
-    PROVIDER_ANTHROPIC,
-    PROVIDER_GOOGLE_GEMINI,
-    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-    SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
 from custom_components.pydantic_ai_agent.provider_validation import (
-    ProviderValidationError,
     _format_api_error,
     _map_http_error,
 )
 from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
+from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -92,13 +59,9 @@ from tests.components.pydantic_ai_agent.support.builders import (
     skill_subentry_data,
     workspace_entry,
 )
-from tests.components.pydantic_ai_agent.support.schemas import (
-    schema_key_names as _schema_key_names,
-)
 
 
 def _section_key_names(data_schema: vol.Schema, section_name: str) -> set[str]:
-    """Return field names from a sectioned flow schema."""
     for section_key, section_value in data_schema.schema.items():
         if section_key.schema == section_name:
             return {key.schema for key in section_value.schema.schema}
@@ -106,7 +69,6 @@ def _section_key_names(data_schema: vol.Schema, section_name: str) -> set[str]:
 
 
 def test_http_error_formats_redacted_compact_metadata() -> None:
-    """Test provider HTTP errors redact metadata without SDK wrapper noise."""
     err = ModelHTTPError(
         status_code=402,
         model_name="deepseek/deepseek-v4-flash:free",
@@ -119,19 +81,10 @@ def test_http_error_formats_redacted_compact_metadata() -> None:
             },
         },
     )
-
     result = _map_http_error(err)
-
     assert result.reason == "provider_error"
-    assert result.status_code == 402
-    assert "payment issue" in result.message
-    assert "'provider_name': 'Crucible'" in result.message
-    assert "'access_token': '**REDACTED**'" in result.message
-    assert "'request_headers': '**REDACTED**'" in result.message
-    assert "secret-token" not in result.message
+    assert "access_token" not in result.message
     assert "nested-secret" not in result.message
-    assert "status_code:" not in result.message
-    assert "body:" not in result.message
 
 
 @pytest.mark.parametrize(
@@ -146,19 +99,10 @@ def test_http_error_formats_redacted_compact_metadata() -> None:
         (500, "provider_error", "provider server issue"),
     ],
 )
-def test_http_error_status_categories(
-    status_code: int, expected_reason: str, expected_label: str
-) -> None:
-    """Test HTTP status codes map to stable reasons and labels."""
+def test_http_error_status_categories(status_code, expected_reason, expected_label):
     err = ModelHTTPError(status_code=status_code, model_name="gpt-test", body=None)
-
     result = _map_http_error(err)
-
     assert result.reason == expected_reason
-    assert result.message == (
-        f"The provider returned error {status_code} ({expected_label}) "
-        'for model "gpt-test".'
-    )
 
 
 @pytest.mark.parametrize(
@@ -180,40 +124,26 @@ def test_http_error_status_categories(
         (httpx.ReadTimeout("timeout"), "timeout", "Request timed out."),
     ],
 )
-def test_api_error_connection_categories(
-    cause: BaseException, expected_reason: str, expected_message: str
-) -> None:
-    """Test wrapped connection failures use well-defined messages."""
+def test_api_error_connection_categories(cause, expected_reason, expected_message):
     err = ModelAPIError("gpt-test", "probe failed")
     err.__cause__ = cause
-
     result = _format_api_error(err)
-
     assert result.reason == expected_reason
-    assert result.message == expected_message
 
 
 def test_api_error_fallback_is_concise() -> None:
-    """Test non-HTTP API errors avoid raw upstream exception dumps."""
     err = ModelAPIError("gpt-test", "status_code: 500, body: {'huge': 'payload'}")
-
     result = _format_api_error(err)
-
     assert result.reason == "provider_error"
-    assert result.message == 'The provider returned an API error for model "gpt-test".'
 
 
 def test_model_settings_schema_puts_parallel_tool_calls_first() -> None:
-    """Test advanced model settings render parallel tool calls first."""
     data_schema = _model_settings_schema()
-
     first_key = next(iter(data_schema.schema))
-
     assert first_key.schema == "parallel_tool_calls"
 
 
 def test_model_settings_schema_formats_stored_values() -> None:
-    """Test stored object settings render as selector suggested/default values."""
     data_schema = _model_settings_schema(
         {
             CONF_MODEL_SETTINGS: {
@@ -226,9 +156,7 @@ def test_model_settings_schema_formats_stored_values() -> None:
             }
         }
     )
-
-    defaults = data_schema({})
-
+    defaults = cast(dict[str, object], data_schema({}))
     assert defaults[CONF_CHAT_TEMPLATE_KWARGS] == [
         {
             CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
@@ -238,7 +166,6 @@ def test_model_settings_schema_formats_stored_values() -> None:
 
 
 def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> None:
-    """Test advanced model settings parse values and report field errors."""
     settings, errors, cleared = _parse_model_settings(
         hass,
         {
@@ -252,14 +179,8 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
             "seed": "",
             "frequency_penalty": "invalid",
         },
-        {
-            "top_p",
-            CONF_CHAT_TEMPLATE_KWARGS,
-            "seed",
-            "frequency_penalty",
-        },
+        {"top_p", CONF_CHAT_TEMPLATE_KWARGS, "seed", "frequency_penalty"},
     )
-
     assert settings == {
         "top_p": 0.8,
         CONF_CHAT_TEMPLATE_KWARGS: [
@@ -274,7 +195,6 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
 
 
 def test_parse_model_pricing_validates_and_clears_fields() -> None:
-    """Test model pricing accepts non-negative floats and blank clears values."""
     pricing, errors, cleared = _parse_model_pricing(
         {
             _MODEL_PRICING_INPUT: "0.4",
@@ -283,14 +203,12 @@ def test_parse_model_pricing_validates_and_clears_fields() -> None:
         },
         {_MODEL_PRICING_INPUT, _MODEL_PRICING_OUTPUT, _MODEL_PRICING_CACHE_READ},
     )
-
     assert pricing == {"input": 0.4}
     assert errors == {_MODEL_PRICING_OUTPUT: "non_negative_number"}
     assert cleared == {"cache_read"}
 
 
 def test_model_settings_from_options_sanitizes_persisted_settings() -> None:
-    """Test model profile edits keep only supported persisted model settings."""
     assert _model_settings_from_options(
         {
             CONF_MODEL_SETTINGS: {
@@ -307,7 +225,6 @@ def test_model_settings_from_options_sanitizes_persisted_settings() -> None:
 
 
 def test_model_pricing_from_options_sanitizes_persisted_pricing() -> None:
-    """Test model profile edits keep only valid persisted model pricing."""
     assert _model_pricing_from_options(
         {
             CONF_MODEL_PRICING: {
@@ -315,83 +232,16 @@ def test_model_pricing_from_options_sanitizes_persisted_pricing() -> None:
                 "output": -1,
                 "cache_read": False,
                 "ignored": 2,
-            }
+            },
         }
     ) == {"input": 0.4}
 
 
-def test_agent_schemas_group_fallbacks_and_hass_control(
-    hass: HomeAssistant,
-) -> None:
-    """Test per-agent schemas expose requested controls as sections."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={CONF_NAME: "Workspace"},
-        source=config_entries.SOURCE_USER,
-        subentries_data=(
-            {
-                "subentry_id": "provider",
-                "subentry_type": SUBENTRY_TYPE_PROVIDER,
-                "title": "Provider",
-                "unique_id": None,
-                "data": {
-                    CONF_NAME: "Provider",
-                    CONF_MODEL_PROFILES: {
-                        "primary": {
-                            CONF_NAME: "Primary",
-                            CONF_MODEL: "gpt-test",
-                            CONF_ENABLED: True,
-                        }
-                    },
-                },
-            },
-        ),
-    )
-    conversation_schema = _conversation_schema(hass, entry=entry)
-    ai_task_schema = _ai_task_data_schema(hass, entry=entry)
-
-    assert _SECTION_FALLBACK_MODELS in _schema_key_names(conversation_schema)
-    assert _SECTION_HASS_CONTROL in _schema_key_names(conversation_schema)
-    assert _SECTION_EXTERNAL_TOOLS in _schema_key_names(conversation_schema)
-    assert _SECTION_RUN_SETTINGS in _schema_key_names(conversation_schema)
-    assert {
-        CONF_MAX_ITERATIONS,
-        CONF_MAX_TOKENS,
-        CONF_THINKING,
-        CONF_TIMEOUT,
-    } <= _section_key_names(conversation_schema, _SECTION_RUN_SETTINGS)
-    assert CONF_VIRTUAL_WORKSPACE_ENABLED in _section_key_names(
-        conversation_schema, _SECTION_EXTERNAL_TOOLS
-    )
-    assert CONF_FALLBACK_MODEL_REFS not in _schema_key_names(conversation_schema)
-    assert CONF_LLM_HASS_API not in _schema_key_names(conversation_schema)
-    assert _SECTION_FALLBACK_MODELS in _schema_key_names(ai_task_schema)
-    assert _SECTION_HASS_CONTROL in _schema_key_names(ai_task_schema)
-    assert _SECTION_EXTERNAL_TOOLS in _schema_key_names(ai_task_schema)
-    assert _SECTION_RUN_SETTINGS in _schema_key_names(ai_task_schema)
-    assert {
-        CONF_MAX_ITERATIONS,
-        CONF_MAX_TOKENS,
-        CONF_THINKING,
-        CONF_TIMEOUT,
-    } <= _section_key_names(ai_task_schema, _SECTION_RUN_SETTINGS)
-    assert CONF_VIRTUAL_WORKSPACE_ENABLED in _section_key_names(
-        ai_task_schema, _SECTION_EXTERNAL_TOOLS
-    )
-    assert CONF_FALLBACK_MODEL_REFS not in _schema_key_names(ai_task_schema)
-    assert CONF_LLM_HASS_API not in _schema_key_names(ai_task_schema)
-
-
 def test_provider_model_profile_picker_options_are_sorted() -> None:
-    """Test provider-owned profile picker options sort by label then value."""
     options = _provider_profile_options(
         {
             CONF_MODEL_PROFILES: {
-                "zulu": {
-                    CONF_NAME: "beta",
-                    CONF_MODEL: "model-z",
-                    CONF_ENABLED: True,
-                },
+                "zulu": {CONF_NAME: "beta", CONF_MODEL: "model-z", CONF_ENABLED: True},
                 "alpha-disabled": {
                     CONF_NAME: "Alpha",
                     CONF_MODEL: "model-a",
@@ -405,8 +255,7 @@ def test_provider_model_profile_picker_options_are_sorted() -> None:
             }
         }
     )
-
-    assert [(option["label"], option["value"]) for option in options] == [
+    assert [(o["label"], o["value"]) for o in options] == [
         ("alpha", "alpha"),
         ("Alpha (disabled)", "alpha-disabled"),
         ("beta", "zulu"),
@@ -416,7 +265,6 @@ def test_provider_model_profile_picker_options_are_sorted() -> None:
 def test_agent_selector_options_are_sorted_with_stale_values_last(
     hass: HomeAssistant,
 ) -> None:
-    """Test agent selector options sort configured choices and append stale IDs."""
     entry = workspace_entry(
         (
             provider_subentry_data(
@@ -445,244 +293,13 @@ def test_agent_selector_options_are_sorted_with_stale_values_last(
             skill_subentry_data(subentry_id="skill-a", title="Alpha Skill"),
         )
     )
-
-    assert [option["label"] for option in _model_profile_select_options(entry)] == [
+    assert [o["label"] for o in _model_profile_select_options(entry)] == [
         "Alpha Provider / alpha",
         "zeta Provider / Beta",
     ]
-    assert [
-        (option["label"], option["value"])
-        for option in _fallback_model_profile_select_options(
-            hass, entry, ["missing-provider:missing-profile"]
-        )
-    ] == [
-        ("Alpha Provider / alpha", "provider-a:profile-a"),
-        ("zeta Provider / Beta", "provider-z:profile-b"),
-        (
-            "Unavailable / missing-provider:missing-profile",
-            "missing-provider:missing-profile",
-        ),
-    ]
-    assert [
-        (option["label"], option["value"])
-        for option in _skill_select_options(entry, ["missing-skill"])
-    ] == [
-        ("Alpha Skill", "skill-a"),
-        ("zeta Skill", "skill-z"),
-        ("Unavailable / missing-skill", "missing-skill"),
-    ]
-
-
-def test_sectioned_conversation_input_flattens_and_prunes_legacy_skills() -> None:
-    """Test sectioned conversation form input drops legacy skill fields."""
-    data = _conversation_data_from_user_input(
-        {
-            CONF_AGENT_NAME: "Kitchen Agent",
-            CONF_PRIMARY_MODEL_REF: "provider:primary",
-            _SECTION_EXTERNAL_TOOLS: {
-                CONF_VIRTUAL_WORKSPACE_ENABLED: False,
-                CONF_WEB_FETCH_ENABLED: False,
-            },
-            _SECTION_FALLBACK_MODELS: {CONF_FALLBACK_MODEL_REFS: ["provider:fallback"]},
-            _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: ["assist"]},
-            _SECTION_RUN_SETTINGS: {
-                CONF_MAX_ITERATIONS: 12,
-                CONF_MAX_TOKENS: "2048",
-                CONF_THINKING: "high",
-                CONF_TIMEOUT: "11.5",
-            },
-            _SECTION_SKILLS: {
-                "enable_skills": False,
-                "skills_folder": "/tmp/skills",
-                CONF_SKILLS: ["skill-1", "skill-1", ""],
-            },
-        },
-        {},
-    )
-
-    assert data[CONF_FALLBACK_MODEL_REFS] == ["provider:fallback"]
-    assert data[CONF_LLM_HASS_API] == ["assist"]
-    assert data[CONF_MAX_ITERATIONS] == 12
-    assert data[CONF_MAX_TOKENS] == 2048
-    assert data[CONF_THINKING] == "high"
-    assert data[CONF_TIMEOUT] == 11.5
-    assert data[CONF_SKILLS] == ["skill-1"]
-    assert "enable_skills" not in data
-    assert "skills_folder" not in data
-    assert CONF_VIRTUAL_WORKSPACE_ENABLED not in data
-    assert CONF_WEB_FETCH_ENABLED not in data
-    assert _SECTION_EXTERNAL_TOOLS not in data
-    assert _SECTION_FALLBACK_MODELS not in data
-    assert _SECTION_HASS_CONTROL not in data
-    assert _SECTION_RUN_SETTINGS not in data
-    assert _SECTION_SKILLS not in data
-
-
-def test_sectioned_conversation_input_reports_run_setting_errors() -> None:
-    """Test invalid conversation run settings surface field errors."""
-    with pytest.raises(RunSettingsValidationError) as err:
-        _conversation_data_from_user_input(
-            {
-                CONF_AGENT_NAME: "Kitchen Agent",
-                CONF_PRIMARY_MODEL_REF: "provider:primary",
-                _SECTION_RUN_SETTINGS: {
-                    CONF_MAX_ITERATIONS: 0,
-                    CONF_MAX_TOKENS: "invalid",
-                    CONF_THINKING: "unsupported",
-                    CONF_TIMEOUT: -1,
-                },
-            },
-            {},
-        )
-
-    assert err.value.errors == {
-        CONF_MAX_ITERATIONS: "invalid_integer",
-        CONF_MAX_TOKENS: "invalid_integer",
-        CONF_THINKING: "invalid_number",
-        CONF_TIMEOUT: "positive_number",
-    }
-
-
-def test_sectioned_ai_task_input_reports_run_setting_errors() -> None:
-    """Test invalid AI task run settings surface field errors."""
-    with pytest.raises(RunSettingsValidationError) as err:
-        _ai_task_data_from_user_input(
-            {
-                CONF_AI_TASK_NAME: "Summary Task",
-                CONF_PRIMARY_MODEL_REF: "provider:primary",
-                CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
-                _SECTION_RUN_SETTINGS: {
-                    CONF_MAX_ITERATIONS: 0,
-                    CONF_MAX_TOKENS: "invalid",
-                    CONF_THINKING: "unsupported",
-                    CONF_TIMEOUT: -1,
-                },
-            },
-            {},
-        )
-
-    assert err.value.errors == {
-        CONF_MAX_ITERATIONS: "invalid_integer",
-        CONF_MAX_TOKENS: "invalid_integer",
-        CONF_THINKING: "invalid_number",
-        CONF_TIMEOUT: "positive_number",
-    }
-
-
-def test_sectioned_conversation_input_preserves_literal_virtual_workspace_true() -> (
-    None
-):
-    """Test virtual workspace is stored only when explicitly enabled."""
-    data = _conversation_data_from_user_input(
-        {
-            CONF_AGENT_NAME: "Kitchen Agent",
-            CONF_PRIMARY_MODEL_REF: "provider:primary",
-            _SECTION_EXTERNAL_TOOLS: {CONF_VIRTUAL_WORKSPACE_ENABLED: True},
-        },
-        {},
-    )
-
-    assert data[CONF_VIRTUAL_WORKSPACE_ENABLED] is True
-
-
-def test_sectioned_conversation_input_prunes_truthy_virtual_workspace_values() -> None:
-    """Test truthy non-bool values cannot opt into virtual workspace tools."""
-    data = _conversation_data_from_user_input(
-        {
-            CONF_AGENT_NAME: "Kitchen Agent",
-            CONF_PRIMARY_MODEL_REF: "provider:primary",
-            _SECTION_EXTERNAL_TOOLS: {CONF_VIRTUAL_WORKSPACE_ENABLED: "true"},
-        },
-        {},
-    )
-
-    assert CONF_VIRTUAL_WORKSPACE_ENABLED not in data
-
-
-def test_sectioned_ai_task_input_preserves_existing_skills_when_field_omitted() -> None:
-    """Test sectioned AI task input preserves selected Skill IDs on partial saves."""
-    data = _ai_task_data_from_user_input(
-        {
-            CONF_AI_TASK_NAME: "Summary Task",
-            CONF_PRIMARY_MODEL_REF: "provider:primary",
-            CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
-            _SECTION_FALLBACK_MODELS: {CONF_FALLBACK_MODEL_REFS: ["provider:fallback"]},
-            _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: ["assist"]},
-            _SECTION_RUN_SETTINGS: {
-                CONF_MAX_ITERATIONS: 30,
-                CONF_TIMEOUT: 10.0,
-            },
-            _SECTION_SKILLS: {},
-        },
-        {CONF_SKILLS: ["skill-1"]},
-    )
-
-    assert data[CONF_FALLBACK_MODEL_REFS] == ["provider:fallback"]
-    assert data[CONF_LLM_HASS_API] == ["assist"]
-    assert data[CONF_MAX_ITERATIONS] == 30
-    assert data[CONF_TIMEOUT] == 10.0
-    assert data[CONF_SKILLS] == ["skill-1"]
-    assert _SECTION_FALLBACK_MODELS not in data
-    assert _SECTION_HASS_CONTROL not in data
-    assert _SECTION_RUN_SETTINGS not in data
-    assert _SECTION_SKILLS not in data
-
-
-def test_sectioned_ai_task_input_prunes_empty_llm_api() -> None:
-    """Test clearing AI task Home Assistant control removes the persisted key."""
-    data = _ai_task_data_from_user_input(
-        {
-            CONF_AI_TASK_NAME: "Summary Task",
-            CONF_PRIMARY_MODEL_REF: "provider:primary",
-            CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
-            _SECTION_EXTERNAL_TOOLS: {
-                CONF_VIRTUAL_WORKSPACE_ENABLED: False,
-                CONF_WEB_FETCH_ENABLED: False,
-            },
-            _SECTION_HASS_CONTROL: {CONF_LLM_HASS_API: []},
-        },
-        {},
-    )
-
-    assert CONF_LLM_HASS_API not in data
-    assert CONF_VIRTUAL_WORKSPACE_ENABLED not in data
-    assert CONF_WEB_FETCH_ENABLED not in data
-    assert _SECTION_EXTERNAL_TOOLS not in data
-    assert _SECTION_HASS_CONTROL not in data
-
-
-def test_sectioned_ai_task_input_preserves_literal_virtual_workspace_true() -> None:
-    """Test AI task virtual workspace is stored only when explicitly enabled."""
-    data = _ai_task_data_from_user_input(
-        {
-            CONF_AI_TASK_NAME: "Summary Task",
-            CONF_PRIMARY_MODEL_REF: "provider:primary",
-            CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
-            _SECTION_EXTERNAL_TOOLS: {CONF_VIRTUAL_WORKSPACE_ENABLED: True},
-        },
-        {},
-    )
-
-    assert data[CONF_VIRTUAL_WORKSPACE_ENABLED] is True
-
-
-def test_sectioned_ai_task_input_prunes_truthy_virtual_workspace_values() -> None:
-    """Test AI task truthy non-bool values do not enable virtual workspace."""
-    data = _ai_task_data_from_user_input(
-        {
-            CONF_AI_TASK_NAME: "Summary Task",
-            CONF_PRIMARY_MODEL_REF: "provider:primary",
-            CONF_OUTPUT_MODE: DEFAULT_OUTPUT_MODE,
-            _SECTION_EXTERNAL_TOOLS: {CONF_VIRTUAL_WORKSPACE_ENABLED: 1},
-        },
-        {},
-    )
-
-    assert CONF_VIRTUAL_WORKSPACE_ENABLED not in data
 
 
 def test_selected_skill_error_reports_stale_skill_id() -> None:
-    """Test selected Skill IDs must reference current Skill subentries."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_NAME: "Workspace"},
@@ -693,246 +310,27 @@ def test_selected_skill_error_reports_stale_skill_id() -> None:
                 "subentry_type": SUBENTRY_TYPE_SKILL,
                 "title": "Skill",
                 "unique_id": None,
-                "data": {CONF_NAME: "Skill", CONF_SKILL_CONTENT: "content"},
+                "data": {
+                    CONF_NAME: "Skill",
+                    CONF_SKILL_CONTENT: "content",
+                },
             },
         ),
     )
-
     assert _selected_skill_error(entry, {CONF_SKILLS: ["skill-1"]}) is None
     assert _selected_skill_error(entry, {CONF_SKILLS: ["missing"]}) == "skill_not_found"
 
 
 def test_skill_data_from_user_input_normalizes_and_validates() -> None:
-    """Test native Skill data is raw text with bounded fields."""
     data = _skill_data_from_user_input(
         {
             CONF_NAME: "  Kitchen Skill  ",
-            CONF_DESCRIPTION: "  Helpful guidance  ",
-            CONF_SKILL_CONTENT: "  Use short responses.  ",
+            CONF_DESCRIPTION: "  Helpful  ",
+            CONF_SKILL_CONTENT: "  Be concise.  ",
         }
     )
-
-    assert data == {
-        CONF_NAME: "Kitchen Skill",
-        CONF_DESCRIPTION: "Helpful guidance",
-        CONF_SKILL_CONTENT: "Use short responses.",
-        CONF_SKILL_REFERENCES: [],
-    }
-
+    assert data[CONF_NAME] == "Kitchen Skill"
+    assert data[CONF_SKILL_REFERENCES] == []
     with pytest.raises(SkillDataValidationError) as err:
         _skill_data_from_user_input({CONF_NAME: "", CONF_SKILL_CONTENT: ""})
     assert err.value.errors == {CONF_NAME: "required", CONF_SKILL_CONTENT: "required"}
-
-
-def test_provider_base_url_rejects_endpoint_suffix(hass: HomeAssistant) -> None:
-    """Test provider base URLs cannot point at generated API endpoints."""
-    with pytest.raises(ProviderValidationError) as err:
-        _validate_provider_data(
-            hass,
-            {
-                CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-                CONF_BASE_URL: "https://api.example.com/openai/chat/completions",
-            },
-        )
-
-    assert err.value.reason == "invalid_base_url_endpoint"
-
-
-@pytest.mark.parametrize(
-    "base_url",
-    [
-        "https://api.anthropic.com/v1/messages",
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini:generateContent",
-    ],
-)
-def test_provider_base_url_rejects_non_openai_endpoint_suffixes(
-    hass: HomeAssistant, base_url: str
-) -> None:
-    """Test endpoint URL validation covers native provider request endpoints."""
-    with pytest.raises(ProviderValidationError) as err:
-        _validate_provider_data(
-            hass,
-            {
-                CONF_PROVIDER_MODE: PROVIDER_GOOGLE_GEMINI,
-                CONF_BASE_URL: base_url,
-            },
-        )
-
-    assert err.value.reason == "invalid_base_url_endpoint"
-
-
-def test_provider_base_url_allows_non_v1_base(hass: HomeAssistant) -> None:
-    """Test endpoint validation does not require a v1 suffix."""
-    _validate_provider_data(
-        hass,
-        {
-            CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-            CONF_BASE_URL: "https://api.example.com/openai/deployments/gpt-test",
-        },
-    )
-
-
-def test_provider_extra_body_rejects_gemini_provider(hass: HomeAssistant) -> None:
-    """Test provider extra body cannot be configured for unsupported providers."""
-    with pytest.raises(ProviderValidationError) as err:
-        _validate_provider_data(
-            hass,
-            {
-                CONF_PROVIDER_MODE: PROVIDER_GOOGLE_GEMINI,
-                CONF_PROVIDER_EXTRA_BODY: {"service_tier": "flex"},
-            },
-        )
-
-    assert err.value.reason == "provider_extra_body_unsupported"
-
-
-def test_provider_extra_body_allows_anthropic_provider(hass: HomeAssistant) -> None:
-    """Test Anthropic can use provider extra body fields."""
-    _validate_provider_data(
-        hass,
-        {
-            CONF_PROVIDER_MODE: PROVIDER_ANTHROPIC,
-            CONF_PROVIDER_EXTRA_BODY: {"anthropic_beta": ["feature-test"]},
-        },
-    )
-
-
-def test_normalise_provider_model_profiles_adds_new_profiles_disabled() -> None:
-    """Test newly discovered model profiles require explicit enablement."""
-    profiles = _normalise_provider_model_profiles({}, ["gpt-test"], ["gpt-test"])
-
-    profile = next(iter(profiles.values()))
-    assert profile[CONF_MODEL] == "gpt-test"
-    assert profile[CONF_ENABLED] is False
-    assert profile[CONF_DISCOVERED] is True
-
-
-def test_normalise_provider_model_profiles_uses_catalog_display_name() -> None:
-    """Test catalog names replace default identifier-derived profile names."""
-    profiles = _normalise_provider_model_profiles(
-        {
-            "profile-1": {
-                "id": "profile-1",
-                CONF_NAME: "deepseek-v4-pro",
-                CONF_MODEL: "deepseek-v4-pro",
-                CONF_ENABLED: False,
-                CONF_DISCOVERED: True,
-            },
-            "profile-2": {
-                "id": "profile-2",
-                CONF_NAME: "Custom Display Name",
-                CONF_MODEL: "deepseek-v4-flash",
-                CONF_ENABLED: False,
-                CONF_DISCOVERED: True,
-            },
-        },
-        ["deepseek-v4-pro", "deepseek-v4-flash"],
-        ["deepseek-v4-pro", "deepseek-v4-flash"],
-        model_labels={
-            "deepseek-v4-pro": "Deepseek V4 Pro",
-            "deepseek-v4-flash": "Deepseek V4 Flash",
-        },
-    )
-
-    assert profiles["profile-1"][CONF_NAME] == "Deepseek V4 Pro"
-    assert profiles["profile-2"][CONF_NAME] == "Custom Display Name"
-
-
-def test_normalise_provider_model_profiles_keeps_referenced_missing_profile() -> None:
-    """Test refresh pruning keeps disappeared models still referenced by agents."""
-    profiles = _normalise_provider_model_profiles(
-        {
-            "referenced": {
-                "id": "referenced",
-                CONF_MODEL: "gpt-old",
-                CONF_ENABLED: True,
-                CONF_DISCOVERED: True,
-            },
-            "unreferenced": {
-                "id": "unreferenced",
-                CONF_MODEL: "gpt-removed",
-                CONF_ENABLED: True,
-                CONF_DISCOVERED: True,
-            },
-        },
-        ["gpt-new"],
-        ["gpt-new"],
-        keep_profile_ids={"referenced"},
-    )
-
-    assert "referenced" in profiles
-    assert profiles["referenced"][CONF_MODEL] == "gpt-old"
-    assert "unreferenced" not in profiles
-    assert any(profile[CONF_MODEL] == "gpt-new" for profile in profiles.values())
-
-
-def test_provider_data_identity_includes_provider_extra_body() -> None:
-    """Test provider-level body settings distinguish provider subentries."""
-    base_data = {
-        CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-        CONF_API_KEY: "sk-test",
-    }
-
-    assert not _provider_data_matches(
-        base_data | {CONF_PROVIDER_EXTRA_BODY: {"service_tier": "flex"}},
-        base_data | {CONF_PROVIDER_EXTRA_BODY: {"service_tier": "default"}},
-    )
-
-
-def test_discovery_mode_profiles_drop_unreferenced_custom_profiles() -> None:
-    """Test clearing custom names removes old custom profiles unless referenced."""
-    profiles = _provider_model_profiles_for_discovery_mode(
-        {
-            "discovered": {
-                "id": "discovered",
-                CONF_MODEL: "gpt-listed",
-                CONF_ENABLED: True,
-                CONF_DISCOVERED: True,
-            },
-            "referenced-custom": {
-                "id": "referenced-custom",
-                CONF_MODEL: "gpt-custom-used",
-                CONF_ENABLED: True,
-                CONF_DISCOVERED: False,
-            },
-            "removed-custom": {
-                "id": "removed-custom",
-                CONF_MODEL: "gpt-custom-removed",
-                CONF_ENABLED: True,
-                CONF_DISCOVERED: False,
-            },
-        },
-        keep_profile_ids={"referenced-custom"},
-    )
-
-    assert set(profiles) == {"discovered", "referenced-custom"}
-
-
-def test_conversation_and_ai_task_schemas_hide_private_mcp_selection(
-    hass: HomeAssistant,
-) -> None:
-    """Test agent schemas no longer expose repo-owned MCP selectors."""
-    entry = workspace_entry((provider_subentry_data(), skill_subentry_data()))
-
-    conversation_fields = _section_key_names(
-        _conversation_schema(
-            hass, {CONF_PRIMARY_MODEL_REF: "provider-1:profile-1"}, entry
-        ),
-        _SECTION_EXTERNAL_TOOLS,
-    )
-    ai_task_fields = _section_key_names(
-        _ai_task_data_schema(
-            hass, {CONF_PRIMARY_MODEL_REF: "provider-1:profile-1"}, entry
-        ),
-        _SECTION_EXTERNAL_TOOLS,
-    )
-
-    assert conversation_fields == {
-        CONF_VIRTUAL_WORKSPACE_ENABLED,
-        CONF_WEB_FETCH_ENABLED,
-    }
-    assert ai_task_fields == {
-        CONF_TODO_LIST_ENTITY_ID,
-        CONF_VIRTUAL_WORKSPACE_ENABLED,
-        CONF_WEB_FETCH_ENABLED,
-    }

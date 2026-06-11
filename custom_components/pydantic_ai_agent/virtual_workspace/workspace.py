@@ -1,12 +1,31 @@
 """Bashkit-backed in-memory virtual workspace."""
 
 import logging
-from collections.abc import Mapping
 from typing import Any, cast
 
 from bashkit import BashTool
-from homeassistant.util import dt as dt_util
 
+from ._workspace_helpers import (
+    bash_error as _bash_error,
+)
+from ._workspace_helpers import (
+    metadata as _metadata,
+)
+from ._workspace_helpers import (
+    parse_cursor as _parse_cursor,
+)
+from ._workspace_helpers import (
+    require_confirmed_overwrite as _require_confirmed_overwrite,
+)
+from ._workspace_helpers import (
+    safe_normalized_path as _safe_normalized_path,
+)
+from ._workspace_helpers import (
+    shell_quote as _shell_quote,
+)
+from ._workspace_helpers import (
+    truncate_text as _truncate_text,
+)
 from .const import (
     COMMAND_TIMEOUT_SECONDS,
     DEFAULT_DIRECTORY_PAGE_SIZE,
@@ -457,72 +476,3 @@ class VirtualWorkspace:
                 continue
             total += self._path_size(normalize_vfs_path(name, working_directory=path))
         return total
-
-
-def _require_confirmed_overwrite(path: str, overwrite: bool, confirm: bool) -> None:
-    if protected_replacement_path(path):
-        raise PathValidationError("protected workspace paths cannot be replaced")
-    if not overwrite:
-        raise ConfirmationRequiredError(
-            "target exists; set overwrite=true to replace it"
-        )
-    if not confirm:
-        raise ConfirmationRequiredError("overwrite requires confirm=true")
-
-
-def _metadata(data: Mapping[str, Any]) -> dict[str, str | int | None]:
-    return {
-        "type": str(data.get("file_type", "unknown")),
-        "size": int(data.get("size", 0)),
-        "mode": int(data["mode"]) if data.get("mode") is not None else None,
-        "created": _timestamp(data.get("created")),
-        "modified": _timestamp(data.get("modified")),
-    }
-
-
-def _timestamp(value: object) -> str | None:
-    if not isinstance(value, int | float):
-        return None
-    return dt_util.utc_from_timestamp(float(value)).isoformat()
-
-
-def _parse_cursor(cursor: str | None) -> int:
-    if cursor in (None, ""):
-        return 0
-    try:
-        offset = int(cursor)
-    except ValueError as err:
-        raise VirtualWorkspaceError("cursor must be a numeric offset") from err
-    if offset < 0:
-        raise VirtualWorkspaceError("cursor must be non-negative")
-    return offset
-
-
-def _truncate_text(value: str, limit: int) -> tuple[str, bool]:
-    encoded = value.encode()
-    if len(encoded) <= limit:
-        return value, False
-    return encoded[:limit].decode(errors="replace"), True
-
-
-def _safe_normalized_path(path: object) -> str:
-    try:
-        return normalize_vfs_path(path if isinstance(path, str) else "")
-    except Exception:
-        return ""
-
-
-def _bash_error(error: str) -> BashResult:
-    return {
-        "ok": False,
-        "stdout": "",
-        "stderr": "",
-        "exitCode": None,
-        "stdoutTruncated": False,
-        "stderrTruncated": False,
-        "error": error,
-    }
-
-
-def _shell_quote(value: str) -> str:
-    return "'" + value.replace("'", "'\\''") + "'"

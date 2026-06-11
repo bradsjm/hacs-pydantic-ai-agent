@@ -59,9 +59,7 @@ class ChatCompletionsResource:
 
         headers = self._client.auth_headers | (extra_headers or {})
         request_timeout = (
-            None
-            if is_omitted(timeout)
-            else cast(float | httpx.Timeout | None, timeout)
+            None if is_omitted(timeout) else cast(float | httpx.Timeout | None, timeout)
         )
         url = self._client.url_for("/chat/completions")
         if stream:

@@ -24,6 +24,7 @@ from pydantic_ai.models import (
 )
 from pydantic_ai.profiles import ModelProfileSpec
 from pydantic_ai.profiles.openai import OpenAIModelProfile
+from pydantic_ai.providers import Provider
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT
 
@@ -53,7 +54,7 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
     """Pydantic AI model for OpenAI-compatible Responses APIs."""
 
     _model_name: str = field(repr=False)
-    _provider: OpenAICompatibleProvider = field(repr=False)
+    _provider: Provider[AsyncOpenAICompatible] = field(repr=False)
 
     def __init__(
         self,

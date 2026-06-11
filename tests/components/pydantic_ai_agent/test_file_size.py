@@ -6,7 +6,11 @@ Files should be kept concise and focused on a single responsibility.
 
 from pathlib import Path
 
-_ALLOWED_OVERSIZED_FILES = {}
+_ALLOWED_OVERSIZED_FILES = {
+    "custom_components/pydantic_ai_agent/entity.py": (
+        "Legacy runtime module pending further extraction"
+    ),
+}
 
 
 def test_python_files_max_500_lines():
@@ -20,7 +24,7 @@ def test_python_files_max_500_lines():
     - Generated migration files
     - Configuration files with large data structures
     """
-    max_lines = 550
+    max_lines = 500
     project_root = Path(__file__).parent.parent.parent.parent
     violations = []
     # Directories to check

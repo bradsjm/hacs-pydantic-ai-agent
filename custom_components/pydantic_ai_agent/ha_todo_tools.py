@@ -5,7 +5,7 @@ import weakref
 from dataclasses import dataclass
 from typing import Any
 
-from homeassistant.components.todo import (
+from homeassistant.components.todo.const import (
     ATTR_DESCRIPTION,
     ATTR_ITEM,
     ATTR_RENAME,
@@ -13,7 +13,7 @@ from homeassistant.components.todo import (
     TodoItemStatus,
     TodoServices,
 )
-from homeassistant.components.todo import (
+from homeassistant.components.todo.const import (
     DOMAIN as TODO_DOMAIN,
 )
 from homeassistant.const import ATTR_ENTITY_ID

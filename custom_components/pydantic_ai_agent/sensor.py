@@ -10,11 +10,10 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigSubentry
-from homeassistant.const import UnitOfTime
+from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
@@ -326,7 +325,7 @@ class PydanticAIMetricSensor(SensorEntity):
 
     _attr_has_entity_name = True
 
-    entity_description: PydanticAIMetricSensorDescription
+    entity_description: SensorEntityDescription
 
     def __init__(
         self,
@@ -337,6 +336,7 @@ class PydanticAIMetricSensor(SensorEntity):
         """Initialize the metric sensor."""
         self.entry = entry
         self.subentry = subentry
+        self._description = description
         self.entity_description = description
         self._attr_entity_registry_enabled_default = (
             description.entity_registry_enabled_default
@@ -351,6 +351,9 @@ class PydanticAIMetricSensor(SensorEntity):
             manufacturer="Pydantic AI",
             model=profile.model_name,
             entry_type=dr.DeviceEntryType.SERVICE,
+        )
+        self._attr_native_value = self._description.value_fn(
+            self.entry.runtime_data.metrics.record_for(self.subentry.subentry_id)
         )
 
     async def async_added_to_hass(self) -> None:
@@ -363,15 +366,12 @@ class PydanticAIMetricSensor(SensorEntity):
             )
         )
 
-    @property
-    def native_value(self) -> int | float | str | None:
-        """Return the current metric value."""
-        record = self.entry.runtime_data.metrics.record_for(self.subentry.subentry_id)
-        return self.entity_description.value_fn(record)
-
     @callback
     def _handle_metrics_update(self) -> None:
         """Write the updated metric state."""
+        self._attr_native_value = self._description.value_fn(
+            self.entry.runtime_data.metrics.record_for(self.subentry.subentry_id)
+        )
         self.async_write_ha_state()
 
 
@@ -380,7 +380,7 @@ class PydanticAIConfigSensor(SensorEntity):
 
     _attr_has_entity_name = True
 
-    entity_description: PydanticAIConfigSensorDescription
+    entity_description: SensorEntityDescription
 
     def __init__(
         self,
@@ -391,6 +391,7 @@ class PydanticAIConfigSensor(SensorEntity):
         """Initialize the configuration sensor."""
         self.entry = entry
         self.subentry = subentry
+        self._description = description
         self.entity_description = description
         self._attr_entity_registry_enabled_default = (
             description.entity_registry_enabled_default
@@ -406,11 +407,7 @@ class PydanticAIConfigSensor(SensorEntity):
             model=profile.model_name,
             entry_type=dr.DeviceEntryType.SERVICE,
         )
-
-    @property
-    def native_value(self) -> int | str | None:
-        """Return the configured value."""
-        return self.entity_description.value_fn(self.entry, self.subentry)
+        self._attr_native_value = self._description.value_fn(self.entry, self.subentry)
 
 
 def _agent_subentries(

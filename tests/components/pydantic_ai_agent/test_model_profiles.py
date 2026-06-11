@@ -243,9 +243,9 @@ def test_run_settings_override_legacy_profile_run_settings() -> None:
     )
     thinking = thinking_capability({CONF_THINKING: "high"})
 
-    assert settings["temperature"] == 0.7
-    assert settings[CONF_MAX_TOKENS] == 256
-    assert settings[CONF_TIMEOUT] == 12.5
+    assert settings.get("temperature") == 0.7
+    assert settings.get(CONF_MAX_TOKENS) == 256
+    assert settings.get(CONF_TIMEOUT) == 12.5
     assert thinking is not None
     assert thinking.effort == "high"
 

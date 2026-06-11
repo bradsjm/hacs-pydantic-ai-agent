@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import AsyncIterable, Mapping, Sequence
+from functools import cached_property
 from typing import Any, cast
 
 import voluptuous as vol
@@ -197,7 +198,7 @@ class PydanticAIBaseLLMEntity:
             entry_type=dr.DeviceEntryType.SERVICE,
         )
 
-    @property
+    @cached_property
     def available(self) -> bool:
         """Return if the primary model profile validated at setup."""
         failures = self.entry.runtime_data.model_validation_failures

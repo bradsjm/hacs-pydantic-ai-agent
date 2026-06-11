@@ -1,6 +1,7 @@
 """Test the lightweight OpenAI-compatible client."""
 
 import json
+from typing import cast
 
 import httpx
 import pytest
@@ -11,6 +12,14 @@ from custom_components.pydantic_ai_agent.openai_compatible_client import (
     APITimeoutError,
     AsyncOpenAICompatible,
     omit,
+)
+from custom_components.pydantic_ai_agent.openai_compatible_client._streaming import (
+    ChatCompletionStream,
+    ResponseStream,
+)
+from custom_components.pydantic_ai_agent.openai_compatible_client._types import (
+    ChatCompletion,
+    Response,
 )
 
 
@@ -63,7 +72,7 @@ async def test_chat_completion_serializes_payload_and_headers() -> None:
         extra_headers={"x-custom": "value"},
     )
 
-    assert response.choices[0].message.content == "OK"
+    assert cast(ChatCompletion, response).choices[0].message.content == "OK"
     assert captured["url"] == "https://provider.test/v1/chat/completions"
     assert captured["authorization"] == "Bearer secret"
     assert captured["provider"] == "configured"
@@ -158,7 +167,7 @@ async def test_responses_create_serializes_payload_and_headers() -> None:
     )
 
     assert response is not None
-    assert response.output[0]["content"][0]["text"] == "OK"
+    assert cast(Response, response).output[0]["content"][0]["text"] == "OK"
     assert captured["url"] == "https://provider.test/v1/responses"
     assert captured["authorization"] == "Bearer secret"
     assert captured["custom"] == "value"
@@ -214,6 +223,7 @@ async def test_chat_completion_stream_parses_sse_chunks() -> None:
     )
 
     stream = await client.chat.completions.create(model="m", messages=[], stream=True)
+    assert isinstance(stream, ChatCompletionStream)
     chunks = [chunk async for chunk in stream]
 
     deltas = [chunk.choices[0].delta for chunk in chunks[:2] if chunk.choices]
@@ -240,6 +250,7 @@ async def test_chat_completion_stream_status_errors_read_body() -> None:
     )
 
     stream = await client.chat.completions.create(model="m", messages=[], stream=True)
+    assert isinstance(stream, ChatCompletionStream)
     with pytest.raises(APIStatusError) as exc_info:
         async with stream:
             _ = [chunk async for chunk in stream]
@@ -275,6 +286,7 @@ async def test_responses_stream_parses_sse_events() -> None:
     )
 
     stream = await client.responses.create(model="m", input=[], stream=True)
+    assert isinstance(stream, ResponseStream)
     events = [event async for event in stream]
 
     assert [event.type for event in events] == [
@@ -301,6 +313,7 @@ async def test_responses_stream_status_errors_read_body() -> None:
     )
 
     stream = await client.responses.create(model="m", input=[], stream=True)
+    assert isinstance(stream, ResponseStream)
     with pytest.raises(APIStatusError) as exc_info:
         async with stream:
             _ = [event async for event in stream]

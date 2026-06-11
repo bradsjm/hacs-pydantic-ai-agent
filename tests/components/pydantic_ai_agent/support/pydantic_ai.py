@@ -237,3 +237,11 @@ class ConversationAgent:
         self.run_calls += 1
         self.run_kwargs = kwargs
         return StreamResult(self._text)
+
+
+def request_limit_from_kwargs(kwargs: dict[str, Any]) -> int | None:
+    """Extract the request_limit from usage_limits in agent kwargs."""
+    usage_limits = kwargs.get("usage_limits")
+    if usage_limits is not None:
+        return getattr(usage_limits, "request_limit", None)
+    return None

@@ -62,17 +62,8 @@ class PydanticAIConversationEntity(
             self._attr_supported_features = (
                 conversation.ConversationEntityFeature.CONTROL
             )
-
-    @property
-    def supported_languages(self) -> list[str] | Literal["*"]:
-        """Return supported languages."""
-        return MATCH_ALL
-
-    @property
-    def extra_state_attributes(self) -> dict[str, str | bool | list[str] | None]:
-        """Return observability attributes."""
         profiles = model_profile_chain(self.entry, self.subentry)
-        return {
+        self._attr_extra_state_attributes = {
             "provider_mode": profiles[0].provider_mode,
             "model": profiles[0].model_name,
             "model_profile": profiles[0].title,
@@ -84,6 +75,11 @@ class PydanticAIConversationEntity(
             ),
             "virtual_workspace_enabled": virtual_workspace_enabled(self.subentry.data),
         }
+
+    @property
+    def supported_languages(self) -> list[str] | Literal["*"]:
+        """Return supported languages."""
+        return MATCH_ALL
 
     async def _async_handle_message(
         self,

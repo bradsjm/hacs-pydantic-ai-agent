@@ -27,9 +27,7 @@ class ModelsResource:
     ) -> list[str]:
         """Return available model IDs."""
         request_timeout = (
-            None
-            if is_omitted(timeout)
-            else cast(float | httpx.Timeout | None, timeout)
+            None if is_omitted(timeout) else cast(float | httpx.Timeout | None, timeout)
         )
         try:
             response = await self._client.http_client.get(

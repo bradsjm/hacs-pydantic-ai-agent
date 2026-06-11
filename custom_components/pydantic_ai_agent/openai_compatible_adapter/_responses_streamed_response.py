@@ -54,24 +54,30 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
                 "refusal": self._refusal_text,
             }
 
-    _LIFECYCLE_EVENTS = frozenset({
-        "response.created",
-        "response.in_progress",
-        "response.completed",
-        "response.incomplete",
-        "response.failed",
-    })
-    _SKIP_EVENTS = frozenset({
-        "response.content_part.added",
-        "response.content_part.done",
-        "response.reasoning_summary_part.done",
-        "response.reasoning_summary_text.done",
-        "response.reasoning_text.done",
-    })
-    _REASONING_EVENTS = frozenset({
-        "response.reasoning_summary_part.added",
-        "response.reasoning_summary_text.delta",
-    })
+    _LIFECYCLE_EVENTS = frozenset(
+        {
+            "response.created",
+            "response.in_progress",
+            "response.completed",
+            "response.incomplete",
+            "response.failed",
+        }
+    )
+    _SKIP_EVENTS = frozenset(
+        {
+            "response.content_part.added",
+            "response.content_part.done",
+            "response.reasoning_summary_part.done",
+            "response.reasoning_summary_text.done",
+            "response.reasoning_text.done",
+        }
+    )
+    _REASONING_EVENTS = frozenset(
+        {
+            "response.reasoning_summary_part.added",
+            "response.reasoning_summary_text.delta",
+        }
+    )
 
     async def _process_response_event(
         self,

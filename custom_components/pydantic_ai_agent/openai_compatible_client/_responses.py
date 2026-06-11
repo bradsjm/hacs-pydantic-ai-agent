@@ -40,9 +40,7 @@ class ResponsesResource:
 
         headers = self._client.auth_headers | (extra_headers or {})
         request_timeout = (
-            None
-            if is_omitted(timeout)
-            else cast(float | httpx.Timeout | None, timeout)
+            None if is_omitted(timeout) else cast(float | httpx.Timeout | None, timeout)
         )
         if stream:
             return ResponseStream(

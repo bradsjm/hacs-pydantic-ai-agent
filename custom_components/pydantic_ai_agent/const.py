@@ -1,6 +1,6 @@
 """Constants for Pydantic AI Agent."""
 
-from homeassistant.const import CONF_LLM_HASS_API
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 
 DOMAIN = "pydantic_ai_agent"
 
@@ -85,4 +85,4 @@ def default_conversation_options() -> dict[str, object]:
     }
 
 
-__all__ = ["CONF_LLM_HASS_API"]
+__all__ = ["CONF_API_KEY", "CONF_LLM_HASS_API", "CONF_NAME"]

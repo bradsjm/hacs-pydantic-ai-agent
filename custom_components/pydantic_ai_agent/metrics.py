@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -54,6 +55,11 @@ class MetricsStore:
     """Mutable per-entry metrics store."""
 
     _records: dict[str, AgentRunMetrics] = field(default_factory=dict)
+
+    @property
+    def records(self) -> Mapping[str, AgentRunMetrics]:
+        """Return a read-only view of the metrics records."""
+        return MappingProxyType(self._records)
 
     def record_for(self, subentry_id: str) -> AgentRunMetrics:
         """Return the metrics record for a subentry."""

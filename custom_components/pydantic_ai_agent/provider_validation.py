@@ -1,7 +1,7 @@
 """Provider validation helpers for Pydantic AI Agent."""
 
 import json
-from collections.abc import AsyncIterable, Mapping
+from collections.abc import AsyncIterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -29,7 +29,7 @@ from pydantic_ai.messages import ModelResponseStreamEvent
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.settings import ModelSettings, ThinkingLevel
 
-from ._redaction import redact_data
+from ._redaction import redact_data, redaction_keys
 from .chat_template_kwargs import (
     reject_chat_template_kwargs_in_extra_body,
     render_chat_template_kwargs,
@@ -124,11 +124,28 @@ def provider_extra_body_supported(data: Mapping[str, Any]) -> bool:
 
 def _format_metadata(metadata: object) -> str:
     """Return redacted, bounded provider metadata for config-flow display."""
-    redacted = redact_data(metadata)
+    redacted = _display_safe_metadata(redact_data(metadata))
     formatted = repr(redacted)
     if len(formatted) > _MAX_METADATA_REPR_LENGTH:
         return f"{formatted[:_MAX_METADATA_REPR_LENGTH]}..."
     return formatted
+
+
+def _display_safe_metadata(metadata: object) -> object:
+    """Return metadata safe for user-visible error messages."""
+    sensitive_keys = redaction_keys()
+    if isinstance(metadata, Mapping):
+        filtered = {
+            key: _display_safe_metadata(value)
+            for key, value in metadata.items()
+            if key not in sensitive_keys
+        }
+        return filtered or "**REDACTED**"
+    if isinstance(metadata, Sequence) and not isinstance(
+        metadata, str | bytes | bytearray
+    ):
+        return [_display_safe_metadata(value) for value in metadata]
+    return metadata
 
 
 def _status_label(status_code: int) -> str:
@@ -271,9 +288,7 @@ def _prepare_probe_settings(
     model_settings: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     """Prepare model settings dict for a probe request."""
-    settings = strip_model_settings(
-        model_settings, PROBE_STRIPPED_MODEL_SETTING_KEYS
-    )
+    settings = strip_model_settings(model_settings, PROBE_STRIPPED_MODEL_SETTING_KEYS)
     provider_extra_body = data.get(CONF_PROVIDER_EXTRA_BODY)
     if isinstance(provider_extra_body, Mapping) and provider_extra_body:
         if not provider_extra_body_supported(data):
@@ -285,9 +300,7 @@ def _prepare_probe_settings(
         reject_chat_template_kwargs_in_extra_body(provider_extra_body)
         settings[_MODEL_SETTING_EXTRA_BODY] = dict(provider_extra_body)
     chat_template_kwargs = settings.pop(_MODEL_SETTING_CHAT_TEMPLATE_KWARGS, None)
-    reject_chat_template_kwargs_in_extra_body(
-        settings.get(_MODEL_SETTING_EXTRA_BODY)
-    )
+    reject_chat_template_kwargs_in_extra_body(settings.get(_MODEL_SETTING_EXTRA_BODY))
     if rendered_kwargs := render_chat_template_kwargs(hass, chat_template_kwargs):
         extra_body = dict(settings.get(_MODEL_SETTING_EXTRA_BODY) or {})
         extra_body[CONF_CHAT_TEMPLATE_KWARGS] = rendered_kwargs

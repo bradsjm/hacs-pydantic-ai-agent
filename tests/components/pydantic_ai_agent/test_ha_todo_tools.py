@@ -3,10 +3,10 @@
 from typing import Any
 
 from custom_components.pydantic_ai_agent.ha_todo_tools import TodoWorkspace
-from homeassistant.components.todo import (
+from homeassistant.components.todo.const import (
     DOMAIN as TODO_DOMAIN,
 )
-from homeassistant.components.todo import (
+from homeassistant.components.todo.const import (
     TodoItemStatus,
     TodoServices,
 )
