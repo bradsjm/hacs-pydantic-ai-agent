@@ -71,9 +71,7 @@ class ProviderModelManagementMixin:
     def _get_reconfigure_subentry(self) -> ConfigSubentry:
         return super()._get_reconfigure_subentry()  # type: ignore[misc]
 
-    def async_show_form(
-        self, *args: object, **kwargs: object
-    ) -> SubentryFlowResult:
+    def async_show_form(self, *args: object, **kwargs: object) -> SubentryFlowResult:
         return super().async_show_form(*args, **kwargs)  # type: ignore[misc]
 
     async def async_step_manage_models(

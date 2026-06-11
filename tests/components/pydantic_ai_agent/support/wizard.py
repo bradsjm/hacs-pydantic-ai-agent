@@ -163,7 +163,8 @@ async def entry_flow_init_result(
     return cast(
         _FlowResultDict,
         await hass.config_entries.flow.async_init(
-            domain, context=context  # type: ignore[arg-type]
+            domain,
+            context=context,  # type: ignore[arg-type]
         ),
     )
 

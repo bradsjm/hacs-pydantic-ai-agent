@@ -16,7 +16,7 @@ from custom_components.pydantic_ai_agent.debug_services import (
     SERVICE_GET_WORKSPACE_STATUS,
     SERVICE_LIST_MODEL_PROFILES,
 )
-from custom_components.pydantic_ai_agent.mcp import _cache_key
+from custom_components.pydantic_ai_agent.mcp.discovery import _cache_key
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from tests.components.pydantic_ai_agent.support.builders import (

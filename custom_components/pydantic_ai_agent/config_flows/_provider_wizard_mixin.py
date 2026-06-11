@@ -74,19 +74,13 @@ class ProviderWizardMixin:
     def _get_entry(self) -> ConfigEntry:
         return super()._get_entry()  # type: ignore[misc]
 
-    def async_show_form(
-        self, *args: object, **kwargs: object
-    ) -> SubentryFlowResult:
+    def async_show_form(self, *args: object, **kwargs: object) -> SubentryFlowResult:
         return super().async_show_form(*args, **kwargs)  # type: ignore[misc]
 
-    def async_abort(
-        self, *args: object, **kwargs: object
-    ) -> SubentryFlowResult:
+    def async_abort(self, *args: object, **kwargs: object) -> SubentryFlowResult:
         return super().async_abort(*args, **kwargs)  # type: ignore[misc]
 
-    def async_create_entry(
-        self, *args: object, **kwargs: object
-    ) -> SubentryFlowResult:
+    def async_create_entry(self, *args: object, **kwargs: object) -> SubentryFlowResult:
         return super().async_create_entry(*args, **kwargs)  # type: ignore[misc]
 
     def async_show_progress(
