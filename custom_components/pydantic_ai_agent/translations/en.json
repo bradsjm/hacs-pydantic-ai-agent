@@ -147,12 +147,12 @@
             },
             "hass_control": {
               "data": {
-                "llm_hass_api": "Control Home Assistant"
+                "llm_hass_api": ""
               },
               "data_description": {
                 "llm_hass_api": "Select which tools the model can use to interact with your devices and entities."
               },
-              "name": "Control Home Assistant"
+              "name": "Capabilities"
             },
             "run_settings": {
               "data": {
@@ -253,12 +253,12 @@
             },
             "hass_control": {
               "data": {
-                "llm_hass_api": "Control Home Assistant"
+                "llm_hass_api": ""
               },
               "data_description": {
                 "llm_hass_api": "Select which tools the model can use to interact with your devices and entities."
               },
-              "name": "Control Home Assistant"
+              "name": "Capabilities"
             },
             "run_settings": {
               "data": {

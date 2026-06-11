@@ -66,7 +66,7 @@ This integration requires Home Assistant 2026.5.1 or newer.
 5. Add provider, conversation, AI task, and Skill subentries as needed.
 6. To expose shared external tools, configure MCP servers in Home Assistant
    Core, expose them through the Home Assistant LLM API you want this
-   integration to use, then select that API via `Control Home Assistant`.
+   integration to use, then select that API via `Capabilities`.
 
 Workspace entries own shared Logfire settings. Provider credentials live on
 `provider` subentries, while conversation, AI task, and Skill settings remain
@@ -148,7 +148,7 @@ Recommended setup:
 2. Expose those servers through the Home Assistant LLM API you want the model
    to use.
 3. In this integration, select that API in the conversation agent or AI task
-   `Control Home Assistant` section.
+   `Capabilities` section.
 
 ### Skills
 
