@@ -348,9 +348,7 @@ def test_selected_skill_error_reports_stale_skill_id() -> None:
 
 
 def test_selected_mcp_server_error_reports_stale_or_unallowlisted_server() -> None:
-    entry = workspace_entry(
-        (mcp_server_subentry_data(subentry_id="mcp-1", allowed_tools=["echo"]),)
-    )
+    entry = workspace_entry((mcp_server_subentry_data(subentry_id="mcp-1"),))
     assert _selected_mcp_server_error(entry, {"mcp_server_ids": ["mcp-1"]}) is None
     assert _selected_mcp_server_error(entry, {"mcp_server_ids": ["missing"]}) == (
         "mcp_server_not_found"

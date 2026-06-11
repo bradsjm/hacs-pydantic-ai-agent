@@ -319,11 +319,8 @@
         "reconfigure": "Reconfigure MCP server",
         "user": "Add MCP server"
       },
-      "progress": {
-        "validate_mcp": "Validating MCP server"
-      },
       "step": {
-        "init": {
+        "edit_server": {
           "data": {
             "mcp_url": "MCP server URL",
             "name": "Server name"
@@ -331,7 +328,7 @@
           "data_description": {
             "mcp_url": "HTTP or HTTPS URL for the remote Streamable HTTP MCP endpoint. HTTPS is recommended when using headers or sensitive tool data."
           },
-          "description": "Add a remote Streamable HTTP MCP server. Once added, you can assign it to conversation agents or AI tasks.",
+          "description": "Change the MCP server connection settings. Existing tool selections are preserved until you update them from the tools menu.",
           "sections": {
             "advanced_mcp": {
               "data": {
@@ -347,17 +344,51 @@
               "name": "Advanced Options"
             }
           },
-          "title": "Configure remote MCP server (Step 1 of 2)"
+          "title": "Edit remote MCP server"
         },
-        "tools": {
+        "init": {
+          "data": {
+            "mcp_url": "MCP server URL",
+            "name": "Server name"
+          },
+          "data_description": {
+            "mcp_url": "HTTP or HTTPS URL for the remote Streamable HTTP MCP endpoint. HTTPS is recommended when using headers or sensitive tool data."
+          },
+          "description": "Add a remote Streamable HTTP MCP server. Once added, all discovered tools are enabled by default until you optionally limit them from the reconfigure menu.",
+          "sections": {
+            "advanced_mcp": {
+              "data": {
+                "mcp_deferred_loading": "Defer tool loading",
+                "mcp_headers": "HTTP headers",
+                "mcp_include_return_schema": "Include tool return schemas"
+              },
+              "data_description": {
+                "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools.",
+                "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
+                "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility."
+              },
+              "name": "Advanced Options"
+            }
+          },
+          "title": "Configure remote MCP server"
+        },
+        "manage_tools": {
           "data": {
             "mcp_allowed_tools": "MCP tool list:"
           },
           "data_description": {
             "mcp_allowed_tools": "Only selected tools will be enabled for use with conversation agents or AI tasks."
           },
-          "description": "Select tools you want to make available to conversation agents or AI tasks.",
-          "title": "Discovered MCP tools (Step 2 of 2)"
+          "description": "Select tools you want to make available to conversation agents or AI tasks. The first time you open this list, all discovered tools are selected by default.",
+          "title": "Configure available MCP tools"
+        },
+        "reconfigure_menu": {
+          "description": "Configure the MCP server connection or optionally limit which discovered tools are available at runtime.",
+          "menu_options": {
+            "edit_server": "Edit MCP server connection",
+            "manage_tools": "Configure available tools"
+          },
+          "title": "Configure MCP server"
         }
       }
     },

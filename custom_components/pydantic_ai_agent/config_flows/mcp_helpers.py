@@ -121,7 +121,10 @@ def _selected_mcp_server_error(
         subentry = entry.subentries.get(server_id)
         if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_MCP_SERVER:
             return "mcp_server_not_found"
-        if not parse_allowed_tools(subentry.data.get(CONF_MCP_ALLOWED_TOOLS)):
+        if (
+            CONF_MCP_ALLOWED_TOOLS in subentry.data
+            and not parse_allowed_tools(subentry.data.get(CONF_MCP_ALLOWED_TOOLS))
+        ):
             return "mcp_tools_not_allowlisted"
     return None
 

@@ -28,6 +28,7 @@ def _mcp_entry(
     *,
     subentry_id: str = "mcp_server_1",
     allowed_tools: list[str] | None = None,
+    store_allowed_tools: bool = False,
     include_return_schema: bool | None = None,
     deferred_loading: bool | None = None,
 ) -> MockConfigEntry:
@@ -36,8 +37,9 @@ def _mcp_entry(
         CONF_NAME: "Echo MCP",
         CONF_MCP_URL: "https://mcp.example.com/mcp",
         CONF_MCP_HEADERS: {"Authorization": "Bearer secret"},
-        CONF_MCP_ALLOWED_TOOLS: allowed_tools or [],
     }
+    if allowed_tools is not None or store_allowed_tools:
+        data[CONF_MCP_ALLOWED_TOOLS] = allowed_tools or []
     if include_return_schema is not None:
         data[CONF_MCP_INCLUDE_RETURN_SCHEMA] = include_return_schema
     if deferred_loading is not None:
@@ -61,7 +63,7 @@ def _mcp_entry(
     )
 
 
-async def test_runtime_mcp_toolsets_require_selected_allowlisted_servers(
+async def test_runtime_mcp_toolsets_require_selected_servers(
     hass: HomeAssistant,
 ) -> None:
     assert await async_runtime_mcp_toolsets(hass, _mcp_entry(), []) == []
@@ -70,8 +72,16 @@ async def test_runtime_mcp_toolsets_require_selected_allowlisted_servers(
         await async_runtime_mcp_toolsets(hass, _mcp_entry(), ["missing"])
     assert err.value.reason == "mcp_server_not_found"
 
+
+async def test_runtime_mcp_toolsets_reject_explicit_empty_allowlist(
+    hass: HomeAssistant,
+) -> None:
     with pytest.raises(MCPValidationError) as err:
-        await async_runtime_mcp_toolsets(hass, _mcp_entry(), ["mcp_server_1"])
+        await async_runtime_mcp_toolsets(
+            hass,
+            _mcp_entry(store_allowed_tools=True),
+            ["mcp_server_1"],
+        )
     assert err.value.reason == "mcp_tools_not_allowlisted"
 
 
@@ -142,3 +152,53 @@ async def test_runtime_mcp_toolsets_enforce_allowlist_and_deferred_loading(
         )
     assert err.value.reason == "mcp_tool_not_allowed"
     assert err.value.tool_name == "read_file"
+
+
+async def test_runtime_mcp_toolsets_without_allowlist_enable_all_tools(
+    hass: HomeAssistant,
+) -> None:
+    class FakePrefixedToolset:
+        def __init__(self, toolset: object, prefix: str) -> None:
+            self.toolset = toolset
+            self.prefix = prefix
+
+    class FakeMCPToolset:
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            self.process_tool_call = kwargs["process_tool_call"]
+            self.include_return_schema = kwargs["include_return_schema"]
+            self.filter_func = None
+
+        def filtered(self, filter_func: object) -> FakeMCPToolset:
+            self.filter_func = filter_func
+            return self
+
+        def prefixed(self, prefix: str) -> FakePrefixedToolset:
+            return FakePrefixedToolset(self, prefix)
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.mcp.runtime.MCPToolset",
+            FakeMCPToolset,
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.mcp.runtime._mcp_client",
+            return_value=object(),
+        ),
+    ):
+        toolsets = await async_runtime_mcp_toolsets(
+            hass,
+            _mcp_entry(),
+            ["mcp_server_1"],
+        )
+
+    toolset = cast(Any, toolsets[0])
+    assert toolset.toolset.filter_func is None
+
+    async def call_tool(
+        tool_name: str, tool_args: dict[str, object]
+    ) -> dict[str, object]:
+        return {"tool": tool_name, "args": tool_args}
+
+    assert await toolset.toolset.process_tool_call(
+        None, call_tool, "any_tool", {"message": "hi"}
+    ) == {"tool": "any_tool", "args": {"message": "hi"}}
