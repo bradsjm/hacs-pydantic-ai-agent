@@ -233,15 +233,15 @@ async def test_skill_subentry_uses_template_editor_and_stores_raw_text(
     assert result["data"][CONF_SKILL_REFERENCES] == []
 
 
-async def test_workspace_flow_no_longer_offers_mcp_subentries(
+async def test_workspace_flow_offers_mcp_subentries(
     hass: HomeAssistant,
 ) -> None:
-    """Test workspace subentry menus no longer expose repo-owned MCP support."""
+    """Test workspace subentry menus expose MCP server support."""
     entry = await loaded_workspace_entry(hass)
 
     supported = PydanticAIAgentConfigFlow.async_get_supported_subentry_types(entry)
 
-    assert "mcp_server" not in supported
+    assert "mcp_server" in supported
 
 
 async def test_create_workspace_entry(hass: HomeAssistant) -> None:

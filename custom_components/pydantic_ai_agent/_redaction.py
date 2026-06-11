@@ -7,6 +7,8 @@ from homeassistant.const import CONF_API_KEY, CONF_PASSWORD
 
 from .const import (
     CONF_LOGFIRE_TOKEN,
+    CONF_MCP_HEADERS,
+    CONF_MCP_URL,
     CONF_PROMPT,
     CONF_PROVIDER_HEADERS,
     CONF_SKILL_CONTENT,
@@ -16,6 +18,8 @@ TO_REDACT = frozenset(
     {
         CONF_API_KEY,
         CONF_LOGFIRE_TOKEN,
+        CONF_MCP_HEADERS,
+        CONF_MCP_URL,
         CONF_PASSWORD,
         CONF_PROMPT,
         CONF_PROVIDER_HEADERS,

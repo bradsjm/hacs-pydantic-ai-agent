@@ -14,11 +14,11 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import llm
 from opentelemetry.trace import Span
 from pydantic_ai import Agent, AgentRunResult
-from pydantic_ai.capabilities import AbstractCapability, WebFetch
+from pydantic_ai.capabilities import AbstractCapability, ToolSearch, WebFetch
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.settings import ModelSettings
-from pydantic_ai.toolsets import AbstractToolset
+from pydantic_ai.toolsets import AbstractToolset, DeferredLoadingToolset
 from pydantic_ai.usage import UsageLimits
 
 from . import PydanticAIAgentConfigEntry
@@ -34,6 +34,7 @@ from .chat_deltas import (
     _agent_messages_to_chat_deltas as _agent_messages_to_chat_deltas,
 )
 from .const import (
+    CONF_MCP_SERVER_IDS,
     CONF_OUTPUT_MODE,
     CONF_SKILLS,
     CONF_WEB_FETCH_ENABLED,
@@ -46,6 +47,7 @@ from .ha_toolset import (
 )
 from .history import chat_log_content_to_model_messages, split_last_user_prompt
 from .logfire_support import agent_run_span, instrument_agent
+from .mcp import async_runtime_mcp_toolsets
 from .metrics import (
     EVENT_AGENT_RUN_COMPLETED,
     EVENT_AGENT_RUN_FAILED,
@@ -370,8 +372,20 @@ class PydanticAIBaseLLMEntity:
         settings = _model_settings_with_chat_template_kwargs(
             self.hass, profile, settings
         )
-        toolsets = [*virtual_toolsets, *extra_toolsets]
+        mcp_toolsets = await async_runtime_mcp_toolsets(
+            self.hass,
+            self.entry,
+            self.subentry.data.get(CONF_MCP_SERVER_IDS),
+        )
+        toolsets = [*mcp_toolsets, *virtual_toolsets, *extra_toolsets]
         run_capabilities = list(capabilities)
+        if any(isinstance(toolset, DeferredLoadingToolset) for toolset in toolsets):
+            run_capabilities = [
+                capability
+                for capability in run_capabilities
+                if not isinstance(capability, ToolSearch)
+            ]
+            run_capabilities.append(ToolSearch(strategy="keywords"))
         if thinking := thinking_capability(self.subentry.data):
             run_capabilities.append(thinking)
         run_recorder.record(
@@ -382,6 +396,7 @@ class PydanticAIBaseLLMEntity:
                 "model_profile": profile,
                 "model_settings": settings,
                 "usage_limits": usage_limits,
+                "mcp_toolset_count": len(mcp_toolsets),
                 "extra_toolset_count": len(extra_toolsets),
                 "virtual_workspace_enabled": virtual_workspace_enabled(
                     self.subentry.data

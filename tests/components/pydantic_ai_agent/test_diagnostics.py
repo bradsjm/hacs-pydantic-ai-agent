@@ -18,6 +18,12 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_ENABLED,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_DEFERRED_LOADING,
+    CONF_MCP_HEADERS,
+    CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_SERVER_IDS,
+    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
@@ -31,6 +37,7 @@ from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
@@ -80,6 +87,7 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
                     CONF_PRIMARY_MODEL_REF: _MODEL_PROFILE_REF,
                     CONF_PROMPT: "Private system prompt",
                     CONF_LLM_HASS_API: ["assist"],
+                    CONF_MCP_SERVER_IDS: ["mcp-1"],
                 },
                 "subentry_type": SUBENTRY_TYPE_CONVERSATION,
                 "title": "Kitchen Agent",
@@ -122,6 +130,20 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
                 "unique_id": None,
             },
             {
+                "subentry_id": "mcp-1",
+                "data": {
+                    CONF_NAME: "Echo MCP",
+                    CONF_MCP_URL: "https://mcp.example.com/mcp?token=secret",
+                    CONF_MCP_HEADERS: {"Authorization": "Bearer provider-secret"},
+                    CONF_MCP_ALLOWED_TOOLS: ["echo"],
+                    CONF_MCP_INCLUDE_RETURN_SCHEMA: False,
+                    CONF_MCP_DEFERRED_LOADING: True,
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Echo MCP",
+                "unique_id": None,
+            },
+            {
                 "data": {
                     CONF_NAME: "Kitchen Skill",
                     CONF_SKILL_CONTENT: "Private skill body",
@@ -153,6 +175,7 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
         "name": "Kitchen Agent",
         CONF_PRIMARY_MODEL_REF: _MODEL_PROFILE_REF,
         "fallback_model_profile_count": 0,
+        "mcp_server_count": 1,
         "skill_count": 0,
         CONF_LLM_HASS_API: ["assist"],
         "web_fetch_enabled": False,
@@ -173,7 +196,17 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
         }
     ]
     assert model_data[CONF_MODEL_SETTINGS]["extra_body"] == {"api_key": REDACTED}
-    skill_data = diagnostics["subentries"][2]["data"]
+    mcp_data = diagnostics["subentries"][2]["data"]
+    assert mcp_data[CONF_MCP_URL] == REDACTED
+    assert mcp_data[CONF_MCP_HEADERS] == REDACTED
+    assert diagnostics["subentries"][2]["configuration_summary"] == {
+        "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+        "has_headers": True,
+        "allowed_tool_count": 1,
+        CONF_MCP_INCLUDE_RETURN_SCHEMA: False,
+        CONF_MCP_DEFERRED_LOADING: True,
+    }
+    skill_data = diagnostics["subentries"][3]["data"]
     assert skill_data[CONF_NAME] == "Kitchen Skill"
     assert skill_data[CONF_SKILL_CONTENT] == REDACTED
     assert skill_data[CONF_SKILL_REFERENCES] == [
@@ -206,6 +239,8 @@ async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> Non
         "headers": {"Authorization": "Bearer stream-secret"},
         "request_url": "https://provider.example.com/path?token=visible",
     }
+    entry.runtime_data.mcp_servers["mcp-1"] = SimpleNamespace()
+    entry.runtime_data.mcp_tool_cache["cache-1"] = [{"name": "echo"}]
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
@@ -220,6 +255,8 @@ async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> Non
     assert (
         stream_trace["request_url"] == "https://provider.example.com/path?token=visible"
     )
+    assert runtime["mcp_server_count"] == 1
+    assert runtime["cached_mcp_server_count"] == 1
     assert "runtime-secret" not in json.dumps(diagnostics)
     assert "stream-secret" not in json.dumps(diagnostics)
 

@@ -23,6 +23,12 @@ CONF_LOGFIRE_INCLUDE_CONTENT = "logfire_include_content"
 CONF_LOGFIRE_TOKEN = "logfire_token"
 CONF_MAX_ITERATIONS = "max_iterations"
 CONF_MAX_TOKENS = "max_tokens"
+CONF_MCP_ALLOWED_TOOLS = "mcp_allowed_tools"
+CONF_MCP_DEFERRED_LOADING = "mcp_deferred_loading"
+CONF_MCP_HEADERS = "mcp_headers"
+CONF_MCP_INCLUDE_RETURN_SCHEMA = "mcp_include_return_schema"
+CONF_MCP_SERVER_IDS = "mcp_server_ids"
+CONF_MCP_URL = "mcp_url"
 CONF_MODEL = "model"
 CONF_MODEL_PRICING = "model_pricing"
 CONF_MODEL_PROFILES = "model_profiles"
@@ -57,6 +63,7 @@ PROVIDER_MODES = (
 
 SUBENTRY_TYPE_AI_TASK = "ai_task_data"
 SUBENTRY_TYPE_CONVERSATION = "conversation"
+SUBENTRY_TYPE_MCP_SERVER = "mcp_server"
 SUBENTRY_TYPE_PROVIDER = "provider"
 SUBENTRY_TYPE_SKILL = "skill"
 
@@ -75,6 +82,7 @@ DEFAULT_AI_TASK_NAME = "AI task"
 DEFAULT_SERVICE_NAME = "OpenAI-compatible"
 DEFAULT_SKILL_NAME = "Skill"
 DEFAULT_WORKSPACE_NAME = "Pydantic AI Agent"
+DEFAULT_MCP_TIMEOUT = 10.0
 DEFAULT_TIMEOUT = 10.0
 
 

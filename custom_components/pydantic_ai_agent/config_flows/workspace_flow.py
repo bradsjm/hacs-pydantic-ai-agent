@@ -12,6 +12,7 @@ from .common import (
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
     Any,
@@ -22,6 +23,7 @@ from .common import (
     callback,
 )
 from .conversation_flow import ConversationSubentryFlowHandler
+from .mcp_server_flow import MCPServerSubentryFlowHandler
 from .provider_flow import ProviderSubentryFlowHandler
 from .skill_flow import SkillSubentryFlowHandler
 from .workspace_helpers import (
@@ -104,5 +106,6 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
             SUBENTRY_TYPE_PROVIDER: ProviderSubentryFlowHandler,
             SUBENTRY_TYPE_CONVERSATION: ConversationSubentryFlowHandler,
             SUBENTRY_TYPE_AI_TASK: AITaskDataSubentryFlowHandler,
+            SUBENTRY_TYPE_MCP_SERVER: MCPServerSubentryFlowHandler,
             SUBENTRY_TYPE_SKILL: SkillSubentryFlowHandler,
         }

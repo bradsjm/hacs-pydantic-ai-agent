@@ -12,8 +12,14 @@
     "get_workspace_status": {
       "service": "mdi:view-dashboard-outline"
     },
+    "list_mcp_tools": {
+      "service": "mdi:toolbox-outline"
+    },
     "list_model_profiles": {
       "service": "mdi:card-account-details-outline"
+    },
+    "refresh_mcp_tools": {
+      "service": "mdi:sync"
     }
   }
 }

@@ -7,8 +7,14 @@ Files should be kept concise and focused on a single responsibility.
 from pathlib import Path
 
 _ALLOWED_OVERSIZED_FILES = {
+    "custom_components/pydantic_ai_agent/debug_services.py": (
+        "Debug response surface aggregates workspace, MCP, and runtime summaries"
+    ),
     "custom_components/pydantic_ai_agent/entity.py": (
         "Legacy runtime module pending further extraction"
+    ),
+    "custom_components/pydantic_ai_agent/mcp.py": (
+        "MCP runtime adapter centralizes validation, discovery, and toolset wiring"
     ),
 }
 

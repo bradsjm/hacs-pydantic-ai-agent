@@ -4,8 +4,10 @@ import logging
 from dataclasses import replace
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.exceptions import ServiceValidationError
 
 from ._migration import (
     _async_remove_removed_memory_store,
@@ -16,7 +18,14 @@ from ._migration import (
 )
 from ._model_validation import _async_validate_configured_models
 from ._run_diagnostics_service import async_register_run_diagnostics_service
-from ._setup_helpers import _provider_runtimes, _resolved_model_profiles
+from ._setup_helpers import (
+    _mcp_server_runtimes,
+    _provider_runtimes,
+    _resolved_model_profiles,
+)
+from ._types import (
+    MCPServerRuntimeData as MCPServerRuntimeData,
+)
 from ._types import (
     ProviderRuntimeData as ProviderRuntimeData,
 )
@@ -26,7 +35,7 @@ from ._types import (
 from ._types import (
     WorkspaceRuntimeData as WorkspaceRuntimeData,
 )
-from .const import CONF_NAME
+from .const import CONF_NAME, DOMAIN
 from .debug_services import async_setup_services as async_setup_debug_services
 from .logfire_support import (
     async_configure_logfire,
@@ -34,12 +43,35 @@ from .logfire_support import (
     logfire_enabled,
     logfire_include_content,
 )
+from .mcp import (
+    MCPValidationError,
+    async_refresh_mcp_tools,
+    cached_mcp_tools,
+    mcp_subentries,
+)
+from .metrics import (
+    EVENT_MCP_TOOL_REFRESH_COMPLETED,
+    EVENT_MCP_TOOL_REFRESH_FAILED,
+    fire_integration_event,
+)
 from .repair_issues import (
     async_delete_entry_repair_issues,
     async_delete_logfire_token_conflict_issue,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+SERVICE_LIST_MCP_TOOLS = "list_mcp_tools"
+SERVICE_REFRESH_MCP_TOOLS = "refresh_mcp_tools"
+ATTR_CONFIG_ENTRY_ID = "config_entry_id"
+ATTR_MCP_SERVER_ID = "mcp_server_id"
+
+_MCP_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_CONFIG_ENTRY_ID): str,
+        vol.Optional(ATTR_MCP_SERVER_ID): str,
+    }
+)
 
 PLATFORMS: tuple[Platform, ...] = (
     Platform.CONVERSATION,
@@ -51,6 +83,29 @@ PLATFORMS: tuple[Platform, ...] = (
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up integration-wide services."""
+
+    async def async_list_mcp_tools(call: ServiceCall) -> dict[str, Any]:
+        """Return cached MCP tools, discovering them if needed."""
+        return await _async_mcp_tools_service(hass, call, refresh=False)
+
+    async def async_refresh_mcp_tools_service(call: ServiceCall) -> dict[str, Any]:
+        """Refresh and return MCP tools."""
+        return await _async_mcp_tools_service(hass, call, refresh=True)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_LIST_MCP_TOOLS,
+        async_list_mcp_tools,
+        schema=_MCP_SERVICE_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REFRESH_MCP_TOOLS,
+        async_refresh_mcp_tools_service,
+        schema=_MCP_SERVICE_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
     async_register_run_diagnostics_service(hass)
     await async_setup_debug_services(hass)
     return True
@@ -61,6 +116,7 @@ async def async_setup_entry(
 ) -> bool:
     """Build workspace runtime data, then set up entity platforms."""
     provider_runtimes = _provider_runtimes(entry)
+    mcp_runtime = _mcp_server_runtimes(entry)
     model_profiles = _resolved_model_profiles(entry, provider_runtimes)
     forwarded_platforms = False
     await async_configure_logfire(hass, entry)
@@ -68,6 +124,7 @@ async def async_setup_entry(
         entry.runtime_data = WorkspaceRuntimeData(
             workspace_name=entry.data[CONF_NAME],
             providers=provider_runtimes,
+            mcp_servers=mcp_runtime,
             model_profiles=model_profiles,
             logfire_enabled=logfire_enabled(hass, entry),
             logfire_include_content=logfire_include_content(hass, entry),
@@ -146,3 +203,93 @@ async def async_update_entry(
 ) -> None:
     """Reload the entry after config entry or subentry updates."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+def _mcp_error_response(err: MCPValidationError) -> dict[str, Any]:
+    """Return a response-service error payload for an expected MCP failure."""
+    return {
+        "reason": err.reason,
+        "message": err.message,
+        "action": "Check the MCP server configuration and try again.",
+        "status_code": err.status_code,
+        "server_id": err.server_id,
+        "tool_name": err.tool_name,
+    }
+
+
+def _config_entry_for_service(
+    hass: HomeAssistant, entry_id: str
+) -> PydanticAIAgentConfigEntry:
+    """Return a config entry for an MCP response service."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None or entry.domain != DOMAIN:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="config_entry_not_found",
+            translation_placeholders={"config_entry_id": entry_id},
+        )
+    return entry
+
+
+def _mcp_service_subentry_ids(
+    entry: PydanticAIAgentConfigEntry, requested_id: str | None
+) -> list[str]:
+    """Return target MCP subentry IDs for a response service call."""
+    if requested_id is not None:
+        return [requested_id]
+    return [subentry.subentry_id for subentry in mcp_subentries(entry)]
+
+
+async def _async_mcp_tools_service(
+    hass: HomeAssistant,
+    call: ServiceCall,
+    *,
+    refresh: bool,
+) -> dict[str, Any]:
+    """List or refresh MCP tools for one config entry."""
+    errors: list[dict[str, Any]] = []
+    tools_by_server: dict[str, list[dict[str, Any]]] = {}
+    entry = _config_entry_for_service(hass, call.data[ATTR_CONFIG_ENTRY_ID])
+    subentry_ids = _mcp_service_subentry_ids(entry, call.data.get(ATTR_MCP_SERVER_ID))
+    if not subentry_ids:
+        return {"success": True, "servers": {}, "tools": []}
+    for subentry_id in subentry_ids:
+        try:
+            tools = None if refresh else cached_mcp_tools(entry, subentry_id)
+            if tools is None:
+                tools = await async_refresh_mcp_tools(hass, entry, subentry_id)
+            tools_by_server[subentry_id] = tools
+            if refresh:
+                fire_integration_event(
+                    hass,
+                    EVENT_MCP_TOOL_REFRESH_COMPLETED,
+                    {
+                        "config_entry_id": entry.entry_id,
+                        "mcp_server_id": subentry_id,
+                        "tool_count": len(tools),
+                    },
+                )
+        except MCPValidationError as err:
+            _LOGGER.warning(
+                "MCP tool discovery failed: reason=%s server_id=%s",
+                err.reason,
+                err.server_id,
+            )
+            errors.append(_mcp_error_response(err))
+            if refresh:
+                fire_integration_event(
+                    hass,
+                    EVENT_MCP_TOOL_REFRESH_FAILED,
+                    {
+                        "config_entry_id": entry.entry_id,
+                        "mcp_server_id": subentry_id,
+                        "reason": err.reason,
+                    },
+                )
+    flat_tools = [tool for tools in tools_by_server.values() for tool in tools]
+    return {
+        "success": not errors,
+        "servers": tools_by_server,
+        "tools": flat_tools,
+        "errors": errors,
+    }

@@ -20,6 +20,14 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _parse_model_settings,
     _provider_profile_options,
 )
+from custom_components.pydantic_ai_agent.config_flows.mcp_helpers import (
+    _format_mcp_headers,
+    _mcp_server_select_options,
+    _mcp_tool_options,
+    _mcp_url_already_configured,
+    _mcp_url_identity,
+    _selected_mcp_server_error,
+)
 from custom_components.pydantic_ai_agent.config_flows.skill_helpers import (
     SkillDataValidationError,
     _selected_skill_error,
@@ -33,6 +41,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_ENABLED,
     CONF_MAX_ITERATIONS,
     CONF_MAX_TOKENS,
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
@@ -43,8 +53,10 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_THINKING,
     CONF_TIMEOUT,
     DOMAIN,
+    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_SKILL,
 )
+from custom_components.pydantic_ai_agent.mcp import MCPValidationError
 from custom_components.pydantic_ai_agent.provider_validation import (
     _format_api_error,
     _map_http_error,
@@ -55,6 +67,7 @@ from homeassistant.core import HomeAssistant
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
+    mcp_server_subentry_data,
     provider_subentry_data,
     skill_subentry_data,
     workspace_entry,
@@ -299,6 +312,20 @@ def test_agent_selector_options_are_sorted_with_stale_values_last(
     ]
 
 
+def test_mcp_server_selector_options_are_sorted() -> None:
+    entry = workspace_entry(
+        (
+            mcp_server_subentry_data(subentry_id="mcp-z", title="zeta MCP"),
+            mcp_server_subentry_data(subentry_id="mcp-a", title="Alpha MCP"),
+        )
+    )
+
+    assert [option["label"] for option in _mcp_server_select_options(entry)] == [
+        "Alpha MCP",
+        "zeta MCP",
+    ]
+
+
 def test_selected_skill_error_reports_stale_skill_id() -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -318,6 +345,104 @@ def test_selected_skill_error_reports_stale_skill_id() -> None:
         ),
     )
     assert _selected_skill_error(entry, {CONF_SKILLS: ["skill-1"]}) is None
+
+
+def test_selected_mcp_server_error_reports_stale_or_unallowlisted_server() -> None:
+    entry = workspace_entry(
+        (mcp_server_subentry_data(subentry_id="mcp-1", allowed_tools=["echo"]),)
+    )
+    assert _selected_mcp_server_error(entry, {"mcp_server_ids": ["mcp-1"]}) is None
+    assert _selected_mcp_server_error(entry, {"mcp_server_ids": ["missing"]}) == (
+        "mcp_server_not_found"
+    )
+
+    unallowlisted_entry = workspace_entry(
+        (mcp_server_subentry_data(subentry_id="mcp-1", allowed_tools=[]),)
+    )
+    assert (
+        _selected_mcp_server_error(unallowlisted_entry, {"mcp_server_ids": ["mcp-1"]})
+        == "mcp_tools_not_allowlisted"
+    )
+
+
+def test_format_mcp_headers_uses_multiline_header_syntax() -> None:
+    assert _format_mcp_headers({"X-Z": "last", "Authorization": "Bearer token"}) == (
+        "Authorization: Bearer token\nX-Z: last"
+    )
+    assert _format_mcp_headers("X-Raw: value") == "X-Raw: value"
+    assert _format_mcp_headers(None) == ""
+
+
+def test_mcp_tool_options_include_truncated_descriptions() -> None:
+    options = _mcp_tool_options(
+        [
+            {
+                "name": "echo",
+                "description": (
+                    "Echo text back to the caller with a fairly long description "
+                    "that should truncate cleanly."
+                ),
+            },
+            {"name": "list_files", "description": "List files"},
+        ]
+    )
+
+    assert options[0]["value"] == "echo"
+    assert "echo" in options[0]["label"]
+    assert options[1] == {"label": "list_files (List files)", "value": "list_files"}
+
+
+def test_mcp_url_identity_rejects_userinfo() -> None:
+    with pytest.raises(MCPValidationError):
+        _mcp_url_identity("https://alice:one@mcp.example.com/mcp")
+    assert _mcp_url_identity(
+        "https://mcp.example.com/mcp?a=1&b=2"
+    ) == _mcp_url_identity("https://mcp.example.com:443/mcp?b=2&a=1")
+
+
+def test_mcp_duplicate_check_ignores_invalid_stale_urls() -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_NAME: "Workspace"},
+        source=config_entries.SOURCE_USER,
+        subentries_data=(
+            {
+                "subentry_id": "mcp-stale",
+                "data": {
+                    CONF_NAME: "Stale MCP",
+                    CONF_MCP_URL: "https://user:pass@mcp.example.com/mcp",
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Stale MCP",
+                "unique_id": None,
+            },
+        ),
+    )
+
+    assert not _mcp_url_already_configured(entry, "https://mcp.example.com/mcp")
+
+
+def test_workspace_duplicate_mcp_identity_uses_normalized_url() -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_NAME: "Workspace"},
+        source=config_entries.SOURCE_USER,
+        subentries_data=(
+            {
+                "subentry_id": "mcp-1",
+                "data": {
+                    CONF_NAME: "MCP",
+                    CONF_MCP_URL: "https://mcp.example.com:443/mcp?b=2&a=1",
+                    CONF_MCP_ALLOWED_TOOLS: ["echo"],
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "MCP",
+                "unique_id": None,
+            },
+        ),
+    )
+
+    assert _mcp_url_already_configured(entry, "https://mcp.example.com/mcp?a=1&b=2")
     assert _selected_skill_error(entry, {CONF_SKILLS: ["missing"]}) == "skill_not_found"
 
 

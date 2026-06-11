@@ -41,6 +41,7 @@ from .common import (
     provider_model_profiles,
 )
 from .helpers import _flatten_section_data
+from .mcp_helpers import _selected_mcp_server_error
 from .skill_helpers import _selected_skill_error
 
 
@@ -146,6 +147,15 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                     ),
                     errors={"base": skill_error},
                 )
+            if mcp_error := _selected_mcp_server_error(entry, data):
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=self.add_suggested_values_to_schema(
+                        _ai_task_data_schema(self.hass, self._options | data, entry),
+                        _agent_form_suggested_values(self._options | data, self.hass),
+                    ),
+                    errors={"base": mcp_error},
+                )
             return await self._async_finish_ai_task_options(data)
 
         return self.async_show_form(
@@ -169,6 +179,14 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                     self.hass, self._options | data, entry
                 ),
                 errors={"base": skill_error},
+            )
+        if mcp_error := _selected_mcp_server_error(entry, data):
+            return self.async_show_form(
+                step_id="init",
+                data_schema=_ai_task_data_schema(
+                    self.hass, self._options | data, entry
+                ),
+                errors={"base": mcp_error},
             )
         self._pending_ai_task_data = dict(data)
         self._pending_ai_task_error = None

@@ -33,6 +33,7 @@ from ..const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_FALLBACK_MODEL_REFS,
+    CONF_MCP_SERVER_IDS,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_SETTINGS,
@@ -80,6 +81,10 @@ from ._settings_parsing import (
     _normalise_run_settings,
 )
 from .helpers import _flatten_section_data, _section_schema_key
+from .mcp_helpers import (
+    _append_mcp_server_schema_fields,
+    _normalise_mcp_server_selection,
+)
 from .skill_helpers import _append_skill_schema_fields, _normalise_skill_selection
 
 
@@ -192,6 +197,7 @@ def _conversation_schema(
             default=options.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is True,
         )
     ] = BooleanSelector()
+    _append_mcp_server_schema_fields(external_tools_schema, options, entry)
     schema[_section_schema_key(_SECTION_EXTERNAL_TOOLS, external_tools_schema)] = (
         section(vol.Schema(external_tools_schema), {"collapsed": True})
     )
@@ -427,6 +433,9 @@ def _conversation_data_from_user_input(
         data.pop(CONF_FALLBACK_MODEL_REFS, None)
     if CONF_SKILLS not in user_input and options.get(CONF_SKILLS):
         data[CONF_SKILLS] = options[CONF_SKILLS]
+    if CONF_MCP_SERVER_IDS not in user_input and options.get(CONF_MCP_SERVER_IDS):
+        data[CONF_MCP_SERVER_IDS] = options[CONF_MCP_SERVER_IDS]
     _normalise_run_settings(data)
+    _normalise_mcp_server_selection(data)
     _normalise_skill_selection(data)
     return data

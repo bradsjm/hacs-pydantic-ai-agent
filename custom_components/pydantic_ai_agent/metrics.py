@@ -12,6 +12,8 @@ from .const import DOMAIN
 
 EVENT_AGENT_RUN_COMPLETED = "agent_run_completed"
 EVENT_AGENT_RUN_FAILED = "agent_run_failed"
+EVENT_MCP_TOOL_REFRESH_COMPLETED = "mcp_tool_refresh_completed"
+EVENT_MCP_TOOL_REFRESH_FAILED = "mcp_tool_refresh_failed"
 EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED = "structured_ai_task_output_generated"
 
 

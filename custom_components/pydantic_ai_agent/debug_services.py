@@ -18,6 +18,9 @@ from .const import (
     CONF_DISCOVERED,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_HEADERS,
+    CONF_MCP_SERVER_IDS,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_OUTPUT_MODE,
@@ -32,8 +35,10 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_SKILL,
 )
+from .mcp import cached_mcp_tools
 from .metrics import AgentRunMetrics
 from .model_profiles import (
     model_profile_ref,
@@ -260,6 +265,11 @@ def _subentries_status(entry: ConfigEntry) -> dict[str, list[dict[str, Any]]]:
         "providers": [
             _provider_status(entry, subentry) for subentry in provider_subentries(entry)
         ],
+        "mcp_servers": [
+            _mcp_server_status(entry, subentry)
+            for subentry in entry.subentries.values()
+            if subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER
+        ],
         "conversations": [
             _agent_subentry_status(subentry)
             for subentry in entry.subentries.values()
@@ -308,6 +318,7 @@ def _agent_subentry_status(subentry: ConfigSubentry) -> dict[str, Any]:
         "name": data.get(CONF_AGENT_NAME) or data.get(CONF_AI_TASK_NAME),
         "primary_model_ref": data.get(CONF_PRIMARY_MODEL_REF),
         "fallback_model_count": _list_count(data.get(CONF_FALLBACK_MODEL_REFS)),
+        "mcp_server_count": _list_count(data.get(CONF_MCP_SERVER_IDS)),
         "skill_count": _list_count(data.get(CONF_SKILLS)),
         "ha_llm_api_count": _list_count(data.get(CONF_LLM_HASS_API)),
         "web_fetch_enabled": bool(data.get(CONF_WEB_FETCH_ENABLED, False)),
@@ -316,6 +327,24 @@ def _agent_subentry_status(subentry: ConfigSubentry) -> dict[str, Any]:
         ),
         "todo_workspace_enabled": bool(data.get(CONF_TODO_LIST_ENTITY_ID)),
         "output_mode": data.get(CONF_OUTPUT_MODE),
+    }
+
+
+def _mcp_server_status(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str, Any]:
+    """Return compact MCP server status without secrets."""
+    runtime_data = getattr(entry, "runtime_data", None)
+    runtime_servers = getattr(runtime_data, "mcp_servers", {}) if runtime_data else {}
+    cached_tools = (
+        cached_mcp_tools(entry, subentry.subentry_id) if runtime_data else None
+    )
+    allowed_tools = subentry.data.get(CONF_MCP_ALLOWED_TOOLS)
+    return {
+        "subentry_id": subentry.subentry_id,
+        "title": subentry.title,
+        "has_headers": bool(subentry.data.get(CONF_MCP_HEADERS)),
+        "allowed_tool_count": _list_count(allowed_tools),
+        "cached_tool_count": len(cached_tools) if cached_tools is not None else 0,
+        "runtime_loaded": subentry.subentry_id in runtime_servers,
     }
 
 
@@ -343,6 +372,10 @@ def _runtime_status(runtime_data: object) -> dict[str, Any] | None:
     return {
         "workspace_name": getattr(runtime_data, "workspace_name", None),
         "provider_count": len(getattr(runtime_data, "providers", {})),
+        "mcp_server_count": len(getattr(runtime_data, "mcp_servers", {})),
+        "cached_mcp_tool_server_count": len(
+            getattr(runtime_data, "mcp_tool_cache", {})
+        ),
         "model_profile_count": len(getattr(runtime_data, "model_profiles", {})),
         "model_validation_failure_count": len(
             getattr(runtime_data, "model_validation_failures", {})
@@ -426,7 +459,18 @@ def _tool_source_status(
     include_tool_names: bool,
     limit: int,
 ) -> dict[str, Any]:
-    """Return Skill tool-source status for one workspace."""
+    """Return MCP and Skill tool-source status for one workspace."""
+    mcp_servers = [
+        _mcp_tool_source_status(
+            entry,
+            subentry,
+            include_tool_names=include_tool_names,
+            limit=limit,
+        )
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER
+        and (subentry_id is None or subentry.subentry_id == subentry_id)
+    ]
     skills = [
         _skill_subentry_status(subentry)
         for subentry in entry.subentries.values()
@@ -435,8 +479,39 @@ def _tool_source_status(
     ]
     return {
         "config_entry_id": entry.entry_id,
+        "mcp_servers": mcp_servers,
+        "mcp_server_count": len(mcp_servers),
         "skills": skills,
         "skill_count": len(skills),
+    }
+
+
+def _mcp_tool_source_status(
+    entry: ConfigEntry,
+    subentry: ConfigSubentry,
+    *,
+    include_tool_names: bool,
+    limit: int,
+) -> dict[str, Any]:
+    """Return cached MCP tool-source status for one MCP server subentry."""
+    runtime_data = getattr(entry, "runtime_data", None)
+    cached_tools = (
+        cached_mcp_tools(entry, subentry.subentry_id)
+        if runtime_data is not None
+        else None
+    )
+    tool_names = []
+    if include_tool_names and cached_tools is not None:
+        tool_names = [
+            str(tool.get("name")) for tool in cached_tools[:limit] if tool.get("name")
+        ]
+    return {
+        "subentry_id": subentry.subentry_id,
+        "title": subentry.title,
+        "has_headers": bool(subentry.data.get(CONF_MCP_HEADERS)),
+        "allowed_tool_count": _list_count(subentry.data.get(CONF_MCP_ALLOWED_TOOLS)),
+        "cached_tool_count": len(cached_tools) if cached_tools is not None else 0,
+        "tool_names": tool_names,
     }
 
 

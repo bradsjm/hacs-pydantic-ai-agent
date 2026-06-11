@@ -25,6 +25,7 @@ from .common import (
     default_conversation_options,
 )
 from .helpers import _flatten_section_data
+from .mcp_helpers import _selected_mcp_server_error
 from .skill_helpers import _selected_skill_error
 
 
@@ -122,6 +123,19 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                         _agent_form_suggested_values(self._options | data, self.hass),
                     ),
                     errors={"base": skill_error},
+                )
+            if mcp_error := _selected_mcp_server_error(entry, data):
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=self.add_suggested_values_to_schema(
+                        _conversation_schema(
+                            self.hass,
+                            self._options | data,
+                            entry,
+                        ),
+                        _agent_form_suggested_values(self._options | data, self.hass),
+                    ),
+                    errors={"base": mcp_error},
                 )
             return self._async_finish_conversation_options(data)
 

@@ -46,6 +46,7 @@ from ..const import (
     CONF_DISCOVERED_MODELS_CACHE_KEY,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
+    CONF_MCP_SERVER_IDS,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
@@ -65,6 +66,7 @@ from ..const import (
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
     default_conversation_options,
@@ -207,5 +209,19 @@ from ._settings_parsing import (
     _store_model_settings,
 )
 from .helpers import _flatten_section_data, _section_schema_key, _sorted_select_options
+from .mcp_helpers import (
+    _append_mcp_server_schema_fields,
+    _format_mcp_headers,
+    _mcp_server_data_from_user_input,
+    _mcp_server_schema,
+    _mcp_server_select_options,
+    _mcp_tool_options,
+    _mcp_tools_schema,
+    _mcp_url_already_configured,
+    _mcp_url_identity,
+    _mcp_validation_placeholders,
+    _normalise_mcp_server_selection,
+    _selected_mcp_server_error,
+)
 
 _LOGGER = logging.getLogger(__name__)

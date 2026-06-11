@@ -88,6 +88,8 @@
         "invalid_model": "{error_message}",
         "invalid_number": "Enter a valid number in this field.",
         "invalid_provider_config": "{error_message}",
+        "mcp_server_not_found": "Selected MCP server was not found.",
+        "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
         "model_does_not_support_streaming": "{error_message}",
         "model_profile_not_found": "Selected language model profile was not found.",
         "model_profile_required": "Select a primary language model profile.",
@@ -125,14 +127,16 @@
           "sections": {
             "external_tools": {
               "data": {
+                "mcp_server_ids": "MCP servers",
                 "todo_list_entity_id": "Todo workspace list",
                 "virtual_workspace_enabled": "Virtual workspace tools",
                 "web_fetch_enabled": "Web fetch"
               },
               "data_description": {
+                "mcp_server_ids": "Optional MCP servers this AI task may use. Only enabled tools will be made available.",
                 "todo_list_entity_id": "Optional dedicated todo list for model planning. When set, this list is cleared before every AI task run and the model can only manage items in this list.",
                 "virtual_workspace_enabled": "Allow this AI task to use a temporary in-memory bash and file workspace during each AI task run. The workspace is discarded after the response.",
-                "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs. Web fetch is disabled by default."
+                "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
               },
               "name": "External tools and data"
             },
@@ -202,6 +206,8 @@
         "invalid_model": "{error_message}",
         "invalid_number": "Enter a valid number in this field.",
         "invalid_provider_config": "{error_message}",
+        "mcp_server_not_found": "Selected MCP server was not found.",
+        "mcp_tools_not_allowlisted": "Selected MCP servers must have at least one allowed tool before runtime use.",
         "model_does_not_support_streaming": "{error_message}",
         "model_profile_not_found": "Selected language model profile was not found.",
         "model_profile_required": "Select a primary language model profile.",
@@ -233,12 +239,14 @@
           "sections": {
             "external_tools": {
               "data": {
+                "mcp_server_ids": "MCP servers",
                 "virtual_workspace_enabled": "Virtual workspace tools",
                 "web_fetch_enabled": "Web fetch"
               },
               "data_description": {
+                "mcp_server_ids": "Optional MCP servers this conversation agent may use. Runtime use requires the MCP server to have an explicit allowed-tools list.",
                 "virtual_workspace_enabled": "Allow this conversation agent to use a temporary in-memory bash and file workspace during each model run. The workspace is discarded after the response.",
-                "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default."
+                "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
               },
               "name": "External tools and data"
             },
@@ -286,6 +294,70 @@
             }
           },
           "title": "Configure conversation agent"
+        }
+      }
+    },
+    "mcp_server": {
+      "abort": {
+        "already_configured": "This MCP server URL is already configured.",
+        "entry_not_loaded": "The workspace is not loaded.",
+        "reconfigure_successful": "MCP server configuration updated. Assign it to conversation agents or AI tasks."
+      },
+      "entry_type": "MCP tools server (HTTP)",
+      "error": {
+        "cannot_connect": "{error_message}",
+        "invalid_auth": "{error_message}",
+        "invalid_mcp_headers": "Enter HTTP headers one per line using 'Header-Name: value'.",
+        "invalid_mcp_tools": "Enter comma-separated tool names.",
+        "invalid_mcp_url": "{error_message}",
+        "mcp_tools_not_allowlisted": "Select at least one tool to enable this MCP server.",
+        "no_mcp_tools": "{error_message}",
+        "timeout": "{error_message}",
+        "unknown": "Unexpected error while validating the MCP server. Check Home Assistant logs for details."
+      },
+      "initiate_flow": {
+        "reconfigure": "Reconfigure MCP server",
+        "user": "Add MCP server"
+      },
+      "progress": {
+        "validate_mcp": "Validating MCP server"
+      },
+      "step": {
+        "init": {
+          "data": {
+            "mcp_url": "MCP server URL",
+            "name": "Server name"
+          },
+          "data_description": {
+            "mcp_url": "HTTP or HTTPS URL for the remote Streamable HTTP MCP endpoint. HTTPS is recommended when using headers or sensitive tool data."
+          },
+          "description": "Add a remote Streamable HTTP MCP server. Once added, you can assign it to conversation agents or AI tasks.",
+          "sections": {
+            "advanced_mcp": {
+              "data": {
+                "mcp_deferred_loading": "Defer tool loading",
+                "mcp_headers": "HTTP headers",
+                "mcp_include_return_schema": "Include tool return schemas"
+              },
+              "data_description": {
+                "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools.",
+                "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
+                "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility."
+              },
+              "name": "Advanced Options"
+            }
+          },
+          "title": "Configure remote MCP server (Step 1 of 2)"
+        },
+        "tools": {
+          "data": {
+            "mcp_allowed_tools": "MCP tool list:"
+          },
+          "data_description": {
+            "mcp_allowed_tools": "Only selected tools will be enabled for use with conversation agents or AI tasks."
+          },
+          "description": "Select tools you want to make available to conversation agents or AI tasks.",
+          "title": "Discovered MCP tools (Step 2 of 2)"
         }
       }
     },
@@ -639,6 +711,7 @@
       "last_run_tool_use_count": { "name": "Last run tool use count" },
       "last_run_total_cost": { "name": "Last run total cost" },
       "last_run_total_tokens": { "name": "Last run total tokens" },
+      "mcp_servers_enabled": { "name": "MCP servers enabled" },
       "primary_language_model": { "name": "Primary language model" },
       "skills_enabled": { "name": "Skills enabled" },
       "structured_output_mode": { "name": "Structured output mode" }
@@ -737,22 +810,22 @@
       "name": "Get agent run diagnostics"
     },
     "get_tool_source_status": {
-      "description": "Return native Skill tool-source status without executing tools.",
+      "description": "Return cached MCP tool and native Skill status without refreshing or executing tools.",
       "fields": {
         "config_entry_id": {
           "description": "Optional Pydantic AI Agent workspace config entry. If omitted, all workspaces are returned.",
           "name": "Config entry"
         },
         "include_tool_names": {
-          "description": "Included for response-shape compatibility; Skill responses do not currently add tool names.",
+          "description": "Include cached MCP tool names when available.",
           "name": "Include tool names"
         },
         "limit": {
-          "description": "Included for response-shape compatibility with tool source queries.",
+          "description": "Maximum number of cached tool names to return for each MCP server.",
           "name": "Limit"
         },
         "subentry_id": {
-          "description": "Optional Skill subentry ID to filter tool sources.",
+          "description": "Optional MCP server or Skill subentry ID to filter tool sources.",
           "name": "Subentry ID"
         }
       },
@@ -770,11 +843,25 @@
           "name": "Include runtime"
         },
         "include_subentries": {
-          "description": "Include provider, conversation, AI task, and Skill subentry summaries.",
+          "description": "Include provider, conversation, AI task, MCP server, and Skill subentry summaries.",
           "name": "Include subentries"
         }
       },
       "name": "Get workspace status"
+    },
+    "list_mcp_tools": {
+      "description": "List cached MCP tools for a configured server, discovering them if no cache exists.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Pydantic AI Agent workspace config entry.",
+          "name": "Config entry"
+        },
+        "mcp_server_id": {
+          "description": "Optional MCP server subentry ID. If omitted, all configured MCP servers are listed.",
+          "name": "MCP server ID"
+        }
+      },
+      "name": "List MCP tools"
     },
     "list_model_profiles": {
       "description": "List configured provider-owned model profiles without probing providers.",
@@ -793,6 +880,20 @@
         }
       },
       "name": "List model profiles"
+    },
+    "refresh_mcp_tools": {
+      "description": "Reconnect to configured MCP servers and refresh their tool catalogs.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Pydantic AI Agent workspace config entry.",
+          "name": "Config entry"
+        },
+        "mcp_server_id": {
+          "description": "Optional MCP server subentry ID. If omitted, all configured MCP servers are refreshed.",
+          "name": "MCP server ID"
+        }
+      },
+      "name": "Refresh MCP tools"
     }
   }
 }

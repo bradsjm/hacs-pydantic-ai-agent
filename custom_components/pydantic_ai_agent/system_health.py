@@ -7,12 +7,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
+    CONF_MCP_SERVER_IDS,
     CONF_MODEL_PROFILES,
     CONF_PROVIDER_MODE,
     CONF_SKILLS,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
@@ -39,7 +41,10 @@ async def system_health_info(hass: HomeAssistant) -> dict[str, Any]:
         "model_profile_count": _model_profile_count(entries),
         "conversation_count": _subentry_count(entries, SUBENTRY_TYPE_CONVERSATION),
         "ai_task_count": _subentry_count(entries, SUBENTRY_TYPE_AI_TASK),
+        "mcp_server_count": _subentry_count(entries, SUBENTRY_TYPE_MCP_SERVER),
         "skill_count": _subentry_count(entries, SUBENTRY_TYPE_SKILL),
+        "selected_mcp_server_count": _selected_mcp_server_count(entries),
+        "cached_mcp_tool_count": _cached_mcp_tool_count(loaded_entries),
         "selected_skill_count": _selected_skill_count(entries),
         "logfire_enabled_count": sum(
             1 for entry in entries if logfire_enabled(hass, entry)
@@ -89,4 +94,26 @@ def _selected_skill_count(entries: list[ConfigEntry]) -> int:
         for subentry in entry.subentries.values()
         if subentry.subentry_type in {SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK}
         and isinstance((skill_ids := subentry.data.get(CONF_SKILLS)), list)
+    )
+
+
+def _selected_mcp_server_count(entries: list[ConfigEntry]) -> int:
+    """Return total MCP server selections across agents and AI tasks."""
+    return sum(
+        len(server_ids)
+        for entry in entries
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type in {SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK}
+        and isinstance((server_ids := subentry.data.get(CONF_MCP_SERVER_IDS)), list)
+    )
+
+
+def _cached_mcp_tool_count(entries: list[ConfigEntry]) -> int:
+    """Return total cached MCP tools across loaded workspaces."""
+    return sum(
+        sum(
+            len(tools)
+            for tools in getattr(entry.runtime_data, "mcp_tool_cache", {}).values()
+        )
+        for entry in entries
     )

@@ -14,6 +14,11 @@ from .const import (
     CONF_AI_TASK_NAME,
     CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_FALLBACK_MODEL_REFS,
+    CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_DEFERRED_LOADING,
+    CONF_MCP_HEADERS,
+    CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_SERVER_IDS,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
@@ -28,6 +33,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
@@ -133,6 +139,10 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
         diagnostics["latest_stream_traces"] = redact_data(
             runtime_data.latest_stream_traces
         )
+    diagnostics["mcp_server_count"] = len(getattr(runtime_data, "mcp_servers", {}))
+    diagnostics["cached_mcp_server_count"] = len(
+        getattr(runtime_data, "mcp_tool_cache", {})
+    )
     return diagnostics
 
 
@@ -144,6 +154,7 @@ def _configuration_summary(subentry: ConfigSubentry) -> dict[str, Any]:
     }
     if subentry.subentry_type in {SUBENTRY_TYPE_CONVERSATION, SUBENTRY_TYPE_AI_TASK}:
         skill_ids = data.get(CONF_SKILLS)
+        mcp_server_ids = data.get(CONF_MCP_SERVER_IDS)
         fallback_refs = data.get(CONF_FALLBACK_MODEL_REFS)
         summary.update(
             {
@@ -151,6 +162,9 @@ def _configuration_summary(subentry: ConfigSubentry) -> dict[str, Any]:
                 CONF_PRIMARY_MODEL_REF: data.get(CONF_PRIMARY_MODEL_REF),
                 "fallback_model_profile_count": len(fallback_refs)
                 if isinstance(fallback_refs, list)
+                else 0,
+                "mcp_server_count": len(mcp_server_ids)
+                if isinstance(mcp_server_ids, list)
                 else 0,
                 "skill_count": len(skill_ids) if isinstance(skill_ids, list) else 0,
                 CONF_LLM_HASS_API: data.get(CONF_LLM_HASS_API),
@@ -180,6 +194,21 @@ def _configuration_summary(subentry: ConfigSubentry) -> dict[str, Any]:
                 "skill_reference_count": len(references)
                 if isinstance((references := data.get(CONF_SKILL_REFERENCES)), list)
                 else 0,
+            }
+        )
+    elif subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER:
+        summary.update(
+            {
+                "has_headers": bool(data.get(CONF_MCP_HEADERS)),
+                "allowed_tool_count": len(data.get(CONF_MCP_ALLOWED_TOOLS, []))
+                if isinstance(data.get(CONF_MCP_ALLOWED_TOOLS), list)
+                else 0,
+                CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
+                    data.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
+                ),
+                CONF_MCP_DEFERRED_LOADING: bool(
+                    data.get(CONF_MCP_DEFERRED_LOADING, False)
+                ),
             }
         )
     return summary

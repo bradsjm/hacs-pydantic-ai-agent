@@ -28,6 +28,7 @@ from ..const import (
     CONF_AI_TASK_NAME,
     CONF_FALLBACK_MODEL_REFS,
     CONF_LLM_HASS_API,
+    CONF_MCP_SERVER_IDS,
     CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_SKILLS,
@@ -56,6 +57,10 @@ from ._profile_helpers import (
 from ._schema_helpers import _run_settings_schema
 from ._settings_parsing import _normalise_run_settings
 from .helpers import _flatten_section_data, _section_schema_key
+from .mcp_helpers import (
+    _append_mcp_server_schema_fields,
+    _normalise_mcp_server_selection,
+)
 from .skill_helpers import _append_skill_schema_fields, _normalise_skill_selection
 
 
@@ -156,6 +161,7 @@ def _ai_task_data_schema(
             default=options.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is True,
         )
     ] = BooleanSelector()
+    _append_mcp_server_schema_fields(external_tools_schema, options, entry)
     schema[
         vol.Required(
             CONF_OUTPUT_MODE,
@@ -213,6 +219,9 @@ def _ai_task_data_from_user_input(
         data.pop(CONF_LLM_HASS_API, None)
     if CONF_SKILLS not in user_input and options.get(CONF_SKILLS):
         data[CONF_SKILLS] = options[CONF_SKILLS]
+    if CONF_MCP_SERVER_IDS not in user_input and options.get(CONF_MCP_SERVER_IDS):
+        data[CONF_MCP_SERVER_IDS] = options[CONF_MCP_SERVER_IDS]
     _normalise_run_settings(data)
+    _normalise_mcp_server_selection(data)
     _normalise_skill_selection(data)
     return data
