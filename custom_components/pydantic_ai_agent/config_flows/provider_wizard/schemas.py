@@ -19,7 +19,6 @@ from homeassistant.helpers.typing import VolDictType
 
 from ...const import (
     CONF_BASE_URL,
-    CONF_CUSTOM_MODEL_NAMES,
     CONF_KEY_VALUE_JSON_VALUE,
     CONF_KEY_VALUE_VALUE,
     CONF_PROVIDER_EXTRA_BODY,
@@ -55,7 +54,6 @@ _PROVIDER_EXTRA_BODY_MODES = {
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 }
 _SECTION_ADVANCED_OPTIONS = "advanced_options"
-SECTION_ADVANCED_MODELS = "advanced_models"
 
 
 def provider_selection_schema(
@@ -174,7 +172,7 @@ def model_selection_schema(
     models: tuple[CatalogModelOption, ...],
     selected_model_ids: tuple[str, ...] = (),
     *,
-    custom_model_names: str | None = None,
+    allow_custom_value: bool = False,
 ) -> vol.Schema:
     """Return a model multi-select schema."""
     default = list(selected_model_ids or default_selected_model_ids(models))
@@ -182,23 +180,12 @@ def model_selection_schema(
         vol.Required(CONF_SELECTED_MODEL_IDS, default=default): SelectSelector(
             SelectSelectorConfig(
                 options=model_options(models),
+                custom_value=allow_custom_value,
                 mode=SelectSelectorMode.DROPDOWN,
                 multiple=True,
             )
         )
     }
-    if custom_model_names is not None:
-        schema[vol.Optional(SECTION_ADVANCED_MODELS, default={})] = section(
-            vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_CUSTOM_MODEL_NAMES,
-                        default=custom_model_names,
-                    ): TextSelector(TextSelectorConfig(multiline=True))
-                }
-            ),
-            {"collapsed": True},
-        )
     return vol.Schema(schema)
 
 

@@ -10,20 +10,22 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const impo
     CUSTOM_PROVIDER_ID,
 )
 from custom_components.pydantic_ai_agent.const import (
-    CONF_API_KEY,
     CONF_BASE_URL,
     CONF_CUSTOM_MODEL_NAMES,
     CONF_ENABLED,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
-    CONF_NAME,
     CONF_PROVIDER_MODE,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_PROVIDER,
 )
 from homeassistant import config_entries
+from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from tests.components.pydantic_ai_agent.support.schemas import (
+    schema_select_custom_value as _schema_select_custom_value,
+)
 from tests.components.pydantic_ai_agent.support.schemas import (
     schema_select_options as _schema_select_options,
 )
@@ -191,6 +193,10 @@ async def test_guided_provider_subentry_creates_enabled_profile(
     )
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "pick_models"
+    assert (
+        _schema_select_custom_value(result["data_schema"], "selected_model_ids")
+        is False
+    )
 
     result = await subentry_configure_result(
         hass, result["flow_id"], {"selected_model_ids": ["gpt-4.1-mini"]}

@@ -14,64 +14,64 @@ from ..const import (
 def _format_key_value_text_rows(value: object) -> list[dict[str, str]]:
     """Return stored key/value text data in selector-compatible shape."""
     if isinstance(value, list):
-        formatted: list[dict[str, str]] = []
+        list_rows: list[dict[str, str]] = []
         for item in value:
             if not isinstance(item, Mapping):
                 continue
             key = item.get(CONF_KEY_VALUE_KEY)
             row_value = item.get(CONF_KEY_VALUE_VALUE)
             if isinstance(key, str) and isinstance(row_value, str):
-                formatted.append(
+                list_rows.append(
                     {
                         CONF_KEY_VALUE_KEY: key,
                         CONF_KEY_VALUE_VALUE: row_value,
                     }
                 )
-        return formatted
+        return list_rows
     if not isinstance(value, Mapping):
         return []
-    formatted: list[dict[str, str]] = []
+    mapping_rows: list[dict[str, str]] = []
     for key in sorted(value):
         item = value[key]
         if isinstance(key, str) and isinstance(item, str):
-            formatted.append(
+            mapping_rows.append(
                 {
                     CONF_KEY_VALUE_KEY: key,
                     CONF_KEY_VALUE_VALUE: item,
                 }
             )
-    return formatted
+    return mapping_rows
 
 
 def _format_key_value_json_rows(value: object) -> list[dict[str, str]]:
     """Return stored key/value JSON data in selector-compatible shape."""
     if isinstance(value, list):
-        formatted: list[dict[str, str]] = []
+        list_rows: list[dict[str, str]] = []
         for item in value:
             if not isinstance(item, Mapping):
                 continue
             key = item.get(CONF_KEY_VALUE_KEY)
             row_value = item.get(CONF_KEY_VALUE_JSON_VALUE)
             if isinstance(key, str) and isinstance(row_value, str):
-                formatted.append(
+                list_rows.append(
                     {
                         CONF_KEY_VALUE_KEY: key,
                         CONF_KEY_VALUE_JSON_VALUE: row_value,
                     }
                 )
-        return formatted
+        return list_rows
     if not isinstance(value, Mapping):
         return []
-    formatted: list[dict[str, str]] = []
+    mapping_rows: list[dict[str, str]] = []
     for key in sorted(value):
         if isinstance(key, str):
-            formatted.append(
+            mapping_rows.append(
                 {
                     CONF_KEY_VALUE_KEY: key,
                     CONF_KEY_VALUE_JSON_VALUE: json.dumps(value[key], sort_keys=True),
                 }
             )
-    return formatted
+    return mapping_rows
 
 
 def _parse_key_value_text_rows(value: object) -> dict[str, str]:

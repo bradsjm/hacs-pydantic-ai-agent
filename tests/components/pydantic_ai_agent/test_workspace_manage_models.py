@@ -6,9 +6,6 @@ from unittest.mock import patch
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
     CONF_SELECTED_MODEL_IDS,
 )
-from custom_components.pydantic_ai_agent.config_flows.provider_wizard.schemas import (
-    SECTION_ADVANCED_MODELS,
-)
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_CUSTOM_MODEL_NAMES,
@@ -17,19 +14,22 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_NAME,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_METADATA,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_PROVIDER,
 )
 from homeassistant import config_entries
+from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import FlowResultType
 from tests.components.pydantic_ai_agent.support.schemas import (
     schema_default as _sd,
 )
 from tests.components.pydantic_ai_agent.support.schemas import (
     schema_key_names as _skn,
+)
+from tests.components.pydantic_ai_agent.support.schemas import (
+    schema_select_custom_value as _ssc,
 )
 from tests.components.pydantic_ai_agent.support.schemas import (
     schema_select_options as _sso,
@@ -212,14 +212,12 @@ async def test_provider_manage_models_persists_and_enables_new_custom_model(hass
     ps = next(iter(entry.subentries.values()))
     cache_provider_catalog(hass, wizard_catalog())
     r = await _init_manage_models(hass, entry, ps)
-    assert SECTION_ADVANCED_MODELS in _skn(r["data_schema"])
+    assert _skn(r["data_schema"]) == {CONF_SELECTED_MODEL_IDS}
+    assert _ssc(r["data_schema"], CONF_SELECTED_MODEL_IDS) is True
     r = await _scr(
         hass,
         r["flow_id"],
-        {
-            CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini"],
-            SECTION_ADVANCED_MODELS: {CONF_CUSTOM_MODEL_NAMES: "local/custom-model"},
-        },
+        {CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini", "local/custom-model"]},
     )
     assert r["type"] is FlowResultType.ABORT
     profiles = cast(dict, entry.subentries[ps.subentry_id].data[CONF_MODEL_PROFILES])
@@ -239,10 +237,7 @@ async def test_provider_manage_models_keeps_catalog_option_for_matching_custom_n
     r = await _scr(
         hass,
         r["flow_id"],
-        {
-            CONF_SELECTED_MODEL_IDS: ["gpt-4.1"],
-            SECTION_ADVANCED_MODELS: {CONF_CUSTOM_MODEL_NAMES: "gpt-4.1"},
-        },
+        {CONF_SELECTED_MODEL_IDS: ["gpt-4.1"]},
     )
     assert r["type"] is FlowResultType.ABORT
     profiles = cast(dict, entry.subentries["provider-1"].data[CONF_MODEL_PROFILES])
@@ -250,16 +245,56 @@ async def test_provider_manage_models_keeps_catalog_option_for_matching_custom_n
     assert p[CONF_DISCOVERED] is True
 
 
-async def test_provider_manage_models_clears_custom_models(hass):
+async def test_provider_manage_models_preserves_disabled_custom_and_clears_enabled(
+    hass,
+):
     pd = _psd()
     pc = cast(dict[str, Any], pd["data"])
-    pc[CONF_CUSTOM_MODEL_NAMES] = ["local/custom-model"]
-    pc[CONF_MODEL_PROFILES]["profile-custom"] = {
-        "id": "profile-custom",
-        CONF_NAME: "Local",
-        CONF_MODEL: "local/custom-model",
+    pc[CONF_CUSTOM_MODEL_NAMES] = ["local/disabled-model", "local/enabled-model"]
+    pc[CONF_MODEL_PROFILES]["profile-disabled-custom"] = {
+        "id": "profile-disabled-custom",
+        CONF_NAME: "Disabled",
+        CONF_MODEL: "local/disabled-model",
+        CONF_ENABLED: False,
+        CONF_DISCOVERED: False,
+    }
+    pc[CONF_MODEL_PROFILES]["profile-enabled-custom"] = {
+        "id": "profile-enabled-custom",
+        CONF_NAME: "Enabled",
+        CONF_MODEL: "local/enabled-model",
         CONF_ENABLED: True,
         CONF_DISCOVERED: False,
+    }
+    entry = await loaded_workspace_entry(hass, (pd,))
+    ps = next(iter(entry.subentries.values()))
+    cache_provider_catalog(hass, wizard_catalog())
+    r = await _init_manage_models(hass, entry, ps)
+    assert set(_sd(r["data_schema"], CONF_SELECTED_MODEL_IDS)) == {
+        "gpt-4.1-mini",
+        "local/enabled-model",
+    }
+    r = await _scr(hass, r["flow_id"], {CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini"]})
+    assert r["type"] is FlowResultType.ABORT
+    us = entry.subentries[ps.subentry_id]
+    assert us.data[CONF_CUSTOM_MODEL_NAMES] == ["local/disabled-model"]
+    assert (
+        us.data[CONF_MODEL_PROFILES]["profile-disabled-custom"][CONF_ENABLED] is False
+    )
+    assert (
+        us.data[CONF_MODEL_PROFILES]["profile-enabled-custom"][CONF_ENABLED] is False
+    )
+
+
+async def test_provider_manage_models_reenables_disabled_manual_custom_profile(hass):
+    pd = _psd()
+    pc = cast(dict[str, Any], pd["data"])
+    pc[CONF_MODEL_PROFILES]["profile-manual-custom"] = {
+        "id": "profile-manual-custom",
+        CONF_NAME: "Manual Custom",
+        CONF_MODEL: "local/manual-custom",
+        CONF_ENABLED: False,
+        CONF_DISCOVERED: False,
+        CONF_MODEL_SETTINGS: {"temperature": 0.3},
     }
     entry = await loaded_workspace_entry(hass, (pd,))
     ps = next(iter(entry.subentries.values()))
@@ -268,15 +303,20 @@ async def test_provider_manage_models_clears_custom_models(hass):
     r = await _scr(
         hass,
         r["flow_id"],
-        {
-            CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini"],
-            SECTION_ADVANCED_MODELS: {CONF_CUSTOM_MODEL_NAMES: ""},
-        },
+        {CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini", "local/manual-custom"]},
     )
     assert r["type"] is FlowResultType.ABORT
-    us = entry.subentries[ps.subentry_id]
-    assert CONF_CUSTOM_MODEL_NAMES not in us.data
-    assert us.data[CONF_MODEL_PROFILES]["profile-custom"][CONF_ENABLED] is False
+    profiles = cast(dict, entry.subentries[ps.subentry_id].data[CONF_MODEL_PROFILES])
+    assert profiles["profile-manual-custom"][CONF_ENABLED] is True
+    assert profiles["profile-manual-custom"][CONF_DISCOVERED] is False
+    assert profiles["profile-manual-custom"][CONF_MODEL_SETTINGS] == {
+        "temperature": 0.3
+    }
+    assert [
+        profile_id
+        for profile_id, profile in profiles.items()
+        if profile[CONF_MODEL] == "local/manual-custom"
+    ] == ["profile-manual-custom"]
 
 
 async def test_provider_manage_models_rejects_disabling_referenced_profile(hass):
@@ -301,6 +341,7 @@ async def test_provider_manage_models_rejects_disabling_referenced_profile(hass)
     r = await _scr(hass, r["flow_id"], {CONF_SELECTED_MODEL_IDS: ["gpt-4.1"]})
     assert r["type"] is FlowResultType.FORM
     assert r["errors"] == {"base": "model_profile_in_use"}
+    assert _sd(r["data_schema"], CONF_SELECTED_MODEL_IDS) == ["gpt-4.1"]
 
 
 async def test_provider_manage_models_rejects_clearing_referenced_custom_model(hass):
@@ -332,12 +373,6 @@ async def test_provider_manage_models_rejects_clearing_referenced_custom_model(h
     )
     cache_provider_catalog(hass, wizard_catalog())
     r = await _init_manage_models(hass, entry, entry.subentries["provider-1"])
-    r = await _scr(
-        hass,
-        r["flow_id"],
-        {
-            CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini"],
-            SECTION_ADVANCED_MODELS: {CONF_CUSTOM_MODEL_NAMES: ""},
-        },
-    )
+    r = await _scr(hass, r["flow_id"], {CONF_SELECTED_MODEL_IDS: ["gpt-4.1-mini"]})
     assert r["errors"] == {"base": "model_profile_in_use"}
+    assert _sd(r["data_schema"], CONF_SELECTED_MODEL_IDS) == ["gpt-4.1-mini"]

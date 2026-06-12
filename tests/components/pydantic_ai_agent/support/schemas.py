@@ -25,6 +25,15 @@ def schema_select_options(data_schema: vol.Schema | None, field: str) -> list[An
     raise AssertionError(f"Schema field {field} not found")
 
 
+def schema_select_custom_value(data_schema: vol.Schema | None, field: str) -> bool:
+    """Return whether a top-level select field allows free-text values."""
+    assert data_schema is not None
+    for key, selector in data_schema.schema.items():
+        if key.schema == field:
+            return bool(selector.config.get("custom_value", False))
+    raise AssertionError(f"Schema field {field} not found")
+
+
 def schema_key_names(data_schema: vol.Schema | None) -> set[str]:
     """Return top-level field names from a flow schema."""
     assert data_schema is not None

@@ -295,8 +295,11 @@ def _nested_default_for_schema_key(schema: vol.Schema, key: str) -> object:
     """Return a nested field default from a voluptuous schema."""
     for selector_schema in _nested_schema_dicts(schema):
         for nested_key in selector_schema:
-            if getattr(nested_key, "schema", None) == key:
-                return nested_key.default()
+            default_factory = getattr(nested_key, "default", None)
+            if getattr(nested_key, "schema", None) == key and callable(
+                default_factory
+            ):
+                return default_factory()
     raise AssertionError(f"Nested schema key {key} not found")
 
 
@@ -305,9 +308,13 @@ def _nested_schema_dicts(schema: vol.Schema) -> list[dict[object, object]]:
     nested_schemas: list[dict[object, object]] = []
     for _schema_key, selector in schema.schema.items():
         selector_schema = getattr(selector, "schema", None)
-        has_nested_schema = hasattr(selector_schema, "schema")
-        if isinstance(selector_schema, vol.Schema) or has_nested_schema:
-            selector_schema = selector_schema.schema
+        if isinstance(selector_schema, vol.Schema):
+            schema_obj: vol.Schema = selector_schema
+            selector_schema = schema_obj.schema
+        elif selector_schema is not None:
+            nested_schema = getattr(selector_schema, "schema", None)
+            if nested_schema is not None:
+                selector_schema = nested_schema
         if isinstance(selector_schema, dict):
             nested_schemas.append(selector_schema)
     return nested_schemas

@@ -569,18 +569,10 @@
           "data": {
             "selected_model_ids": "Available models"
           },
-          "description": "Select the provider models available to conversation agents and AI tasks.",
-          "sections": {
-            "advanced_models": {
-              "data": {
-                "custom_model_names": "Custom model names"
-              },
-              "data_description": {
-                "custom_model_names": "One model identifier per line. Custom models entered here are managed alongside catalog and discovered models."
-              },
-              "name": "Advanced"
-            }
+          "data_description": {
+            "selected_model_ids": "Select known models or type custom model identifiers to add them as tags. Custom entries are managed alongside catalog and discovered models."
           },
+          "description": "Select the provider models available to conversation agents and AI tasks.",
           "title": "Add or remove enabled models"
         },
         "model_filters": {

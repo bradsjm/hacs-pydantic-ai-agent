@@ -21,6 +21,8 @@ from ..const import (
     CONF_DISCOVERED_MODELS,
     CONF_DISCOVERED_MODELS_AT,
     CONF_DISCOVERED_MODELS_CACHE_KEY,
+    CONF_ENABLED,
+    CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_NAME,
     CONF_PROVIDER_EXTRA_BODY,
@@ -45,18 +47,16 @@ from ._provider_data import (
     _provider_schema,
     _validate_provider_data,
 )
-from ._provider_flow_helpers import _catalog_provider_metadata_still_valid
+from ._provider_flow_helpers import (
+    _catalog_provider_metadata_still_valid,
+    _custom_model_options,
+)
 from ._provider_model_mixin import ProviderModelManagementMixin
 from ._provider_profile_mixin import ProviderProfileMixin
 from ._provider_wizard_mixin import ProviderWizardMixin
-from .helpers import _flatten_section_data
 from .provider_wizard.const import CONF_SELECTED_MODEL_IDS
 from .provider_wizard.filters import ModelFilterOptions
-from .provider_wizard.flow import selected_models_by_id
-from .provider_wizard.schemas import (
-    SECTION_ADVANCED_MODELS,
-    model_selection_schema,
-)
+from .provider_wizard.schemas import model_selection_schema
 from .provider_wizard.types import (
     CatalogModelOption,
     CatalogProviderOption,
@@ -162,6 +162,72 @@ class ProviderSubentryFlowHandler(
         from ..model_profiles import provider_subentries
 
         return provider_subentries(self._get_entry())
+
+    def _selected_model_ids(self, selected_model_ids: object) -> list[str]:
+        """Return normalized selected model identifiers preserving submit order."""
+        if isinstance(selected_model_ids, str) or not isinstance(
+            selected_model_ids, list
+        ):
+            return []
+        seen: set[str] = set()
+        normalized: list[str] = []
+        for model_id in selected_model_ids:
+            if not isinstance(model_id, str):
+                continue
+            model_id = model_id.strip()
+            if not model_id or model_id in seen:
+                continue
+            seen.add(model_id)
+            normalized.append(model_id)
+        return normalized
+
+    def _known_model_ids_for_manage_models(
+        self, data: Mapping[str, Any], previous_custom_model_ids: set[str]
+    ) -> set[str]:
+        """Return selected IDs that should continue to be treated as known models."""
+        known_model_ids = {model.id for model in self._profile_models}
+        profiles = data.get(CONF_MODEL_PROFILES)
+        if not isinstance(profiles, Mapping):
+            return known_model_ids
+        for profile in profiles.values():
+            if not isinstance(profile, Mapping):
+                continue
+            model_name = profile.get(CONF_MODEL)
+            if not isinstance(model_name, str):
+                continue
+            model_name = model_name.strip()
+            if (
+                not model_name
+                or model_name in previous_custom_model_ids
+                or not bool(profile.get(CONF_ENABLED, False))
+            ):
+                continue
+            known_model_ids.add(model_name)
+        return known_model_ids
+
+    def _disabled_custom_model_ids_for_manage_models(
+        self, data: Mapping[str, Any], previous_custom_model_ids: set[str]
+    ) -> set[str]:
+        """Return stored custom IDs backed by currently disabled profiles."""
+        profiles = data.get(CONF_MODEL_PROFILES)
+        if not isinstance(profiles, Mapping):
+            return set()
+        disabled_custom_model_ids: set[str] = set()
+        for profile in profiles.values():
+            if not isinstance(profile, Mapping):
+                continue
+            model_name = profile.get(CONF_MODEL)
+            if not isinstance(model_name, str):
+                continue
+            model_name = model_name.strip()
+            if (
+                not model_name
+                or model_name not in previous_custom_model_ids
+                or bool(profile.get(CONF_ENABLED, False))
+            ):
+                continue
+            disabled_custom_model_ids.add(model_name)
+        return disabled_custom_model_ids
 
     def _provider_already_configured(self, data: Mapping[str, Any]) -> bool:
         """Return if another provider subentry already uses this connection."""
@@ -328,20 +394,10 @@ class ProviderSubentryFlowHandler(
                 data_schema=model_selection_schema(
                     models,
                     self._enabled_model_ids_for_options(models),
-                    custom_model_names=_format_custom_model_names(
-                        self._current_profile_flow_data()
-                    ),
+                    allow_custom_value=True,
                 ),
                 errors={"base": "no_models_available"} if not models else None,
             )
-        flat_user_input = _flatten_section_data(user_input, (SECTION_ADVANCED_MODELS,))
-        data = self._current_profile_flow_data()
-        previous_custom_model_ids = set(_provider_custom_model_names(data))
-        custom_model_names = _provider_custom_model_names(flat_user_input)
-        if custom_model_names:
-            data[CONF_CUSTOM_MODEL_NAMES] = custom_model_names
-        else:
-            data.pop(CONF_CUSTOM_MODEL_NAMES, None)
         models = self._managed_models_for_selection()
         raw_selected_model_ids = user_input.get(CONF_SELECTED_MODEL_IDS)
         if isinstance(raw_selected_model_ids, str) or not isinstance(
@@ -352,18 +408,48 @@ class ProviderSubentryFlowHandler(
                 data_schema=model_selection_schema(
                     models,
                     self._enabled_model_ids_for_options(models),
-                    custom_model_names=_format_custom_model_names(data),
+                    allow_custom_value=True,
                 ),
                 errors={CONF_SELECTED_MODEL_IDS: "model_required"},
             )
-        selected_model_ids = list(raw_selected_model_ids)
-        for model_name in custom_model_names:
-            if (
-                model_name not in previous_custom_model_ids
-                and model_name not in selected_model_ids
-            ):
-                selected_model_ids.append(model_name)
-        selected_models = selected_models_by_id(models, selected_model_ids)
+        data = self._current_profile_flow_data()
+        previous_custom_model_names = _provider_custom_model_names(data)
+        previous_custom_model_ids = set(previous_custom_model_names)
+        selected_model_ids = self._selected_model_ids(raw_selected_model_ids)
+        known_model_ids = self._known_model_ids_for_manage_models(
+            data, previous_custom_model_ids
+        )
+        disabled_custom_model_ids = self._disabled_custom_model_ids_for_manage_models(
+            data, previous_custom_model_ids
+        )
+        custom_model_names = [
+            model_id
+            for model_id in previous_custom_model_names
+            if model_id in disabled_custom_model_ids
+        ]
+        for model_id in [
+            model_id
+            for model_id in selected_model_ids
+            if model_id not in known_model_ids
+        ]:
+            if model_id not in disabled_custom_model_ids:
+                custom_model_names.append(model_id)
+        if custom_model_names:
+            data[CONF_CUSTOM_MODEL_NAMES] = custom_model_names
+        else:
+            data.pop(CONF_CUSTOM_MODEL_NAMES, None)
+        models_by_id = {model.id: model for model in models}
+        selected_models = tuple(
+            models_by_id[model_id]
+            for model_id in selected_model_ids
+            if model_id in models_by_id
+        ) + _custom_model_options(
+            [
+                model_id
+                for model_id in custom_model_names
+                if model_id not in models_by_id
+            ]
+        )
         error = self._sync_selected_model_profiles(
             selected_models, models, set(custom_model_names)
         )
@@ -372,8 +458,8 @@ class ProviderSubentryFlowHandler(
                 step_id="manage_models",
                 data_schema=model_selection_schema(
                     models,
-                    self._enabled_model_ids_for_options(models),
-                    custom_model_names=_format_custom_model_names(data),
+                    tuple(selected_model_ids),
+                    allow_custom_value=True,
                 ),
                 errors={"base": error},
             )
