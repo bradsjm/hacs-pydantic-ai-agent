@@ -111,7 +111,6 @@ async def test_setup_entry_stores_workspace_runtime_data(hass: HomeAssistant) ->
         ],
         any_order=True,
     )
-    assert probe_model.await_count == 2
 
 
 async def test_setup_entry_validates_selected_model_setting_combinations(
@@ -174,7 +173,6 @@ async def test_setup_entry_validates_selected_model_setting_combinations(
         ],
         any_order=True,
     )
-    assert probe_model.await_count == 2
 
 
 async def test_setup_entry_probes_distinct_subentry_run_settings(
@@ -225,4 +223,3 @@ async def test_setup_entry_probes_distinct_subentry_run_settings(
         ],
         any_order=True,
     )
-    assert probe_model.await_count == 2

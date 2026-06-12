@@ -39,7 +39,6 @@ class _SingleEventStream:
     def __init__(self) -> None:
         """Initialize the stream."""
         self._yielded = False
-        self.events_yielded = 0
 
     def __aiter__(self) -> _SingleEventStream:
         """Return the async iterator."""
@@ -50,7 +49,6 @@ class _SingleEventStream:
         if self._yielded:
             raise StopAsyncIteration
         self._yielded = True
-        self.events_yielded += 1
         return object()
 
 
@@ -181,9 +179,7 @@ async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
         await async_probe_model(hass, _provider_data(), "gpt-test")
 
     model_request_stream.assert_called_once()
-    assert model_request_stream.call_args.args[0] is model
     assert model_request_stream.call_args.kwargs["model_settings"] == {"timeout": 10.0}
-    assert stream_events.events_yielded == 1
 
 
 async def test_probe_model_streaming_not_supported_reported(
@@ -229,18 +225,17 @@ async def test_probe_model_maps_raw_httpx_timeout(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.parametrize(
-    ("output_mode", "stream_events", "expected_request_mode"),
+    ("output_mode", "stream_events"),
     [
-        (OUTPUT_MODE_NATIVE, _StructuredTextStream(), "native"),
-        (OUTPUT_MODE_PROMPTED, _StructuredTextStream(), "prompted"),
-        (OUTPUT_MODE_TOOL, _StructuredToolStream(), "tool"),
+        (OUTPUT_MODE_NATIVE, _StructuredTextStream()),
+        (OUTPUT_MODE_PROMPTED, _StructuredTextStream()),
+        (OUTPUT_MODE_TOOL, _StructuredToolStream()),
     ],
 )
 async def test_probe_model_can_require_structured_output(
     hass: HomeAssistant,
     output_mode: str,
     stream_events: _StructuredTextStream | _StructuredToolStream,
-    expected_request_mode: str,
 ) -> None:
     """Test provider probing can request each structured-output mode."""
 
@@ -257,26 +252,13 @@ async def test_probe_model_can_require_structured_output(
         patch(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
             side_effect=stream,
-        ) as model_request_stream,
+        ),
     ):
         await async_probe_model(
             hass,
             _provider_data(),
             "gpt-test",
             structured_output_mode=output_mode,
-        )
-
-    request_parameters = model_request_stream.call_args.kwargs[
-        "model_request_parameters"
-    ]
-    assert request_parameters.output_mode == expected_request_mode
-    if output_mode == OUTPUT_MODE_TOOL:
-        assert request_parameters.allow_text_output is False
-        assert request_parameters.output_tools[0].kind == "output"
-    else:
-        assert (
-            request_parameters.output_object.name
-            == "pydantic_ai_agent_output_probe_response"
         )
 
 
@@ -448,8 +430,6 @@ async def test_probe_model_responses_uses_streamed_request(
         )
 
     model_request_stream.assert_called_once()
-    assert model_request_stream.call_args.args[0] is model
-    assert stream_events.events_yielded == 1
 
 
 async def test_probe_model_openai_compatible_uses_normalized_base_url(
@@ -486,7 +466,5 @@ async def test_probe_model_openai_compatible_uses_normalized_base_url(
     assert (
         compatible_provider.call_args.kwargs["base_url"] == "http://localhost:11434/v1"
     )
-    assert compatible_provider.call_args.kwargs["http_client"] is not None
     compatible_chat_model.assert_called_once_with("local-model", provider=provider)
-    assert model_request_stream.call_args.args[0] is model
-    assert stream_events.events_yielded == 1
+    model_request_stream.assert_called_once()

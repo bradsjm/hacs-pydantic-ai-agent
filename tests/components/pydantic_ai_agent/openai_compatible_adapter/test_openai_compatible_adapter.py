@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 import httpx
+import pytest
 from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
     OpenAICompatibleChatModel,
     OpenAICompatibleProvider,
@@ -156,8 +157,19 @@ async def test_request_maps_tools_and_binary_content() -> None:
     await http_client.aclose()
 
 
-async def test_request_maps_disabled_thinking_to_reasoning_effort_none() -> None:
-    """Test explicit disabled thinking sends reasoning_effort='none'."""
+@pytest.mark.parametrize(
+    ("thinking", "expected_reasoning_effort"),
+    [
+        pytest.param(False, "none", id="disabled"),
+        pytest.param(None, None, id="unset"),
+        pytest.param("low", "low", id="explicit-level"),
+    ],
+)
+async def test_request_maps_thinking_to_reasoning_effort(
+    thinking: bool | str | None,
+    expected_reasoning_effort: str | None,
+) -> None:
+    """Test run-level thinking maps to the request reasoning setting."""
     captured: dict[str, object] = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -178,83 +190,22 @@ async def test_request_maps_disabled_thinking_to_reasoning_effort_none() -> None
         )
 
     model, http_client = _model_with_transport(httpx.MockTransport(handler))
+    request_parameters = ModelRequestParameters()
+    if thinking is not None:
+        request_parameters = ModelRequestParameters(thinking=thinking)
+
     await model.request(
         [ModelRequest(parts=[UserPromptPart("Hi")])],
         {},
-        ModelRequestParameters(thinking=False),
+        request_parameters,
     )
 
     body = captured["body"]
     assert isinstance(body, dict)
-    assert body["reasoning_effort"] == "none"
-    await http_client.aclose()
-
-
-async def test_request_omits_reasoning_effort_when_thinking_is_unset() -> None:
-    """Test unset thinking leaves reasoning_effort absent."""
-    captured: dict[str, object] = {}
-
-    async def handler(request: httpx.Request) -> httpx.Response:
-        captured["body"] = json.loads(request.content)
-        return httpx.Response(
-            200,
-            json={
-                "id": "chatcmpl-1",
-                "model": "test-model",
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": "Hello"},
-                        "finish_reason": "stop",
-                    }
-                ],
-            },
-        )
-
-    model, http_client = _model_with_transport(httpx.MockTransport(handler))
-    await model.request(
-        [ModelRequest(parts=[UserPromptPart("Hi")])],
-        {},
-        ModelRequestParameters(),
-    )
-
-    body = captured["body"]
-    assert isinstance(body, dict)
-    assert "reasoning_effort" not in body
-    await http_client.aclose()
-
-
-async def test_request_passes_explicit_thinking_level_to_reasoning_effort() -> None:
-    """Test explicit thinking levels pass through to reasoning_effort."""
-    captured: dict[str, object] = {}
-
-    async def handler(request: httpx.Request) -> httpx.Response:
-        captured["body"] = json.loads(request.content)
-        return httpx.Response(
-            200,
-            json={
-                "id": "chatcmpl-1",
-                "model": "test-model",
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": "Hello"},
-                        "finish_reason": "stop",
-                    }
-                ],
-            },
-        )
-
-    model, http_client = _model_with_transport(httpx.MockTransport(handler))
-    await model.request(
-        [ModelRequest(parts=[UserPromptPart("Hi")])],
-        {},
-        ModelRequestParameters(thinking="low"),
-    )
-
-    body = captured["body"]
-    assert isinstance(body, dict)
-    assert body["reasoning_effort"] == "low"
+    if expected_reasoning_effort is None:
+        assert "reasoning_effort" not in body
+    else:
+        assert body["reasoning_effort"] == expected_reasoning_effort
     await http_client.aclose()
 
 

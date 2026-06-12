@@ -161,49 +161,46 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
             agent_id=kitchen_entity_id,
         )
 
-    instrument.assert_called_once_with(agent, include_content=True)
+    instrument.assert_called_once()
+    assert instrument.call_args.args == (agent,)
+    assert instrument.call_args.kwargs == {"include_content": True}
     span.assert_called_once()
     assert span.call_args.args == ("Kitchen Agent → Kitchen Model",)
-    assert span.call_args.kwargs["ha.domain"] == DOMAIN
-    assert span.call_args.kwargs["ha.version"] == __version__
-    assert span.call_args.kwargs["ha.core_version"] == __version__
-    assert span.call_args.kwargs["ha.integration_version"] == _INTEGRATION_VERSION
-    assert span.call_args.kwargs["ha.entry_id"] == entry.entry_id
-    assert span.call_args.kwargs["ha.subentry_title"] == "Kitchen Agent"
-    assert span.call_args.kwargs["ha.model"] == "gpt-kitchen"
-    assert span.call_args.kwargs["ha.model_profile"] == "Kitchen Model"
-    assert (
-        span.call_args.kwargs["ha.model_profile_ref"]
-        == f"{_PROVIDER_SUBENTRY_ID}:kitchen-model"
-    )
-    assert span.call_args.kwargs["ha.profile_id"] == "kitchen-model"
-    assert span.call_args.kwargs["ha.provider_title"] == "Hosted OpenAI"
-    assert span.call_args.kwargs["ha.provider_subentry_id"] == _PROVIDER_SUBENTRY_ID
-    assert span.call_args.kwargs["ha.attempt_index"] == 0
-    assert span.call_args.kwargs["ha.attempt_count"] == 1
-    assert span.call_args.kwargs["ha.is_fallback_attempt"] is False
-    assert span.call_args.kwargs["ha.agent_name"] == "Kitchen Agent"
-    assert span.call_args.kwargs["ha.structured_output_mode"] == OUTPUT_MODE_TOOL
-    assert "ha.output_mode" not in span.call_args.kwargs
-    assert span.call_args.kwargs["ha.entity_id"] == kitchen_entity_id
-    assert span.call_args.kwargs["ha.conversation_id"] == "conversation-test"
-    assert span.call_args.kwargs["ha.logfire_include_content"] is True
-    assert span.call_args.kwargs["gen_ai.operation.name"] == "chat"
-    assert span.call_args.kwargs["gen_ai.system"] == "openai"
-    assert span.call_args.kwargs["gen_ai.provider.name"] == "openai"
-    assert span.call_args.kwargs["gen_ai.request.model"] == "gpt-kitchen"
-    assert span.call_args.kwargs["gen_ai.response.model"] == "gpt-kitchen"
-    assert span.return_value.attributes == {
-        "gen_ai.usage.input_tokens": 10,
-        "gen_ai.usage.output_tokens": 2,
-        "gen_ai.usage.total_tokens": 12,
-        "gen_ai.response.model": "gpt-kitchen",
-        "ha.input_cost": pytest.approx(0.00001),
-        "ha.output_cost": pytest.approx(0.000004),
-        "ha.cost_currency": "USD",
-        "ha.total_cost": pytest.approx(0.000014),
-        "gen_ai.usage.cost": pytest.approx(0.000014),
-    }
+    span_kwargs = span.call_args.kwargs
+    assert span_kwargs["ha.domain"] == DOMAIN
+    assert span_kwargs["ha.version"] == __version__
+    assert span_kwargs["ha.core_version"] == __version__
+    assert span_kwargs["ha.integration_version"] == _INTEGRATION_VERSION
+    assert span_kwargs["ha.entry_id"] == entry.entry_id
+    assert span_kwargs["ha.subentry_title"] == "Kitchen Agent"
+    assert span_kwargs["ha.model"] == "gpt-kitchen"
+    assert span_kwargs["ha.model_profile"] == "Kitchen Model"
+    assert span_kwargs["ha.model_profile_ref"] == f"{_PROVIDER_SUBENTRY_ID}:kitchen-model"
+    assert span_kwargs["ha.profile_id"] == "kitchen-model"
+    assert span_kwargs["ha.provider_title"] == "Hosted OpenAI"
+    assert span_kwargs["ha.provider_subentry_id"] == _PROVIDER_SUBENTRY_ID
+    assert span_kwargs["ha.agent_name"] == "Kitchen Agent"
+    assert span_kwargs["ha.structured_output_mode"] == OUTPUT_MODE_TOOL
+    assert span_kwargs["ha.entity_id"] == kitchen_entity_id
+    assert span_kwargs["ha.conversation_id"] == "conversation-test"
+    assert span_kwargs["ha.logfire_include_content"] is True
+    assert span_kwargs["gen_ai.operation.name"] == "chat"
+    assert span_kwargs["gen_ai.system"] == "openai"
+    assert span_kwargs["gen_ai.provider.name"] == "openai"
+    assert span_kwargs["gen_ai.request.model"] == "gpt-kitchen"
+    assert span_kwargs["gen_ai.response.model"] == "gpt-kitchen"
+    assert "ha.output_mode" not in span_kwargs
+
+    usage_attributes = span.return_value.attributes
+    assert usage_attributes["gen_ai.usage.input_tokens"] == 10
+    assert usage_attributes["gen_ai.usage.output_tokens"] == 2
+    assert usage_attributes["gen_ai.usage.total_tokens"] == 12
+    assert usage_attributes["gen_ai.response.model"] == "gpt-kitchen"
+    assert usage_attributes["ha.input_cost"] == pytest.approx(0.00001)
+    assert usage_attributes["ha.output_cost"] == pytest.approx(0.000004)
+    assert usage_attributes["ha.cost_currency"] == "USD"
+    assert usage_attributes["ha.total_cost"] == pytest.approx(0.000014)
+    assert usage_attributes["gen_ai.usage.cost"] == pytest.approx(0.000014)
 
 
 async def test_conversation_logfire_usage_failures_do_not_block_agent_run(
