@@ -302,7 +302,7 @@ def _reasoning(
     model_request_parameters: ModelRequestParameters,
 ) -> dict[str, str] | object:
     effort = model_settings.get("openai_reasoning_effort")
-    if effort is None and model_request_parameters.thinking is not None:
+    if model_request_parameters.thinking is not None:
         thinking = model_request_parameters.thinking
         effort = (
             "medium" if thinking is True else "none" if thinking is False else thinking

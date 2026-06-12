@@ -10,6 +10,7 @@ from custom_components.pydantic_ai_agent.ai_task import (
 from custom_components.pydantic_ai_agent.const import (
     CONF_AI_TASK_NAME,
     CONF_MAX_ITERATIONS,
+    CONF_THINKING,
     DOMAIN,
     OUTPUT_MODE_TOOL,
 )
@@ -279,6 +280,35 @@ async def test_ai_task_runtime_defaults_max_iterations(hass: HomeAssistant) -> N
 
     assert result.data == "plain result"
     assert request_limit_from_kwargs(agent.run_kwargs) == 30
+
+
+async def test_ai_task_runtime_keeps_explicit_disabled_thinking_capability(
+    hass: HomeAssistant,
+) -> None:
+    entity_id = await _setup_ai_task_entity(hass, extra_data={CONF_THINKING: False})
+    agent = _Agent(stream_text="plain result", output="plain result")
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ) as agent_class,
+    ):
+        result = await ai_task.async_generate_data(
+            hass,
+            task_name="Plain task",
+            entity_id=entity_id,
+            instructions="Generate text",
+        )
+
+    assert result.data == "plain result"
+    thinking = _thinking_capabilities(agent_class.call_args.kwargs["capabilities"])
+    assert len(thinking) == 1
+    assert thinking[0].effort is False
 
 
 async def test_structured_data_task_supports_test_model_without_patching_agent_run(

@@ -8,6 +8,11 @@ from typing import cast
 import httpx
 import pytest
 import voluptuous as vol
+from custom_components.pydantic_ai_agent.config_flows._settings_parsing import (
+    _format_thinking_value,
+    _normalise_run_settings,
+    _parse_thinking_setting,
+)
 from custom_components.pydantic_ai_agent.config_flows.common import (
     _MODEL_PRICING_CACHE_READ,
     _MODEL_PRICING_INPUT,
@@ -235,6 +240,36 @@ def test_model_settings_from_options_sanitizes_persisted_settings() -> None:
             }
         }
     ) == {"temperature": 0.2}
+
+
+def test_format_thinking_value_formats_selector_defaults() -> None:
+    assert _format_thinking_value({CONF_THINKING: True}) == "true"
+    assert _format_thinking_value({CONF_THINKING: False}) == "false"
+    assert _format_thinking_value({CONF_THINKING: "high"}) == "high"
+    assert _format_thinking_value({}) == ""
+
+
+def test_parse_thinking_setting_parses_bool_and_effort_values() -> None:
+    assert _parse_thinking_setting("true") is True
+    assert _parse_thinking_setting("false") is False
+    assert _parse_thinking_setting("low") == "low"
+
+
+def test_parse_thinking_setting_rejects_invalid_values() -> None:
+    try:
+        _parse_thinking_setting("invalid")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected invalid thinking value to raise ValueError")
+
+
+def test_normalise_run_settings_removes_blank_thinking() -> None:
+    data = {CONF_THINKING: "", CONF_MAX_ITERATIONS: 30, CONF_TIMEOUT: 15.0}
+
+    _normalise_run_settings(data)
+
+    assert CONF_THINKING not in data
 
 
 def test_model_pricing_from_options_sanitizes_persisted_pricing() -> None:

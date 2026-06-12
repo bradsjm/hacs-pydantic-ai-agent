@@ -211,6 +211,50 @@ async def test_conversation_runtime_uses_thinking_capability(
     assert thinking[0].effort == "high"
 
 
+async def test_conversation_runtime_keeps_explicit_disabled_thinking_capability(
+    hass: HomeAssistant,
+) -> None:
+    """Test explicit disabled thinking is still passed as a capability."""
+    entry = _entry(extra_data={CONF_THINKING: False})
+    entry.add_to_hass(hass)
+    agent = _Agent()
+
+    with patch(
+        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ) as agent_class,
+    ):
+        await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    capabilities = agent_class.call_args.kwargs["capabilities"]
+    thinking = _thinking_capabilities(capabilities)
+    assert len(thinking) == 1
+    assert thinking[0].effort is False
+
+
 async def test_conversation_runtime_supports_test_model_without_patching_agent_run(
     hass: HomeAssistant,
 ) -> None:

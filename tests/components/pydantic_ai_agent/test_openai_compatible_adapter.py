@@ -156,6 +156,108 @@ async def test_request_maps_tools_and_binary_content() -> None:
     await http_client.aclose()
 
 
+async def test_request_maps_disabled_thinking_to_reasoning_effort_none() -> None:
+    """Test explicit disabled thinking sends reasoning_effort='none'."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-1",
+                "model": "test-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "Hello"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+
+    model, http_client = _model_with_transport(httpx.MockTransport(handler))
+    await model.request(
+        [ModelRequest(parts=[UserPromptPart("Hi")])],
+        {},
+        ModelRequestParameters(thinking=False),
+    )
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["reasoning_effort"] == "none"
+    await http_client.aclose()
+
+
+async def test_request_omits_reasoning_effort_when_thinking_is_unset() -> None:
+    """Test unset thinking leaves reasoning_effort absent."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-1",
+                "model": "test-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "Hello"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+
+    model, http_client = _model_with_transport(httpx.MockTransport(handler))
+    await model.request(
+        [ModelRequest(parts=[UserPromptPart("Hi")])],
+        {},
+        ModelRequestParameters(),
+    )
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert "reasoning_effort" not in body
+    await http_client.aclose()
+
+
+async def test_request_passes_explicit_thinking_level_to_reasoning_effort() -> None:
+    """Test explicit thinking levels pass through to reasoning_effort."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-1",
+                "model": "test-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "Hello"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+
+    model, http_client = _model_with_transport(httpx.MockTransport(handler))
+    await model.request(
+        [ModelRequest(parts=[UserPromptPart("Hi")])],
+        {},
+        ModelRequestParameters(thinking="low"),
+    )
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["reasoning_effort"] == "low"
+    await http_client.aclose()
+
+
 async def test_chat_history_keeps_reasoning_only_assistant_message() -> None:
     """Test Chat Completions history preserves reasoning-only assistant items."""
     model, http_client = _model_with_transport(httpx.MockTransport(_unused_handler))

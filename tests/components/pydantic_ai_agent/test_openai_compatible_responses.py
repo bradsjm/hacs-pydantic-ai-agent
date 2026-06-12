@@ -1,6 +1,7 @@
 """Test the Pydantic AI OpenAI-compatible Responses protocol adapter."""
 
 import json
+from typing import cast
 
 import httpx
 from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
@@ -23,6 +24,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.output import OutputObjectDefinition
+from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 
 
@@ -184,6 +186,117 @@ async def test_responses_request_maps_tools_structured_output_and_reasoning() ->
     assert isinstance(response.parts[1], ToolCallPart)
     assert response.parts[1].id == "fc-1"
     assert response.parts[1].tool_call_id == "call-1"
+    await http_client.aclose()
+
+
+async def test_responses_request_prefers_explicit_thinking() -> None:
+    """Test explicit run-level thinking overrides Responses reasoning defaults."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp-1",
+                "model": "test-model",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "id": "msg-1",
+                        "content": [{"type": "output_text", "text": "Done"}],
+                    }
+                ],
+            },
+        )
+
+    model, http_client = _responses_model_with_transport(httpx.MockTransport(handler))
+    model_settings = cast(ModelSettings, {"openai_reasoning_effort": "high"})
+
+    await model.request(
+        [ModelRequest(parts=[UserPromptPart("Hi")])],
+        model_settings,
+        ModelRequestParameters(thinking=False),
+    )
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["reasoning"] == {"effort": "none"}
+    await http_client.aclose()
+
+
+async def test_responses_request_uses_reasoning_default_when_unset() -> None:
+    """Test unset run-level thinking leaves Responses reasoning defaults intact."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp-1",
+                "model": "test-model",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "id": "msg-1",
+                        "content": [{"type": "output_text", "text": "Done"}],
+                    }
+                ],
+            },
+        )
+
+    model, http_client = _responses_model_with_transport(httpx.MockTransport(handler))
+    model_settings = cast(ModelSettings, {"openai_reasoning_effort": "high"})
+
+    await model.request(
+        [ModelRequest(parts=[UserPromptPart("Hi")])],
+        model_settings,
+        ModelRequestParameters(),
+    )
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["reasoning"] == {"effort": "high"}
+    await http_client.aclose()
+
+
+async def test_responses_request_passes_explicit_thinking_level_through() -> None:
+    """Test explicit run-level thinking effort is passed through."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp-1",
+                "model": "test-model",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "id": "msg-1",
+                        "content": [{"type": "output_text", "text": "Done"}],
+                    }
+                ],
+            },
+        )
+
+    model, http_client = _responses_model_with_transport(httpx.MockTransport(handler))
+    model_settings = cast(ModelSettings, {"openai_reasoning_effort": "high"})
+
+    await model.request(
+        [ModelRequest(parts=[UserPromptPart("Hi")])],
+        model_settings,
+        ModelRequestParameters(thinking="low"),
+    )
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["reasoning"] == {"effort": "low"}
     await http_client.aclose()
 
 
