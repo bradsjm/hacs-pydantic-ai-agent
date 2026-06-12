@@ -45,7 +45,6 @@ from .helpers import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH = 80
 _SECTION_ADVANCED_MCP = "advanced_mcp"
 
 
@@ -192,14 +191,6 @@ def _format_mcp_headers(headers: object) -> list[dict[str, str]]:
     return _format_key_value_text_rows(headers)
 
 
-def _truncate_mcp_tool_description(description: str) -> str:
-    """Return a compact single-line MCP tool description for selector labels."""
-    description = " ".join(description.split())
-    if len(description) <= _MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH:
-        return description
-    return f"{description[: _MCP_TOOL_DESCRIPTION_LABEL_MAX_LENGTH - 3].rstrip()}..."
-
-
 def _mcp_tool_options(
     tools: Iterable[Mapping[str, Any]],
     extra_tool_names: Iterable[str] = (),
@@ -210,11 +201,7 @@ def _mcp_tool_options(
         name = str(tool.get("name", "")).strip()
         if not name or name in options_by_name:
             continue
-        description = _truncate_mcp_tool_description(
-            str(tool.get("description", "")).strip()
-        )
-        label = f"{name} ({description})" if description else name
-        options_by_name[name] = SelectOptionDict(label=label, value=name)
+        options_by_name[name] = SelectOptionDict(label=name, value=name)
     for name in extra_tool_names:
         if name and name not in options_by_name:
             options_by_name[name] = SelectOptionDict(label=name, value=name)

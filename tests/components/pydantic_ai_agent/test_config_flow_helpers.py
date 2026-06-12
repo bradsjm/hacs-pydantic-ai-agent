@@ -995,7 +995,7 @@ def test_format_mcp_headers_returns_selector_rows() -> None:
     assert _format_mcp_headers(None) == []
 
 
-def test_mcp_tool_options_include_truncated_descriptions() -> None:
+def test_mcp_tool_options_use_name_only_labels() -> None:
     options = _mcp_tool_options(
         [
             {
@@ -1009,16 +1009,17 @@ def test_mcp_tool_options_include_truncated_descriptions() -> None:
         ]
     )
 
-    assert options[0]["value"] == "echo"
-    assert "echo" in options[0]["label"]
-    assert options[1] == {"label": "list_files (List files)", "value": "list_files"}
+    assert options == [
+        {"label": "echo", "value": "echo"},
+        {"label": "list_files", "value": "list_files"},
+    ]
 
 
 def test_mcp_tools_schema_uses_dropdown_mode() -> None:
     data_schema = _mcp_tools_schema(
         [
-            {"label": "echo (Echo text)", "value": "echo"},
-            {"label": "list_files (List files)", "value": "list_files"},
+            {"label": "echo", "value": "echo"},
+            {"label": "list_files", "value": "list_files"},
         ],
         ["echo"],
     )
