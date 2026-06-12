@@ -13,6 +13,7 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
+from ..config_flows._key_value_rows import _parse_key_value_text_rows
 from .errors import MCPValidationError
 from .models import ValidatedMCPURL
 
@@ -114,30 +115,12 @@ def validate_mcp_url_details(url: str) -> ValidatedMCPURL:
 
 
 def parse_mcp_headers(value: object) -> dict[str, str]:
-    """Parse optional one-header-per-line HTTP headers."""
-    if value is None:
-        return {}
-    if isinstance(value, str):
-        headers: dict[str, str] = {}
-        for line in value.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            name, separator, header_value = line.partition(":")
-            name = name.strip()
-            if not separator or not _HTTP_HEADER_NAME_PATTERN.fullmatch(name):
-                raise vol.Invalid("invalid_mcp_headers")
-            headers[name] = header_value.strip()
-        return headers
-    if not isinstance(value, Mapping):
-        raise vol.Invalid("invalid_mcp_headers")
-    headers = dict(value)
-    if not all(
-        isinstance(key, str)
-        and _HTTP_HEADER_NAME_PATTERN.fullmatch(key)
-        and isinstance(item, str)
-        for key, item in headers.items()
-    ):
+    """Parse optional HTTP headers from selector rows or a stored mapping."""
+    try:
+        headers = _parse_key_value_text_rows(value)
+    except ValueError as err:
+        raise vol.Invalid(str(err)) from err
+    if not all(_HTTP_HEADER_NAME_PATTERN.fullmatch(key) for key in headers):
         raise vol.Invalid("invalid_mcp_headers")
     return headers
 

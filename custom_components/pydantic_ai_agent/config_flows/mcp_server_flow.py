@@ -137,11 +137,13 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 | data
                 | {CONF_MCP_HEADERS: flat_user_input.get(CONF_MCP_HEADERS, "")}
             )
-            validated_data, _tool_options, error = (
-                await self._async_validate_mcp_server(
-                    data,
-                    self._current_subentry_id(),
-                )
+            (
+                validated_data,
+                _tool_options,
+                error,
+            ) = await self._async_validate_mcp_server(
+                data,
+                self._current_subentry_id(),
             )
             if error is not None:
                 return self._show_server_form_error(step_id, form_data, error)
@@ -253,10 +255,14 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 server_id=server_id,
             )
             _LOGGER.warning("Timed out validating MCP server %s", server_id)
-            return None, [], (
-                "base",
-                validation_error.reason,
-                _mcp_validation_placeholders(validation_error),
+            return (
+                None,
+                [],
+                (
+                    "base",
+                    validation_error.reason,
+                    _mcp_validation_placeholders(validation_error),
+                ),
             )
         except MCPValidationError as err:
             target = CONF_MCP_URL if err.reason == "invalid_mcp_url" else "base"

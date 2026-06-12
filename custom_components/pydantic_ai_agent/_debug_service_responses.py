@@ -170,8 +170,7 @@ def _subentry_counts(entry: ConfigEntry) -> dict[str, int]:
 def _subentries_status(entry: ConfigEntry) -> dict[str, list[dict[str, Any]]]:
     return {
         "providers": [
-            _provider_status(entry, subentry)
-            for subentry in provider_subentries(entry)
+            _provider_status(entry, subentry) for subentry in provider_subentries(entry)
         ],
         "mcp_servers": [
             _mcp_server_status(entry, subentry)

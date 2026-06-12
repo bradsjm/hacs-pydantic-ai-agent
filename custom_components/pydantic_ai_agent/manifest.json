@@ -1,29 +1,15 @@
 {
-  "version": "0.2.0",
   "domain": "pydantic_ai_agent",
   "name": "Pydantic AI Agent",
-  "after_dependencies": [
-    "assist_pipeline",
-    "intent"
-  ],
-  "codeowners": [
-    "@bradsjm"
-  ],
+  "after_dependencies": ["assist_pipeline", "intent"],
+  "codeowners": ["@bradsjm"],
   "config_flow": true,
-  "dependencies": [
-    "conversation"
-  ],
+  "dependencies": ["conversation"],
   "documentation": "https://github.com/bradsjm/hacs-pydantic-ai-agent",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/bradsjm/hacs-pydantic-ai-agent/issues",
-  "loggers": [
-    "pydantic_ai",
-    "logfire",
-    "httpx",
-    "httpcore",
-    "fastmcp"
-  ],
+  "loggers": ["pydantic_ai", "logfire", "httpx", "httpcore", "fastmcp"],
   "requirements": [
     "logfire==4.33.0",
     "pydantic-ai-slim==1.97.0",
@@ -34,5 +20,6 @@
     "bashkit==0.7.2",
     "markdownify>=1.2",
     "names-generator==0.2.0"
-  ]
+  ],
+  "version": "0.2.0"
 }

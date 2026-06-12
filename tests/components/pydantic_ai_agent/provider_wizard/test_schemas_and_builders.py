@@ -36,6 +36,9 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
     CONF_DISCOVERED,
     CONF_ENABLED,
+    CONF_KEY_VALUE_JSON_VALUE,
+    CONF_KEY_VALUE_KEY,
+    CONF_KEY_VALUE_VALUE,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
@@ -49,7 +52,7 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
 from homeassistant.const import CONF_API_KEY, CONF_NAME
-from homeassistant.helpers.selector import TextSelector
+from homeassistant.helpers.selector import ObjectSelector, TextSelector
 
 
 def test_provider_options_include_supported_providers_and_custom() -> None:
@@ -74,7 +77,7 @@ def test_connection_schema_uses_password_api_key_selector() -> None:
     schema = connection_schema(
         _provider("openai"), PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS, {}
     )
-    selector = _selector_for_schema_key(schema, CONF_API_KEY)
+    selector = cast(TextSelector, _selector_for_schema_key(schema, CONF_API_KEY))
 
     assert isinstance(selector, TextSelector)
     assert selector.config["type"] == "password"
@@ -109,6 +112,31 @@ def test_connection_schema_shows_extra_body_for_supported_modes() -> None:
         CONF_PROVIDER_EXTRA_BODY,
         nested=True,
     )
+
+
+def test_connection_schema_uses_structured_row_selectors() -> None:
+    schema = connection_schema(
+        _provider("openai"),
+        PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        {
+            CONF_PROVIDER_HEADERS: {"Authorization": "Bearer token"},
+            CONF_PROVIDER_EXTRA_BODY: {"service_tier": "flex"},
+        },
+    )
+
+    header_selector = _nested_selector_for_schema_key(schema, CONF_PROVIDER_HEADERS)
+    extra_body_selector = _nested_selector_for_schema_key(
+        schema, CONF_PROVIDER_EXTRA_BODY
+    )
+
+    assert isinstance(header_selector, ObjectSelector)
+    assert isinstance(extra_body_selector, ObjectSelector)
+    assert _nested_default_for_schema_key(schema, CONF_PROVIDER_HEADERS) == [
+        {CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer token"}
+    ]
+    assert _nested_default_for_schema_key(schema, CONF_PROVIDER_EXTRA_BODY) == [
+        {CONF_KEY_VALUE_KEY: "service_tier", CONF_KEY_VALUE_JSON_VALUE: '"flex"'}
+    ]
 
 
 def test_filters_from_user_input_parses_flags() -> None:
@@ -252,6 +280,37 @@ def _selector_for_schema_key(schema: vol.Schema, key: str) -> object:
         if getattr(schema_key, "schema", None) == key:
             return selector
     raise AssertionError(f"Schema key {key} not found")
+
+
+def _nested_selector_for_schema_key(schema: vol.Schema, key: str) -> object:
+    """Return a nested selector for a voluptuous schema key."""
+    for selector_schema in _nested_schema_dicts(schema):
+        for nested_key, nested_selector in selector_schema.items():
+            if getattr(nested_key, "schema", None) == key:
+                return nested_selector
+    raise AssertionError(f"Nested schema key {key} not found")
+
+
+def _nested_default_for_schema_key(schema: vol.Schema, key: str) -> object:
+    """Return a nested field default from a voluptuous schema."""
+    for selector_schema in _nested_schema_dicts(schema):
+        for nested_key in selector_schema:
+            if getattr(nested_key, "schema", None) == key:
+                return nested_key.default()
+    raise AssertionError(f"Nested schema key {key} not found")
+
+
+def _nested_schema_dicts(schema: vol.Schema) -> list[dict[object, object]]:
+    """Return nested schema dictionaries from section wrappers."""
+    nested_schemas: list[dict[object, object]] = []
+    for _schema_key, selector in schema.schema.items():
+        selector_schema = getattr(selector, "schema", None)
+        has_nested_schema = hasattr(selector_schema, "schema")
+        if isinstance(selector_schema, vol.Schema) or has_nested_schema:
+            selector_schema = selector_schema.schema
+        if isinstance(selector_schema, dict):
+            nested_schemas.append(selector_schema)
+    return nested_schemas
 
 
 def _schema_has_key(schema: vol.Schema, key: str, *, nested: bool = False) -> bool:

@@ -20,6 +20,7 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.typing import VolDictType
 
 from ..const import (
+    CONF_KEY_VALUE_VALUE,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
@@ -34,7 +35,12 @@ from ..mcp import (
     parse_allowed_tools,
     parse_mcp_headers,
 )
-from .helpers import _flatten_section_data, _sorted_select_options
+from ._key_value_rows import _format_key_value_text_rows
+from .helpers import (
+    _flatten_section_data,
+    _key_value_rows_selector,
+    _sorted_select_options,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -121,9 +127,8 @@ def _selected_mcp_server_error(
         subentry = entry.subentries.get(server_id)
         if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_MCP_SERVER:
             return "mcp_server_not_found"
-        if (
-            CONF_MCP_ALLOWED_TOOLS in subentry.data
-            and not parse_allowed_tools(subentry.data.get(CONF_MCP_ALLOWED_TOOLS))
+        if CONF_MCP_ALLOWED_TOOLS in subentry.data and not parse_allowed_tools(
+            subentry.data.get(CONF_MCP_ALLOWED_TOOLS)
         ):
             return "mcp_tools_not_allowlisted"
     return None
@@ -156,7 +161,9 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
                         vol.Optional(
                             CONF_MCP_HEADERS,
                             default=_format_mcp_headers(options.get(CONF_MCP_HEADERS)),
-                        ): TextSelector(TextSelectorConfig(multiline=True)),
+                        ): _key_value_rows_selector(
+                            CONF_KEY_VALUE_VALUE, {"text": None}
+                        ),
                         vol.Optional(
                             CONF_MCP_INCLUDE_RETURN_SCHEMA,
                             default=options.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True),
@@ -173,15 +180,9 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
     )
 
 
-def _format_mcp_headers(headers: object) -> str:
-    """Return headers as one HTTP header per line for the config form."""
-    if headers is None:
-        return ""
-    if isinstance(headers, str):
-        return headers
-    if not isinstance(headers, Mapping):
-        return ""
-    return "\n".join(f"{name}: {headers[name]}" for name in sorted(headers))
+def _format_mcp_headers(headers: object) -> list[dict[str, str]]:
+    """Return headers in selector-compatible row shape for the config form."""
+    return _format_key_value_text_rows(headers)
 
 
 def _truncate_mcp_tool_description(description: str) -> str:

@@ -16,8 +16,6 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
-    ObjectSelector,
-    ObjectSelectorConfig,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -30,7 +28,6 @@ from homeassistant.helpers.typing import VolDictType
 
 from ..const import (
     CONF_AGENT_NAME,
-    CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MCP_SERVER_IDS,
@@ -69,7 +66,7 @@ from ._constants import (
     _SECTION_HASS_CONTROL,
     _SECTION_RUN_SETTINGS,
     _SECTION_SKILLS,
-_THINKING_OPTIONS,
+    _THINKING_OPTIONS,
 )
 from ._profile_helpers import (
     RunSettingsVisibility,
@@ -83,7 +80,11 @@ from ._settings_parsing import (
     _format_thinking_value,
     _normalise_run_settings,
 )
-from .helpers import _flatten_section_data, _section_schema_key
+from .helpers import (
+    _flatten_section_data,
+    _key_value_rows_selector,
+    _section_schema_key,
+)
 from .mcp_helpers import (
     _append_mcp_server_schema_fields,
     _normalise_mcp_server_selection,
@@ -337,20 +338,8 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
                 default=_format_chat_template_kwargs(
                     model_settings.get(_MODEL_SETTING_CHAT_TEMPLATE_KWARGS)
                 ),
-            ): ObjectSelector(
-                ObjectSelectorConfig(
-                    multiple=True,
-                    fields={
-                        CONF_CHAT_TEMPLATE_KWARG_KEY: {
-                            "selector": {"text": None},
-                            "required": True,
-                        },
-                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: {
-                            "selector": {"template": None},
-                            "required": True,
-                        },
-                    },
-                )
+            ): _key_value_rows_selector(
+                CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE, {"template": None}
             ),
         }
     )

@@ -3,6 +3,10 @@
 import pytest
 import voluptuous as vol
 from custom_components.pydantic_ai_agent._redaction import redact_data
+from custom_components.pydantic_ai_agent.const import (
+    CONF_KEY_VALUE_KEY,
+    CONF_KEY_VALUE_VALUE,
+)
 from custom_components.pydantic_ai_agent.mcp import (
     MCPValidationError,
     normalise_mcp_url,
@@ -27,23 +31,35 @@ def test_mcp_log_redaction_uses_shared_sensitive_key_handling() -> None:
     assert redacted["result"]["session_token"] == "visible"
 
 
-def test_parse_mcp_headers_accepts_multiline_header_lines() -> None:
+def test_parse_mcp_headers_accepts_object_selector_rows() -> None:
     assert parse_mcp_headers(
-        "Authorization: Bearer secret\n\nX-Trace: value:with:colons"
+        [
+            {
+                CONF_KEY_VALUE_KEY: "Authorization",
+                CONF_KEY_VALUE_VALUE: "Bearer secret",
+            },
+            {CONF_KEY_VALUE_KEY: "X-Trace", CONF_KEY_VALUE_VALUE: "value:with:colons"},
+        ]
     ) == {
         "Authorization": "Bearer secret",
         "X-Trace": "value:with:colons",
     }
 
 
+def test_parse_mcp_headers_accepts_stored_mapping() -> None:
+    assert parse_mcp_headers({"Authorization": "Bearer secret"}) == {
+        "Authorization": "Bearer secret"
+    }
+
+
 @pytest.mark.parametrize(
     "headers",
     [
-        '{"X-Test": "enabled"}',
-        "Missing separator",
         "Bad Header: value",
         {"Bad Header": "value"},
         {"X-Test": 1},
+        [{CONF_KEY_VALUE_KEY: "Bad Header", CONF_KEY_VALUE_VALUE: "value"}],
+        [{CONF_KEY_VALUE_KEY: "X-Test", CONF_KEY_VALUE_VALUE: 1}],
     ],
 )
 def test_parse_mcp_headers_reject_invalid_values(headers: object) -> None:

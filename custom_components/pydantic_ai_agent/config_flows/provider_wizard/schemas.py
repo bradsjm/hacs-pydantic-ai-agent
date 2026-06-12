@@ -20,12 +20,17 @@ from homeassistant.helpers.typing import VolDictType
 from ...const import (
     CONF_BASE_URL,
     CONF_CUSTOM_MODEL_NAMES,
+    CONF_KEY_VALUE_JSON_VALUE,
+    CONF_KEY_VALUE_VALUE,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     PROVIDER_ANTHROPIC,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
+from .._key_value_rows import _format_key_value_json_rows
+from .._provider_data import _format_http_headers
+from ..helpers import _key_value_rows_selector
 from .const import (
     CATALOG_RETRY_PROVIDER_ID,
     CONF_DRIVER,
@@ -105,16 +110,16 @@ def connection_schema(
     advanced_schema: VolDictType = {
         vol.Optional(
             CONF_PROVIDER_HEADERS,
-            default=data.get(CONF_PROVIDER_HEADERS, ""),
-        ): TextSelector(TextSelectorConfig(multiline=True)),
+            default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
+        ): _key_value_rows_selector(CONF_KEY_VALUE_VALUE, {"text": None}),
     }
     if driver in _PROVIDER_EXTRA_BODY_MODES:
         advanced_schema[
             vol.Optional(
                 CONF_PROVIDER_EXTRA_BODY,
-                default=data.get(CONF_PROVIDER_EXTRA_BODY, ""),
+                default=_format_key_value_json_rows(data.get(CONF_PROVIDER_EXTRA_BODY)),
             )
-        ] = TextSelector(TextSelectorConfig(multiline=True))
+        ] = _key_value_rows_selector(CONF_KEY_VALUE_JSON_VALUE, {"text": None})
     schema[vol.Optional(_SECTION_ADVANCED_OPTIONS, default={})] = section(
         vol.Schema(advanced_schema), {"collapsed": True}
     )

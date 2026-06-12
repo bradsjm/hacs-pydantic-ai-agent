@@ -94,8 +94,9 @@ async def test_tools_from_llm_api_normalizes_multimodal_tool_result() -> None:
     ]
 
 
-async def test_tools_from_llm_api_degrades_invalid_multimodal_tool_result_to_text(
-) -> None:
+async def test_tools_from_llm_api_degrades_invalid_multimodal_tool_result_to_text() -> (
+    None
+):
     """Test malformed multimodal tool results fall back to safe text."""
     async_call_tool = AsyncMock(
         return_value={

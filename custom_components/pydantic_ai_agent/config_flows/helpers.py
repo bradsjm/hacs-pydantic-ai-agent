@@ -4,8 +4,14 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.helpers.selector import SelectOptionDict
+from homeassistant.helpers.selector import (
+    ObjectSelector,
+    ObjectSelectorConfig,
+    SelectOptionDict,
+)
 from homeassistant.helpers.typing import VolDictType
+
+from ..const import CONF_KEY_VALUE_KEY
 
 
 def _sorted_select_options(
@@ -52,3 +58,24 @@ def _section_defaults(section_schema: VolDictType) -> dict[str, Any]:
 def _section_schema_key(section_name: str, section_schema: VolDictType) -> vol.Optional:
     """Return a section marker whose default mirrors its nested schema values."""
     return vol.Optional(section_name, default=_section_defaults(section_schema))
+
+
+def _key_value_rows_selector(
+    value_field: str, value_selector: dict[str, object]
+) -> ObjectSelector:
+    """Return a repeated key/value row selector."""
+    return ObjectSelector(
+        ObjectSelectorConfig(
+            multiple=True,
+            fields={
+                CONF_KEY_VALUE_KEY: {
+                    "selector": {"text": None},
+                    "required": True,
+                },
+                value_field: {
+                    "selector": value_selector,
+                    "required": True,
+                },
+            },
+        )
+    )

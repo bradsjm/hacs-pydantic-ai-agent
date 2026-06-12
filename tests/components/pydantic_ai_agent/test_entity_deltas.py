@@ -303,8 +303,9 @@ async def test_agent_messages_to_chat_deltas_preserves_tool_returns() -> None:
     ]
 
 
-async def test_agent_messages_to_chat_deltas_serializes_multimodal_tool_returns(
-) -> None:
+async def test_agent_messages_to_chat_deltas_serializes_multimodal_tool_returns() -> (
+    None
+):
     """Test multimodal tool result parts persist as JSON-safe sentinel data."""
     deltas = await _collect_deltas(
         [

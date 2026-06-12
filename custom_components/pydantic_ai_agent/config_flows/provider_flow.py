@@ -30,6 +30,7 @@ from ..const import (
 )
 from ..generated_titles import DEFAULT_SERVICE_TITLE_SUFFIX, generated_default_title
 from ..provider_validation import ProviderValidationError
+from ._key_value_rows import _format_key_value_json_rows
 from ._profile_helpers import (
     _provider_validation_placeholders,
 )
@@ -37,7 +38,7 @@ from ._provider_data import (
     _cached_provider_model_names,
     _clear_provider_model_cache,
     _format_custom_model_names,
-    _format_key_value_json_setting,
+    _format_http_headers,
     _normalise_provider_data,
     _provider_custom_model_names,
     _provider_data_matches,
@@ -148,7 +149,10 @@ class ProviderSubentryFlowHandler(
         """Return provider data expanded with form-only model-selection fields."""
         options = dict(subentry.data)
         options[CONF_CUSTOM_MODEL_NAMES] = _format_custom_model_names(options)
-        options[CONF_PROVIDER_EXTRA_BODY] = _format_key_value_json_setting(
+        options[CONF_PROVIDER_HEADERS] = _format_http_headers(
+            options.get(CONF_PROVIDER_HEADERS)
+        )
+        options[CONF_PROVIDER_EXTRA_BODY] = _format_key_value_json_rows(
             options.get(CONF_PROVIDER_EXTRA_BODY)
         )
         return options

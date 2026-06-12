@@ -366,15 +366,15 @@ async def test_probe_model_merges_configured_model_settings(
 @pytest.mark.parametrize(
     ("provider_mode", "model_name", "thinking", "expected_thinking"),
     [
-    (
-        PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-        "deepseek-v4-flash",
-        "high",
-        None,
-    ),
-    (PROVIDER_GOOGLE_GEMINI, "gemini-2.5-pro", False, None),
-    (PROVIDER_ANTHROPIC, "claude-sonnet-4", "high", "high"),
-],
+        (
+            PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            "deepseek-v4-flash",
+            "high",
+            None,
+        ),
+        (PROVIDER_GOOGLE_GEMINI, "gemini-2.5-pro", False, None),
+        (PROVIDER_ANTHROPIC, "claude-sonnet-4", "high", "high"),
+    ],
 )
 async def test_probe_model_filters_thinking_by_effective_profile_support(
     hass: HomeAssistant,

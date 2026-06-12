@@ -82,17 +82,13 @@ def _entry_with_conversation_subentries(logfire: bool = False) -> MockConfigEntr
                         profile_id=kitchen_profile_id,
                         name="Kitchen Model",
                         model="gpt-kitchen",
-                        extra_data={
-                            CONF_MODEL_PRICING: {"input": 1.0, "output": 2.0}
-                        },
+                        extra_data={CONF_MODEL_PRICING: {"input": 1.0, "output": 2.0}},
                     ),
                     garage_profile_id: model_profile_data(
                         profile_id=garage_profile_id,
                         name="Garage Model",
                         model="gpt-garage",
-                        extra_data={
-                            CONF_MODEL_PRICING: {"input": 1.0, "output": 2.0}
-                        },
+                        extra_data={CONF_MODEL_PRICING: {"input": 1.0, "output": 2.0}},
                     ),
                 },
                 default_model_profile_id=kitchen_profile_id,
@@ -176,8 +172,7 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
     assert span_kwargs["ha.model"] == "gpt-kitchen"
     assert span_kwargs["ha.model_profile"] == "Kitchen Model"
     assert (
-        span_kwargs["ha.model_profile_ref"]
-        == f"{_PROVIDER_SUBENTRY_ID}:kitchen-model"
+        span_kwargs["ha.model_profile_ref"] == f"{_PROVIDER_SUBENTRY_ID}:kitchen-model"
     )
     assert span_kwargs["ha.profile_id"] == "kitchen-model"
     assert span_kwargs["ha.provider_title"] == "Hosted OpenAI"

@@ -107,13 +107,13 @@ async def run_model_profile(
         phase="attempt",
         event="model_profile_attempt_started",
         data={
-                "attempt_index": index,
-                "model_profile": profile,
-                "model_settings": settings,
-                "usage_limits": usage_limits,
-                "mcp_toolset_count": len(mcp_toolsets),
-                "extra_toolset_count": len(extra_toolsets),
-                "virtual_workspace_enabled": virtual_workspace_enabled(subentry.data),
+            "attempt_index": index,
+            "model_profile": profile,
+            "model_settings": settings,
+            "usage_limits": usage_limits,
+            "mcp_toolset_count": len(mcp_toolsets),
+            "extra_toolset_count": len(extra_toolsets),
+            "virtual_workspace_enabled": virtual_workspace_enabled(subentry.data),
             "capability_types": [
                 type(capability).__name__ for capability in run_capabilities
             ],

@@ -272,8 +272,9 @@ async def test_responses_text_like_binary_content_decodes_invalid_utf8() -> None
     await http_client.aclose()
 
 
-async def test_responses_tool_return_with_multimodal_content_maps_text_and_image(
-) -> None:
+async def test_responses_tool_return_with_multimodal_content_maps_text_and_image() -> (
+    None
+):
     """Test Responses tool returns forward both text and images."""
     model, http_client = _responses_model_with_transport(
         httpx.MockTransport(_unused_handler)

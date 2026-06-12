@@ -12,9 +12,17 @@ import voluptuous as vol
 from custom_components.pydantic_ai_agent.config_flows._ai_task_schema_helpers import (
     _ai_task_data_from_user_input,
 )
+from custom_components.pydantic_ai_agent.config_flows._key_value_rows import (
+    _format_key_value_json_rows,
+    _format_key_value_text_rows,
+    _parse_key_value_text_rows,
+)
 from custom_components.pydantic_ai_agent.config_flows._profile_helpers import (
     RunSettingsVisibility,
     _run_settings_visibility,
+)
+from custom_components.pydantic_ai_agent.config_flows._provider_data import (
+    _provider_connection_schema,
 )
 from custom_components.pydantic_ai_agent.config_flows._schema_helpers import (
     _conversation_data_from_user_input,
@@ -23,12 +31,14 @@ from custom_components.pydantic_ai_agent.config_flows._schema_helpers import (
 from custom_components.pydantic_ai_agent.config_flows._settings_parsing import (
     _format_thinking_value,
     _normalise_run_settings,
+    _parse_key_value_json_setting,
     _parse_thinking_setting,
 )
 from custom_components.pydantic_ai_agent.config_flows.common import (
     _MODEL_PRICING_CACHE_READ,
     _MODEL_PRICING_INPUT,
     _MODEL_PRICING_OUTPUT,
+    _mcp_server_schema,
     _model_pricing_from_options,
     _model_profile_select_options,
     _model_settings_from_options,
@@ -58,15 +68,21 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_DESCRIPTION,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
+    CONF_KEY_VALUE_JSON_VALUE,
+    CONF_KEY_VALUE_KEY,
+    CONF_KEY_VALUE_VALUE,
     CONF_MAX_ITERATIONS,
     CONF_MAX_TOKENS,
     CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_HEADERS,
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_PRIMARY_MODEL_REF,
+    CONF_PROVIDER_EXTRA_BODY,
+    CONF_PROVIDER_HEADERS,
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
@@ -87,6 +103,7 @@ from custom_components.pydantic_ai_agent.provider_validation import (
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.selector import ObjectSelector
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
@@ -108,6 +125,16 @@ def _section_key_names(data_schema: vol.Schema, section_name: str) -> set[str]:
 
 def _schema_key_names(data_schema: vol.Schema) -> set[str]:
     return {key.schema for key in data_schema.schema}
+
+
+def _section_selector(data_schema: vol.Schema, section_name: str, field: str) -> object:
+    for section_key, section_value in data_schema.schema.items():
+        if section_key.schema != section_name:
+            continue
+        for field_key, selector in section_value.schema.schema.items():
+            if field_key.schema == field:
+                return selector
+    raise AssertionError(f"Section field {section_name}.{field} not found")
 
 
 def _thinking_test_entry(provider_mode: str, model_name: str) -> MockConfigEntry:
@@ -255,6 +282,87 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
     assert cleared == {"seed"}
 
 
+def test_format_key_value_rows_return_selector_defaults() -> None:
+    assert _format_key_value_text_rows({"X-Z": "last", "Authorization": "Bearer"}) == [
+        {CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer"},
+        {CONF_KEY_VALUE_KEY: "X-Z", CONF_KEY_VALUE_VALUE: "last"},
+    ]
+    assert _format_key_value_json_rows({"service_tier": "flex"}) == [
+        {CONF_KEY_VALUE_KEY: "service_tier", CONF_KEY_VALUE_JSON_VALUE: '"flex"'}
+    ]
+
+
+def test_parse_key_value_row_helpers_accept_object_selector_rows() -> None:
+    assert _parse_key_value_text_rows(
+        [
+            {CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer"},
+            {CONF_KEY_VALUE_KEY: "", CONF_KEY_VALUE_VALUE: ""},
+        ]
+    ) == {"Authorization": "Bearer"}
+    assert _parse_key_value_json_setting(
+        [
+            {CONF_KEY_VALUE_KEY: "service_tier", CONF_KEY_VALUE_JSON_VALUE: '"flex"'},
+            {
+                CONF_KEY_VALUE_KEY: "parallel_tool_calls",
+                CONF_KEY_VALUE_JSON_VALUE: "true",
+            },
+        ]
+    ) == {"parallel_tool_calls": True, "service_tier": "flex"}
+
+
+@pytest.mark.parametrize(
+    ("value", "error"),
+    [
+        (
+            [
+                {CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "one"},
+                {CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "two"},
+            ],
+            "duplicate_key",
+        ),
+        (
+            [
+                {
+                    CONF_KEY_VALUE_KEY: "service_tier",
+                    CONF_KEY_VALUE_JSON_VALUE: "not-json",
+                }
+            ],
+            "invalid_json",
+        ),
+    ],
+)
+def test_key_value_row_helpers_reject_invalid_rows(value: object, error: str) -> None:
+    with pytest.raises(ValueError, match=error):
+        if error == "duplicate_key":
+            _parse_key_value_text_rows(value)
+        else:
+            _parse_key_value_json_setting(value)
+
+
+def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> None:
+    provider_schema = _provider_connection_schema(
+        {
+            CONF_PROVIDER_HEADERS: {"Authorization": "Bearer"},
+            CONF_PROVIDER_EXTRA_BODY: {"service_tier": "flex"},
+        }
+    )
+    mcp_schema = _mcp_server_schema({CONF_MCP_HEADERS: {"Authorization": "Bearer"}})
+
+    provider_headers_selector = _section_selector(
+        provider_schema, "advanced_options", CONF_PROVIDER_HEADERS
+    )
+    provider_extra_body_selector = _section_selector(
+        provider_schema, "advanced_options", CONF_PROVIDER_EXTRA_BODY
+    )
+    mcp_headers_selector = _section_selector(
+        mcp_schema, "advanced_mcp", CONF_MCP_HEADERS
+    )
+
+    assert isinstance(provider_headers_selector, ObjectSelector)
+    assert isinstance(provider_extra_body_selector, ObjectSelector)
+    assert isinstance(mcp_headers_selector, ObjectSelector)
+
+
 def test_parse_model_pricing_validates_and_clears_fields() -> None:
     pricing, errors, cleared = _parse_model_pricing(
         {
@@ -333,8 +441,9 @@ def test_run_settings_schema_includes_thinking_when_visibility_enables_it() -> N
     assert CONF_THINKING in _schema_key_names(data_schema)
 
 
-def test_run_settings_schema_excludes_false_thinking_option_when_not_disablable(
-) -> None:
+def test_run_settings_schema_excludes_false_thinking_option_when_not_disablable() -> (
+    None
+):
     data_schema = _run_settings_schema(
         default_max_iterations=10,
         visibility=RunSettingsVisibility(
@@ -572,12 +681,12 @@ def test_selected_mcp_server_error_reports_stale_or_unallowlisted_server() -> No
     )
 
 
-def test_format_mcp_headers_uses_multiline_header_syntax() -> None:
-    assert _format_mcp_headers({"X-Z": "last", "Authorization": "Bearer token"}) == (
-        "Authorization: Bearer token\nX-Z: last"
-    )
-    assert _format_mcp_headers("X-Raw: value") == "X-Raw: value"
-    assert _format_mcp_headers(None) == ""
+def test_format_mcp_headers_returns_selector_rows() -> None:
+    assert _format_mcp_headers({"X-Z": "last", "Authorization": "Bearer token"}) == [
+        {CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer token"},
+        {CONF_KEY_VALUE_KEY: "X-Z", CONF_KEY_VALUE_VALUE: "last"},
+    ]
+    assert _format_mcp_headers(None) == []
 
 
 def test_mcp_tool_options_include_truncated_descriptions() -> None:

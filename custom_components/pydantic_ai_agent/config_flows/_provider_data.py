@@ -31,6 +31,8 @@ from ..const import (
     CONF_DISCOVERED_MODELS,
     CONF_DISCOVERED_MODELS_AT,
     CONF_DISCOVERED_MODELS_CACHE_KEY,
+    CONF_KEY_VALUE_JSON_VALUE,
+    CONF_KEY_VALUE_VALUE,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
@@ -49,23 +51,21 @@ from ._constants import (
     _SECTION_ADVANCED_OPTIONS,
     _SECTION_CUSTOMIZE_MODEL_LIST,
 )
+from ._key_value_rows import (
+    _format_key_value_json_rows,
+    _format_key_value_text_rows,
+    _parse_key_value_text_rows,
+)
 from ._settings_parsing import (
-    _format_key_value_json_setting,
     _model_setting_error,
     _parse_key_value_json_setting,
 )
-from .helpers import _flatten_section_data
+from .helpers import _flatten_section_data, _key_value_rows_selector
 
 
-def _format_http_headers(headers: object) -> str:
-    """Return HTTP headers as one ``Header-Name: value`` line each."""
-    if headers is None:
-        return ""
-    if isinstance(headers, str):
-        return headers
-    if not isinstance(headers, Mapping):
-        return ""
-    return "\n".join(f"{name}: {headers[name]}" for name in sorted(headers))
+def _format_http_headers(headers: object) -> list[dict[str, str]]:
+    """Return HTTP headers in selector-compatible row shape."""
+    return _format_key_value_text_rows(headers)
 
 
 def _parse_provider_headers(value: object) -> dict[str, str]:
@@ -75,35 +75,17 @@ def _parse_provider_headers(value: object) -> dict[str, str]:
     except vol.Invalid as err:
         raise ProviderValidationError(
             "invalid_provider_headers",
-            "Enter HTTP headers one per line using 'Header-Name: value'.",
+            "Add valid HTTP header rows using a header name and value.",
         ) from err
 
 
 def _parse_http_headers(value: object) -> dict[str, str]:
-    """Return HTTP headers from a multiline text field or mapping."""
-    if value is None:
-        return {}
-    if isinstance(value, str):
-        headers: dict[str, str] = {}
-        for line in value.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            name, separator, header_value = line.partition(":")
-            name = name.strip()
-            if not separator or not _HTTP_HEADER_NAME_PATTERN.fullmatch(name):
-                raise vol.Invalid("invalid_headers")
-            headers[name] = header_value.strip()
-        return headers
-    if not isinstance(value, Mapping):
-        raise vol.Invalid("invalid_headers")
-    headers = dict(value)
-    if not all(
-        isinstance(key, str)
-        and _HTTP_HEADER_NAME_PATTERN.fullmatch(key)
-        and isinstance(item, str)
-        for key, item in headers.items()
-    ):
+    """Return HTTP headers from selector rows or an existing mapping."""
+    try:
+        headers = _parse_key_value_text_rows(value)
+    except ValueError as err:
+        raise vol.Invalid(str(err)) from err
+    if not all(_HTTP_HEADER_NAME_PATTERN.fullmatch(key) for key in headers):
         raise vol.Invalid("invalid_headers")
     return headers
 
@@ -139,13 +121,13 @@ def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol
                 vol.Optional(
                     CONF_PROVIDER_HEADERS,
                     default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
-                ): TextSelector(TextSelectorConfig(multiline=True)),
+                ): _key_value_rows_selector(CONF_KEY_VALUE_VALUE, {"text": None}),
                 vol.Optional(
                     CONF_PROVIDER_EXTRA_BODY,
-                    default=_format_key_value_json_setting(
+                    default=_format_key_value_json_rows(
                         data.get(CONF_PROVIDER_EXTRA_BODY)
                     ),
-                ): TextSelector(TextSelectorConfig(multiline=True)),
+                ): _key_value_rows_selector(CONF_KEY_VALUE_JSON_VALUE, {"text": None}),
             }
         ),
         {"collapsed": True},
@@ -320,7 +302,7 @@ def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
     except ValueError as err:
         raise ProviderValidationError(
             _model_setting_error(_MODEL_SETTING_EXTRA_BODY, str(err)),
-            "Enter provider extra body fields one per line using 'key: JSON value'.",
+            "Add provider extra body rows using a key and JSON value.",
         ) from err
     if provider_extra_body:
         try:

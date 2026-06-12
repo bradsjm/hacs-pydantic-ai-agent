@@ -44,6 +44,7 @@ from ._constants import (
     _RUN_SETTING_KEYS,
     _THINKING_OPTIONS,
 )
+from ._key_value_rows import _parse_key_value_json_rows
 
 
 class RunSettingsValidationError(ValueError):
@@ -160,6 +161,13 @@ def _parse_non_negative_int_setting(value: object) -> int:
 
 def _parse_key_value_json_setting(value: object) -> dict[str, Any]:
     """Return a key/value JSON model setting from user input."""
+    if isinstance(value, list):
+        parsed = _parse_key_value_json_rows(value)
+        try:
+            reject_chat_template_kwargs_in_extra_body(parsed)
+        except HomeAssistantError as err:
+            raise ValueError("chat_template_kwargs_conflict") from err
+        return parsed
     if not isinstance(value, str):
         raise ValueError("invalid_key_value")
     parsed: dict[str, Any] = {}
