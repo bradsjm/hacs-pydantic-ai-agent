@@ -296,9 +296,7 @@ def _nested_default_for_schema_key(schema: vol.Schema, key: str) -> object:
     for selector_schema in _nested_schema_dicts(schema):
         for nested_key in selector_schema:
             default_factory = getattr(nested_key, "default", None)
-            if getattr(nested_key, "schema", None) == key and callable(
-                default_factory
-            ):
+            if getattr(nested_key, "schema", None) == key and callable(default_factory):
                 return default_factory()
     raise AssertionError(f"Nested schema key {key} not found")
 

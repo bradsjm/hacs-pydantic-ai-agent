@@ -8,6 +8,7 @@ from homeassistant.helpers.selector import (
     ObjectSelector,
     ObjectSelectorConfig,
     SelectOptionDict,
+    Selector,
 )
 from homeassistant.helpers.typing import VolDictType
 
@@ -76,6 +77,23 @@ def _key_value_rows_selector(
                     "selector": value_selector,
                     "required": True,
                 },
+            },
+        )
+    )
+
+
+def _single_value_rows_selector(
+    value_field: str, value_selector: Selector | dict[str, object]
+) -> ObjectSelector:
+    """Return a repeated single-value row selector."""
+    return ObjectSelector(
+        ObjectSelectorConfig(
+            multiple=True,
+            fields={
+                value_field: {
+                    "selector": value_selector,
+                    "required": True,
+                }
             },
         )
     )

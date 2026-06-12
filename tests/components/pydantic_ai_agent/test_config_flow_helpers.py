@@ -11,6 +11,7 @@ import pytest
 import voluptuous as vol
 from custom_components.pydantic_ai_agent.config_flows._ai_task_schema_helpers import (
     _ai_task_data_from_user_input,
+    _ai_task_data_schema,
 )
 from custom_components.pydantic_ai_agent.config_flows._key_value_rows import (
     _format_key_value_json_rows,
@@ -18,14 +19,18 @@ from custom_components.pydantic_ai_agent.config_flows._key_value_rows import (
     _parse_key_value_text_rows,
 )
 from custom_components.pydantic_ai_agent.config_flows._profile_helpers import (
+    _FALLBACK_MODEL_REF_FIELD,
     RunSettingsVisibility,
+    _fallback_model_profile_select_options,
     _run_settings_visibility,
+    _selected_model_profile_error,
 )
 from custom_components.pydantic_ai_agent.config_flows._provider_data import (
     _provider_connection_schema,
 )
 from custom_components.pydantic_ai_agent.config_flows._schema_helpers import (
     _conversation_data_from_user_input,
+    _conversation_schema,
     _run_settings_schema,
 )
 from custom_components.pydantic_ai_agent.config_flows._settings_parsing import (
@@ -38,6 +43,7 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _MODEL_PRICING_CACHE_READ,
     _MODEL_PRICING_INPUT,
     _MODEL_PRICING_OUTPUT,
+    _SECTION_FALLBACK_MODELS,
     _mcp_server_schema,
     _model_pricing_from_options,
     _model_profile_select_options,
@@ -113,7 +119,10 @@ from tests.components.pydantic_ai_agent.support.builders import (
     skill_subentry_data,
     workspace_entry,
 )
-from tests.components.pydantic_ai_agent.support.schemas import schema_select_options
+from tests.components.pydantic_ai_agent.support.schemas import (
+    schema_select_options,
+    serialized_section_default,
+)
 
 
 def _section_key_names(data_schema: vol.Schema, section_name: str) -> set[str]:
@@ -121,6 +130,26 @@ def _section_key_names(data_schema: vol.Schema, section_name: str) -> set[str]:
         if section_key.schema == section_name:
             return {key.schema for key in section_value.schema.schema}
     raise AssertionError(f"Section {section_name} not found")
+
+
+def _fallback_test_entry() -> MockConfigEntry:
+    return workspace_entry(
+        (
+            provider_subentry_data(
+                model_profiles={
+                    "profile-1": model_profile_data(
+                        profile_id="profile-1", name="Fast"
+                    ),
+                    "profile-2": model_profile_data(
+                        profile_id="profile-2", name="Cheap"
+                    ),
+                    "profile-3": model_profile_data(
+                        profile_id="profile-3", name="Backup"
+                    ),
+                }
+            ),
+        )
+    )
 
 
 def _schema_key_names(data_schema: vol.Schema) -> set[str]:
@@ -253,6 +282,55 @@ def test_model_settings_schema_formats_stored_values() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "schema_builder",
+    [_conversation_schema, _ai_task_data_schema],
+)
+def test_agent_schema_preserves_ordered_fallback_rows_in_serialized_defaults(
+    hass: HomeAssistant,
+    schema_builder: Callable[
+        [HomeAssistant, Mapping[str, Any], MockConfigEntry], vol.Schema
+    ],
+) -> None:
+    entry = _fallback_test_entry()
+
+    data_schema = schema_builder(
+        hass,
+        {
+            CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+            CONF_FALLBACK_MODEL_REFS: [
+                "provider-1:missing-profile",
+                "provider-1:profile-2",
+            ],
+        },
+        entry,
+    )
+
+    assert serialized_section_default(data_schema, _SECTION_FALLBACK_MODELS) == {
+        CONF_FALLBACK_MODEL_REFS: [
+            {_FALLBACK_MODEL_REF_FIELD: "provider-1:missing-profile"},
+            {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+        ]
+    }
+
+
+def test_fallback_model_profile_select_options_include_unavailable_selected_ref(
+    hass: HomeAssistant,
+) -> None:
+    entry = _fallback_test_entry()
+
+    options = _fallback_model_profile_select_options(
+        hass,
+        entry,
+        ["provider-1:missing-profile", "provider-1:profile-2"],
+    )
+
+    assert {
+        "label": "Unavailable / provider-1:missing-profile",
+        "value": "provider-1:missing-profile",
+    } in options
+
+
 def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> None:
     settings, errors, cleared = _parse_model_settings(
         hass,
@@ -280,6 +358,110 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
     }
     assert errors == {"frequency_penalty": "invalid_number"}
     assert cleared == {"seed"}
+
+
+@pytest.mark.parametrize(
+    ("helper", "user_input"),
+    [
+        (
+            _conversation_data_from_user_input,
+            {
+                CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                CONF_FALLBACK_MODEL_REFS: [
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-3"},
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                ],
+            },
+        ),
+        (
+            _ai_task_data_from_user_input,
+            {
+                CONF_AI_TASK_NAME: "Report",
+                CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                CONF_FALLBACK_MODEL_REFS: [
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-3"},
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                ],
+            },
+        ),
+    ],
+)
+def test_save_time_helpers_preserve_fallback_row_order(
+    helper: _SaveDataHelper,
+    user_input: dict[str, object],
+) -> None:
+    entry = _fallback_test_entry()
+
+    result = helper(user_input, {}, entry)
+
+    assert result[CONF_FALLBACK_MODEL_REFS] == [
+        "provider-1:profile-3",
+        "provider-1:profile-2",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("helper", "user_input", "expected_error"),
+    [
+        (
+            _conversation_data_from_user_input,
+            {
+                CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                CONF_FALLBACK_MODEL_REFS: [
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                ],
+            },
+            "duplicate_fallback_model",
+        ),
+        (
+            _conversation_data_from_user_input,
+            {
+                CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                CONF_FALLBACK_MODEL_REFS: [
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-1"},
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                ],
+            },
+            "primary_model_in_fallbacks",
+        ),
+        (
+            _ai_task_data_from_user_input,
+            {
+                CONF_AI_TASK_NAME: "Report",
+                CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                CONF_FALLBACK_MODEL_REFS: [
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                ],
+            },
+            "duplicate_fallback_model",
+        ),
+        (
+            _ai_task_data_from_user_input,
+            {
+                CONF_AI_TASK_NAME: "Report",
+                CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                CONF_FALLBACK_MODEL_REFS: [
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-1"},
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                ],
+            },
+            "primary_model_in_fallbacks",
+        ),
+    ],
+)
+def test_selected_model_profile_error_validates_fallback_rows(
+    hass: HomeAssistant,
+    helper: _SaveDataHelper,
+    user_input: dict[str, object],
+    expected_error: str,
+) -> None:
+    entry = _fallback_test_entry()
+
+    data = helper(user_input, {}, entry)
+
+    assert _selected_model_profile_error(hass, entry, data) == expected_error
 
 
 def test_format_key_value_rows_return_selector_defaults() -> None:

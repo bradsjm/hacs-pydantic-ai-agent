@@ -51,14 +51,21 @@ from ._constants import (
     _SECTION_SKILLS,
 )
 from ._profile_helpers import (
+    _FALLBACK_MODEL_REF_FIELD,
     _fallback_model_profile_select_options,
+    _format_fallback_model_ref_rows,
     _model_profile_select_options,
     _normalise_fallback_model_refs,
+    _parse_fallback_model_ref_rows,
     _run_settings_visibility,
 )
 from ._schema_helpers import _run_settings_schema
 from ._settings_parsing import _normalise_run_settings
-from .helpers import _flatten_section_data, _section_schema_key
+from .helpers import (
+    _flatten_section_data,
+    _section_schema_key,
+    _single_value_rows_selector,
+)
 from .mcp_helpers import (
     _append_mcp_server_schema_fields,
     _normalise_mcp_server_selection,
@@ -74,8 +81,15 @@ def _ai_task_data_schema(
     """Return the AI task data subentry schema."""
     options = dict(options or {})
     model_options = _model_profile_select_options(entry)
+    fallback_refs = _normalise_fallback_model_refs(
+        options.get(CONF_FALLBACK_MODEL_REFS, [])
+    )
+    if not fallback_refs:
+        fallback_refs = _parse_fallback_model_ref_rows(
+            options.get(CONF_FALLBACK_MODEL_REFS, [])
+        )
     fallback_model_options = _fallback_model_profile_select_options(
-        hass, entry, options.get(CONF_FALLBACK_MODEL_REFS, [])
+        hass, entry, fallback_refs
     )
     hass_apis: list[SelectOptionDict] = []
     valid_api_ids: set[str] = set()
@@ -110,23 +124,22 @@ def _ai_task_data_schema(
         fallback_schema[
             vol.Optional(
                 CONF_FALLBACK_MODEL_REFS,
-                default=_normalise_fallback_model_refs(
+                default=_format_fallback_model_ref_rows(
                     options.get(CONF_FALLBACK_MODEL_REFS, [])
                 ),
             )
-        ] = SelectSelector(
-            SelectSelectorConfig(
-                options=fallback_model_options,
-                multiple=True,
-                translation_key=CONF_FALLBACK_MODEL_REFS,
-            )
+        ] = _single_value_rows_selector(
+            _FALLBACK_MODEL_REF_FIELD,
+            SelectSelector(
+                SelectSelectorConfig(
+                    options=fallback_model_options,
+                    translation_key=CONF_FALLBACK_MODEL_REFS,
+                )
+            ),
         )
         schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = (
             section(vol.Schema(fallback_schema), {"collapsed": True})
         )
-    fallback_refs = options.get(CONF_FALLBACK_MODEL_REFS, [])
-    if isinstance(fallback_refs, str) or not isinstance(fallback_refs, list):
-        fallback_refs = []
     run_settings_schema = _run_settings_schema(
         options,
         default_max_iterations=30,
@@ -219,6 +232,9 @@ def _ai_task_data_from_user_input(
         ),
     )
     data = dict(user_input)
+    data[CONF_FALLBACK_MODEL_REFS] = _parse_fallback_model_ref_rows(
+        data.get(CONF_FALLBACK_MODEL_REFS)
+    )
     data.setdefault(
         CONF_OUTPUT_MODE,
         normalise_structured_output_mode(options.get(CONF_OUTPUT_MODE)),

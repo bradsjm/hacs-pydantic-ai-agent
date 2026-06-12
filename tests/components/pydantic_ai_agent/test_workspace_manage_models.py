@@ -280,9 +280,7 @@ async def test_provider_manage_models_preserves_disabled_custom_and_clears_enabl
     assert (
         us.data[CONF_MODEL_PROFILES]["profile-disabled-custom"][CONF_ENABLED] is False
     )
-    assert (
-        us.data[CONF_MODEL_PROFILES]["profile-enabled-custom"][CONF_ENABLED] is False
-    )
+    assert us.data[CONF_MODEL_PROFILES]["profile-enabled-custom"][CONF_ENABLED] is False
 
 
 async def test_provider_manage_models_reenables_disabled_manual_custom_profile(hass):

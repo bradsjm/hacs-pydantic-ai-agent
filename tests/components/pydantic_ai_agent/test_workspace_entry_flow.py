@@ -8,6 +8,9 @@ from custom_components.pydantic_ai_agent import (
     ProviderRuntimeData,
     WorkspaceRuntimeData,
 )
+from custom_components.pydantic_ai_agent.config_flows._profile_helpers import (
+    _FALLBACK_MODEL_REF_FIELD,
+)
 from custom_components.pydantic_ai_agent.config_flows.workspace_flow import (
     PydanticAIAgentConfigFlow,
 )
@@ -192,6 +195,76 @@ async def test_conversation_disabled_skills_ignores_invalid_folder(
     assert result["data"][CONF_PRIMARY_MODEL_REF] == profile_ref
     assert "enable_skills" not in result["data"]
     assert "skills_folder" not in result["data"]
+
+
+async def test_conversation_subentry_persists_fallback_row_order(
+    hass: HomeAssistant,
+) -> None:
+    """Test ordered fallback rows persist as ordered fallback refs."""
+    provider_subentry_id = "provider-1"
+    profile_ref = f"{provider_subentry_id}:profile-1"
+    entry = await loaded_workspace_entry(
+        hass,
+        (
+            {
+                "subentry_id": provider_subentry_id,
+                "subentry_type": SUBENTRY_TYPE_PROVIDER,
+                "title": "OpenAI-compatible",
+                "unique_id": None,
+                "data": {
+                    CONF_NAME: "OpenAI-compatible",
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+                    CONF_API_KEY: "sk-test",
+                    CONF_MODEL_PROFILES: {
+                        "profile-1": {
+                            "id": "profile-1",
+                            CONF_NAME: "GPT Mini",
+                            CONF_MODEL: "gpt-4.1-mini",
+                            CONF_ENABLED: True,
+                        },
+                        "profile-2": {
+                            "id": "profile-2",
+                            CONF_NAME: "GPT Cheap",
+                            CONF_MODEL: "gpt-4.1-nano",
+                            CONF_ENABLED: True,
+                        },
+                        "profile-3": {
+                            "id": "profile-3",
+                            CONF_NAME: "GPT Backup",
+                            CONF_MODEL: "gpt-4.1",
+                            CONF_ENABLED: True,
+                        },
+                    },
+                },
+            },
+        ),
+    )
+
+    result = await subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_CONVERSATION),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await subentry_configure_result(
+        hass,
+        result["flow_id"],
+        {
+            CONF_AGENT_NAME: "Kitchen Agent",
+            CONF_PRIMARY_MODEL_REF: profile_ref,
+            "fallback_models": {
+                CONF_FALLBACK_MODEL_REFS: [
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-3"},
+                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                ]
+            },
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_FALLBACK_MODEL_REFS] == [
+        "provider-1:profile-3",
+        "provider-1:profile-2",
+    ]
 
 
 async def test_skill_subentry_uses_template_editor_and_stores_raw_text(
