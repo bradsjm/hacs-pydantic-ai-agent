@@ -53,6 +53,7 @@ async def run_model_profile(
     subentry: ConfigSubentry,
     *,
     index: int,
+    attempt_count: int = 1,
     profile: ModelProfile,
     usage_limits: UsageLimits,
     chat_log: conversation.ChatLog,
@@ -127,6 +128,8 @@ async def run_model_profile(
         has_structure,
         stream,
         run_recorder,
+        attempt_index=index,
+        attempt_count=attempt_count,
     )
 
 
@@ -146,6 +149,9 @@ async def run_agent_try(
     has_structure: bool,
     stream: bool,
     run_recorder: RunDiagnosticsRecorder,
+    *,
+    attempt_index: int = 0,
+    attempt_count: int = 1,
 ) -> AgentRunOutcome:
     """Run one model profile attempt and append only successful messages."""
     try:
@@ -154,9 +160,11 @@ async def run_agent_try(
                 hass,
                 entry,
                 subentry,
+                profile=profile,
+                attempt_index=attempt_index,
+                attempt_count=attempt_count,
                 entity_id=agent_id,
                 conversation_id=chat_log.conversation_id,
-                model_name=profile.model_name,
             ) as span:
                 start = hass.loop.time()
                 run_recorder.record(
@@ -187,7 +195,12 @@ async def run_agent_try(
                         subentry,
                     )
                     if span is not None:
-                        set_span_usage_attributes(span, result)
+                        set_span_usage_attributes(
+                            span,
+                            result,
+                            model_name=profile.model_name,
+                            model_pricing=profile.model_pricing,
+                        )
                     duration = hass.loop.time() - start
                     run_recorder.record(
                         phase="llm_response",
@@ -219,7 +232,12 @@ async def run_agent_try(
                         usage_limits=usage_limits,
                     )
                     if span is not None:
-                        set_span_usage_attributes(span, result)
+                        set_span_usage_attributes(
+                            span,
+                            result,
+                            model_name=profile.model_name,
+                            model_pricing=profile.model_pricing,
+                        )
                     duration = hass.loop.time() - start
                     await _append_agent_messages(
                         chat_log, agent_id, result.new_messages()
@@ -253,7 +271,12 @@ async def run_agent_try(
                     usage_limits=usage_limits,
                 )
                 if span is not None:
-                    set_span_usage_attributes(span, result)
+                    set_span_usage_attributes(
+                        span,
+                        result,
+                        model_name=profile.model_name,
+                        model_pricing=profile.model_pricing,
+                    )
                 duration = hass.loop.time() - start
                 output = result.output
                 await _append_agent_messages(

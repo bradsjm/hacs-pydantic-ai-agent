@@ -24,6 +24,8 @@ class Usage:
         total_tokens: int = 12,
         requests: int = 1,
         tool_calls: int = 3,
+        cache_read_tokens: int = 0,
+        details: dict[str, int] | None = None,
     ) -> None:
         """Initialize deterministic usage values."""
         self.input_tokens = input_tokens
@@ -31,6 +33,8 @@ class Usage:
         self.total_tokens = total_tokens
         self.requests = requests
         self.tool_calls = tool_calls
+        self.cache_read_tokens = cache_read_tokens
+        self.details = details or {}
 
     def opentelemetry_attributes(self) -> dict[str, int]:
         """Return deterministic token usage attributes."""

@@ -6,9 +6,11 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from custom_components.pydantic_ai_agent.const import (
+    CONF_MODEL_PRICING,
     DOMAIN,
     OUTPUT_MODE_TOOL,
 )
+from custom_components.pydantic_ai_agent.logfire_support import _INTEGRATION_VERSION
 from homeassistant.components import conversation
 from homeassistant.const import __version__
 from homeassistant.core import Context, HomeAssistant
@@ -32,7 +34,7 @@ class _Span:
     """Synchronous context manager returned by the Logfire span mock."""
 
     def __init__(self) -> None:
-        self.attributes: dict[str, int] = {}
+        self.attributes: dict[str, object] = {}
 
     def __enter__(self) -> None:
         pass
@@ -40,14 +42,14 @@ class _Span:
     def __exit__(self, *_args: object) -> None:
         pass
 
-    def set_attributes(self, attributes: dict[str, int]) -> None:
+    def set_attributes(self, attributes: dict[str, object]) -> None:
         self.attributes.update(attributes)
 
 
 class _FailingSetAttributesSpan(_Span):
     """Span that fails when usage attributes are copied."""
 
-    def set_attributes(self, attributes: dict[str, int]) -> None:
+    def set_attributes(self, attributes: dict[str, object]) -> None:
         del attributes
         raise RuntimeError("set attributes failed")
 
@@ -80,11 +82,17 @@ def _entry_with_conversation_subentries(logfire: bool = False) -> MockConfigEntr
                         profile_id=kitchen_profile_id,
                         name="Kitchen Model",
                         model="gpt-kitchen",
+                        extra_data={
+                            CONF_MODEL_PRICING: {"input": 1.0, "output": 2.0}
+                        },
                     ),
                     garage_profile_id: model_profile_data(
                         profile_id=garage_profile_id,
                         name="Garage Model",
                         model="gpt-garage",
+                        extra_data={
+                            CONF_MODEL_PRICING: {"input": 1.0, "output": 2.0}
+                        },
                     ),
                 },
                 default_model_profile_id=kitchen_profile_id,
@@ -155,20 +163,46 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
 
     instrument.assert_called_once_with(agent, include_content=True)
     span.assert_called_once()
-    assert span.call_args.args == ("Run Pydantic AI agent",)
+    assert span.call_args.args == ("Kitchen Agent → Kitchen Model",)
     assert span.call_args.kwargs["ha.domain"] == DOMAIN
     assert span.call_args.kwargs["ha.version"] == __version__
+    assert span.call_args.kwargs["ha.core_version"] == __version__
+    assert span.call_args.kwargs["ha.integration_version"] == _INTEGRATION_VERSION
     assert span.call_args.kwargs["ha.entry_id"] == entry.entry_id
     assert span.call_args.kwargs["ha.subentry_title"] == "Kitchen Agent"
     assert span.call_args.kwargs["ha.model"] == "gpt-kitchen"
+    assert span.call_args.kwargs["ha.model_profile"] == "Kitchen Model"
+    assert (
+        span.call_args.kwargs["ha.model_profile_ref"]
+        == f"{_PROVIDER_SUBENTRY_ID}:kitchen-model"
+    )
+    assert span.call_args.kwargs["ha.profile_id"] == "kitchen-model"
+    assert span.call_args.kwargs["ha.provider_title"] == "Hosted OpenAI"
+    assert span.call_args.kwargs["ha.provider_subentry_id"] == _PROVIDER_SUBENTRY_ID
+    assert span.call_args.kwargs["ha.attempt_index"] == 0
+    assert span.call_args.kwargs["ha.attempt_count"] == 1
+    assert span.call_args.kwargs["ha.is_fallback_attempt"] is False
+    assert span.call_args.kwargs["ha.agent_name"] == "Kitchen Agent"
     assert span.call_args.kwargs["ha.structured_output_mode"] == OUTPUT_MODE_TOOL
     assert "ha.output_mode" not in span.call_args.kwargs
     assert span.call_args.kwargs["ha.entity_id"] == kitchen_entity_id
     assert span.call_args.kwargs["ha.conversation_id"] == "conversation-test"
     assert span.call_args.kwargs["ha.logfire_include_content"] is True
+    assert span.call_args.kwargs["gen_ai.operation.name"] == "chat"
+    assert span.call_args.kwargs["gen_ai.system"] == "openai"
+    assert span.call_args.kwargs["gen_ai.provider.name"] == "openai"
+    assert span.call_args.kwargs["gen_ai.request.model"] == "gpt-kitchen"
+    assert span.call_args.kwargs["gen_ai.response.model"] == "gpt-kitchen"
     assert span.return_value.attributes == {
         "gen_ai.usage.input_tokens": 10,
         "gen_ai.usage.output_tokens": 2,
+        "gen_ai.usage.total_tokens": 12,
+        "gen_ai.response.model": "gpt-kitchen",
+        "ha.input_cost": pytest.approx(0.00001),
+        "ha.output_cost": pytest.approx(0.000004),
+        "ha.cost_currency": "USD",
+        "ha.total_cost": pytest.approx(0.000014),
+        "gen_ai.usage.cost": pytest.approx(0.000014),
     }
 
 

@@ -22,6 +22,7 @@ from .metrics import (
     fire_integration_event,
     record_run_failure,
     record_run_success,
+    usage_costs,
 )
 from .run_diagnostics import RunDiagnosticsRecorder
 from .run_failures import (
@@ -195,11 +196,59 @@ def store_run_diagnostics(
     )
 
 
-def set_span_usage_attributes(span: Span, result: AgentRunResult[Any]) -> None:
+def set_span_usage_attributes(
+    span: Span,
+    result: AgentRunResult[Any],
+    *,
+    model_name: str,
+    model_pricing: Mapping[str, float] | None = None,
+) -> None:
     """Copy aggregate Pydantic AI usage to the wrapper span without blocking runs."""
     try:
-        usage_attributes = result.usage.opentelemetry_attributes()
+        usage_attributes = dict(result.usage.opentelemetry_attributes())
+        if total_tokens := _int_usage_value(result.usage, "total_tokens"):
+            usage_attributes["gen_ai.usage.total_tokens"] = total_tokens
+        usage_attributes["gen_ai.response.model"] = (
+            _string_attribute(result, "model_name")
+            or _string_attribute(result, "model")
+            or model_name
+        )
+        cost = usage_costs(result.usage, model_pricing)
+        if cost.input is not None:
+            usage_attributes["ha.input_cost"] = cost.input
+        if cost.output is not None:
+            usage_attributes["ha.output_cost"] = cost.output
+        if cost.cache_read is not None:
+            usage_attributes["ha.cache_read_cost"] = cost.cache_read
+        if any(
+            value is not None for value in (cost.input, cost.output, cost.cache_read)
+        ):
+            usage_attributes["ha.cost_currency"] = "USD"
+        if cost.total is not None:
+            usage_attributes["ha.total_cost"] = cost.total
+            usage_attributes["gen_ai.usage.cost"] = cost.total
         if usage_attributes:
             span.set_attributes(usage_attributes)
     except Exception:
         _LOGGER.exception("Failed to add usage attributes to Logfire span")
+
+
+def _int_usage_value(usage: object, attr: str) -> int:
+    """Return an integer usage field safely."""
+    value = getattr(usage, attr, 0)
+    if callable(value):
+        value = value()
+    if isinstance(value, int | float):
+        return int(value)
+    return 0
+
+
+def _string_attribute(value: object, attr: str) -> str | None:
+    """Return a non-empty string attribute safely."""
+    candidate = getattr(value, attr, None)
+    if callable(candidate):
+        candidate = candidate()
+    if not isinstance(candidate, str):
+        return None
+    candidate = candidate.strip()
+    return candidate or None

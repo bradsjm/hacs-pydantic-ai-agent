@@ -12,7 +12,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import llm
-from opentelemetry.trace import Span
 from pydantic_ai import Agent, AgentRunResult
 from pydantic_ai.capabilities import AbstractCapability, ToolSearch, WebFetch
 from pydantic_ai.exceptions import ModelHTTPError
@@ -22,6 +21,7 @@ from pydantic_ai.toolsets import AbstractToolset, DeferredLoadingToolset
 from pydantic_ai.usage import UsageLimits
 
 from . import PydanticAIAgentConfigEntry
+from ._entity_run_results import set_span_usage_attributes as _set_span_usage_attributes
 from .chat_deltas import (
     _agent_events_to_chat_deltas,
     _append_agent_messages,
@@ -292,6 +292,7 @@ class PydanticAIBaseLLMEntity:
             try:
                 outcome = await self._async_try_model_profile(
                     index=index,
+                    attempt_count=len(profiles),
                     profile=profile,
                     usage_limits=usage_limits,
                     chat_log=chat_log,
@@ -342,6 +343,7 @@ class PydanticAIBaseLLMEntity:
         self,
         *,
         index: int,
+        attempt_count: int,
         profile: ModelProfile,
         usage_limits: UsageLimits,
         chat_log: conversation.ChatLog,
@@ -432,6 +434,8 @@ class PydanticAIBaseLLMEntity:
             has_structure,
             stream,
             run_recorder,
+            attempt_index=index,
+            attempt_count=attempt_count,
         )
 
     def _async_handle_profile_error(
@@ -512,6 +516,9 @@ class PydanticAIBaseLLMEntity:
         has_structure: bool,
         stream: bool,
         run_recorder: RunDiagnosticsRecorder,
+        *,
+        attempt_index: int,
+        attempt_count: int,
     ) -> AgentRunOutcome:
         """Run one model profile attempt and append only successful messages."""
         try:
@@ -520,9 +527,11 @@ class PydanticAIBaseLLMEntity:
                     self.hass,
                     self.entry,
                     self.subentry,
+                    profile=profile,
+                    attempt_index=attempt_index,
+                    attempt_count=attempt_count,
                     entity_id=agent_id,
                     conversation_id=chat_log.conversation_id,
-                    model_name=profile.model_name,
                 ) as span:
                     start = self.hass.loop.time()
                     run_recorder.record(
@@ -551,7 +560,12 @@ class PydanticAIBaseLLMEntity:
                             run_recorder,
                         )
                         if span is not None:
-                            _set_span_usage_attributes(span, result)
+                            _set_span_usage_attributes(
+                                span,
+                                result,
+                                model_name=profile.model_name,
+                                model_pricing=profile.model_pricing,
+                            )
                         duration = self.hass.loop.time() - start
                         run_recorder.record(
                             phase="llm_response",
@@ -583,7 +597,12 @@ class PydanticAIBaseLLMEntity:
                             usage_limits=usage_limits,
                         )
                         if span is not None:
-                            _set_span_usage_attributes(span, result)
+                            _set_span_usage_attributes(
+                                span,
+                                result,
+                                model_name=profile.model_name,
+                                model_pricing=profile.model_pricing,
+                            )
                         duration = self.hass.loop.time() - start
                         await _append_agent_messages(
                             chat_log, agent_id, result.new_messages()
@@ -617,7 +636,12 @@ class PydanticAIBaseLLMEntity:
                         usage_limits=usage_limits,
                     )
                     if span is not None:
-                        _set_span_usage_attributes(span, result)
+                        _set_span_usage_attributes(
+                            span,
+                            result,
+                            model_name=profile.model_name,
+                            model_pricing=profile.model_pricing,
+                        )
                     duration = self.hass.loop.time() - start
                     output = result.output
                     await _append_agent_messages(
@@ -887,13 +911,3 @@ def device_identifier_for_subentry(
         DOMAIN,
         f"{entry.entry_id}:{subentry.subentry_type}:{subentry.subentry_id}",
     )
-
-
-def _set_span_usage_attributes(span: Span, result: AgentRunResult[Any]) -> None:
-    """Copy aggregate Pydantic AI usage to the wrapper span without blocking runs."""
-    try:
-        usage_attributes = result.usage.opentelemetry_attributes()
-        if usage_attributes:
-            span.set_attributes(usage_attributes)
-    except Exception:
-        _LOGGER.exception("Failed to add usage attributes to Logfire span")

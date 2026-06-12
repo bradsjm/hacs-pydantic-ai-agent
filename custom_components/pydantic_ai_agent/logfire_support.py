@@ -1,11 +1,13 @@
 """Logfire support for Pydantic AI Agent."""
 
 import asyncio
+import json
 import logging
 import warnings
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigSubentry
@@ -14,12 +16,23 @@ from homeassistant.core import HomeAssistant
 from pydantic_ai import Agent
 
 from .const import (
+    CONF_AGENT_NAME,
+    CONF_AI_TASK_NAME,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
     CONF_OUTPUT_MODE,
+    CONF_TODO_LIST_ENTITY_ID,
+    CONF_VIRTUAL_WORKSPACE_ENABLED,
+    CONF_WEB_FETCH_ENABLED,
     DOMAIN,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_GOOGLE_GEMINI,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+    SUBENTRY_TYPE_AI_TASK,
+    SUBENTRY_TYPE_CONVERSATION,
 )
-from .model_profiles import primary_model_profile
+from .model_profiles import ModelProfile
 from .repair_issues import (
     async_create_logfire_token_conflict_issue,
     async_delete_logfire_token_conflict_issue,
@@ -28,6 +41,24 @@ from .structured_output import structured_output_mode
 
 _LOGGER = logging.getLogger(__name__)
 _LOGFIRE_STATE_KEY = "logfire"
+
+
+def _load_integration_version() -> str | None:
+    """Return the packaged integration version once from manifest.json."""
+    try:
+        manifest = json.loads(
+            Path(__file__).with_name("manifest.json").read_text(encoding="utf-8")
+        )
+    except Exception:
+        return None
+    version = manifest.get("version")
+    if not isinstance(version, str):
+        return None
+    version = version.strip()
+    return version or None
+
+
+_INTEGRATION_VERSION = _load_integration_version()
 
 
 @dataclass(slots=True)
@@ -218,9 +249,11 @@ def agent_run_span(
     entry: ConfigEntry,
     subentry: ConfigSubentry,
     *,
+    profile: ModelProfile,
+    attempt_index: int,
+    attempt_count: int,
     entity_id: str,
     conversation_id: str | None,
-    model_name: str,
 ) -> Iterator[Any | None]:
     """Wrap one Pydantic AI run with safe Home Assistant trace metadata."""
     if not logfire_active_for_entry(hass, entry):
@@ -231,9 +264,16 @@ def agent_run_span(
         import logfire
 
         span = logfire.span(
-            "Run Pydantic AI agent",
+            _span_title(subentry, profile, attempt_index, attempt_count),
             **_span_attributes(
-                hass, entry, subentry, entity_id, conversation_id, model_name
+                hass,
+                entry,
+                subentry,
+                profile,
+                entity_id,
+                conversation_id,
+                attempt_index,
+                attempt_count,
             ),
         )
         span.__enter__()
@@ -278,21 +318,20 @@ def _span_attributes(
     hass: HomeAssistant,
     entry: ConfigEntry,
     subentry: ConfigSubentry,
+    profile: ModelProfile,
     entity_id: str,
     conversation_id: str | None,
-    model_name: str,
+    attempt_index: int,
+    attempt_count: int,
 ) -> Mapping[str, Any]:
     """Return low-risk trace attributes for Home Assistant context."""
-    try:
-        provider_mode = primary_model_profile(entry, subentry).provider_mode
-    except Exception:
-        provider_mode = None
     llm_api_ids = subentry.data.get(CONF_LLM_HASS_API)
     if not isinstance(llm_api_ids, list):
         llm_api_ids = []
-    return {
+    attributes: dict[str, Any] = {
         "ha.domain": DOMAIN,
         "ha.version": __version__,
+        "ha.core_version": __version__,
         "ha.entry_id": entry.entry_id,
         "ha.entry_title": entry.title,
         "ha.subentry_id": subentry.subentry_id,
@@ -300,12 +339,82 @@ def _span_attributes(
         "ha.subentry_type": subentry.subentry_type,
         "ha.entity_id": entity_id,
         "ha.conversation_id": conversation_id,
-        "ha.provider_mode": provider_mode,
-        "ha.model": model_name,
+        "ha.provider_mode": profile.provider_mode,
+        "ha.provider_title": profile.provider_title,
+        "ha.provider_subentry_id": profile.provider_subentry_id,
+        "ha.model": profile.model_name,
+        "ha.model_profile": profile.title,
+        "ha.model_profile_ref": profile.ref,
+        "ha.profile_id": profile.profile_id,
+        "ha.attempt_index": attempt_index,
+        "ha.attempt_count": attempt_count,
+        "ha.is_fallback_attempt": attempt_index > 0,
         "ha.structured_output_mode": structured_output_mode(
             subentry.data.get(CONF_OUTPUT_MODE)
         ),
         "ha.ha_tools_enabled": bool(llm_api_ids),
         "ha.llm_api_ids": llm_api_ids,
         "ha.logfire_include_content": logfire_include_content(hass, entry),
+        "ha.web_fetch_enabled": bool(subentry.data.get(CONF_WEB_FETCH_ENABLED, False)),
+        "ha.virtual_workspace_enabled": bool(
+            subentry.data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)
+        ),
+        "gen_ai.operation.name": _gen_ai_operation_name(profile.provider_mode),
+        "gen_ai.system": _gen_ai_provider_name(profile.provider_mode),
+        "gen_ai.provider.name": _gen_ai_provider_name(profile.provider_mode),
+        "gen_ai.request.model": profile.model_name,
+        "gen_ai.response.model": profile.model_name,
     }
+    if _INTEGRATION_VERSION is not None:
+        attributes["ha.integration_version"] = _INTEGRATION_VERSION
+    if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
+        attributes["ha.agent_name"] = str(
+            subentry.data.get(CONF_AGENT_NAME, subentry.title)
+        )
+    if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK:
+        attributes["ha.ai_task_name"] = str(
+            subentry.data.get(CONF_AI_TASK_NAME, subentry.title)
+        )
+        attributes["ha.todo_workspace_enabled"] = bool(
+            subentry.data.get(CONF_TODO_LIST_ENTITY_ID)
+        )
+    return attributes
+
+
+def _span_title(
+    subentry: ConfigSubentry,
+    profile: ModelProfile,
+    attempt_index: int,
+    attempt_count: int,
+) -> str:
+    """Return the Logfire title for one wrapper span."""
+    title = f"{subentry.title} → {profile.title}"
+    if attempt_index > 0:
+        title += f" (fallback {attempt_index + 1}/{attempt_count})"
+    return _escape_span_template_text(title)
+
+
+def _gen_ai_operation_name(provider_mode: str) -> str:
+    """Return the GenAI operation name for the active provider mode."""
+    if provider_mode == PROVIDER_GOOGLE_GEMINI:
+        return "generate_content"
+    return "chat"
+
+
+def _gen_ai_provider_name(provider_mode: str) -> str:
+    """Return the provider family for GenAI trace attributes."""
+    if provider_mode in {
+        PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+    }:
+        return "openai"
+    if provider_mode == PROVIDER_ANTHROPIC:
+        return "anthropic"
+    if provider_mode == PROVIDER_GOOGLE_GEMINI:
+        return "gcp.gemini"
+    return provider_mode
+
+
+def _escape_span_template_text(value: str) -> str:
+    """Escape braces so user-configured titles remain safe Logfire templates."""
+    return value.replace("{", "{{").replace("}", "}}")

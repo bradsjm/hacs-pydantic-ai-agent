@@ -84,17 +84,10 @@ def record_run_success(
     input_tokens = _int_usage_value(usage, "input_tokens")
     output_tokens = _int_usage_value(usage, "output_tokens")
     cache_read_tokens = _cache_read_token_usage(usage)
-    unsupported_tokens = _unsupported_cost_token_usage(usage)
     total_tokens = _int_usage_value(usage, "total_tokens")
     model_requests = _int_usage_value(usage, "requests")
     tool_uses = _int_usage_value(usage, "tool_calls")
-    cost = _run_costs(
-        input_tokens,
-        output_tokens,
-        cache_read_tokens,
-        unsupported_tokens,
-        model_pricing,
-    )
+    cost = usage_costs(usage, model_pricing)
 
     record.last_run_model_profile = model_profile
     record.last_run_input_tokens = input_tokens
@@ -237,6 +230,23 @@ class _RunCosts:
     output: float | None
     cache_read: float | None
     total: float | None
+
+
+def usage_costs(
+    usage: object, model_pricing: Mapping[str, float] | None = None
+) -> _RunCosts:
+    """Return USD costs for one usage object from configured pricing."""
+    input_tokens = _int_usage_value(usage, "input_tokens")
+    output_tokens = _int_usage_value(usage, "output_tokens")
+    cache_read_tokens = _cache_read_token_usage(usage)
+    unsupported_tokens = _unsupported_cost_token_usage(usage)
+    return _run_costs(
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        unsupported_tokens,
+        model_pricing,
+    )
 
 
 def _run_costs(
