@@ -159,7 +159,7 @@ def model_filter_schema(
                         ): BooleanSelector(),
                     }
                 ),
-                {"collapsed": True},
+                {"collapsed": False},
             ),
         }
     )
