@@ -63,8 +63,6 @@ from ._profile_validation_logging import (  # noqa: F401
 from ._settings_parsing import _model_settings_from_options
 from .helpers import _section_schema_key, _sorted_select_options
 
-_FALLBACK_MODEL_REF_FIELD = "model_profile_ref"
-
 
 @dataclass(frozen=True, kw_only=True)
 class RunSettingsVisibility:
@@ -425,45 +423,29 @@ def _normalise_fallback_model_refs(
     return refs
 
 
-def _parse_fallback_model_ref_rows(raw_refs: object) -> list[str]:
-    """Return ordered fallback refs parsed from object-selector rows."""
-    if raw_refs in (None, ""):
-        return []
-    if isinstance(raw_refs, str) or not isinstance(raw_refs, list):
-        return []
-    refs: list[str] = []
-    for raw_ref in raw_refs:
-        if not isinstance(raw_ref, Mapping):
-            continue
-        row_ref = raw_ref.get(_FALLBACK_MODEL_REF_FIELD)
-        if not isinstance(row_ref, str) or not row_ref:
-            continue
-        try:
-            provider_subentry_id, profile_id = parse_model_profile_ref(row_ref)
-        except HomeAssistantError:
-            continue
-        refs.append(model_profile_ref(provider_subentry_id, profile_id))
-    return refs
-
-
-def _format_fallback_model_ref_rows(raw_refs: object) -> list[dict[str, str]]:
-    """Return fallback refs in object-selector row shape."""
-    refs = _normalise_fallback_model_refs(raw_refs)
-    if not refs and isinstance(raw_refs, list):
-        refs = _parse_fallback_model_ref_rows(raw_refs)
-    return [{_FALLBACK_MODEL_REF_FIELD: ref} for ref in refs]
+def _deduplicate_fallback_model_refs(raw_refs: object) -> list[str]:
+    """Return canonical fallback refs for selector defaults, preserving order."""
+    return list(dict.fromkeys(_normalise_fallback_model_refs(raw_refs)))
 
 
 def _fallback_model_profile_select_options(
-    hass: HomeAssistant, entry: ConfigEntry | None, selected_refs: object = None
+    hass: HomeAssistant,
+    entry: ConfigEntry | None,
+    selected_refs: object = None,
+    primary_ref: str | None = None,
 ) -> list[SelectOptionDict]:
     """Return workspace-local fallback profile options."""
     del hass
-    options = _model_profile_select_options(entry)
+    options = [
+        option
+        for option in _model_profile_select_options(entry)
+        if option.get("value") != primary_ref
+    ]
     configured_refs = {str(option["value"]) for option in options if "value" in option}
     for ref in _normalise_fallback_model_refs(selected_refs):
-        if ref not in configured_refs:
+        if ref != primary_ref and ref not in configured_refs:
             options.append(SelectOptionDict(label=f"Unavailable / {ref}", value=ref))
+            configured_refs.add(ref)
     return options
 
 

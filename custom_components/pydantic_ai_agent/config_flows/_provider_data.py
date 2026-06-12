@@ -121,13 +121,25 @@ def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol
                 vol.Optional(
                     CONF_PROVIDER_HEADERS,
                     default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
-                ): _key_value_rows_selector(CONF_KEY_VALUE_VALUE, {"text": None}),
+                ): _key_value_rows_selector(
+                    CONF_KEY_VALUE_VALUE,
+                    {"text": None},
+                    key_label="header name",
+                    value_label="header value",
+                    translation_key=CONF_PROVIDER_HEADERS,
+                ),
                 vol.Optional(
                     CONF_PROVIDER_EXTRA_BODY,
                     default=_format_key_value_json_rows(
                         data.get(CONF_PROVIDER_EXTRA_BODY)
                     ),
-                ): _key_value_rows_selector(CONF_KEY_VALUE_JSON_VALUE, {"text": None}),
+                ): _key_value_rows_selector(
+                    CONF_KEY_VALUE_JSON_VALUE,
+                    {"template": None},
+                    key_label="parameter name",
+                    value_label="value",
+                    translation_key=CONF_PROVIDER_EXTRA_BODY,
+                ),
             }
         ),
         {"collapsed": True},

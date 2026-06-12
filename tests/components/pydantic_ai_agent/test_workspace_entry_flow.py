@@ -8,20 +8,15 @@ from custom_components.pydantic_ai_agent import (
     ProviderRuntimeData,
     WorkspaceRuntimeData,
 )
-from custom_components.pydantic_ai_agent.config_flows._profile_helpers import (
-    _FALLBACK_MODEL_REF_FIELD,
-)
 from custom_components.pydantic_ai_agent.config_flows.workspace_flow import (
     PydanticAIAgentConfigFlow,
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
-    CONF_API_KEY,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
-    CONF_NAME,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
     CONF_SKILL_CONTENT,
@@ -37,7 +32,7 @@ from custom_components.pydantic_ai_agent.conversation import (
 )
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigSubentry
-from homeassistant.const import CONF_LLM_HASS_API
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_validation as cv
@@ -253,8 +248,8 @@ async def test_conversation_subentry_persists_fallback_row_order(
             CONF_PRIMARY_MODEL_REF: profile_ref,
             "fallback_models": {
                 CONF_FALLBACK_MODEL_REFS: [
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-3"},
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                    "provider-1:profile-3",
+                    "provider-1:profile-2",
                 ]
             },
         },

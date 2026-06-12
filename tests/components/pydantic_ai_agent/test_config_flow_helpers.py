@@ -19,7 +19,6 @@ from custom_components.pydantic_ai_agent.config_flows._key_value_rows import (
     _parse_key_value_text_rows,
 )
 from custom_components.pydantic_ai_agent.config_flows._profile_helpers import (
-    _FALLBACK_MODEL_REF_FIELD,
     RunSettingsVisibility,
     _fallback_model_profile_select_options,
     _run_settings_visibility,
@@ -292,7 +291,7 @@ def test_model_settings_schema_formats_stored_values() -> None:
     "schema_builder",
     [_conversation_schema, _ai_task_data_schema],
 )
-def test_agent_schema_preserves_ordered_fallback_rows_in_serialized_defaults(
+def test_agent_schema_preserves_ordered_fallback_refs_in_serialized_defaults(
     hass: HomeAssistant,
     schema_builder: Callable[
         [HomeAssistant, Mapping[str, Any], MockConfigEntry], vol.Schema
@@ -306,6 +305,8 @@ def test_agent_schema_preserves_ordered_fallback_rows_in_serialized_defaults(
             CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
             CONF_FALLBACK_MODEL_REFS: [
                 "provider-1:missing-profile",
+                "provider-1:missing-profile",
+                "provider-1:profile-2",
                 "provider-1:profile-2",
             ],
         },
@@ -314,8 +315,8 @@ def test_agent_schema_preserves_ordered_fallback_rows_in_serialized_defaults(
 
     assert serialized_section_default(data_schema, _SECTION_FALLBACK_MODELS) == {
         CONF_FALLBACK_MODEL_REFS: [
-            {_FALLBACK_MODEL_REF_FIELD: "provider-1:missing-profile"},
-            {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+            "provider-1:missing-profile",
+            "provider-1:profile-2",
         ]
     }
 
@@ -325,6 +326,8 @@ def test_agent_schema_preserves_ordered_fallback_rows_in_serialized_defaults(
     [
         (_conversation_schema, "hass_control", CONF_LLM_HASS_API),
         (_ai_task_data_schema, "hass_control", CONF_LLM_HASS_API),
+        (_conversation_schema, "fallback_models", CONF_FALLBACK_MODEL_REFS),
+        (_ai_task_data_schema, "fallback_models", CONF_FALLBACK_MODEL_REFS),
         (_conversation_schema, "skill_settings", CONF_SKILLS),
         (_conversation_schema, "external_tools", CONF_MCP_SERVER_IDS),
     ],
@@ -363,13 +366,65 @@ def test_fallback_model_profile_select_options_include_unavailable_selected_ref(
     options = _fallback_model_profile_select_options(
         hass,
         entry,
-        ["provider-1:missing-profile", "provider-1:profile-2"],
+        [
+            "provider-1:missing-profile",
+            "provider-1:missing-profile",
+            "provider-1:profile-2",
+        ],
     )
 
     assert {
         "label": "Unavailable / provider-1:missing-profile",
         "value": "provider-1:missing-profile",
     } in options
+    assert [option["value"] for option in options].count(
+        "provider-1:missing-profile"
+    ) == 1
+
+
+@pytest.mark.parametrize(
+    "schema_builder",
+    [_conversation_schema, _ai_task_data_schema],
+)
+def test_agent_schema_fallback_options_exclude_primary_and_use_display_labels(
+    hass: HomeAssistant,
+    schema_builder: Callable[
+        [HomeAssistant, Mapping[str, Any], MockConfigEntry], vol.Schema
+    ],
+) -> None:
+    entry = _fallback_test_entry()
+
+    selector = cast(
+        SelectSelector,
+        _section_selector(
+            schema_builder(
+                hass,
+                {
+                    CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                    CONF_FALLBACK_MODEL_REFS: [
+                        "provider-1:missing-profile",
+                        "provider-1:profile-2",
+                    ],
+                },
+                entry,
+            ),
+            "fallback_models",
+            CONF_FALLBACK_MODEL_REFS,
+        ),
+    )
+
+    assert {
+        "label": "OpenAI-compatible / Fast",
+        "value": "provider-1:profile-1",
+    } not in selector.config["options"]
+    assert {
+        "label": "OpenAI-compatible / Cheap",
+        "value": "provider-1:profile-2",
+    } in selector.config["options"]
+    assert {
+        "label": "Unavailable / provider-1:missing-profile",
+        "value": "provider-1:missing-profile",
+    } in selector.config["options"]
 
 
 def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> None:
@@ -409,8 +464,8 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
             {
                 CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
                 CONF_FALLBACK_MODEL_REFS: [
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-3"},
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                    "provider-1:profile-3",
+                    "provider-1:profile-2",
                 ],
             },
         ),
@@ -420,8 +475,8 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
                 CONF_AI_TASK_NAME: "Report",
                 CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
                 CONF_FALLBACK_MODEL_REFS: [
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-3"},
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                    "provider-1:profile-3",
+                    "provider-1:profile-2",
                 ],
             },
         ),
@@ -449,8 +504,8 @@ def test_save_time_helpers_preserve_fallback_row_order(
             {
                 CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
                 CONF_FALLBACK_MODEL_REFS: [
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                    "provider-1:profile-2",
+                    "provider-1:profile-2",
                 ],
             },
             "duplicate_fallback_model",
@@ -460,8 +515,8 @@ def test_save_time_helpers_preserve_fallback_row_order(
             {
                 CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
                 CONF_FALLBACK_MODEL_REFS: [
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-1"},
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                    "provider-1:profile-1",
+                    "provider-1:profile-2",
                 ],
             },
             "primary_model_in_fallbacks",
@@ -472,8 +527,8 @@ def test_save_time_helpers_preserve_fallback_row_order(
                 CONF_AI_TASK_NAME: "Report",
                 CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
                 CONF_FALLBACK_MODEL_REFS: [
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                    "provider-1:profile-2",
+                    "provider-1:profile-2",
                 ],
             },
             "duplicate_fallback_model",
@@ -484,8 +539,8 @@ def test_save_time_helpers_preserve_fallback_row_order(
                 CONF_AI_TASK_NAME: "Report",
                 CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
                 CONF_FALLBACK_MODEL_REFS: [
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-1"},
-                    {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
+                    "provider-1:profile-1",
+                    "provider-1:profile-2",
                 ],
             },
             "primary_model_in_fallbacks",
@@ -584,6 +639,34 @@ def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> 
     assert isinstance(provider_headers_selector, ObjectSelector)
     assert isinstance(provider_extra_body_selector, ObjectSelector)
     assert isinstance(mcp_headers_selector, ObjectSelector)
+    provider_headers_selector = cast(ObjectSelector, provider_headers_selector)
+    provider_extra_body_selector = cast(ObjectSelector, provider_extra_body_selector)
+    assert provider_headers_selector.config["translation_key"] == CONF_PROVIDER_HEADERS
+    assert (
+        provider_headers_selector.config["fields"][CONF_KEY_VALUE_KEY]["label"]
+        == "header name"
+    )
+    assert (
+        provider_headers_selector.config["fields"][CONF_KEY_VALUE_VALUE]["label"]
+        == "header value"
+    )
+    assert (
+        provider_extra_body_selector.config["translation_key"]
+        == CONF_PROVIDER_EXTRA_BODY
+    )
+    assert (
+        provider_extra_body_selector.config["fields"][CONF_KEY_VALUE_KEY]["label"]
+        == "parameter name"
+    )
+    assert (
+        provider_extra_body_selector.config["fields"][CONF_KEY_VALUE_JSON_VALUE][
+            "label"
+        ]
+        == "value"
+    )
+    assert provider_extra_body_selector.config["fields"][CONF_KEY_VALUE_JSON_VALUE][
+        "selector"
+    ] == {"template": {}}
 
 
 def test_parse_model_pricing_validates_and_clears_fields() -> None:

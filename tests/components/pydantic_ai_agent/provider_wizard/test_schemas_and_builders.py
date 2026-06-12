@@ -131,6 +131,28 @@ def test_connection_schema_uses_structured_row_selectors() -> None:
 
     assert isinstance(header_selector, ObjectSelector)
     assert isinstance(extra_body_selector, ObjectSelector)
+    header_selector = cast(ObjectSelector, header_selector)
+    extra_body_selector = cast(ObjectSelector, extra_body_selector)
+    assert header_selector.config["translation_key"] == CONF_PROVIDER_HEADERS
+    assert (
+        header_selector.config["fields"][CONF_KEY_VALUE_KEY]["label"] == "header name"
+    )
+    assert (
+        header_selector.config["fields"][CONF_KEY_VALUE_VALUE]["label"]
+        == "header value"
+    )
+    assert extra_body_selector.config["translation_key"] == CONF_PROVIDER_EXTRA_BODY
+    assert (
+        extra_body_selector.config["fields"][CONF_KEY_VALUE_KEY]["label"]
+        == "parameter name"
+    )
+    assert (
+        extra_body_selector.config["fields"][CONF_KEY_VALUE_JSON_VALUE]["label"]
+        == "value"
+    )
+    assert extra_body_selector.config["fields"][CONF_KEY_VALUE_JSON_VALUE][
+        "selector"
+    ] == {"template": {}}
     assert _nested_default_for_schema_key(schema, CONF_PROVIDER_HEADERS) == [
         {CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer token"}
     ]

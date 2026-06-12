@@ -7,8 +7,8 @@ import voluptuous as vol
 from homeassistant.helpers.selector import (
     ObjectSelector,
     ObjectSelectorConfig,
+    ObjectSelectorField,
     SelectOptionDict,
-    Selector,
 )
 from homeassistant.helpers.typing import VolDictType
 
@@ -62,38 +62,30 @@ def _section_schema_key(section_name: str, section_schema: VolDictType) -> vol.O
 
 
 def _key_value_rows_selector(
-    value_field: str, value_selector: dict[str, object]
+    value_field: str,
+    value_selector: dict[str, Any],
+    *,
+    key_label: str | None = None,
+    value_label: str | None = None,
+    translation_key: str | None = None,
 ) -> ObjectSelector:
     """Return a repeated key/value row selector."""
-    return ObjectSelector(
-        ObjectSelectorConfig(
-            multiple=True,
-            fields={
-                CONF_KEY_VALUE_KEY: {
-                    "selector": {"text": None},
-                    "required": True,
-                },
-                value_field: {
-                    "selector": value_selector,
-                    "required": True,
-                },
-            },
-        )
+    key_field = ObjectSelectorField(selector={"text": None}, required=True)
+    if key_label is not None:
+        key_field["label"] = key_label
+    value_field_config = ObjectSelectorField(
+        selector=value_selector,
+        required=True,
     )
-
-
-def _single_value_rows_selector(
-    value_field: str, value_selector: Selector | dict[str, object]
-) -> ObjectSelector:
-    """Return a repeated single-value row selector."""
-    return ObjectSelector(
-        ObjectSelectorConfig(
-            multiple=True,
-            fields={
-                value_field: {
-                    "selector": value_selector,
-                    "required": True,
-                }
-            },
-        )
+    if value_label is not None:
+        value_field_config["label"] = value_label
+    config = ObjectSelectorConfig(
+        multiple=True,
+        fields={
+            CONF_KEY_VALUE_KEY: key_field,
+            value_field: value_field_config,
+        },
     )
+    if translation_key is not None:
+        config["translation_key"] = translation_key
+    return ObjectSelector(config)

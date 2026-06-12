@@ -142,7 +142,7 @@
             },
             "fallback_models": {
               "data": {
-                "fallback_model_refs": "Fallback language model profiles"
+                "fallback_model_refs": "Add Fallback Model"
               },
               "data_description": {
                 "fallback_model_refs": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure."
@@ -252,7 +252,7 @@
             },
             "fallback_models": {
               "data": {
-                "fallback_model_refs": "Fallback language model profiles"
+                "fallback_model_refs": "Add Fallback Model"
               },
               "data_description": {
                 "fallback_model_refs": "Optional ordered fallback language model profiles to try when the primary model has a retryable provider or usage-limit failure."
@@ -374,7 +374,7 @@
         },
         "manage_tools": {
           "data": {
-            "mcp_allowed_tools": "MCP tool list:"
+            "mcp_allowed_tools": "Enable MCP tools"
           },
           "data_description": {
             "mcp_allowed_tools": "Only selected tools will be enabled for use with conversation agents or AI tasks."
@@ -458,8 +458,8 @@
                 "provider_headers": "Provider HTTP headers"
               },
               "data_description": {
-                "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
-                "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+                "provider_extra_body": "Provider-specific request body fields for provider requests. Add one parameter per row; enter the value as JSON. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
+                "provider_headers": "Optional HTTP headers for provider model discovery and requests. Add one header per row."
               },
               "name": "Advanced Options"
             }
@@ -530,8 +530,8 @@
                 "provider_headers": "Provider HTTP headers"
               },
               "data_description": {
-                "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
-                "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+                "provider_extra_body": "Provider-specific request body fields for provider requests. Add one parameter per row; enter the value as JSON. Strings must be quoted. Do not set chat_template_kwargs here; use the dedicated profile field.",
+                "provider_headers": "Optional HTTP headers for provider model discovery and requests. Add one header per row."
               },
               "name": "Advanced Options"
             }
@@ -656,8 +656,8 @@
                 "provider_headers": "Provider HTTP headers"
               },
               "data_description": {
-                "provider_extra_body": "Provider-specific request body fields, one per line, using 'key: JSON value' format. Strings must be quoted.",
-                "provider_headers": "Optional HTTP headers for provider model discovery and requests, one per line, using 'Header-Name: value' format."
+                "provider_extra_body": "Provider-specific request body fields for provider requests. Add one parameter per row; enter the value as JSON. Strings must be quoted.",
+                "provider_headers": "Optional HTTP headers for provider model discovery and requests. Add one header per row."
               },
               "name": "Advanced Options"
             }
@@ -823,12 +823,37 @@
     }
   },
   "selector": {
+    "fallback_model_refs": {
+      "name": "Add Fallback Model"
+    },
     "output_mode": {
       "options": {
         "native": "Native",
         "prompted": "Prompted",
         "tool": "Tool"
       }
+    },
+    "provider_extra_body": {
+      "fields": {
+        "json_value": {
+          "name": "value"
+        },
+        "key": {
+          "name": "parameter name"
+        }
+      },
+      "name": "Add HTTP Body"
+    },
+    "provider_headers": {
+      "fields": {
+        "key": {
+          "name": "header name"
+        },
+        "value": {
+          "name": "header value"
+        }
+      },
+      "name": "Add HTTP Header"
     },
     "provider_mode": {
       "options": {
