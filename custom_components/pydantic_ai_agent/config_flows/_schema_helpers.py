@@ -257,6 +257,7 @@ def _model_profile_schema(
         )
     else:
         model_selector = TextSelector(TextSelectorConfig())
+    advanced_model_settings_schema = _model_settings_schema(options)
     return vol.Schema(
         {
             model_schema_key: model_selector,
@@ -272,9 +273,10 @@ def _model_profile_schema(
             ): NumberSelector(
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
             ),
-            vol.Optional(_SECTION_ADVANCED_MODEL_SETTINGS, default={}): section(
-                _model_settings_schema(options), {"collapsed": True}
-            ),
+            _section_schema_key(
+                _SECTION_ADVANCED_MODEL_SETTINGS,
+                advanced_model_settings_schema.schema,
+            ): section(advanced_model_settings_schema, {"collapsed": True}),
         }
     )
 

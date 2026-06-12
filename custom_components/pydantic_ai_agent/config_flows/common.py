@@ -131,7 +131,6 @@ from ._constants import (
 from ._profile_helpers import (
     _classify_existing_provider_profile,
     _fallback_model_profile_select_options,
-    _log_provider_validation_failure,
     _model_profile_edit_schema,
     _model_profile_select_options,
     _normalise_fallback_model_refs,
@@ -141,10 +140,13 @@ from ._profile_helpers import (
     _provider_profile_dependents,
     _provider_profile_options,
     _provider_profile_selector_schema,
-    _provider_validation_placeholders,
     _referenced_provider_profile_ids,
     _selected_model_profile_error,
     _selected_model_profile_refs,
+)
+from ._profile_validation_logging import (
+    _log_provider_validation_failure,
+    _provider_validation_placeholders,
     _selected_todo_workspace_error,
 )
 from ._provider_data import (

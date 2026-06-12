@@ -1,24 +1,24 @@
 """Agent runner functions extracted from PydanticAIBaseLLMEntity methods."""
 
-from collections.abc import AsyncIterable, Sequence
+from collections.abc import AsyncIterable, Callable, Sequence
 from typing import Any, cast
 
 from homeassistant.components import conversation
-from homeassistant.config_entries import ConfigSubentry
+from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai import Agent, AgentRunResult
-from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai.capabilities import AbstractCapability, ToolSearch
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.settings import ModelSettings
-from pydantic_ai.toolsets import AbstractToolset
+from pydantic_ai.toolsets import AbstractToolset, DeferredLoadingToolset
 from pydantic_ai.usage import UsageLimits
 
 from ._entity_auth import (
     _join_instructions,
 )
 from ._entity_run_results import set_span_usage_attributes
-from ._types import PydanticAIAgentConfigEntry
+from ._types import WorkspaceRuntimeData
 from .chat_deltas import (
     _agent_events_to_chat_deltas,
     _append_agent_messages,
@@ -26,8 +26,10 @@ from .chat_deltas import (
     _append_text,
     _json_output,
 )
+from .const import CONF_MCP_SERVER_IDS
 from .ha_toolset import tools_from_llm_api_with_diagnostics
 from .logfire_support import agent_run_span, instrument_agent
+from .mcp import async_runtime_mcp_toolsets
 from .model_profiles import (
     ModelProfile,
     chat_model_for_profile,
@@ -45,6 +47,8 @@ from .run_failures import (
 )
 from .run_state import AgentRunOutcome, _StreamRunState
 from .virtual_workspace import virtual_workspace_enabled, virtual_workspace_parts
+
+type PydanticAIAgentConfigEntry = ConfigEntry[WorkspaceRuntimeData]
 
 
 async def run_model_profile(
@@ -68,39 +72,55 @@ async def run_model_profile(
     capabilities: list[AbstractCapability],
     extra_toolsets: Sequence[AbstractToolset[Any]],
     extra_instructions: str | None,
+    agent_factory: type[Agent[Any, Any]] = Agent,
+    model_factory: Callable[..., object] = chat_model_for_profile,
+    virtual_workspace_parts_factory: Callable[..., Any] = virtual_workspace_parts,
 ) -> AgentRunOutcome:
     """Run one model profile attempt and return the outcome."""
     virtual_toolsets: Sequence[AbstractToolset[Any]] = ()
     virtual_instructions: str | None = None
     if virtual_workspace_enabled(subentry.data):
-        parts = virtual_workspace_parts()
+        parts = virtual_workspace_parts_factory()
         virtual_toolsets = parts.toolsets
         virtual_instructions = parts.instructions
     instructions = _join_instructions(virtual_instructions, extra_instructions)
     settings = model_settings(profile, subentry.data)
     settings = _model_settings_with_provider_extra_body(entry, profile, settings)
     settings = _model_settings_with_chat_template_kwargs(hass, profile, settings)
-    toolsets = [*virtual_toolsets, *extra_toolsets]
+    mcp_toolsets = await async_runtime_mcp_toolsets(
+        hass,
+        entry,
+        subentry.data.get(CONF_MCP_SERVER_IDS),
+    )
+    toolsets = [*mcp_toolsets, *virtual_toolsets, *extra_toolsets]
     run_capabilities = list(capabilities)
+    if any(isinstance(toolset, DeferredLoadingToolset) for toolset in toolsets):
+        run_capabilities = [
+            capability
+            for capability in run_capabilities
+            if not isinstance(capability, ToolSearch)
+        ]
+        run_capabilities.append(ToolSearch(strategy="keywords"))
     if thinking := thinking_capability(subentry.data, profile):
         run_capabilities.append(thinking)
     run_recorder.record(
         phase="attempt",
         event="model_profile_attempt_started",
         data={
-            "attempt_index": index,
-            "model_profile": profile,
-            "model_settings": settings,
-            "usage_limits": usage_limits,
-            "extra_toolset_count": len(extra_toolsets),
-            "virtual_workspace_enabled": virtual_workspace_enabled(subentry.data),
+                "attempt_index": index,
+                "model_profile": profile,
+                "model_settings": settings,
+                "usage_limits": usage_limits,
+                "mcp_toolset_count": len(mcp_toolsets),
+                "extra_toolset_count": len(extra_toolsets),
+                "virtual_workspace_enabled": virtual_workspace_enabled(subentry.data),
             "capability_types": [
                 type(capability).__name__ for capability in run_capabilities
             ],
         },
     )
-    agent = Agent(
-        chat_model_for_profile(hass, entry, profile),
+    agent = agent_factory(
+        cast(Any, model_factory(hass, entry, profile)),
         output_type=cast(Any, agent_output_type),
         instructions=instructions,
         model_settings=settings,

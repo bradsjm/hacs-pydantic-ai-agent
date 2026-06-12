@@ -1,8 +1,8 @@
 """Provider validation helpers for Pydantic AI Agent."""
 
 import json
-from collections.abc import AsyncIterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import AsyncIterable, Mapping
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -29,7 +29,12 @@ from pydantic_ai.messages import ModelResponseStreamEvent
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.settings import ModelSettings, ThinkingLevel
 
-from ._redaction import redact_data, redaction_keys
+from ._provider_validation_errors import (
+    ProviderValidationError,
+    format_api_error,
+    map_http_error,
+    map_structured_http_error,
+)
 from .chat_template_kwargs import (
     reject_chat_template_kwargs_in_extra_body,
     render_chat_template_kwargs,
@@ -51,7 +56,6 @@ from .const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
-from .error_classification import connection_failure_message
 from .model_settings import (
     MODEL_SETTING_EXTRA_BODY,
     PROBE_STRIPPED_MODEL_SETTING_KEYS,
@@ -76,18 +80,10 @@ from .structured_output import (
     structured_output_mode as normalise_structured_output_mode,
 )
 
-_HTTP_STATUS_LABELS = {
-    400: "invalid request",
-    401: "authentication issue",
-    402: "payment issue",
-    403: "permission issue",
-    404: "model not found",
-    408: "timeout",
-    409: "conflict",
-    422: "validation issue",
-    429: "rate limit",
-    504: "timeout",
-}
+_format_api_error = format_api_error
+_map_http_error = map_http_error
+_map_structured_http_error = map_structured_http_error
+
 _MODEL_SETTING_TIMEOUT = CONF_TIMEOUT
 _MODEL_SETTING_THINKING = CONF_THINKING
 _MODEL_SETTING_EXTRA_BODY = MODEL_SETTING_EXTRA_BODY
@@ -97,7 +93,6 @@ _PROVIDER_EXTRA_BODY_MODES = {
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 }
-_MAX_METADATA_REPR_LENGTH = 1000
 _STRUCTURED_PROBE_OUTPUT_NAME = structured_output_name(
     "probe_response", "probe_response"
 )
@@ -109,124 +104,9 @@ _STRUCTURED_PROBE_SCHEMA = {
 }
 
 
-@dataclass(slots=True)
-class ProviderValidationError(Exception):
-    """Provider validation failed with a translation-ready reason."""
-
-    reason: str
-    message: str
-    status_code: int | None = None
-
-
 def provider_extra_body_supported(data: Mapping[str, Any]) -> bool:
     """Return if the provider mode consumes provider-level extra body."""
     return data.get(CONF_PROVIDER_MODE) in _PROVIDER_EXTRA_BODY_MODES
-
-
-def _format_metadata(metadata: object) -> str:
-    """Return redacted, bounded provider metadata for config-flow display."""
-    redacted = _display_safe_metadata(redact_data(metadata))
-    formatted = repr(redacted)
-    if len(formatted) > _MAX_METADATA_REPR_LENGTH:
-        return f"{formatted[:_MAX_METADATA_REPR_LENGTH]}..."
-    return formatted
-
-
-def _display_safe_metadata(metadata: object) -> object:
-    """Return metadata safe for user-visible error messages."""
-    sensitive_keys = redaction_keys()
-    if isinstance(metadata, Mapping):
-        filtered = {
-            key: _display_safe_metadata(value)
-            for key, value in metadata.items()
-            if key not in sensitive_keys
-        }
-        return filtered or "**REDACTED**"
-    if isinstance(metadata, Sequence) and not isinstance(
-        metadata, str | bytes | bytearray
-    ):
-        return [_display_safe_metadata(value) for value in metadata]
-    return metadata
-
-
-def _status_label(status_code: int) -> str:
-    """Return a user-facing category for an HTTP status code."""
-    if label := _HTTP_STATUS_LABELS.get(status_code):
-        return label
-    if 500 <= status_code <= 599:
-        return "provider server issue"
-    return "HTTP error"
-
-
-def _format_http_error(err: ModelHTTPError) -> str:
-    """Return a compact user-facing message for a provider HTTP error."""
-    message = (
-        f"The provider returned error {err.status_code}"
-        f" ({_status_label(err.status_code)})"
-        f' for model "{err.model_name}".'
-    )
-    if isinstance(err.body, Mapping) and (metadata := err.body.get("metadata")):
-        message = f"{message} Metadata: {_format_metadata(metadata)}."
-    return message
-
-
-def _format_connection_error(err: BaseException) -> str | None:
-    """Return a well-defined connection error message if one can be identified."""
-    return connection_failure_message(err)
-
-
-def _format_api_error(err: ModelAPIError) -> ProviderValidationError:
-    """Map a non-HTTP model API error to a config-flow validation error."""
-    if connection_message := _format_connection_error(err):
-        reason = (
-            "timeout"
-            if connection_message == "Request timed out."
-            else "cannot_connect"
-        )
-        return ProviderValidationError(reason, connection_message)
-    return ProviderValidationError(
-        "provider_error",
-        f'The provider returned an API error for model "{err.model_name}".',
-    )
-
-
-def _map_http_error(err: ModelHTTPError) -> ProviderValidationError:
-    """Map a model HTTP error to a config-flow validation error."""
-    status_code = err.status_code
-    if status_code == 401:
-        reason = "invalid_auth"
-    elif status_code == 403:
-        reason = "permission_denied"
-    elif status_code == 404:
-        reason = "invalid_model"
-    elif status_code in (408, 504):
-        reason = "timeout"
-    elif status_code == 429:
-        reason = "rate_limited"
-    elif status_code == 400:
-        # OpenAI-compatible providers often report unknown models as 400 instead
-        # of 404, so both statuses drive the same reconfigure path.
-        reason = "invalid_model"
-    else:
-        reason = "provider_error"
-    return ProviderValidationError(reason, _format_http_error(err), status_code)
-
-
-def _map_structured_http_error(
-    err: ModelHTTPError, output_mode: str
-) -> ProviderValidationError:
-    """Map structured-output probe HTTP errors to capability errors."""
-    if err.status_code == 400:
-        return ProviderValidationError(
-            "unsupported_output_mode",
-            (
-                f'Model "{err.model_name}" rejected structured output mode '
-                f'"{output_mode}". Try a different structured output mode or a '
-                "model/provider that supports this mode."
-            ),
-            err.status_code,
-        )
-    return _map_http_error(err)
 
 
 def _openai_compatible_model(

@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
 import voluptuous as vol
-from homeassistant.components.todo.const import DOMAIN as TODO_DOMAIN
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import section
 from homeassistant.exceptions import HomeAssistantError
@@ -35,10 +34,8 @@ from ..const import (
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_NAME,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
-    CONF_TODO_LIST_ENTITY_ID,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
@@ -52,18 +49,19 @@ from ..model_profiles import (
     provider_subentries,
 )
 from ..provider import model_thinking_support
-from ..provider_validation import ProviderValidationError
 from ._constants import (
     _CONF_MODEL_PROFILE_ID,
     _MODEL_SETTING_TEMPERATURE,
     _SECTION_ADVANCED_MODEL_SETTINGS,
     _SECTION_MODEL_PRICING,
-    _TODO_WORKSPACE_REQUIRED_FEATURES,
+)
+from ._profile_validation_logging import (  # noqa: F401
+    _log_provider_validation_failure,
+    _provider_validation_placeholders,
+    _selected_todo_workspace_error,
 )
 from ._settings_parsing import _model_settings_from_options
-from .helpers import _sorted_select_options
-
-_LOGGER = logging.getLogger(__name__)
+from .helpers import _section_schema_key, _sorted_select_options
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -72,40 +70,6 @@ class RunSettingsVisibility:
 
     supports_thinking: bool = False
     can_disable_thinking: bool = False
-
-
-def _provider_validation_placeholders(
-    err: ProviderValidationError,
-) -> dict[str, str]:
-    """Return translation placeholders for provider validation errors."""
-    placeholders = {"error_message": err.message}
-    if err.status_code is not None:
-        placeholders["status_code"] = str(err.status_code)
-    return placeholders
-
-
-def _log_provider_validation_failure(
-    *, step: str, model_name: str, err: ProviderValidationError
-) -> None:
-    """Log provider validation failures without request details or credentials."""
-    if err.status_code == 429:
-        _LOGGER.warning(
-            'Provider validation rate limited during %s for model "%s": '
-            "reason=%s status_code=%s",
-            step,
-            model_name,
-            err.reason,
-            err.status_code,
-        )
-        return
-
-    _LOGGER.warning(
-        'Provider validation failed during %s for model "%s": reason=%s status_code=%s',
-        step,
-        model_name,
-        err.reason,
-        err.status_code,
-    )
 
 
 def _referenced_provider_profile_ids(
@@ -406,11 +370,15 @@ def _model_profile_edit_schema(
             },
         )
     ] = NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1))
-    schema[vol.Optional(_SECTION_ADVANCED_MODEL_SETTINGS, default={})] = section(
-        _model_settings_schema(options), {"collapsed": True}
-    )
-    schema[vol.Optional(_SECTION_MODEL_PRICING, default={})] = section(
-        _model_pricing_schema(options), {"collapsed": True}
+    advanced_model_settings_schema = _model_settings_schema(options)
+    schema[
+        _section_schema_key(
+            _SECTION_ADVANCED_MODEL_SETTINGS, advanced_model_settings_schema.schema
+        )
+    ] = section(advanced_model_settings_schema, {"collapsed": True})
+    model_pricing_schema = _model_pricing_schema(options)
+    schema[_section_schema_key(_SECTION_MODEL_PRICING, model_pricing_schema.schema)] = (
+        section(model_pricing_schema, {"collapsed": True})
     )
     return vol.Schema(schema)
 
@@ -499,27 +467,4 @@ def _selected_model_profile_error(
     for profile_ref in fallback_refs:
         if not configured_model_profile_exists(entry, profile_ref):
             return "model_profile_not_found"
-    return None
-
-
-def _selected_todo_workspace_error(
-    hass: HomeAssistant, data: Mapping[str, Any]
-) -> str | None:
-    """Return a form error for an invalid todo workspace entity."""
-    entity_id = data.get(CONF_TODO_LIST_ENTITY_ID)
-    if not entity_id:
-        return None
-    if not isinstance(entity_id, str) or not entity_id.startswith(f"{TODO_DOMAIN}."):
-        return "todo_list_not_found"
-    state = hass.states.get(entity_id)
-    if state is None:
-        return "todo_list_not_found"
-    supported_features = state.attributes.get("supported_features", 0)
-    if not isinstance(supported_features, int):
-        return "todo_list_unsupported"
-    if (
-        supported_features & _TODO_WORKSPACE_REQUIRED_FEATURES
-        != _TODO_WORKSPACE_REQUIRED_FEATURES
-    ):
-        return "todo_list_unsupported"
     return None
