@@ -11,10 +11,10 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
-    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_MAX_ITERATIONS,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_MODE,
+    CONF_TEMPLATED_EXTRA_BODY,
     CONF_THINKING,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
@@ -416,8 +416,8 @@ async def test_probe_model_filters_thinking_by_effective_profile_support(
         assert request_parameters.thinking == expected_thinking
 
 
-async def test_probe_model_renders_chat_template_kwargs(hass: HomeAssistant) -> None:
-    """Test provider validation renders dedicated chat template kwargs."""
+async def test_probe_model_renders_templated_extra_body(hass: HomeAssistant) -> None:
+    """Test provider validation renders templated extra body."""
     stream_events = _SingleEventStream()
 
     @asynccontextmanager
@@ -435,13 +435,25 @@ async def test_probe_model_renders_chat_template_kwargs(hass: HomeAssistant) -> 
     ):
         await async_probe_model(
             hass,
-            _provider_data() | {CONF_PROVIDER_EXTRA_BODY: {"service_tier": "flex"}},
+            _provider_data()
+            | {
+                CONF_PROVIDER_EXTRA_BODY: {
+                    "service_tier": "flex",
+                    "metadata": {"provider": "base"},
+                }
+            },
             "gpt-test",
             {
-                CONF_CHAT_TEMPLATE_KWARGS: [
+                CONF_TEMPLATED_EXTRA_BODY: [
                     {
-                        CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+                        CONF_CHAT_TEMPLATE_KWARG_KEY: (
+                            "chat_template_kwargs.enable_thinking"
+                        ),
                         CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
+                    },
+                    {
+                        CONF_CHAT_TEMPLATE_KWARG_KEY: "metadata.profile",
+                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: '{{ "rendered" }}',
                     }
                 ],
             },
@@ -450,7 +462,8 @@ async def test_probe_model_renders_chat_template_kwargs(hass: HomeAssistant) -> 
     assert model_request_stream.call_args.kwargs["model_settings"] == {
         "extra_body": {
             "service_tier": "flex",
-            CONF_CHAT_TEMPLATE_KWARGS: {"enable_thinking": True},
+            "metadata": {"provider": "base", "profile": "rendered"},
+            "chat_template_kwargs": {"enable_thinking": True},
         },
         "timeout": 10.0,
     }

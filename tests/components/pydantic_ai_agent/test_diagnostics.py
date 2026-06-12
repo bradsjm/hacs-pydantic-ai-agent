@@ -7,13 +7,15 @@ from typing import cast
 from unittest.mock import Mock
 
 import pytest
-from custom_components.pydantic_ai_agent import WorkspaceRuntimeData
+from custom_components.pydantic_ai_agent import (
+    MCPServerRuntimeData,
+    WorkspaceRuntimeData,
+)
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_BASE_URL,
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
-    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_ENABLED,
     CONF_LOGFIRE_INCLUDE_CONTENT,
@@ -34,6 +36,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_MODE,
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
+    CONF_TEMPLATED_EXTRA_BODY,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
@@ -109,9 +112,11 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
                             CONF_MODEL: "gpt-test",
                             CONF_ENABLED: True,
                             CONF_MODEL_SETTINGS: {
-                                CONF_CHAT_TEMPLATE_KWARGS: [
+                                CONF_TEMPLATED_EXTRA_BODY: [
                                     {
-                                        CONF_CHAT_TEMPLATE_KWARG_KEY: "secret_arg",
+                                        CONF_CHAT_TEMPLATE_KWARG_KEY: (
+                                            "chat_template_kwargs.secret_arg"
+                                        ),
                                         CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: (
                                             "{{ states('sensor.secret') }}"
                                         ),
@@ -189,9 +194,9 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
     model_data = provider_data[CONF_MODEL_PROFILES][_MODEL_PROFILE_ID]
     assert model_data[CONF_MODEL_SETTINGS]["max_tokens"] == 500
     assert model_data[CONF_MODEL_SETTINGS]["extra_headers"] == REDACTED
-    assert model_data[CONF_MODEL_SETTINGS][CONF_CHAT_TEMPLATE_KWARGS] == [
+    assert model_data[CONF_MODEL_SETTINGS][CONF_TEMPLATED_EXTRA_BODY] == [
         {
-            CONF_CHAT_TEMPLATE_KWARG_KEY: "secret_arg",
+            CONF_CHAT_TEMPLATE_KWARG_KEY: "chat_template_kwargs.secret_arg",
             CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ states('sensor.secret') }}",
         }
     ]
@@ -239,7 +244,11 @@ async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> Non
         "headers": {"Authorization": "Bearer stream-secret"},
         "request_url": "https://provider.example.com/path?token=visible",
     }
-    entry.runtime_data.mcp_servers["mcp-1"] = SimpleNamespace()
+    entry.runtime_data.mcp_servers["mcp-1"] = MCPServerRuntimeData(
+        subentry_id="mcp-1",
+        name="Echo MCP",
+        url="https://mcp.example.com/mcp",
+    )
     entry.runtime_data.mcp_tool_cache["cache-1"] = [{"name": "echo"}]
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)

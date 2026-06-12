@@ -37,8 +37,8 @@ from .model_profiles import (
     thinking_capability,
 )
 from .model_request_settings import (
-    _model_settings_with_chat_template_kwargs,
     _model_settings_with_provider_extra_body,
+    _model_settings_with_templated_extra_body,
 )
 from .run_diagnostics import RunDiagnosticsRecorder
 from .run_failures import (
@@ -86,7 +86,7 @@ async def run_model_profile(
     instructions = _join_instructions(virtual_instructions, extra_instructions)
     settings = model_settings(profile, subentry.data)
     settings = _model_settings_with_provider_extra_body(entry, profile, settings)
-    settings = _model_settings_with_chat_template_kwargs(hass, profile, settings)
+    settings = _model_settings_with_templated_extra_body(hass, profile, settings)
     mcp_toolsets = await async_runtime_mcp_toolsets(
         hass,
         entry,

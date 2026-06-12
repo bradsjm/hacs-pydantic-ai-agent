@@ -35,16 +35,12 @@ from ._provider_validation_errors import (
     map_http_error,
     map_structured_http_error,
 )
-from .chat_template_kwargs import (
-    reject_chat_template_kwargs_in_extra_body,
-    render_chat_template_kwargs,
-)
 from .const import (
     CONF_BASE_URL,
-    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    CONF_TEMPLATED_EXTRA_BODY,
     CONF_THINKING,
     CONF_TIMEOUT,
     DEFAULT_TIMEOUT,
@@ -79,6 +75,7 @@ from .structured_output import (
 from .structured_output import (
     structured_output_mode as normalise_structured_output_mode,
 )
+from .templated_extra_body import merge_extra_body, render_templated_extra_body
 
 _format_api_error = format_api_error
 _map_http_error = map_http_error
@@ -87,7 +84,7 @@ _map_structured_http_error = map_structured_http_error
 _MODEL_SETTING_TIMEOUT = CONF_TIMEOUT
 _MODEL_SETTING_THINKING = CONF_THINKING
 _MODEL_SETTING_EXTRA_BODY = MODEL_SETTING_EXTRA_BODY
-_MODEL_SETTING_CHAT_TEMPLATE_KWARGS = CONF_CHAT_TEMPLATE_KWARGS
+_MODEL_SETTING_TEMPLATED_EXTRA_BODY = CONF_TEMPLATED_EXTRA_BODY
 _PROVIDER_EXTRA_BODY_MODES = {
     PROVIDER_ANTHROPIC,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
@@ -178,14 +175,12 @@ def _prepare_probe_settings(
                 "Extra body is only supported by OpenAI-compatible"
                 " and Anthropic provider modes.",
             )
-        reject_chat_template_kwargs_in_extra_body(provider_extra_body)
         settings[_MODEL_SETTING_EXTRA_BODY] = dict(provider_extra_body)
-    chat_template_kwargs = settings.pop(_MODEL_SETTING_CHAT_TEMPLATE_KWARGS, None)
-    reject_chat_template_kwargs_in_extra_body(settings.get(_MODEL_SETTING_EXTRA_BODY))
-    if rendered_kwargs := render_chat_template_kwargs(hass, chat_template_kwargs):
-        extra_body = dict(settings.get(_MODEL_SETTING_EXTRA_BODY) or {})
-        extra_body[CONF_CHAT_TEMPLATE_KWARGS] = rendered_kwargs
-        settings[_MODEL_SETTING_EXTRA_BODY] = extra_body
+    templated_extra_body = settings.pop(_MODEL_SETTING_TEMPLATED_EXTRA_BODY, None)
+    if rendered_extra_body := render_templated_extra_body(hass, templated_extra_body):
+        settings[_MODEL_SETTING_EXTRA_BODY] = merge_extra_body(
+            settings.get(_MODEL_SETTING_EXTRA_BODY), rendered_extra_body
+        )
     settings.setdefault(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT)
     return settings
 

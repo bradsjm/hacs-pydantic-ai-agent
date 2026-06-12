@@ -9,7 +9,6 @@ from custom_components.pydantic_ai_agent.config_flows._constants import (
 from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
-    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_DISCOVERED,
     CONF_ENABLED,
     CONF_MODEL,
@@ -19,6 +18,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
+    CONF_TEMPLATED_EXTRA_BODY,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_AI_TASK,
@@ -69,7 +69,7 @@ async def _loaded_workspace_entry(
 ) -> MockConfigEntry:
     entry = MockConfigEntry(
         version=2,
-        minor_version=1,
+        minor_version=2,
         domain=DOMAIN,
         title="Workspace",
         data={CONF_NAME: "Workspace"},
@@ -243,10 +243,10 @@ async def test_provider_edit_manual_model_profile_allows_model_identifier(
     assert updated_profile[CONF_MODEL] == "local/manual-model"
 
 
-async def test_provider_edit_model_profile_chat_template_kwargs_round_trip(
+async def test_provider_edit_model_profile_templated_extra_body_round_trip(
     hass: HomeAssistant,
 ) -> None:
-    """Test chat template arguments persist and reload in the advanced section."""
+    """Test templated extra body persists and reloads in the advanced section."""
     entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
     provider_subentry = next(iter(entry.subentries.values()))
 
@@ -265,9 +265,9 @@ async def test_provider_edit_model_profile_chat_template_kwargs_round_trip(
         hass, result["flow_id"], {"model_profile_id": "profile-1"}
     )
 
-    chat_template_kwargs = [
+    templated_extra_body = [
         {
-            CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+            CONF_CHAT_TEMPLATE_KWARG_KEY: "chat_template_kwargs.enable_thinking",
             CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
         }
     ]
@@ -278,7 +278,7 @@ async def test_provider_edit_model_profile_chat_template_kwargs_round_trip(
             CONF_NAME: "GPT Mini",
             CONF_MODEL: "gpt-4.1-mini",
             _SECTION_ADVANCED_MODEL_SETTINGS: {
-                CONF_CHAT_TEMPLATE_KWARGS: chat_template_kwargs
+                CONF_TEMPLATED_EXTRA_BODY: templated_extra_body
             },
         },
     )
@@ -287,8 +287,8 @@ async def test_provider_edit_model_profile_chat_template_kwargs_round_trip(
     updated_profile = entry.subentries[provider_subentry.subentry_id].data[
         CONF_MODEL_PROFILES
     ]["profile-1"]
-    assert updated_profile[CONF_MODEL_SETTINGS][CONF_CHAT_TEMPLATE_KWARGS] == (
-        chat_template_kwargs
+    assert updated_profile[CONF_MODEL_SETTINGS][CONF_TEMPLATED_EXTRA_BODY] == (
+        templated_extra_body
     )
 
     result = await _subentry_init_result(
@@ -309,4 +309,4 @@ async def test_provider_edit_model_profile_chat_template_kwargs_round_trip(
     assert result["type"] is FlowResultType.FORM
     assert _serialized_section_default(
         result["data_schema"], _SECTION_ADVANCED_MODEL_SETTINGS
-    ) == {CONF_CHAT_TEMPLATE_KWARGS: chat_template_kwargs}
+    ) == {CONF_TEMPLATED_EXTRA_BODY: templated_extra_body}

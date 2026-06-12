@@ -4,11 +4,10 @@ import json
 from collections.abc import Mapping, Set
 from typing import Any, Final
 
-from .chat_template_kwargs import reject_chat_template_kwargs_in_extra_body
 from .const import (
-    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_MAX_ITERATIONS,
     CONF_MAX_TOKENS,
+    CONF_TEMPLATED_EXTRA_BODY,
     CONF_THINKING,
     CONF_TIMEOUT,
 )
@@ -25,7 +24,7 @@ REMOVED_PROFILE_MODEL_SETTING_KEYS: Final[frozenset[str]] = (
     RUN_SETTING_KEYS | frozenset({MODEL_SETTING_EXTRA_BODY})
 )
 RUNTIME_STRIPPED_MODEL_SETTING_KEYS: Final[frozenset[str]] = (
-    RUN_SETTING_KEYS | frozenset({CONF_CHAT_TEMPLATE_KWARGS, MODEL_SETTING_EXTRA_BODY})
+    RUN_SETTING_KEYS | frozenset({CONF_TEMPLATED_EXTRA_BODY, MODEL_SETTING_EXTRA_BODY})
 )
 PROBE_STRIPPED_MODEL_SETTING_KEYS: Final[frozenset[str]] = frozenset(
     {CONF_MAX_ITERATIONS, MODEL_SETTING_EXTRA_BODY, CONF_THINKING}
@@ -80,7 +79,6 @@ def runtime_model_settings_data(
     settings = strip_model_settings(
         profile_settings, RUNTIME_STRIPPED_MODEL_SETTING_KEYS
     )
-    reject_chat_template_kwargs_in_extra_body(settings.get(MODEL_SETTING_EXTRA_BODY))
     if run_settings is not None:
         if CONF_MAX_TOKENS in run_settings:
             settings[CONF_MAX_TOKENS] = run_settings[CONF_MAX_TOKENS]

@@ -13,22 +13,19 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, TemplateError
 from homeassistant.helpers.template import Template
 
-from ..chat_template_kwargs import (
-    reject_chat_template_kwargs_in_extra_body,
-)
 from ..const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_MODEL_PRICING,
     CONF_MODEL_SETTINGS,
 )
+from ..templated_extra_body import validate_templated_extra_body_paths
 from ._constants import (
     _ADVANCED_MODEL_SETTING_KEYS,
     _MAIN_MODEL_SETTING_KEYS,
     _MODEL_PRICING_CACHE_READ,
     _MODEL_PRICING_INPUT,
     _MODEL_PRICING_OUTPUT,
-    _MODEL_SETTING_CHAT_TEMPLATE_KWARGS,
     _MODEL_SETTING_EXTRA_BODY,
     _MODEL_SETTING_FREQUENCY_PENALTY,
     _MODEL_SETTING_MAX_ITERATIONS,
@@ -37,6 +34,7 @@ from ._constants import (
     _MODEL_SETTING_PRESENCE_PENALTY,
     _MODEL_SETTING_SEED,
     _MODEL_SETTING_TEMPERATURE,
+    _MODEL_SETTING_TEMPLATED_EXTRA_BODY,
     _MODEL_SETTING_THINKING,
     _MODEL_SETTING_TIMEOUT,
     _MODEL_SETTING_TOP_P,
@@ -69,8 +67,8 @@ def _format_key_value_json_setting(value: object) -> str:
     )
 
 
-def _format_chat_template_kwargs(value: object) -> list[dict[str, str]]:
-    """Return stored chat template kwargs in selector-compatible shape."""
+def _format_templated_extra_body(value: object) -> list[dict[str, str]]:
+    """Return stored templated extra-body rows in selector-compatible shape."""
     if not isinstance(value, list):
         return []
     formatted: list[dict[str, str]] = []
@@ -163,10 +161,6 @@ def _parse_key_value_json_setting(value: object) -> dict[str, Any]:
     """Return a key/value JSON model setting from user input."""
     if isinstance(value, list):
         parsed = _parse_key_value_json_rows(value)
-        try:
-            reject_chat_template_kwargs_in_extra_body(parsed)
-        except HomeAssistantError as err:
-            raise ValueError("chat_template_kwargs_conflict") from err
         return parsed
     if not isinstance(value, str):
         raise ValueError("invalid_key_value")
@@ -185,17 +179,13 @@ def _parse_key_value_json_setting(value: object) -> dict[str, Any]:
             parsed[key] = json.loads(item.strip())
         except json.JSONDecodeError as err:
             raise ValueError("invalid_json") from err
-    try:
-        reject_chat_template_kwargs_in_extra_body(parsed)
-    except HomeAssistantError as err:
-        raise ValueError("chat_template_kwargs_conflict") from err
     return parsed
 
 
-def _parse_chat_template_kwargs(
+def _parse_templated_extra_body(
     hass: HomeAssistant, value: object
 ) -> list[dict[str, str]]:
-    """Return configured chat template kwargs from selector input."""
+    """Return configured templated extra-body rows from selector input."""
     if value in (None, ""):
         return []
     if not isinstance(value, list):
@@ -203,22 +193,10 @@ def _parse_chat_template_kwargs(
     parsed: list[dict[str, str]] = []
     seen: set[str] = set()
     for item in value:
-        if not isinstance(item, Mapping):
-            raise ValueError("invalid_chat_template_kwargs")
-        key = str(item.get(CONF_CHAT_TEMPLATE_KWARG_KEY, "")).strip()
-        value_template = item.get(CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE)
-        if not key and not value_template:
+        parsed_row = _parse_templated_extra_body_row(hass, item, seen)
+        if parsed_row is None:
             continue
-        if not key:
-            raise ValueError("invalid_chat_template_key")
-        if key in seen:
-            raise ValueError("duplicate_key")
-        if not isinstance(value_template, str) or not value_template.strip():
-            raise ValueError("invalid_chat_template")
-        try:
-            Template(value_template, hass).ensure_valid()
-        except TemplateError as err:
-            raise ValueError("invalid_chat_template") from err
+        key, value_template = parsed_row
         seen.add(key)
         parsed.append(
             {
@@ -226,7 +204,38 @@ def _parse_chat_template_kwargs(
                 CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: value_template,
             }
         )
+    try:
+        validate_templated_extra_body_paths(parsed)
+    except HomeAssistantError as err:
+        raise ValueError("templated_extra_body_path_conflict") from err
     return parsed
+
+
+def _parse_templated_extra_body_row(
+    hass: HomeAssistant, item: object, seen: set[str]
+) -> tuple[str, str] | None:
+    """Return one parsed templated extra-body row."""
+    if not isinstance(item, Mapping):
+        raise ValueError("invalid_chat_template_kwargs")
+    key = str(item.get(CONF_CHAT_TEMPLATE_KWARG_KEY, "")).strip()
+    value_template = item.get(CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE)
+    if not key and not value_template:
+        return None
+    if not key:
+        raise ValueError("invalid_chat_template_key")
+    if key in seen:
+        raise ValueError("duplicate_key")
+    if not isinstance(value_template, str) or not value_template.strip():
+        raise ValueError("invalid_chat_template")
+    try:
+        Template(value_template, hass).ensure_valid()
+        rendered = Template(value_template, hass).async_render(parse_result=True)
+        json.dumps(rendered)
+    except TemplateError as err:
+        raise ValueError("invalid_chat_template") from err
+    except (TypeError, ValueError) as err:
+        raise ValueError("invalid_chat_template") from err
+    return key, value_template
 
 
 def _parse_thinking_setting(value: object) -> bool | str:
@@ -292,8 +301,8 @@ def _parse_model_setting_value(
         return value, False
     if key == _MODEL_SETTING_EXTRA_BODY:
         return _parse_key_value_json_setting(value), False
-    if key == _MODEL_SETTING_CHAT_TEMPLATE_KWARGS:
-        parsed = _parse_chat_template_kwargs(hass, value)
+    if key == _MODEL_SETTING_TEMPLATED_EXTRA_BODY:
+        parsed = _parse_templated_extra_body(hass, value)
         return parsed or None, not parsed
     if key == _MODEL_SETTING_THINKING:
         return _parse_thinking_setting(value), False
@@ -366,13 +375,13 @@ def _pricing_storage_key(field_key: str) -> str:
 def _model_setting_error(key: str, detail: str) -> str:
     """Return a translation key for a model setting validation error."""
     if detail in {
-        "chat_template_kwargs_conflict",
         "duplicate_key",
         "invalid_chat_template",
         "invalid_chat_template_key",
         "invalid_chat_template_kwargs",
         "invalid_json",
         "invalid_key_value",
+        "templated_extra_body_path_conflict",
     }:
         return detail
     if key in {

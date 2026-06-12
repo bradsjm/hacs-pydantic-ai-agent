@@ -5,6 +5,7 @@ import socket
 import ssl
 from collections.abc import Callable, Mapping
 from typing import Any, cast
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -70,7 +71,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AI_TASK_NAME,
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
-    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_DESCRIPTION,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
@@ -93,6 +93,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
+    CONF_TEMPLATED_EXTRA_BODY,
     CONF_THINKING,
     CONF_TIMEOUT,
     DOMAIN,
@@ -269,9 +270,11 @@ def test_model_settings_schema_formats_stored_values() -> None:
     data_schema = _model_settings_schema(
         {
             CONF_MODEL_SETTINGS: {
-                CONF_CHAT_TEMPLATE_KWARGS: [
+                CONF_TEMPLATED_EXTRA_BODY: [
                     {
-                        CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+                        CONF_CHAT_TEMPLATE_KWARG_KEY: (
+                            "chat_template_kwargs.enable_thinking"
+                        ),
                         CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
                     }
                 ],
@@ -279,9 +282,9 @@ def test_model_settings_schema_formats_stored_values() -> None:
         }
     )
     defaults = cast(dict[str, object], data_schema({}))
-    assert defaults[CONF_CHAT_TEMPLATE_KWARGS] == [
+    assert defaults[CONF_TEMPLATED_EXTRA_BODY] == [
         {
-            CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+            CONF_CHAT_TEMPLATE_KWARG_KEY: "chat_template_kwargs.enable_thinking",
             CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
         }
     ]
@@ -432,28 +435,78 @@ def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> 
         hass,
         {
             "top_p": "0.8",
-            CONF_CHAT_TEMPLATE_KWARGS: [
+            CONF_TEMPLATED_EXTRA_BODY: [
                 {
-                    CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+                    CONF_CHAT_TEMPLATE_KWARG_KEY: (
+                        "chat_template_kwargs.enable_thinking"
+                    ),
                     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
                 }
             ],
             "seed": "",
             "frequency_penalty": "invalid",
         },
-        {"top_p", CONF_CHAT_TEMPLATE_KWARGS, "seed", "frequency_penalty"},
+        {"top_p", CONF_TEMPLATED_EXTRA_BODY, "seed", "frequency_penalty"},
     )
     assert settings == {
         "top_p": 0.8,
-        CONF_CHAT_TEMPLATE_KWARGS: [
+        CONF_TEMPLATED_EXTRA_BODY: [
             {
-                CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+                CONF_CHAT_TEMPLATE_KWARG_KEY: "chat_template_kwargs.enable_thinking",
                 CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
             }
         ],
     }
     assert errors == {"frequency_penalty": "invalid_number"}
     assert cleared == {"seed"}
+
+
+def test_parse_model_settings_rejects_templated_extra_body_path_conflicts(
+    hass: HomeAssistant,
+) -> None:
+    settings, errors, cleared = _parse_model_settings(
+        hass,
+        {
+            CONF_TEMPLATED_EXTRA_BODY: [
+                {
+                    CONF_CHAT_TEMPLATE_KWARG_KEY: "a",
+                    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ 1 }}",
+                },
+                {
+                    CONF_CHAT_TEMPLATE_KWARG_KEY: "a.b",
+                    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ 2 }}",
+                },
+            ]
+        },
+        {CONF_TEMPLATED_EXTRA_BODY},
+    )
+    assert CONF_TEMPLATED_EXTRA_BODY not in settings
+    assert errors == {CONF_TEMPLATED_EXTRA_BODY: "templated_extra_body_path_conflict"}
+    assert cleared == set()
+
+
+def test_parse_model_settings_rejects_non_json_templated_extra_body_output(
+    hass: HomeAssistant,
+) -> None:
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flows._settings_parsing.Template.async_render",
+        return_value=object(),
+    ):
+        settings, errors, cleared = _parse_model_settings(
+            hass,
+            {
+                CONF_TEMPLATED_EXTRA_BODY: [
+                    {
+                        CONF_CHAT_TEMPLATE_KWARG_KEY: "generated_at",
+                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ now() }}",
+                    }
+                ]
+            },
+            {CONF_TEMPLATED_EXTRA_BODY},
+        )
+    assert settings == {}
+    assert errors == {CONF_TEMPLATED_EXTRA_BODY: "invalid_chat_template"}
+    assert cleared == set()
 
 
 @pytest.mark.parametrize(

@@ -1,13 +1,24 @@
 """Constants for Pydantic AI Agent."""
 
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
+from homeassistant.const import (
+    CONF_API_KEY as HA_CONF_API_KEY,
+)
+from homeassistant.const import (
+    CONF_LLM_HASS_API as HA_CONF_LLM_HASS_API,
+)
+from homeassistant.const import (
+    CONF_NAME as HA_CONF_NAME,
+)
+
+CONF_API_KEY = HA_CONF_API_KEY
+CONF_LLM_HASS_API = HA_CONF_LLM_HASS_API
+CONF_NAME = HA_CONF_NAME
 
 DOMAIN = "pydantic_ai_agent"
 
 CONF_AGENT_NAME = "agent_name"
 CONF_AI_TASK_NAME = "ai_task_name"
 CONF_BASE_URL = "base_url"
-CONF_CHAT_TEMPLATE_KWARGS = "chat_template_kwargs"
 CONF_CHAT_TEMPLATE_KWARG_KEY = "key"
 CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE = "value_template"
 CONF_CUSTOM_MODEL_NAMES = "custom_model_names"
@@ -40,6 +51,7 @@ CONF_OUTPUT_MODE = "output_mode"
 CONF_PRIMARY_MODEL_REF = "primary_model_ref"
 CONF_PROMPT = "prompt"
 CONF_PROVIDER_EXTRA_BODY = "provider_extra_body"
+CONF_TEMPLATED_EXTRA_BODY = "templated_extra_body"
 CONF_PROVIDER_HEADERS = "provider_headers"
 CONF_PROVIDER_METADATA = "provider_metadata"
 CONF_PROVIDER_MODE = "provider_mode"

@@ -12,7 +12,6 @@ import voluptuous as vol
 from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import section
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
@@ -24,7 +23,6 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.typing import VolDictType
 from homeassistant.util import dt as dt_util
 
-from ..chat_template_kwargs import reject_chat_template_kwargs_in_extra_body
 from ..const import (
     CONF_BASE_URL,
     CONF_CUSTOM_MODEL_NAMES,
@@ -317,12 +315,6 @@ def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
             "Add provider extra body rows using a key and JSON value.",
         ) from err
     if provider_extra_body:
-        try:
-            reject_chat_template_kwargs_in_extra_body(provider_extra_body)
-        except HomeAssistantError as err:
-            raise ProviderValidationError(
-                "chat_template_kwargs_conflict", str(err)
-            ) from err
         data[CONF_PROVIDER_EXTRA_BODY] = provider_extra_body
     else:
         data.pop(CONF_PROVIDER_EXTRA_BODY, None)

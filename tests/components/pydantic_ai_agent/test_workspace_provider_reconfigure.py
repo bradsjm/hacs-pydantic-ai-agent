@@ -85,7 +85,7 @@ async def _loaded_workspace_entry(
 ) -> MockConfigEntry:
     entry = MockConfigEntry(
         version=2,
-        minor_version=1,
+        minor_version=2,
         domain=DOMAIN,
         title="Workspace",
         data={CONF_NAME: "Workspace"},

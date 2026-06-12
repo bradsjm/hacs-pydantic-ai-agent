@@ -54,4 +54,4 @@ class WorkspaceRuntimeData:
     logfire_include_content: bool = False
 
 
-PydanticAIAgentConfigEntry = ConfigEntry[WorkspaceRuntimeData]
+type PydanticAIAgentConfigEntry = ConfigEntry[WorkspaceRuntimeData]

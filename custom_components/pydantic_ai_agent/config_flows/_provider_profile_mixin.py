@@ -8,13 +8,17 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry, SubentryFlowResult
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 
 from ..const import (
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_NAME,
+    CONF_PROVIDER_EXTRA_BODY,
+    CONF_TEMPLATED_EXTRA_BODY,
 )
+from ..templated_extra_body import merge_extra_body, render_templated_extra_body
 from ._constants import (
     _ADVANCED_MODEL_SETTING_KEYS,
     _CONF_MODEL_PROFILE_ID,
@@ -158,6 +162,15 @@ class ProviderProfileMixin:
             model_settings = _merge_model_settings(
                 existing_settings, parsed_settings, cleared
             )
+            try:
+                merge_extra_body(
+                    self._current_profile_flow_data().get(CONF_PROVIDER_EXTRA_BODY),
+                    render_templated_extra_body(
+                        self.hass, model_settings.get(CONF_TEMPLATED_EXTRA_BODY)
+                    ),
+                )
+            except HomeAssistantError:
+                errors[CONF_TEMPLATED_EXTRA_BODY] = "templated_extra_body_path_conflict"
             existing_pricing = _model_pricing_from_options(
                 {CONF_MODEL_PRICING: profile.get(CONF_MODEL_PRICING, {})}
             )

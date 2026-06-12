@@ -47,7 +47,6 @@ from ._constants import (
     _MODEL_PRICING_CACHE_READ,
     _MODEL_PRICING_INPUT,
     _MODEL_PRICING_OUTPUT,
-    _MODEL_SETTING_CHAT_TEMPLATE_KWARGS,
     _MODEL_SETTING_FREQUENCY_PENALTY,
     _MODEL_SETTING_MAX_ITERATIONS,
     _MODEL_SETTING_MAX_TOKENS,
@@ -55,6 +54,7 @@ from ._constants import (
     _MODEL_SETTING_PRESENCE_PENALTY,
     _MODEL_SETTING_SEED,
     _MODEL_SETTING_TEMPERATURE,
+    _MODEL_SETTING_TEMPLATED_EXTRA_BODY,
     _MODEL_SETTING_THINKING,
     _MODEL_SETTING_TIMEOUT,
     _MODEL_SETTING_TOP_P,
@@ -76,7 +76,7 @@ from ._profile_helpers import (
     _run_settings_visibility,
 )
 from ._settings_parsing import (
-    _format_chat_template_kwargs,
+    _format_templated_extra_body,
     _format_thinking_value,
     _normalise_run_settings,
 )
@@ -341,9 +341,9 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
             ),
             vol.Optional(
-                _MODEL_SETTING_CHAT_TEMPLATE_KWARGS,
-                default=_format_chat_template_kwargs(
-                    model_settings.get(_MODEL_SETTING_CHAT_TEMPLATE_KWARGS)
+                _MODEL_SETTING_TEMPLATED_EXTRA_BODY,
+                default=_format_templated_extra_body(
+                    model_settings.get(_MODEL_SETTING_TEMPLATED_EXTRA_BODY)
                 ),
             ): _key_value_rows_selector(
                 CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE, {"template": None}

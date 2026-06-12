@@ -1,6 +1,7 @@
 """Config entry migration and cleanup helpers."""
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.const import CONF_LLM_HASS_API, Platform
@@ -11,6 +12,11 @@ from homeassistant.helpers.storage import Store
 
 from ._types import PydanticAIAgentConfigEntry
 from .const import (
+    CONF_CHAT_TEMPLATE_KWARG_KEY,
+    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_MODEL_PROFILES,
+    CONF_MODEL_SETTINGS,
+    CONF_TEMPLATED_EXTRA_BODY,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -160,3 +166,76 @@ async def _async_remove_removed_memory_store(
         f"{DOMAIN}.home_semantic.{entry.entry_id}",
     )
     await store.async_remove()
+
+
+def _migrate_profile_templated_extra_body(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
+) -> None:
+    """Migrate old profile chat_template_kwargs rows to templated extra body."""
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_PROVIDER:
+            continue
+        profiles = subentry.data.get(CONF_MODEL_PROFILES)
+        if not isinstance(profiles, Mapping):
+            continue
+        updated_profiles, changed = _migrated_profiles(profiles)
+        if changed:
+            data = dict(subentry.data)
+            data[CONF_MODEL_PROFILES] = updated_profiles
+            hass.config_entries.async_update_subentry(entry, subentry, data=data)
+
+
+def _migrated_profiles(
+    profiles: Mapping[str, object],
+) -> tuple[dict[str, object], bool]:
+    """Return migrated provider profiles and whether any profile changed."""
+    updated_profiles = dict(profiles)
+    changed = False
+    for profile_id, profile in profiles.items():
+        updated_profile = _migrated_profile(profile)
+        if updated_profile is None:
+            continue
+        updated_profiles[profile_id] = updated_profile
+        changed = True
+    return updated_profiles, changed
+
+
+def _migrated_profile(profile: object) -> dict[str, object] | None:
+    """Return one migrated profile when it contains legacy chat-template rows."""
+    if not isinstance(profile, Mapping):
+        return None
+    model_settings = profile.get(CONF_MODEL_SETTINGS)
+    if not isinstance(model_settings, Mapping):
+        return None
+    legacy_rows = model_settings.get("chat_template_kwargs")
+    if not isinstance(legacy_rows, list):
+        return None
+    updated_model_settings = dict(model_settings)
+    updated_model_settings.pop("chat_template_kwargs", None)
+    migrated_rows = _migrated_legacy_rows(legacy_rows)
+    if migrated_rows and CONF_TEMPLATED_EXTRA_BODY not in updated_model_settings:
+        updated_model_settings[CONF_TEMPLATED_EXTRA_BODY] = migrated_rows
+    updated_profile = dict(profile)
+    if updated_model_settings:
+        updated_profile[CONF_MODEL_SETTINGS] = updated_model_settings
+    else:
+        updated_profile.pop(CONF_MODEL_SETTINGS, None)
+    return updated_profile
+
+
+def _migrated_legacy_rows(legacy_rows: list[object]) -> list[dict[str, str]]:
+    """Return migrated templated extra-body rows from legacy chat-template rows."""
+    migrated_rows: list[dict[str, str]] = []
+    for row in legacy_rows:
+        if not isinstance(row, Mapping):
+            continue
+        key = row.get(CONF_CHAT_TEMPLATE_KWARG_KEY)
+        value_template = row.get(CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE)
+        if isinstance(key, str) and isinstance(value_template, str):
+            migrated_rows.append(
+                {
+                    CONF_CHAT_TEMPLATE_KWARG_KEY: f"chat_template_kwargs.{key.strip()}",
+                    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: value_template,
+                }
+            )
+    return migrated_rows

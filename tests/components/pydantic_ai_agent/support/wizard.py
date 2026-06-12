@@ -185,7 +185,7 @@ async def loaded_workspace_entry(
     """Return a loaded workspace entry for subentry flow tests."""
     entry = MockConfigEntry(
         version=2,
-        minor_version=1,
+        minor_version=2,
         domain=DOMAIN,
         title="Workspace",
         data={CONF_NAME: "Workspace"},

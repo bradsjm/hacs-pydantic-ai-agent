@@ -11,6 +11,7 @@ from homeassistant.exceptions import ServiceValidationError
 
 from ._migration import (
     _async_remove_removed_memory_store,
+    _migrate_profile_templated_extra_body,
     _remove_removed_device_registry_entry,
     _remove_removed_entity_registry_entries,
     _remove_removed_llm_api_refs,
@@ -169,11 +170,25 @@ async def async_migrate_entry(
     hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
 ) -> bool:
     """Migrate workspace entries."""
-    if entry.version == 2 and entry.minor_version == 0:
+    if entry.version != 2:
+        _LOGGER.error(
+            "Pydantic AI Agent config entry %s uses unsupported schema version %s.%s; "
+            "delete and recreate the workspace entry.",
+            entry.entry_id,
+            entry.version,
+            entry.minor_version,
+        )
+        return False
+
+    if entry.minor_version == 0:
         _remove_removed_llm_api_refs(hass, entry)
         _remove_removed_entity_registry_entries(hass, entry)
         _remove_removed_device_registry_entry(hass, entry)
         hass.config_entries.async_update_entry(entry, minor_version=1)
+    if entry.minor_version == 1:
+        _migrate_profile_templated_extra_body(hass, entry)
+        hass.config_entries.async_update_entry(entry, minor_version=2)
+    if entry.minor_version == 2:
         return True
 
     _LOGGER.error(

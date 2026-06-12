@@ -20,9 +20,6 @@ from custom_components.pydantic_ai_agent.binary_sensor import (
     CONFIG_BINARY_SENSOR_DESCRIPTIONS,
 )
 from custom_components.pydantic_ai_agent.const import (
-    CONF_CHAT_TEMPLATE_KWARG_KEY,
-    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
-    CONF_CHAT_TEMPLATE_KWARGS,
     CONF_FALLBACK_MODEL_REFS,
     CONF_PROVIDER_EXTRA_BODY,
     PROVIDER_GOOGLE_GEMINI,
@@ -34,7 +31,6 @@ from custom_components.pydantic_ai_agent.entity import PydanticAIBaseLLMEntity
 from custom_components.pydantic_ai_agent.metrics import MetricsStore
 from custom_components.pydantic_ai_agent.model_profiles import ModelProfile
 from custom_components.pydantic_ai_agent.model_request_settings import (
-    _model_settings_with_chat_template_kwargs,
     _model_settings_with_provider_extra_body,
 )
 from custom_components.pydantic_ai_agent.run_failures import (
@@ -338,34 +334,6 @@ def test_record_agent_run_failure_logs_safe_message(
         )
     assert "raw body" not in caplog.text
     assert store.record_for("subentry-1").last_error_type == "ModelHTTPError"
-
-
-def test_model_settings_with_chat_template_kwargs_renders_without_mutation(
-    hass: HomeAssistant,
-) -> None:
-    profile = ModelProfile(
-        ref="p:1",
-        provider_subentry_id="p",
-        profile_id="1",
-        title="Fast",
-        provider_title="P",
-        provider_mode="openai_compatible_completions",
-        model_name="gpt-test",
-        model_settings={
-            CONF_CHAT_TEMPLATE_KWARGS: [
-                {
-                    CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
-                    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
-                }
-            ]
-        },
-    )
-    settings = ModelSettings(extra_body={"service_tier": "flex"})
-    result = _model_settings_with_chat_template_kwargs(hass, profile, settings)
-    extra_body = result.get("extra_body", {})
-    assert isinstance(extra_body, dict)
-    assert extra_body[CONF_CHAT_TEMPLATE_KWARGS] == {"enable_thinking": True}
-    assert settings == {"extra_body": {"service_tier": "flex"}}
 
 
 def test_model_settings_with_provider_extra_body_rejects_gemini() -> None:

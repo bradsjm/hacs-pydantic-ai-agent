@@ -9,10 +9,17 @@ from custom_components.pydantic_ai_agent import (
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
+    CONF_CHAT_TEMPLATE_KWARG_KEY,
+    CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_MODEL,
+    CONF_MODEL_PROFILES,
+    CONF_MODEL_SETTINGS,
     CONF_PRIMARY_MODEL_REF,
+    CONF_TEMPLATED_EXTRA_BODY,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
+    SUBENTRY_TYPE_PROVIDER,
 )
 from homeassistant import config_entries
 from homeassistant.const import CONF_LLM_HASS_API, CONF_NAME
@@ -69,7 +76,7 @@ async def test_migration_removes_removed_in_repo_llm_api_refs(
 
     assert await async_migrate_entry(hass, cast(Any, entry))
 
-    assert entry.minor_version == 1
+    assert entry.minor_version == 2
     assert entry.subentries["conversation-1"].data[CONF_LLM_HASS_API] == [
         "external_llm_api"
     ]
@@ -128,13 +135,72 @@ async def test_migration_removes_removed_diagnostic_entities(
         )
 
 
+async def test_migration_moves_chat_template_kwargs_to_templated_extra_body(
+    hass: HomeAssistant,
+) -> None:
+    """Test v2.1 migration rewrites old chat template kwargs rows."""
+    entry = MockConfigEntry(
+        version=2,
+        minor_version=1,
+        domain=DOMAIN,
+        title="Workspace",
+        data={CONF_NAME: "Workspace"},
+        subentries_data=(
+            {
+                "subentry_id": "provider-1",
+                "subentry_type": SUBENTRY_TYPE_PROVIDER,
+                "title": "Provider",
+                "unique_id": None,
+                "data": {
+                    CONF_MODEL_PROFILES: {
+                        "profile-1": {
+                            "id": "profile-1",
+                            CONF_NAME: "Fast GPT",
+                            CONF_MODEL: "gpt-test",
+                            CONF_MODEL_SETTINGS: {
+                                "chat_template_kwargs": [
+                                    {
+                                        CONF_CHAT_TEMPLATE_KWARG_KEY: "enable_thinking",
+                                        CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: (
+                                            "{{ true }}"
+                                        ),
+                                    }
+                                ],
+                                "temperature": 0.2,
+                            },
+                        }
+                    }
+                },
+            },
+        ),
+        source=config_entries.SOURCE_USER,
+        unique_id=None,
+    )
+    entry.add_to_hass(hass)
+
+    assert await async_migrate_entry(hass, cast(Any, entry))
+
+    migrated_profile = entry.subentries["provider-1"].data[CONF_MODEL_PROFILES][
+        "profile-1"
+    ]
+    assert entry.minor_version == 2
+    assert "chat_template_kwargs" not in migrated_profile[CONF_MODEL_SETTINGS]
+    assert migrated_profile[CONF_MODEL_SETTINGS][CONF_TEMPLATED_EXTRA_BODY] == [
+        {
+            CONF_CHAT_TEMPLATE_KWARG_KEY: "chat_template_kwargs.enable_thinking",
+            CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
+        }
+    ]
+    assert migrated_profile[CONF_MODEL_SETTINGS]["temperature"] == 0.2
+
+
 async def test_remove_entry_removes_removed_memory_store(
     hass: HomeAssistant,
 ) -> None:
     """Test workspace removal deletes obsolete in-repo semantic memory storage."""
     entry = MockConfigEntry(
         version=2,
-        minor_version=1,
+        minor_version=2,
         domain=DOMAIN,
         title="Workspace",
         data={CONF_NAME: "Workspace"},
