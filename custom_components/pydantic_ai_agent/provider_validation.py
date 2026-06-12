@@ -59,6 +59,7 @@ from .model_settings import (
 )
 from .provider import (
     anthropic_model,
+    effective_thinking_setting,
     google_gemini_model,
     list_anthropic_model_names,
     list_google_gemini_model_names,
@@ -377,6 +378,18 @@ def _build_probe_request_parameters(
     return params
 
 
+def _probe_thinking(
+    data: Mapping[str, Any], model_name: str, thinking: ThinkingLevel | None
+) -> ThinkingLevel | None:
+    """Return probe thinking only when the effective runtime profile supports it."""
+    try:
+        return effective_thinking_setting(
+            data[CONF_PROVIDER_MODE], model_name, thinking
+        )
+    except ValueError:
+        return None
+
+
 async def async_probe_model(
     hass: HomeAssistant,
     data: Mapping[str, Any],
@@ -393,6 +406,7 @@ async def async_probe_model(
             if model_settings is None
             else model_settings.get(_MODEL_SETTING_THINKING)
         )
+        thinking = _probe_thinking(data, model_name, thinking)
         model = _openai_compatible_model(hass, data, model_name)
         model_request_parameters = _build_probe_request_parameters(
             structured_output_mode, thinking

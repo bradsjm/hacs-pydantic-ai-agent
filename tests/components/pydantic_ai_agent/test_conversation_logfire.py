@@ -175,7 +175,10 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
     assert span_kwargs["ha.subentry_title"] == "Kitchen Agent"
     assert span_kwargs["ha.model"] == "gpt-kitchen"
     assert span_kwargs["ha.model_profile"] == "Kitchen Model"
-    assert span_kwargs["ha.model_profile_ref"] == f"{_PROVIDER_SUBENTRY_ID}:kitchen-model"
+    assert (
+        span_kwargs["ha.model_profile_ref"]
+        == f"{_PROVIDER_SUBENTRY_ID}:kitchen-model"
+    )
     assert span_kwargs["ha.profile_id"] == "kitchen-model"
     assert span_kwargs["ha.provider_title"] == "Hosted OpenAI"
     assert span_kwargs["ha.provider_subentry_id"] == _PROVIDER_SUBENTRY_ID

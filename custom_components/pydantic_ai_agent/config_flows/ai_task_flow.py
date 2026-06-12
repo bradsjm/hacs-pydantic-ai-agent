@@ -106,6 +106,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                 data = _ai_task_data_from_user_input(
                     flat_user_input,
                     self._options,
+                    entry,
                 )
             except RunSettingsValidationError as err:
                 return self.async_show_form(

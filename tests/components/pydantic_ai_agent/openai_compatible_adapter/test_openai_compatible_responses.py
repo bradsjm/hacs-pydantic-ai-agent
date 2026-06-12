@@ -25,7 +25,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.output import OutputObjectDefinition
-from pydantic_ai.settings import ModelSettings
+from pydantic_ai.settings import ModelSettings, ThinkingLevel
 from pydantic_ai.tools import ToolDefinition
 
 
@@ -199,7 +199,7 @@ async def test_responses_request_maps_tools_structured_output_and_reasoning() ->
     ],
 )
 async def test_responses_request_maps_run_level_thinking(
-    thinking: bool | str | None,
+    thinking: bool | ThinkingLevel | None,
     expected_reasoning: dict[str, str],
 ) -> None:
     """Test run-level thinking controls Responses reasoning effort."""

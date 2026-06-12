@@ -32,6 +32,7 @@ from ..const import (
     CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_SKILLS,
+    CONF_THINKING,
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
@@ -53,6 +54,7 @@ from ._profile_helpers import (
     _fallback_model_profile_select_options,
     _model_profile_select_options,
     _normalise_fallback_model_refs,
+    _run_settings_visibility,
 )
 from ._schema_helpers import _run_settings_schema
 from ._settings_parsing import _normalise_run_settings
@@ -122,7 +124,20 @@ def _ai_task_data_schema(
         schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = (
             section(vol.Schema(fallback_schema), {"collapsed": True})
         )
-    run_settings_schema = _run_settings_schema(options, default_max_iterations=30)
+    fallback_refs = options.get(CONF_FALLBACK_MODEL_REFS, [])
+    if isinstance(fallback_refs, str) or not isinstance(fallback_refs, list):
+        fallback_refs = []
+    run_settings_schema = _run_settings_schema(
+        options,
+        default_max_iterations=30,
+        visibility=_run_settings_visibility(
+            entry,
+            [
+                options.get(CONF_PRIMARY_MODEL_REF),
+                *fallback_refs,
+            ],
+        ),
+    )
     schema[_section_schema_key(_SECTION_RUN_SETTINGS, run_settings_schema.schema)] = (
         section(run_settings_schema, {"collapsed": True})
     )
@@ -190,6 +205,7 @@ def _ai_task_data_schema(
 def _ai_task_data_from_user_input(
     user_input: Mapping[str, Any],
     options: Mapping[str, Any],
+    entry: ConfigEntry | None = None,
 ) -> dict[str, Any]:
     """Return AI task subentry data with a selected structured output mode."""
     user_input = _flatten_section_data(
@@ -222,6 +238,17 @@ def _ai_task_data_from_user_input(
     if CONF_MCP_SERVER_IDS not in user_input and options.get(CONF_MCP_SERVER_IDS):
         data[CONF_MCP_SERVER_IDS] = options[CONF_MCP_SERVER_IDS]
     _normalise_run_settings(data)
+    fallback_refs = data.get(CONF_FALLBACK_MODEL_REFS, [])
+    if isinstance(fallback_refs, str) or not isinstance(fallback_refs, list):
+        fallback_refs = []
+    visibility = _run_settings_visibility(
+        entry,
+        [data.get(CONF_PRIMARY_MODEL_REF), *fallback_refs],
+    )
+    if not visibility.supports_thinking or (
+        data.get(CONF_THINKING) is False and not visibility.can_disable_thinking
+    ):
+        data.pop(CONF_THINKING, None)
     _normalise_mcp_server_selection(data)
     _normalise_skill_selection(data)
     return data

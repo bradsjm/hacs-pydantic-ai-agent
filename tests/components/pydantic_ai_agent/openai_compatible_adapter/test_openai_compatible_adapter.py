@@ -23,6 +23,7 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.settings import ThinkingLevel
 from pydantic_ai.tools import ToolDefinition
 
 _REPO_ROOT = Path(__file__).parents[3]
@@ -166,7 +167,7 @@ async def test_request_maps_tools_and_binary_content() -> None:
     ],
 )
 async def test_request_maps_thinking_to_reasoning_effort(
-    thinking: bool | str | None,
+    thinking: bool | ThinkingLevel | None,
     expected_reasoning_effort: str | None,
 ) -> None:
     """Test run-level thinking maps to the request reasoning setting."""

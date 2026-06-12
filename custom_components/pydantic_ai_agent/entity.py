@@ -388,7 +388,7 @@ class PydanticAIBaseLLMEntity:
                 if not isinstance(capability, ToolSearch)
             ]
             run_capabilities.append(ToolSearch(strategy="keywords"))
-        if thinking := thinking_capability(self.subentry.data):
+        if thinking := thinking_capability(self.subentry.data, profile):
             run_capabilities.append(thinking)
         run_recorder.record(
             phase="attempt",

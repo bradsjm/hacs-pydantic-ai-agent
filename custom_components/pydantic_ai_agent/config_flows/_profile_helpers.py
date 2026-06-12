@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
@@ -36,18 +37,21 @@ from ..const import (
     CONF_MODEL_SETTINGS,
     CONF_NAME,
     CONF_PRIMARY_MODEL_REF,
+    CONF_PROVIDER_MODE,
     CONF_TODO_LIST_ENTITY_ID,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
 from ..model_profiles import (
     configured_model_profile_exists,
+    enabled_model_profile_refs,
     model_profile_display_name,
     model_profile_ref,
     parse_model_profile_ref,
     provider_model_profiles,
     provider_subentries,
 )
+from ..provider import model_thinking_support
 from ..provider_validation import ProviderValidationError
 from ._constants import (
     _CONF_MODEL_PROFILE_ID,
@@ -60,6 +64,14 @@ from ._settings_parsing import _model_settings_from_options
 from .helpers import _sorted_select_options
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, kw_only=True)
+class RunSettingsVisibility:
+    """Resolved run-setting visibility for one config-flow form."""
+
+    supports_thinking: bool = False
+    can_disable_thinking: bool = False
 
 
 def _provider_validation_placeholders(
@@ -117,6 +129,48 @@ def _referenced_provider_profile_ids(
             if ref_provider_subentry_id == provider_subentry_id:
                 referenced.add(profile_id)
     return referenced
+
+
+def _run_settings_visibility(
+    entry: ConfigEntry | None,
+    selected_profile_refs: Iterable[object] = (),
+) -> RunSettingsVisibility:
+    """Return run-setting visibility from effective selected profile capabilities."""
+    if entry is None:
+        return RunSettingsVisibility()
+    refs = [ref for ref in selected_profile_refs if isinstance(ref, str) and ref]
+    selected_refs = bool(refs)
+    if not refs:
+        refs = enabled_model_profile_refs(entry)
+    if not refs:
+        return RunSettingsVisibility()
+    supports_thinking = False
+    can_disable_thinking = False
+    for raw_ref in refs:
+        try:
+            provider_subentry_id, profile_id = parse_model_profile_ref(raw_ref)
+        except HomeAssistantError:
+            continue
+        provider_subentry = entry.subentries.get(provider_subentry_id)
+        if provider_subentry is None:
+            continue
+        profile = provider_model_profiles(provider_subentry).get(profile_id)
+        model_name = profile.get(CONF_MODEL) if isinstance(profile, Mapping) else None
+        provider_mode = provider_subentry.data.get(CONF_PROVIDER_MODE)
+        if not isinstance(model_name, str) or not isinstance(provider_mode, str):
+            continue
+        try:
+            support = model_thinking_support(provider_mode, model_name)
+        except ValueError:
+            continue
+        supports_thinking = supports_thinking or support.supported
+        can_disable_thinking = can_disable_thinking or support.can_disable
+    if not selected_refs and not supports_thinking:
+        return RunSettingsVisibility()
+    return RunSettingsVisibility(
+        supports_thinking=supports_thinking,
+        can_disable_thinking=can_disable_thinking,
+    )
 
 
 def _normalise_provider_model_profiles(

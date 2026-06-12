@@ -26,6 +26,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_THINKING,
     CONF_TIMEOUT,
     DOMAIN,
+    PROVIDER_ANTHROPIC,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_PROVIDER,
 )
@@ -256,6 +257,41 @@ def test_thinking_capability_keeps_explicit_false() -> None:
 
     assert thinking is not None
     assert thinking.effort is False
+
+
+def test_thinking_capability_omits_unsupported_effective_profile() -> None:
+    """Test unsupported effective profiles suppress thinking capability."""
+    profile = ModelProfile(
+        ref=model_profile_ref("provider-1", "profile-1"),
+        provider_subentry_id="provider-1",
+        profile_id="profile-1",
+        title="DeepSeek Flash",
+        provider_title="Provider",
+        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        model_name="deepseek-v4-flash",
+        model_settings={},
+    )
+
+    assert thinking_capability({CONF_THINKING: "high"}, profile) is None
+
+
+def test_thinking_capability_keeps_supported_effective_profile() -> None:
+    """Test supported effective profiles still emit thinking capability."""
+    profile = ModelProfile(
+        ref=model_profile_ref("provider-1", "profile-1"),
+        provider_subentry_id="provider-1",
+        profile_id="profile-1",
+        title="Claude Sonnet 4",
+        provider_title="Provider",
+        provider_mode=PROVIDER_ANTHROPIC,
+        model_name="claude-sonnet-4",
+        model_settings={},
+    )
+
+    thinking = thinking_capability({CONF_THINKING: "high"}, profile)
+
+    assert thinking is not None
+    assert thinking.effort == "high"
 
 
 def test_thinking_capability_absent_when_unconfigured() -> None:

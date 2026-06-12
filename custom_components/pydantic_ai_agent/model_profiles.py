@@ -36,6 +36,7 @@ from .const import (
 from .model_settings import profile_model_settings, runtime_model_settings_data
 from .provider import (
     anthropic_model,
+    effective_thinking_setting,
     google_gemini_model,
     openai_compatible_completions_model,
     openai_compatible_responses_model,
@@ -253,10 +254,19 @@ def provider_extra_body(
     return dict(extra_body)
 
 
-def thinking_capability(run_settings: Mapping[str, Any]) -> Thinking | None:
+def thinking_capability(
+    run_settings: Mapping[str, Any], profile: ResolvedModelProfile | None = None
+) -> Thinking | None:
     """Return the configured Thinking capability for one agent/task run."""
     if CONF_THINKING not in run_settings:
         return None
+    if profile is not None:
+        thinking = effective_thinking_setting(
+            profile.provider_mode, profile.model_name, run_settings[CONF_THINKING]
+        )
+        if thinking is None:
+            return None
+        return Thinking(effort=thinking)
     return Thinking(effort=run_settings[CONF_THINKING])
 
 

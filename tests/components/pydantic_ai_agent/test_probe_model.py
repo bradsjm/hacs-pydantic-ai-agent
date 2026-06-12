@@ -19,6 +19,7 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
+    PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
@@ -343,7 +344,7 @@ async def test_probe_model_merges_configured_model_settings(
         await async_probe_model(
             hass,
             _provider_data(),
-            "gpt-test",
+            "gpt-5",
             {
                 "temperature": 0.7,
                 "timeout": 30.0,
@@ -360,6 +361,59 @@ async def test_probe_model_merges_configured_model_settings(
         model_request_stream.call_args.kwargs["model_request_parameters"].thinking
         == "high"
     )
+
+
+@pytest.mark.parametrize(
+    ("provider_mode", "model_name", "thinking", "expected_thinking"),
+    [
+    (
+        PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        "deepseek-v4-flash",
+        "high",
+        None,
+    ),
+    (PROVIDER_GOOGLE_GEMINI, "gemini-2.5-pro", False, None),
+    (PROVIDER_ANTHROPIC, "claude-sonnet-4", "high", "high"),
+],
+)
+async def test_probe_model_filters_thinking_by_effective_profile_support(
+    hass: HomeAssistant,
+    provider_mode: str,
+    model_name: str,
+    thinking: bool | str,
+    expected_thinking: bool | str | None,
+) -> None:
+    """Test probe-time thinking respects effective profile capabilities."""
+    stream_events = _SingleEventStream()
+
+    @asynccontextmanager
+    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
+        yield stream_events
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.provider_validation._openai_compatible_model"
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
+            side_effect=stream,
+        ) as model_request_stream,
+    ):
+        await async_probe_model(
+            hass,
+            _provider_data(provider_mode),
+            model_name,
+            {CONF_THINKING: thinking},
+        )
+
+    request_parameters = model_request_stream.call_args.kwargs[
+        "model_request_parameters"
+    ]
+    if expected_thinking is None:
+        assert request_parameters is None
+    else:
+        assert request_parameters is not None
+        assert request_parameters.thinking == expected_thinking
 
 
 async def test_probe_model_renders_chat_template_kwargs(hass: HomeAssistant) -> None:

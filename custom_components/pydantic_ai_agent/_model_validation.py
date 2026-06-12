@@ -17,6 +17,8 @@ from .const import (
     CONF_MODEL_SETTINGS,
     CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
+    CONF_PROVIDER_MODE,
+    CONF_THINKING,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_PROVIDER,
@@ -26,6 +28,7 @@ from .model_settings import (
     normalise_applied_model_settings,
     validation_probe_model_settings,
 )
+from .provider import effective_thinking_setting
 from .provider_validation import ProviderValidationError, async_probe_model
 from .repair_issues import (
     async_create_model_validation_issue,
@@ -170,6 +173,15 @@ def _add_configured_model_probe(
     model_settings = validation_probe_model_settings(
         settings if isinstance(settings, Mapping) else {}, subentry_data
     )
+    effective_thinking = effective_thinking_setting(
+        str(provider_subentry.data.get(CONF_PROVIDER_MODE, "")),
+        model,
+        model_settings.get(CONF_THINKING),
+    )
+    if effective_thinking is None:
+        model_settings.pop(CONF_THINKING, None)
+    else:
+        model_settings[CONF_THINKING] = effective_thinking
     dedupe_key = (
         provider_subentry.subentry_id,
         model,

@@ -3,11 +3,23 @@
 import errno
 import socket
 import ssl
-from typing import cast
+from collections.abc import Callable, Mapping
+from typing import Any, cast
 
 import httpx
 import pytest
 import voluptuous as vol
+from custom_components.pydantic_ai_agent.config_flows._ai_task_schema_helpers import (
+    _ai_task_data_from_user_input,
+)
+from custom_components.pydantic_ai_agent.config_flows._profile_helpers import (
+    RunSettingsVisibility,
+    _run_settings_visibility,
+)
+from custom_components.pydantic_ai_agent.config_flows._schema_helpers import (
+    _conversation_data_from_user_input,
+    _run_settings_schema,
+)
 from custom_components.pydantic_ai_agent.config_flows._settings_parsing import (
     _format_thinking_value,
     _normalise_run_settings,
@@ -39,11 +51,13 @@ from custom_components.pydantic_ai_agent.config_flows.skill_helpers import (
     _skill_data_from_user_input,
 )
 from custom_components.pydantic_ai_agent.const import (
+    CONF_AI_TASK_NAME,
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_CHAT_TEMPLATE_KWARGS,
     CONF_DESCRIPTION,
     CONF_ENABLED,
+    CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
     CONF_MAX_TOKENS,
     CONF_MCP_ALLOWED_TOOLS,
@@ -52,12 +66,16 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
+    CONF_PRIMARY_MODEL_REF,
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
     CONF_THINKING,
     CONF_TIMEOUT,
     DOMAIN,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_GOOGLE_GEMINI,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_SKILL,
 )
@@ -73,10 +91,12 @@ from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     mcp_server_subentry_data,
+    model_profile_data,
     provider_subentry_data,
     skill_subentry_data,
     workspace_entry,
 )
+from tests.components.pydantic_ai_agent.support.schemas import schema_select_options
 
 
 def _section_key_names(data_schema: vol.Schema, section_name: str) -> set[str]:
@@ -84,6 +104,29 @@ def _section_key_names(data_schema: vol.Schema, section_name: str) -> set[str]:
         if section_key.schema == section_name:
             return {key.schema for key in section_value.schema.schema}
     raise AssertionError(f"Section {section_name} not found")
+
+
+def _schema_key_names(data_schema: vol.Schema) -> set[str]:
+    return {key.schema for key in data_schema.schema}
+
+
+def _thinking_test_entry(provider_mode: str, model_name: str) -> MockConfigEntry:
+    return workspace_entry(
+        (
+            provider_subentry_data(
+                provider_mode=provider_mode,
+                model_profiles={
+                    "profile-1": model_profile_data(model=model_name),
+                },
+            ),
+        )
+    )
+
+
+type _SaveDataHelper = Callable[
+    [Mapping[str, Any], Mapping[str, Any], MockConfigEntry | None],
+    dict[str, Any],
+]
 
 
 def test_http_error_formats_redacted_compact_metadata() -> None:
@@ -270,6 +313,137 @@ def test_normalise_run_settings_removes_blank_thinking() -> None:
     _normalise_run_settings(data)
 
     assert CONF_THINKING not in data
+
+
+def test_run_settings_schema_omits_thinking_when_visibility_disables_it() -> None:
+    data_schema = _run_settings_schema(
+        default_max_iterations=10,
+        visibility=RunSettingsVisibility(supports_thinking=False),
+    )
+
+    assert CONF_THINKING not in _schema_key_names(data_schema)
+
+
+def test_run_settings_schema_includes_thinking_when_visibility_enables_it() -> None:
+    data_schema = _run_settings_schema(
+        default_max_iterations=10,
+        visibility=RunSettingsVisibility(supports_thinking=True),
+    )
+
+    assert CONF_THINKING in _schema_key_names(data_schema)
+
+
+def test_run_settings_schema_excludes_false_thinking_option_when_not_disablable(
+) -> None:
+    data_schema = _run_settings_schema(
+        default_max_iterations=10,
+        visibility=RunSettingsVisibility(
+            supports_thinking=True,
+            can_disable_thinking=False,
+        ),
+    )
+
+    assert "false" not in schema_select_options(data_schema, CONF_THINKING)
+
+
+def test_run_settings_schema_keeps_false_thinking_option_when_disablable() -> None:
+    data_schema = _run_settings_schema(
+        default_max_iterations=10,
+        visibility=RunSettingsVisibility(
+            supports_thinking=True,
+            can_disable_thinking=True,
+        ),
+    )
+
+    assert "false" in schema_select_options(data_schema, CONF_THINKING)
+
+
+@pytest.mark.parametrize(
+    ("provider_mode", "model_name", "supports_thinking"),
+    [
+        (PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS, "deepseek-v4-flash", False),
+        (PROVIDER_ANTHROPIC, "claude-sonnet-4", True),
+    ],
+)
+def test_run_settings_visibility_reflects_effective_profile_thinking_support(
+    provider_mode: str,
+    model_name: str,
+    supports_thinking: bool,
+) -> None:
+    entry = _thinking_test_entry(provider_mode, model_name)
+
+    visibility = _run_settings_visibility(entry)
+
+    assert visibility.supports_thinking is supports_thinking
+
+
+@pytest.mark.parametrize(
+    ("helper", "user_input"),
+    [
+        (
+            _conversation_data_from_user_input,
+            {
+                CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                CONF_THINKING: "high",
+            },
+        ),
+        (
+            _ai_task_data_from_user_input,
+            {
+                CONF_AI_TASK_NAME: "Report",
+                CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                CONF_THINKING: "high",
+            },
+        ),
+    ],
+)
+def test_save_time_helpers_prune_unsupported_thinking(
+    helper: _SaveDataHelper,
+    user_input: dict[str, object],
+) -> None:
+    entry = _thinking_test_entry(
+        PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        "deepseek-v4-flash",
+    )
+
+    result = helper(user_input, {}, entry)
+
+    assert result[CONF_PRIMARY_MODEL_REF] == "provider-1:profile-1"
+    assert CONF_THINKING not in result
+
+
+@pytest.mark.parametrize(
+    ("helper", "user_input"),
+    [
+        (
+            _conversation_data_from_user_input,
+            {
+                CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                CONF_FALLBACK_MODEL_REFS: [],
+                CONF_THINKING: "false",
+            },
+        ),
+        (
+            _ai_task_data_from_user_input,
+            {
+                CONF_AI_TASK_NAME: "Report",
+                CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                CONF_FALLBACK_MODEL_REFS: [],
+                CONF_THINKING: "false",
+            },
+        ),
+    ],
+)
+def test_save_time_helpers_prune_undisablable_false_thinking(
+    helper: _SaveDataHelper,
+    user_input: dict[str, object],
+) -> None:
+    entry = _thinking_test_entry(PROVIDER_GOOGLE_GEMINI, "gemini-2.5-pro")
+
+    result = helper(user_input, {}, entry)
+
+    assert result[CONF_PRIMARY_MODEL_REF] == "provider-1:profile-1"
+    assert CONF_THINKING not in result
 
 
 def test_model_pricing_from_options_sanitizes_persisted_pricing() -> None:

@@ -82,7 +82,7 @@ async def run_model_profile(
     settings = _model_settings_with_chat_template_kwargs(hass, profile, settings)
     toolsets = [*virtual_toolsets, *extra_toolsets]
     run_capabilities = list(capabilities)
-    if thinking := thinking_capability(subentry.data):
+    if thinking := thinking_capability(subentry.data, profile):
         run_capabilities.append(thinking)
     run_recorder.record(
         phase="attempt",

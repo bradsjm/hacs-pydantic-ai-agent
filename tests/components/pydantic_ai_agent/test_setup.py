@@ -167,7 +167,7 @@ async def test_setup_entry_validates_selected_model_setting_combinations(
                 hass,
                 entry.subentries["provider-2"].data,
                 "shared-model",
-                {CONF_THINKING: "high", CONF_TIMEOUT: 30.0},
+                {CONF_TIMEOUT: 30.0},
                 structured_output_mode=OUTPUT_MODE_TOOL,
             ),
         ],
@@ -214,12 +214,7 @@ async def test_setup_entry_probes_distinct_subentry_run_settings(
     probe_model.assert_has_awaits(
         [
             call(hass, provider_data, "shared-model", {CONF_TIMEOUT: 20.0}),
-            call(
-                hass,
-                provider_data,
-                "shared-model",
-                {CONF_THINKING: "high", CONF_TIMEOUT: 20.0},
-            ),
         ],
         any_order=True,
     )
+    assert probe_model.await_count == 1

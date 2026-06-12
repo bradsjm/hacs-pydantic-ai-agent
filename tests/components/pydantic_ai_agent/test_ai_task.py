@@ -13,6 +13,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_THINKING,
     DOMAIN,
     OUTPUT_MODE_TOOL,
+    PROVIDER_ANTHROPIC,
 )
 from custom_components.pydantic_ai_agent.context_management import (
     SlidingWindowContextCapability,
@@ -70,14 +71,17 @@ def _entry(
                 title="Hosted OpenAI",
                 profile_id=_MODEL_PROFILE_ID,
                 profile_name="Task Model",
-                model="task-model",
+                provider_mode=PROVIDER_ANTHROPIC,
+                model="claude-sonnet-4",
             ),
         )
     )
     entry.runtime_data = workspace_runtime_data(
         providers={
             _PROVIDER_SUBENTRY_ID: provider_runtime_data(
-                subentry_id=_PROVIDER_SUBENTRY_ID, name="Hosted OpenAI"
+                subentry_id=_PROVIDER_SUBENTRY_ID,
+                name="Hosted OpenAI",
+                provider_mode=PROVIDER_ANTHROPIC,
             )
         },
     )

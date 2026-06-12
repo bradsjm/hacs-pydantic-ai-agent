@@ -1,6 +1,7 @@
 """Pydantic AI provider helpers."""
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -8,12 +9,18 @@ from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.httpx_client import get_async_client
 from pydantic_ai.models import Model
+from pydantic_ai.profiles import ModelProfile
+from pydantic_ai.profiles.anthropic import anthropic_model_profile
+from pydantic_ai.profiles.google import google_model_profile
+from pydantic_ai.settings import ThinkingLevel
 
 from .const import (
     CONF_BASE_URL,
     CONF_PROVIDER_HEADERS,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
 from .openai_compatible_adapter import (
     OpenAICompatibleChatModel,
@@ -21,6 +28,14 @@ from .openai_compatible_adapter import (
     OpenAICompatibleResponsesModel,
 )
 from .openai_compatible_client import AsyncOpenAICompatible
+
+
+@dataclass(frozen=True, kw_only=True)
+class ThinkingSupport:
+    """Effective thinking capability support for one runtime model profile."""
+
+    supported: bool
+    can_disable: bool
 
 
 def normalise_base_url(value: object) -> str | None:
@@ -52,6 +67,57 @@ def _provider_base_model_name(provider_mode: str, model_name: str) -> str:
 def _configured_headers(headers: dict[str, str] | None) -> dict[str, str]:
     """Return configured provider headers without mutating caller-owned data."""
     return dict(headers or {})
+
+
+def model_profile_for_provider_mode(
+    provider_mode: str, model_name: str
+) -> ModelProfile | None:
+    """Return the effective Pydantic AI model profile for one provider mode."""
+    if provider_mode == PROVIDER_ANTHROPIC:
+        return anthropic_model_profile(
+            _provider_base_model_name(PROVIDER_ANTHROPIC, model_name)
+        )
+    if provider_mode == PROVIDER_GOOGLE_GEMINI:
+        return google_model_profile(
+            _provider_base_model_name(PROVIDER_GOOGLE_GEMINI, model_name)
+        )
+    if provider_mode in {
+        PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+    }:
+        return OpenAICompatibleProvider.model_profile(model_name)
+    return None
+
+
+def model_supports_thinking(provider_mode: str, model_name: str) -> bool:
+    """Return if the effective runtime model profile supports thinking."""
+    return model_thinking_support(provider_mode, model_name).supported
+
+
+def model_thinking_support(provider_mode: str, model_name: str) -> ThinkingSupport:
+    """Return effective runtime support for thinking controls."""
+    profile = model_profile_for_provider_mode(provider_mode, model_name)
+    if profile is None:
+        return ThinkingSupport(supported=False, can_disable=False)
+    supported = profile.supports_thinking or profile.thinking_always_enabled
+    return ThinkingSupport(
+        supported=supported,
+        can_disable=supported and not profile.thinking_always_enabled,
+    )
+
+
+def effective_thinking_setting(
+    provider_mode: str, model_name: str, thinking: ThinkingLevel | None
+) -> ThinkingLevel | None:
+    """Return the effective thinking setting for one runtime model profile."""
+    if thinking is None:
+        return None
+    support = model_thinking_support(provider_mode, model_name)
+    if not support.supported:
+        return None
+    if thinking is False and not support.can_disable:
+        return None
+    return thinking
 
 
 def _strip_version_suffix(base_url: str | None, *versions: str) -> str | None:

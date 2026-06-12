@@ -16,6 +16,18 @@ _ALLOWED_OVERSIZED_FILES = {
     "custom_components/pydantic_ai_agent/mcp.py": (
         "MCP runtime adapter centralizes validation, discovery, and toolset wiring"
     ),
+    "custom_components/pydantic_ai_agent/provider_validation.py": (
+        "Provider probe/error mapping remains centralized across runtime modes"
+    ),
+    "custom_components/pydantic_ai_agent/config_flows/_profile_helpers.py": (
+        "Provider profile flow helpers still centralize guided profile management"
+    ),
+    "tests/components/pydantic_ai_agent/test_probe_model.py": (
+        "Probe coverage spans multiple providers and structured-output paths"
+    ),
+    "tests/components/pydantic_ai_agent/test_config_flow_helpers.py": (
+        "Config-flow helper coverage stays grouped around shared form behavior"
+    ),
 }
 
 

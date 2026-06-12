@@ -41,6 +41,7 @@ from ..const import (
     CONF_PRIMARY_MODEL_REF,
     CONF_PROMPT,
     CONF_SKILLS,
+    CONF_THINKING,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
     DEFAULT_AGENT_NAME,
@@ -68,12 +69,14 @@ from ._constants import (
     _SECTION_HASS_CONTROL,
     _SECTION_RUN_SETTINGS,
     _SECTION_SKILLS,
-    _THINKING_OPTIONS,
+_THINKING_OPTIONS,
 )
 from ._profile_helpers import (
+    RunSettingsVisibility,
     _fallback_model_profile_select_options,
     _model_profile_select_options,
     _normalise_fallback_model_refs,
+    _run_settings_visibility,
 )
 from ._settings_parsing import (
     _format_chat_template_kwargs,
@@ -86,6 +89,10 @@ from .mcp_helpers import (
     _normalise_mcp_server_selection,
 )
 from .skill_helpers import _append_skill_schema_fields, _normalise_skill_selection
+
+_THINKING_OPTIONS_WITHOUT_DISABLE = tuple(
+    option for option in _THINKING_OPTIONS if option != "false"
+)
 
 
 def _agent_form_suggested_values(
@@ -167,7 +174,20 @@ def _conversation_schema(
         schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = (
             section(vol.Schema(fallback_schema), {"collapsed": True})
         )
-    run_settings_schema = _run_settings_schema(options, default_max_iterations=10)
+    fallback_refs = options.get(CONF_FALLBACK_MODEL_REFS, [])
+    if isinstance(fallback_refs, str) or not isinstance(fallback_refs, list):
+        fallback_refs = []
+    run_settings_schema = _run_settings_schema(
+        options,
+        default_max_iterations=10,
+        visibility=_run_settings_visibility(
+            entry,
+            [
+                options.get(CONF_PRIMARY_MODEL_REF),
+                *fallback_refs,
+            ],
+        ),
+    )
     schema[_section_schema_key(_SECTION_RUN_SETTINGS, run_settings_schema.schema)] = (
         section(run_settings_schema, {"collapsed": True})
     )
@@ -338,43 +358,47 @@ def _run_settings_schema(
     options: Mapping[str, Any] | None = None,
     *,
     default_max_iterations: int,
+    visibility: RunSettingsVisibility | None = None,
 ) -> vol.Schema:
     """Return per-conversation/task run settings schema."""
     options = dict(options or {})
-    return vol.Schema(
-        {
-            vol.Optional(
-                _MODEL_SETTING_MAX_TOKENS,
-                description={"suggested_value": options.get(_MODEL_SETTING_MAX_TOKENS)},
-            ): NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
-            ),
-            vol.Required(
-                _MODEL_SETTING_MAX_ITERATIONS,
-                default=options.get(
-                    _MODEL_SETTING_MAX_ITERATIONS, default_max_iterations
-                ),
-            ): NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
-            ),
-            vol.Required(
-                _MODEL_SETTING_TIMEOUT,
-                default=options.get(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT),
-            ): NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
-            ),
+    visibility = visibility or RunSettingsVisibility()
+    schema: VolDictType = {
+        vol.Optional(
+            _MODEL_SETTING_MAX_TOKENS,
+            description={"suggested_value": options.get(_MODEL_SETTING_MAX_TOKENS)},
+        ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)),
+        vol.Required(
+            _MODEL_SETTING_MAX_ITERATIONS,
+            default=options.get(_MODEL_SETTING_MAX_ITERATIONS, default_max_iterations),
+        ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)),
+        vol.Required(
+            _MODEL_SETTING_TIMEOUT,
+            default=options.get(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT),
+        ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)),
+    }
+    if visibility.supports_thinking:
+        thinking_options = (
+            list(_THINKING_OPTIONS)
+            if visibility.can_disable_thinking
+            else list(_THINKING_OPTIONS_WITHOUT_DISABLE)
+        )
+        thinking_default = _format_thinking_value(options)
+        if thinking_default == "false" and not visibility.can_disable_thinking:
+            thinking_default = ""
+        schema[
             vol.Optional(
                 _MODEL_SETTING_THINKING,
-                default=_format_thinking_value(options),
-            ): SelectSelector(
-                SelectSelectorConfig(
-                    options=list(_THINKING_OPTIONS),
-                    mode=SelectSelectorMode.DROPDOWN,
-                    translation_key=_MODEL_SETTING_THINKING,
-                )
-            ),
-        }
-    )
+                default=thinking_default,
+            )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=thinking_options,
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key=_MODEL_SETTING_THINKING,
+            )
+        )
+    return vol.Schema(schema)
 
 
 def _model_pricing_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
@@ -410,6 +434,7 @@ def _model_pricing_schema(options: Mapping[str, Any] | None = None) -> vol.Schem
 def _conversation_data_from_user_input(
     user_input: Mapping[str, Any],
     options: Mapping[str, Any],
+    entry: ConfigEntry | None = None,
 ) -> dict[str, Any]:
     """Return conversation fields with model profile references."""
     user_input = _flatten_section_data(
@@ -436,6 +461,17 @@ def _conversation_data_from_user_input(
     if CONF_MCP_SERVER_IDS not in user_input and options.get(CONF_MCP_SERVER_IDS):
         data[CONF_MCP_SERVER_IDS] = options[CONF_MCP_SERVER_IDS]
     _normalise_run_settings(data)
+    fallback_refs = data.get(CONF_FALLBACK_MODEL_REFS, [])
+    if isinstance(fallback_refs, str) or not isinstance(fallback_refs, list):
+        fallback_refs = []
+    visibility = _run_settings_visibility(
+        entry,
+        [data.get(CONF_PRIMARY_MODEL_REF), *fallback_refs],
+    )
+    if not visibility.supports_thinking or (
+        data.get(CONF_THINKING) is False and not visibility.can_disable_thinking
+    ):
+        data.pop(CONF_THINKING, None)
     _normalise_mcp_server_selection(data)
     _normalise_skill_selection(data)
     return data
