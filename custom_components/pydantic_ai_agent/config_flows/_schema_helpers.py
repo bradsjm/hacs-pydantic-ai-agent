@@ -7,7 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_LLM_HASS_API
+from homeassistant.const import CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import section
 from homeassistant.helpers import llm
@@ -34,7 +34,6 @@ from ..const import (
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_SETTINGS,
-    CONF_NAME,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROMPT,
     CONF_SKILLS,
@@ -210,7 +209,11 @@ def _conversation_schema(
         )
     hass_control_schema: VolDictType = {}
     hass_control_schema[api_schema_key] = SelectSelector(
-        SelectSelectorConfig(options=hass_apis, multiple=True)
+        SelectSelectorConfig(
+            options=hass_apis,
+            mode=SelectSelectorMode.DROPDOWN,
+            multiple=True,
+        )
     )
     schema[_section_schema_key(_SECTION_HASS_CONTROL, hass_control_schema)] = section(
         vol.Schema(hass_control_schema), {"collapsed": True}

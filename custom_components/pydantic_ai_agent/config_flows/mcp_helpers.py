@@ -14,6 +14,7 @@ from homeassistant.helpers.selector import (
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
 )
@@ -116,7 +117,13 @@ def _append_mcp_server_schema_fields(
                 options.get(CONF_MCP_SERVER_IDS)
             ),
         )
-    ] = SelectSelector(SelectSelectorConfig(options=server_options, multiple=True))
+    ] = SelectSelector(
+        SelectSelectorConfig(
+            options=server_options,
+            mode=SelectSelectorMode.DROPDOWN,
+            multiple=True,
+        )
+    )
 
 
 def _selected_mcp_server_error(
@@ -224,7 +231,13 @@ def _mcp_tools_schema(
             vol.Required(
                 CONF_MCP_ALLOWED_TOOLS,
                 default=default_tool_names,
-            ): SelectSelector(SelectSelectorConfig(options=tool_options, multiple=True))
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=tool_options,
+                    mode=SelectSelectorMode.DROPDOWN,
+                    multiple=True,
+                )
+            )
         }
     )
 

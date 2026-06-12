@@ -57,6 +57,7 @@ from custom_components.pydantic_ai_agent.config_flows.mcp_helpers import (
     _format_mcp_headers,
     _mcp_server_select_options,
     _mcp_tool_options,
+    _mcp_tools_schema,
     _mcp_url_already_configured,
     _mcp_url_identity,
     _selected_mcp_server_error,
@@ -81,6 +82,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_TOKENS,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
+    CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PRICING,
@@ -107,9 +109,13 @@ from custom_components.pydantic_ai_agent.provider_validation import (
     _map_http_error,
 )
 from homeassistant import config_entries
-from homeassistant.const import CONF_NAME
+from homeassistant.const import CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.selector import ObjectSelector
+from homeassistant.helpers.selector import (
+    ObjectSelector,
+    SelectSelector,
+    SelectSelectorMode,
+)
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
@@ -312,6 +318,41 @@ def test_agent_schema_preserves_ordered_fallback_rows_in_serialized_defaults(
             {_FALLBACK_MODEL_REF_FIELD: "provider-1:profile-2"},
         ]
     }
+
+
+@pytest.mark.parametrize(
+    ("schema_builder", "section_name", "field"),
+    [
+        (_conversation_schema, "hass_control", CONF_LLM_HASS_API),
+        (_ai_task_data_schema, "hass_control", CONF_LLM_HASS_API),
+        (_conversation_schema, "skill_settings", CONF_SKILLS),
+        (_conversation_schema, "external_tools", CONF_MCP_SERVER_IDS),
+    ],
+)
+def test_agent_schema_multi_selectors_use_dropdown_mode(
+    hass: HomeAssistant,
+    schema_builder: Callable[
+        [HomeAssistant, Mapping[str, Any], MockConfigEntry], vol.Schema
+    ],
+    section_name: str,
+    field: str,
+) -> None:
+    entry = workspace_entry(
+        (
+            provider_subentry_data(),
+            skill_subentry_data(),
+            mcp_server_subentry_data(),
+        )
+    )
+
+    selector = cast(
+        SelectSelector,
+        _section_selector(schema_builder(hass, {}, entry), section_name, field),
+    )
+
+    assert isinstance(selector, SelectSelector)
+    assert selector.config["mode"] == SelectSelectorMode.DROPDOWN.value
+    assert selector.config["multiple"] is True
 
 
 def test_fallback_model_profile_select_options_include_unavailable_selected_ref(
@@ -888,6 +929,21 @@ def test_mcp_tool_options_include_truncated_descriptions() -> None:
     assert options[0]["value"] == "echo"
     assert "echo" in options[0]["label"]
     assert options[1] == {"label": "list_files (List files)", "value": "list_files"}
+
+
+def test_mcp_tools_schema_uses_dropdown_mode() -> None:
+    data_schema = _mcp_tools_schema(
+        [
+            {"label": "echo (Echo text)", "value": "echo"},
+            {"label": "list_files (List files)", "value": "list_files"},
+        ],
+        ["echo"],
+    )
+    selector = cast(SelectSelector, next(iter(data_schema.schema.values())))
+
+    assert isinstance(selector, SelectSelector)
+    assert selector.config["mode"] == SelectSelectorMode.DROPDOWN.value
+    assert selector.config["multiple"] is True
 
 
 def test_mcp_url_identity_rejects_userinfo() -> None:

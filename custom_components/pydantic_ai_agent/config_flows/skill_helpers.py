@@ -10,6 +10,7 @@ from homeassistant.helpers.selector import (
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
+    SelectSelectorMode,
     TemplateSelector,
     TextSelector,
     TextSelectorConfig,
@@ -97,7 +98,13 @@ def _append_skill_schema_fields(
             CONF_SKILLS,
             default=_normalise_selected_skill_ids(options.get(CONF_SKILLS)),
         )
-    ] = SelectSelector(SelectSelectorConfig(options=skill_options, multiple=True))
+    ] = SelectSelector(
+        SelectSelectorConfig(
+            options=skill_options,
+            mode=SelectSelectorMode.DROPDOWN,
+            multiple=True,
+        )
+    )
 
 
 def _selected_skill_error(entry: ConfigEntry, data: Mapping[str, Any]) -> str | None:
