@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_ITERATIONS,
+    CONF_TOOL_RETRIES,
     DOMAIN,
 )
 from custom_components.pydantic_ai_agent.metrics import (
@@ -20,12 +21,18 @@ from homeassistant.components.conversation.chat_log import (
 from homeassistant.core import Context, HomeAssistant
 from pydantic_ai import (
     AgentRunResultEvent,
+    FunctionToolResultEvent,
     ModelResponse,
     PartStartEvent,
+    RetryPromptPart,
     TextPart,
     ThinkingPart,
 )
-from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.exceptions import (
+    ModelRetry,
+    UnexpectedModelBehavior,
+    UsageLimitExceeded,
+)
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     conversation_subentry_data,
@@ -232,6 +239,89 @@ async def test_streaming_backfills_final_text_after_thinking_only_events(
     assert len(assistant_messages) == 1
     assert assistant_messages[-1].content == "Hello. How can I help you?"
     assert assistant_messages[-1].thinking_content == '"Hello! How can I help'
+
+
+async def test_streaming_tool_retry_exhaustion_reports_tool_context(
+    hass: HomeAssistant,
+) -> None:
+    """Test streamed exhausted tool retries surface actionable tool context."""
+    entry = _entry(extra_data={CONF_TOOL_RETRIES: 2})
+    entry.add_to_hass(hass)
+
+    class FailingAfterRetryPromptAgent(_Agent):
+        @asynccontextmanager
+        async def run_stream_events(
+            self, *_args: object, **kwargs: object
+        ) -> AsyncIterator[EventStream]:
+            self.run_stream_events_calls += 1
+            self.run_kwargs = kwargs
+
+            async def stream() -> AsyncIterator[object]:
+                yield PartStartEvent(index=0, part=TextPart(content="partial"))
+                yield FunctionToolResultEvent(
+                    RetryPromptPart(
+                        tool_name="turn_on",
+                        tool_call_id="tool-1",
+                        content=(
+                            'Home Assistant tool "turn_on" failed: '
+                            "device lookup failed"
+                        ),
+                    )
+                )
+                failure = UnexpectedModelBehavior("tool retries exhausted")
+                failure.__cause__ = ModelRetry(
+                    'Home Assistant tool "turn_on" failed after retries were exhausted.'
+                )
+                raise failure
+
+            yield cast(EventStream, stream())
+
+    agent = FailingAfterRetryPromptAgent()
+    events: list[dict[str, object]] = []
+    hass.bus.async_listen(
+        f"{DOMAIN}_{EVENT_AGENT_RUN_FAILED}",
+        lambda event: events.append(dict(event.data)),
+    )
+
+    with patch(
+        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
+        new_callable=AsyncMock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all("conversation")
+        if state.entity_id != "conversation.home_assistant"
+    )
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            return_value=agent,
+        ) as agent_class,
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+        await hass.async_block_till_done()
+
+    assert agent_class.call_args.kwargs["tool_retries"] == 2
+    speech = result.response.speech["plain"]["speech"]
+    assert "turn_on" in speech
+    assert "unexpected response" not in speech.lower()
+    assert events[-1]["error_type"] == "UnexpectedModelBehavior"
+    assert events[-1]["partial_response"] is True
+    assert events[-1]["tool_name"] == "turn_on"
+    assert events[-1]["tool_call_id"] == "tool-1"
 
 
 async def test_streaming_backfills_missing_final_text_suffix(

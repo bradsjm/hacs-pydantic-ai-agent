@@ -18,6 +18,7 @@ from ..const import (
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_MODEL_PRICING,
     CONF_MODEL_SETTINGS,
+    CONF_TOOL_RETRIES,
 )
 from ..templated_extra_body import validate_templated_extra_body_paths
 from ._constants import (
@@ -284,7 +285,7 @@ def _parse_model_setting_value(
     """Return one parsed model setting and whether it should be cleared."""
     if key in {_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_MAX_ITERATIONS}:
         return _parse_positive_int_setting(value), False
-    if key == _MODEL_SETTING_SEED:
+    if key in {_MODEL_SETTING_SEED, CONF_TOOL_RETRIES}:
         return _parse_non_negative_int_setting(value), False
     if key == _MODEL_SETTING_TIMEOUT:
         return _parse_positive_float_setting(value), False
@@ -320,6 +321,7 @@ def _normalise_run_settings(data: dict[str, Any]) -> None:
         (_MODEL_SETTING_MAX_ITERATIONS, _parse_positive_int_setting),
         (_MODEL_SETTING_TIMEOUT, _parse_positive_float_setting),
         (_MODEL_SETTING_THINKING, _parse_thinking_setting),
+        (CONF_TOOL_RETRIES, _parse_non_negative_int_setting),
     ):
         _normalise_run_setting(data, key, parser, errors)
     if errors:
@@ -384,6 +386,8 @@ def _model_setting_error(key: str, detail: str) -> str:
         "templated_extra_body_path_conflict",
     }:
         return detail
+    if key == CONF_TOOL_RETRIES:
+        return "non_negative_number"
     if key in {
         _MODEL_SETTING_MAX_TOKENS,
         _MODEL_SETTING_MAX_ITERATIONS,

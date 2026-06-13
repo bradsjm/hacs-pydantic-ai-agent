@@ -139,8 +139,53 @@ async def test_agent_events_to_chat_deltas_streams_tool_call_sequence() -> None:
         "tool_name": "HassTurnOn",
         "tool_result": {"success": True},
     }
-    assert deltas[4:] == [{"role": "assistant"}, {"content": "done"}]
+    assert deltas[4:] == [{"role": "assistant"}, {"content": "\n\ndone"}]
     assert final_result is result
+
+
+async def test_agent_events_to_chat_deltas_injects_resume_separator() -> None:
+    """Test resumed assistant text gets one separator after one or more tool results."""
+    deltas, _ = await _collect_event_deltas(
+        [
+            PartStartEvent(index=0, part=TextPart(content="turning ")),
+            FunctionToolResultEvent(
+                ToolReturnPart(
+                    tool_name="HassTurnOn",
+                    content={"success": True},
+                    tool_call_id="tool-1",
+                )
+            ),
+            FunctionToolResultEvent(
+                ToolReturnPart(
+                    tool_name="HassSetBrightness",
+                    content={"success": True},
+                    tool_call_id="tool-2",
+                )
+            ),
+            PartStartEvent(index=0, part=TextPart(content="do")),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta="ne")),
+        ]
+    )
+
+    assert deltas == [
+        {"role": "assistant"},
+        {"content": "turning "},
+        {
+            "role": "tool_result",
+            "tool_call_id": "tool-1",
+            "tool_name": "HassTurnOn",
+            "tool_result": {"success": True},
+        },
+        {
+            "role": "tool_result",
+            "tool_call_id": "tool-2",
+            "tool_name": "HassSetBrightness",
+            "tool_result": {"success": True},
+        },
+        {"role": "assistant"},
+        {"content": "\n\ndo"},
+        {"content": "ne"},
+    ]
 
 
 async def test_agent_events_to_chat_deltas_logs_tool_failures(

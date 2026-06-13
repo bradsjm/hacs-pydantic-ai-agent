@@ -126,12 +126,8 @@ def _deep_merge(
         if isinstance(existing, dict) and isinstance(value, Mapping):
             merged[key] = _deep_merge(existing, value)
             continue
-        if has_key and isinstance(existing, dict) != isinstance(
-            value, Mapping
-        ):
-            raise ValueError(
-                f'Conflicting templated extra body path "{key}"'
-            )
+        if has_key and isinstance(existing, dict) != isinstance(value, Mapping):
+            raise ValueError(f'Conflicting templated extra body path "{key}"')
         merged[key] = _clone_json_value(value)
     return merged
 

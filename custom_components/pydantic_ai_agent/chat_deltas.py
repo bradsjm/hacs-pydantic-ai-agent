@@ -34,6 +34,7 @@ from .multimodal_tool_result import serialize_multimodal_tool_result
 from .run_state import _StreamRunState
 
 _LOGGER = logging.getLogger(__name__)
+_TOOL_RESUME_SEPARATOR = "\n\n"
 
 
 async def _append_agent_messages(
@@ -81,20 +82,30 @@ async def _append_missing_final_text(
             "final_text_chars": 0,
         }
 
+    separator_prefix = _tool_resume_separator_prefix(
+        chat_log.content,
+        trailing_assistant_present=isinstance(
+            chat_log.content[-1], conversation.AssistantContent
+        ),
+    )
+    final_text_with_separator = f"{separator_prefix}{final_text}"
+
     last_content = chat_log.content[-1]
     if not isinstance(last_content, conversation.AssistantContent):
-        await _append_text(chat_log, agent_id, final_text)
+        await _append_text(chat_log, agent_id, final_text_with_separator)
         return {
             "attempted": True,
             "changed": True,
             "reason": "last_content_not_assistant",
             "mode": "append_assistant_message",
             "final_text_chars": len(final_text),
-            "backfill_chars": len(final_text),
+            "backfill_chars": len(final_text_with_separator),
         }
 
     streamed_text = last_content.content or ""
-    if streamed_text == final_text:
+    normalized_streamed_text = streamed_text.removeprefix(separator_prefix)
+
+    if streamed_text == final_text_with_separator:
         return {
             "attempted": True,
             "changed": False,
@@ -105,12 +116,12 @@ async def _append_missing_final_text(
         }
 
     missing_text: str | None = None
-    if streamed_text and final_text.startswith(streamed_text):
-        missing_text = final_text.removeprefix(streamed_text)
-    elif not streamed_text:
-        missing_text = final_text
+    if normalized_streamed_text and final_text.startswith(normalized_streamed_text):
+        missing_text = final_text.removeprefix(normalized_streamed_text)
+    elif not normalized_streamed_text:
+        missing_text = final_text_with_separator
 
-    last_content = replace(last_content, content=final_text)
+    last_content = replace(last_content, content=final_text_with_separator)
     chat_log.content[-1] = last_content
     if missing_text and chat_log.delta_listener:
         chat_log.delta_listener(chat_log, {"content": missing_text})
@@ -165,7 +176,11 @@ async def _agent_events_to_chat_deltas(
     trace_recorder: _StreamTraceRecorder | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield HA ChatLog deltas from live Pydantic AI Agent events."""
-    flags: dict[str, bool] = {"assistant_open": False}
+    flags: dict[str, bool] = {
+        "assistant_open": False,
+        "needs_separator": False,
+        "assistant_text_seen": False,
+    }
     emitted_tool_call_ids: set[str] = set()
     async for event in events:
         _maybe_record_event(event, trace_recorder)
@@ -238,6 +253,7 @@ async def _handle_events_part_start(
         yield delta
         flags["assistant_open"] = True
     async for delta in _part_start_to_chat_deltas(event, output_tool_names):
+        delta = _maybe_prepend_resumed_text_separator(delta, flags)
         state.emitted_deltas = True
         if trace_recorder is not None:
             trace_recorder.record_chat_delta(delta)
@@ -259,6 +275,7 @@ async def _handle_events_part_delta(
         yield delta
     flags["assistant_open"] = True
     async for delta in _part_delta_to_chat_deltas(event):
+        delta = _maybe_prepend_resumed_text_separator(delta, flags)
         state.emitted_deltas = True
         if trace_recorder is not None:
             trace_recorder.record_chat_delta(delta)
@@ -316,6 +333,42 @@ async def _handle_events_tool_result(
         trace_recorder.record_chat_delta(delta)
     yield delta
     flags["assistant_open"] = False
+    flags["needs_separator"] = flags["needs_separator"] or flags["assistant_text_seen"]
+    flags["assistant_text_seen"] = False
+
+
+def _maybe_prepend_resumed_text_separator(
+    delta: dict[str, Any], flags: dict[str, bool]
+) -> dict[str, Any]:
+    """Prefix resumed assistant text after tool results once per resume."""
+    content = delta.get("content")
+    if not isinstance(content, str) or not content:
+        return delta
+    flags["assistant_text_seen"] = True
+    if not flags["needs_separator"]:
+        return delta
+    flags["needs_separator"] = False
+    return {**delta, "content": f"\n\n{content}"}
+
+
+def _tool_resume_separator_prefix(
+    content: list[conversation.Content], *, trailing_assistant_present: bool
+) -> str:
+    """Return the separator when the current tail is resumed text after tools."""
+    index = len(content) - 2 if trailing_assistant_present else len(content) - 1
+    saw_tool_result = False
+    while index >= 0 and isinstance(content[index], conversation.ToolResultContent):
+        saw_tool_result = True
+        index -= 1
+    if not saw_tool_result or index < 0:
+        return ""
+    prior_content = content[index]
+    if (
+        isinstance(prior_content, conversation.AssistantContent)
+        and prior_content.content
+    ):
+        return _TOOL_RESUME_SEPARATOR
+    return ""
 
 
 async def _part_start_to_chat_deltas(

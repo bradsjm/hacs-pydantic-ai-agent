@@ -129,11 +129,16 @@ def structured_agent_output_type(
     output_mode: str,
     output_name: str,
     json_schema: dict[str, Any],
+    output_tool_retries: int | None = None,
 ) -> object:
     """Return a Pydantic AI Agent output type for a structured HA schema."""
     output_type = StructuredDict(json_schema, name=output_name)
     if output_mode == OUTPUT_MODE_TOOL:
-        return ToolOutput(output_type, name=output_name)
+        return ToolOutput(
+            output_type,
+            name=output_name,
+            max_retries=output_tool_retries,
+        )
     if output_mode == OUTPUT_MODE_NATIVE:
         return NativeOutput(output_type, name=output_name)
     if output_mode == OUTPUT_MODE_PROMPTED:

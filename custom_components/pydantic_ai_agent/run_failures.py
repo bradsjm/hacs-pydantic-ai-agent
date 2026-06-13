@@ -8,6 +8,7 @@ from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
+    ModelRetry,
     UnexpectedModelBehavior,
     UsageLimitExceeded,
     UserError,
@@ -145,14 +146,17 @@ def _build_failure_message(
     if isinstance(cause, ModelHTTPError):
         return _http_failure_message(cause, prefix)
     if isinstance(cause, ModelAPIError):
+        api_error = cast(ModelAPIError, cause)
         if _has_connection_failure(cause):
             return (
                 f"{prefix}the provider connection failed for model "
-                f'"{cause.model_name}". Check network connectivity and provider '
+                f'"{api_error.model_name}". Check network connectivity and provider '
                 "availability."
             )
-        return _format_api_error(cause)
+        return _format_api_error(api_error)
     if isinstance(cause, UnexpectedModelBehavior):
+        if model_retry := _model_retry_in_chain(cause):
+            return _tool_retry_exhausted_message(model_retry.message, prefix)
         return (
             f"{prefix}the provider returned an unexpected response. Check "
             "model/provider compatibility or try a different model profile."
@@ -202,6 +206,28 @@ def _tool_problem_context(tool_problem: _ToolProblem | None) -> str:
     return f" Last tool failure: {name} returned {tool_problem.outcome}."
 
 
+def _model_retry_in_chain(err: BaseException) -> ModelRetry | None:
+    """Return the first ModelRetry found in an exception chain."""
+    pending: list[BaseException] = [err]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, ModelRetry):
+            return current
+        for linked in (current.__cause__, current.__context__):
+            if linked is not None:
+                pending.append(linked)
+    return None
+
+
+def _tool_retry_exhausted_message(message: str, prefix: str) -> str:
+    """Return a user-facing failure message for exhausted tool retries."""
+    return f"{prefix}{message}"
+
+
 def _home_assistant_error(err: Exception) -> HomeAssistantError:
     """Convert provider/runtime failures into HA-facing errors."""
     if isinstance(err, _AgentRunFailed):
@@ -218,7 +244,12 @@ def _should_fallback(err: Exception) -> bool:
             cast(Exception, _run_failure_cause(err))
         )
     if isinstance(err, ModelHTTPError):
-        return err.status_code in {408, 409, 429} or 500 <= err.status_code <= 599
+        http_error = cast(ModelHTTPError, err)
+        return http_error.status_code in {
+            408,
+            409,
+            429,
+        } or 500 <= http_error.status_code <= 599
     if isinstance(err, TimeoutError | httpx.TimeoutException | UsageLimitExceeded):
         return True
     if isinstance(err, ModelAPIError):

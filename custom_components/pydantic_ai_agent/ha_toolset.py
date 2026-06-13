@@ -2,12 +2,20 @@
 
 from typing import Any
 
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import llm
-from pydantic_ai import RunContext, Tool, ToolDefinition
+from homeassistant.helpers.intent import InvalidSlotInfo, MatchFailedError
+from pydantic_ai import ModelRetry, RunContext, Tool, ToolDefinition
 from voluptuous_openapi import convert
 
 from .multimodal_tool_result import normalize_multimodal_tool_result
 from .run_diagnostics import RunDiagnosticsRecorder
+
+_RETRYABLE_HA_TOOL_ERRORS = (
+    InvalidSlotInfo,
+    MatchFailedError,
+    ServiceValidationError,
+)
 
 
 def tool_definitions_from_llm_api(
@@ -85,6 +93,10 @@ def _tool_from_ha_tool(
                     event="call_failed",
                     data={"tool_name": tool.name, "error": err},
                 )
+            if isinstance(err, _RETRYABLE_HA_TOOL_ERRORS):
+                raise ModelRetry(
+                    f'Home Assistant tool "{tool.name}" failed: {err}'
+                ) from None
             raise
         if run_recorder is not None:
             run_recorder.record(

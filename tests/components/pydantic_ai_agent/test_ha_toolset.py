@@ -5,13 +5,15 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
+import pytest
 import voluptuous as vol
 from custom_components.pydantic_ai_agent.ha_toolset import (
     tool_definitions_from_llm_api,
     tools_from_llm_api,
 )
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import llm
-from pydantic_ai import BinaryContent, RunContext
+from pydantic_ai import BinaryContent, ModelRetry, RunContext
 
 
 class _TestTool(llm.Tool):
@@ -124,6 +126,36 @@ async def test_tools_from_llm_api_degrades_invalid_multimodal_tool_result_to_tex
     )
 
     assert result == "Snapshot"
+
+
+async def test_tools_from_llm_api_wraps_tool_exception_as_model_retry() -> None:
+    """Test HA tool exceptions become model-visible retry prompts."""
+    async_call_tool = AsyncMock(side_effect=ServiceValidationError("invalid target"))
+    api_instance = SimpleNamespace(
+        async_call_tool=async_call_tool,
+        custom_serializer=None,
+        tools=[_TestTool()],
+    )
+    ctx = SimpleNamespace(tool_call_id="call-123")
+
+    tools = tools_from_llm_api(cast(llm.APIInstance, api_instance))
+    with pytest.raises(ModelRetry, match='Home Assistant tool "turn_on" failed'):
+        await tools[0].function(cast(RunContext[Any], ctx), entity_id="light.kitchen")
+
+
+async def test_tools_from_llm_api_reraises_non_retryable_tool_exception() -> None:
+    """Test unexpected HA tool exceptions still abort immediately."""
+    async_call_tool = AsyncMock(side_effect=RuntimeError("device lookup failed"))
+    api_instance = SimpleNamespace(
+        async_call_tool=async_call_tool,
+        custom_serializer=None,
+        tools=[_TestTool()],
+    )
+    ctx = SimpleNamespace(tool_call_id="call-123")
+
+    tools = tools_from_llm_api(cast(llm.APIInstance, api_instance))
+    with pytest.raises(RuntimeError, match="device lookup failed"):
+        await tools[0].function(cast(RunContext[Any], ctx), entity_id="light.kitchen")
 
 
 def test_tools_from_llm_api_returns_empty_without_api() -> None:

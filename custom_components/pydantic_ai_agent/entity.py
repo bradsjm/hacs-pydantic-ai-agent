@@ -26,7 +26,14 @@ from ._entity_run_results import (
 from ._entity_runner import run_model_profile
 from ._types import WorkspaceRuntimeData
 from .chat_deltas import _agent_events_to_chat_deltas as _agent_events_to_chat_deltas
-from .const import CONF_OUTPUT_MODE, CONF_SKILLS, CONF_WEB_FETCH_ENABLED, DOMAIN
+from .const import (
+    CONF_OUTPUT_MODE,
+    CONF_SKILLS,
+    CONF_TOOL_RETRIES,
+    CONF_WEB_FETCH_ENABLED,
+    DEFAULT_TOOL_RETRIES,
+    DOMAIN,
+)
 from .context_management import SlidingWindowContextCapability
 from .ha_toolset import tool_definitions_from_llm_api
 from .history import chat_log_content_to_model_messages, split_last_user_prompt
@@ -138,6 +145,7 @@ class PydanticAIBaseLLMEntity:
                     structure,
                     custom_serializer=default_structure_serializer(chat_log.llm_api),
                 ),
+                output_tool_retries=self._tool_retries(),
             )
 
         messages = await chat_log_content_to_model_messages(self.hass, chat_log.content)
@@ -190,6 +198,7 @@ class PydanticAIBaseLLMEntity:
                     capabilities=capabilities,
                     extra_toolsets=extra_toolsets,
                     extra_instructions=extra_instructions,
+                    tool_retries=self._tool_retries(),
                     agent_factory=Agent,
                     model_factory=chat_model_for_profile,
                     virtual_workspace_parts_factory=virtual_workspace_parts,
@@ -244,6 +253,13 @@ class PydanticAIBaseLLMEntity:
                 tool.name for tool in tool_definitions_from_llm_api(api_instance)
             ),
         )
+
+    def _tool_retries(self) -> int:
+        """Return the configured tool retry budget for one run."""
+        value = self.subentry.data.get(CONF_TOOL_RETRIES)
+        if type(value) is int and value >= 0:
+            return value
+        return DEFAULT_TOOL_RETRIES
 
     def _store_run_diagnostics(
         self,

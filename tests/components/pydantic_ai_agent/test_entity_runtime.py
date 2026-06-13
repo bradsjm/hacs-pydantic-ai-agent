@@ -22,6 +22,8 @@ from custom_components.pydantic_ai_agent.binary_sensor import (
 from custom_components.pydantic_ai_agent.const import (
     CONF_FALLBACK_MODEL_REFS,
     CONF_PROVIDER_EXTRA_BODY,
+    CONF_TOOL_RETRIES,
+    DEFAULT_TOOL_RETRIES,
     PROVIDER_GOOGLE_GEMINI,
 )
 from custom_components.pydantic_ai_agent.conversation import (
@@ -38,20 +40,26 @@ from custom_components.pydantic_ai_agent.run_failures import (
     _has_connection_failure,
     _home_assistant_error,
     _should_fallback,
+    _ToolProblem,
 )
 from custom_components.pydantic_ai_agent.sensor import (
     CONFIG_SENSOR_DESCRIPTIONS,
     SENSOR_DESCRIPTIONS,
+)
+from custom_components.pydantic_ai_agent.structured_output import (
+    structured_agent_output_type,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
+    ModelRetry,
     UnexpectedModelBehavior,
     UsageLimitExceeded,
     UserError,
 )
+from pydantic_ai.output import ToolOutput
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import UsageLimits
 from tests.components.pydantic_ai_agent.support.builders import (
@@ -315,6 +323,21 @@ def test_classify_run_failure_uses_configured_iteration_limit() -> None:
     assert failure.partial_response is True
 
 
+def test_classify_run_failure_marks_exhausted_tool_retries_actionable() -> None:
+    err = UnexpectedModelBehavior("tool retries exhausted")
+    err.__cause__ = ModelRetry(
+        'Home Assistant tool "turn_on" failed after retries were exhausted.'
+    )
+
+    problem = _ToolProblem(tool_name="turn_on", tool_call_id="tool-1", outcome="retry")
+    failure = _classify_run_failure(err, tool_problem=problem)
+
+    assert failure.error_type == "UnexpectedModelBehavior"
+    assert "unexpected response" not in failure.user_message.lower()
+    assert "turn_on" in failure.user_message
+    assert failure.tool_problem == problem
+
+
 def test_record_agent_run_failure_logs_safe_message(
     hass: HomeAssistant, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -334,6 +357,33 @@ def test_record_agent_run_failure_logs_safe_message(
         )
     assert "raw body" not in caplog.text
     assert store.record_for("subentry-1").last_error_type == "ModelHTTPError"
+
+
+def test_entity_tool_retries_defaults_to_three() -> None:
+    entity = SimpleNamespace(subentry=SimpleNamespace(data={}))
+
+    assert (
+        PydanticAIBaseLLMEntity._tool_retries(cast(Any, entity))
+        == DEFAULT_TOOL_RETRIES
+    )
+
+
+def test_entity_tool_retries_honors_explicit_zero() -> None:
+    entity = SimpleNamespace(subentry=SimpleNamespace(data={CONF_TOOL_RETRIES: 0}))
+
+    assert PydanticAIBaseLLMEntity._tool_retries(cast(Any, entity)) == 0
+
+
+def test_structured_output_tool_uses_configured_retry_budget() -> None:
+    output_type = structured_agent_output_type(
+        output_mode="tool",
+        output_name="generated_data",
+        json_schema={"type": "object"},
+        output_tool_retries=4,
+    )
+
+    assert isinstance(output_type, ToolOutput)
+    assert cast(ToolOutput, output_type).max_retries == 4
 
 
 def test_model_settings_with_provider_extra_body_rejects_gemini() -> None:

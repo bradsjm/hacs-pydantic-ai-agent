@@ -61,6 +61,7 @@ CONF_SKILL_REFERENCES = "references"
 CONF_SKILLS = "skills"
 CONF_THINKING = "thinking"
 CONF_TIMEOUT = "timeout"
+CONF_TOOL_RETRIES = "tool_retries"
 CONF_TODO_LIST_ENTITY_ID = "todo_list_entity_id"
 CONF_VIRTUAL_WORKSPACE_ENABLED = "virtual_workspace_enabled"
 CONF_WEB_FETCH_ENABLED = "web_fetch_enabled"
@@ -99,6 +100,7 @@ DEFAULT_SKILL_NAME = "Skill"
 DEFAULT_WORKSPACE_NAME = "Pydantic AI Agent"
 DEFAULT_MCP_TIMEOUT = 10.0
 DEFAULT_TIMEOUT = 10.0
+DEFAULT_TOOL_RETRIES = 3
 
 
 def default_conversation_options() -> dict[str, object]:

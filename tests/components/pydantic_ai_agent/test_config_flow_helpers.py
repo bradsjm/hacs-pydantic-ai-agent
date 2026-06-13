@@ -96,6 +96,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_TEMPLATED_EXTRA_BODY,
     CONF_THINKING,
     CONF_TIMEOUT,
+    CONF_TOOL_RETRIES,
     DOMAIN,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
@@ -782,6 +783,18 @@ def test_normalise_run_settings_removes_blank_thinking() -> None:
     assert CONF_THINKING not in data
 
 
+def test_normalise_run_settings_keeps_non_negative_tool_retries() -> None:
+    data = {
+        CONF_MAX_ITERATIONS: 30,
+        CONF_TIMEOUT: 15.0,
+        CONF_TOOL_RETRIES: 0,
+    }
+
+    _normalise_run_settings(data)
+
+    assert data[CONF_TOOL_RETRIES] == 0
+
+
 def test_run_settings_schema_omits_thinking_when_visibility_disables_it() -> None:
     data_schema = _run_settings_schema(
         default_max_iterations=10,
@@ -798,6 +811,16 @@ def test_run_settings_schema_includes_thinking_when_visibility_enables_it() -> N
     )
 
     assert CONF_THINKING in _schema_key_names(data_schema)
+
+
+def test_run_settings_schema_includes_tool_retries_default() -> None:
+    data_schema = _run_settings_schema(default_max_iterations=10)
+
+    assert CONF_TOOL_RETRIES in _schema_key_names(data_schema)
+    tool_retries_key = next(
+        key for key in data_schema.schema if key.schema == CONF_TOOL_RETRIES
+    )
+    assert tool_retries_key.default() == 3
 
 
 def test_run_settings_schema_excludes_false_thinking_option_when_not_disablable() -> (
@@ -853,6 +876,7 @@ def test_run_settings_visibility_reflects_effective_profile_thinking_support(
             {
                 CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
                 CONF_THINKING: "high",
+                CONF_TOOL_RETRIES: 5,
             },
         ),
         (
@@ -861,6 +885,7 @@ def test_run_settings_visibility_reflects_effective_profile_thinking_support(
                 CONF_AI_TASK_NAME: "Report",
                 CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
                 CONF_THINKING: "high",
+                CONF_TOOL_RETRIES: 5,
             },
         ),
     ],
@@ -878,6 +903,7 @@ def test_save_time_helpers_prune_unsupported_thinking(
 
     assert result[CONF_PRIMARY_MODEL_REF] == "provider-1:profile-1"
     assert CONF_THINKING not in result
+    assert result[CONF_TOOL_RETRIES] == 5
 
 
 @pytest.mark.parametrize(

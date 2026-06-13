@@ -232,8 +232,6 @@ async def test_mcp_server_edit_empty_advanced_section_preserves_settings(
     updated_subentry = entry.subentries[subentry.subentry_id]
     assert updated_subentry.data[CONF_NAME] == "Updated MCP"
     assert updated_subentry.data[CONF_MCP_URL] == "https://mcp.example.com/updated"
-    assert updated_subentry.data[CONF_MCP_HEADERS] == {
-        "Authorization": "Bearer old"
-    }
+    assert updated_subentry.data[CONF_MCP_HEADERS] == {"Authorization": "Bearer old"}
     assert updated_subentry.data[CONF_MCP_INCLUDE_RETURN_SCHEMA] is False
     assert updated_subentry.data[CONF_MCP_DEFERRED_LOADING] is True

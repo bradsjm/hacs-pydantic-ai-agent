@@ -163,13 +163,15 @@
                 "max_iterations": "Max iterations",
                 "max_tokens": "Max tokens",
                 "thinking": "Thinking (Reasoning) Mode",
-                "timeout": "Timeout"
+                "timeout": "Timeout",
+                "tool_retries": "Tool retries"
               },
               "data_description": {
                 "max_iterations": "Maximum Pydantic AI agent request iterations for one AI task run. Default: 30.",
                 "max_tokens": "Maximum tokens the model may generate per response. Leave empty to use the provider/model default.",
                 "thinking": "Optional reasoning effort for this AI task if supported by the model. Leave empty to use the provider/model default.",
-                "timeout": "Provider request timeout in seconds. Default: 10.0."
+                "timeout": "Provider request timeout in seconds. Default: 10.0.",
+                "tool_retries": "Maximum number of times the model may retry a failed tool call during one AI task run. This applies to all tools available during the run. Set to 0 to disable tool retries. Default: 3."
               },
               "name": "Run settings"
             },
@@ -273,13 +275,15 @@
                 "max_iterations": "Max iterations",
                 "max_tokens": "Max tokens",
                 "thinking": "Thinking (Reasoning) Mode",
-                "timeout": "Timeout"
+                "timeout": "Timeout",
+                "tool_retries": "Tool retries"
               },
               "data_description": {
                 "max_iterations": "Maximum Pydantic AI agent request iterations for one conversation turn. Default: 10.",
                 "max_tokens": "Maximum tokens the model may generate per response. Leave empty to use the provider/model default.",
                 "thinking": "Optional reasoning effort for this conversation agent if supported by the model. Leave empty to use the provider/model default.",
-                "timeout": "Provider request timeout in seconds. Default: 10.0."
+                "timeout": "Provider request timeout in seconds. Default: 10.0.",
+                "tool_retries": "Maximum number of times the model may retry a failed tool call during one conversation turn. This applies to all tools available during the run. Set to 0 to disable tool retries. Default: 3."
               },
               "name": "Run settings"
             },

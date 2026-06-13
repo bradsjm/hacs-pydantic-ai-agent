@@ -38,10 +38,12 @@ from ..const import (
     CONF_PROMPT,
     CONF_SKILLS,
     CONF_THINKING,
+    CONF_TOOL_RETRIES,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
     DEFAULT_AGENT_NAME,
     DEFAULT_TIMEOUT,
+    DEFAULT_TOOL_RETRIES,
 )
 from ._constants import (
     _MODEL_PRICING_CACHE_READ,
@@ -374,6 +376,12 @@ def _run_settings_schema(
             _MODEL_SETTING_TIMEOUT,
             default=options.get(_MODEL_SETTING_TIMEOUT, DEFAULT_TIMEOUT),
         ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)),
+        vol.Required(
+            CONF_TOOL_RETRIES,
+            default=options.get(CONF_TOOL_RETRIES, DEFAULT_TOOL_RETRIES),
+        ): NumberSelector(
+            NumberSelectorConfig(mode=NumberSelectorMode.BOX, min=0, step=1)
+        ),
     }
     if visibility.supports_thinking:
         thinking_options = (

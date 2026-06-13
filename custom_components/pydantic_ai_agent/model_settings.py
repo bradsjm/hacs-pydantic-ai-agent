@@ -10,12 +10,19 @@ from .const import (
     CONF_TEMPLATED_EXTRA_BODY,
     CONF_THINKING,
     CONF_TIMEOUT,
+    CONF_TOOL_RETRIES,
 )
 
 MODEL_SETTING_EXTRA_BODY: Final = "extra_body"
 
 RUN_SETTING_KEYS: Final[frozenset[str]] = frozenset(
-    {CONF_MAX_TOKENS, CONF_MAX_ITERATIONS, CONF_TIMEOUT, CONF_THINKING}
+    {
+        CONF_MAX_TOKENS,
+        CONF_MAX_ITERATIONS,
+        CONF_TIMEOUT,
+        CONF_THINKING,
+        CONF_TOOL_RETRIES,
+    }
 )
 RUN_VALIDATION_SETTING_KEYS: Final[frozenset[str]] = frozenset(
     {CONF_MAX_TOKENS, CONF_THINKING, CONF_TIMEOUT}

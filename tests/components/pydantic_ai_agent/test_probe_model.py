@@ -454,7 +454,7 @@ async def test_probe_model_renders_templated_extra_body(hass: HomeAssistant) -> 
                     {
                         CONF_CHAT_TEMPLATE_KWARG_KEY: "metadata.profile",
                         CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: '{{ "rendered" }}',
-                    }
+                    },
                 ],
             },
         )
