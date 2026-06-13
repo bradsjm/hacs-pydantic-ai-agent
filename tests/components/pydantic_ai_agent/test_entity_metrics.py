@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from custom_components.pydantic_ai_agent.metrics import (
     MetricsStore,
+    record_mcp_tool_call,
     record_run_failure,
     record_run_success,
 )
@@ -60,6 +61,29 @@ def test_record_run_failure_uses_classified_error_type(hass: HomeAssistant) -> N
     record = store.record_for("subentry-1")
     assert record.last_error_type == "UsageLimitExceeded"
     assert record.consecutive_failures == 1
+
+
+def test_record_mcp_tool_call_tracks_last_tool_name(hass: HomeAssistant) -> None:
+    """Test MCP tool calls update the last called tool metric immediately."""
+    store = MetricsStore()
+
+    record_mcp_tool_call(
+        hass,
+        "entry-1",
+        store,
+        "subentry-1",
+        tool_name="echo",
+    )
+    record_mcp_tool_call(
+        hass,
+        "entry-1",
+        store,
+        "subentry-1",
+        tool_name="list_files",
+    )
+
+    record = store.record_for("subentry-1")
+    assert record.last_mcp_tool_call == "list_files"
 
 
 def test_record_run_success_tracks_priced_costs(hass: HomeAssistant) -> None:

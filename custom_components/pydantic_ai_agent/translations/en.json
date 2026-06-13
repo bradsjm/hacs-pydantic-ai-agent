@@ -313,6 +313,7 @@
       "error": {
         "cannot_connect": "{error_message}",
         "invalid_auth": "{error_message}",
+        "invalid_mcp_call_cache_ttl": "Enter a cache TTL between 1 and 86400 seconds.",
         "invalid_mcp_headers": "Enter HTTP headers one per line using 'Header-Name: value'.",
         "invalid_mcp_tools": "Enter comma-separated tool names.",
         "invalid_mcp_url": "{error_message}",
@@ -338,11 +339,15 @@
           "sections": {
             "advanced_mcp": {
               "data": {
+                "mcp_call_cache_enabled": "Cache MCP tool calls",
+                "mcp_call_cache_ttl": "Cache TTL (seconds)",
                 "mcp_deferred_loading": "Defer tool loading",
                 "mcp_headers": "HTTP headers",
                 "mcp_include_return_schema": "Include tool return schemas"
               },
               "data_description": {
+                "mcp_call_cache_enabled": "Reuse successful MCP tool results for identical calls to this server until the cache TTL expires.",
+                "mcp_call_cache_ttl": "How long to reuse a cached successful MCP tool result when caching is enabled. Allowed range: 1 to 86400 seconds.",
                 "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools.",
                 "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
                 "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility."
@@ -364,11 +369,15 @@
           "sections": {
             "advanced_mcp": {
               "data": {
+                "mcp_call_cache_enabled": "Cache MCP tool calls",
+                "mcp_call_cache_ttl": "Cache TTL (seconds)",
                 "mcp_deferred_loading": "Defer tool loading",
                 "mcp_headers": "HTTP headers",
                 "mcp_include_return_schema": "Include tool return schemas"
               },
               "data_description": {
+                "mcp_call_cache_enabled": "Reuse successful MCP tool results for identical calls to this server until the cache TTL expires.",
+                "mcp_call_cache_ttl": "How long to reuse a cached successful MCP tool result when caching is enabled. Allowed range: 1 to 86400 seconds.",
                 "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools.",
                 "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
                 "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility."
@@ -755,6 +764,9 @@
       },
       "last_error_type": {
         "name": "Last error type"
+      },
+      "last_mcp_tool_call": {
+        "name": "Last MCP tool call"
       },
       "last_run_cache_read_cost": {
         "name": "Last run cache read cost"

@@ -15,11 +15,14 @@ from ._types import (
 from .const import (
     CONF_BASE_URL,
     CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_CALL_CACHE_ENABLED,
+    CONF_MCP_CALL_CACHE_TTL,
     CONF_MCP_HEADERS,
     CONF_MCP_URL,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    DEFAULT_MCP_CALL_CACHE_TTL,
     SUBENTRY_TYPE_MCP_SERVER,
 )
 from .model_profiles import (
@@ -107,6 +110,12 @@ def _mcp_server_runtimes(
             url=url,
             headers=headers,
             allowed_tools=allowed_tools,
+            call_cache_enabled=bool(
+                subentry.data.get(CONF_MCP_CALL_CACHE_ENABLED, False)
+            ),
+            call_cache_ttl=int(
+                subentry.data.get(CONF_MCP_CALL_CACHE_TTL, DEFAULT_MCP_CALL_CACHE_TTL)
+            ),
         )
     return runtimes
 

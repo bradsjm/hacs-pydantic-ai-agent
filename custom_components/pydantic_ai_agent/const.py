@@ -35,6 +35,8 @@ CONF_LOGFIRE_TOKEN = "logfire_token"
 CONF_MAX_ITERATIONS = "max_iterations"
 CONF_MAX_TOKENS = "max_tokens"
 CONF_MCP_ALLOWED_TOOLS = "mcp_allowed_tools"
+CONF_MCP_CALL_CACHE_ENABLED = "mcp_call_cache_enabled"
+CONF_MCP_CALL_CACHE_TTL = "mcp_call_cache_ttl"
 CONF_MCP_DEFERRED_LOADING = "mcp_deferred_loading"
 CONF_MCP_HEADERS = "mcp_headers"
 CONF_MCP_INCLUDE_RETURN_SCHEMA = "mcp_include_return_schema"
@@ -100,6 +102,7 @@ DEFAULT_SERVICE_NAME = "OpenAI-compatible"
 DEFAULT_SKILL_NAME = "Skill"
 DEFAULT_WORKSPACE_NAME = "Pydantic AI Agent"
 DEFAULT_MCP_TIMEOUT = 10.0
+DEFAULT_MCP_CALL_CACHE_TTL = 300
 DEFAULT_TIMEOUT = 10.0
 DEFAULT_TOOL_RETRIES = 3
 

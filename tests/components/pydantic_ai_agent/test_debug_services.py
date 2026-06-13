@@ -168,6 +168,7 @@ async def test_metrics_and_tool_source_status_services(
     entry.add_to_hass(hass)
     runtime_data = WorkspaceRuntimeData(workspace_name="Workspace")
     metrics = runtime_data.metrics.record_for("conversation-1")
+    metrics.last_mcp_tool_call = "echo"
     metrics.last_run_total_tokens = 42
     metrics.last_run_succeeded = True
     runtime_data.mcp_tool_cache[_cache_key(entry, "mcp-1")] = [
@@ -198,6 +199,7 @@ async def test_metrics_and_tool_source_status_services(
                 "last_run_total_cost": None,
                 "last_run_model_request_count": None,
                 "last_run_tool_use_count": None,
+                "last_mcp_tool_call": "echo",
                 "cumulative_input_tokens": 0,
                 "cumulative_output_tokens": 0,
                 "cumulative_cache_read_tokens": 0,

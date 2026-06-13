@@ -7,6 +7,8 @@ from homeassistant.helpers.selector import SelectOptionDict
 
 from ..const import (
     CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_CALL_CACHE_ENABLED,
+    CONF_MCP_CALL_CACHE_TTL,
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
@@ -131,6 +133,8 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
             reason = str(err) or "invalid_mcp_headers"
             if reason == "invalid_mcp_tools":
                 errors[CONF_MCP_ALLOWED_TOOLS] = reason
+            elif reason == "invalid_mcp_call_cache_ttl":
+                errors[CONF_MCP_CALL_CACHE_TTL] = reason
             else:
                 errors[CONF_MCP_HEADERS] = "invalid_mcp_headers"
         else:
@@ -202,6 +206,8 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
 
         for key in (
             CONF_MCP_HEADERS,
+            CONF_MCP_CALL_CACHE_ENABLED,
+            CONF_MCP_CALL_CACHE_TTL,
             CONF_MCP_INCLUDE_RETURN_SCHEMA,
             CONF_MCP_DEFERRED_LOADING,
         ):

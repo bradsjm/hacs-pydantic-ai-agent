@@ -155,6 +155,14 @@ SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricSensorDescription, ...] = (
         value_fn=lambda record: metric_value(record, "last_run_tool_use_count"),
     ),
     PydanticAIMetricSensorDescription(
+        key="last_mcp_tool_call",
+        translation_key="last_mcp_tool_call",
+        icon="mdi:server-network",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
+        value_fn=lambda record: metric_value(record, "last_mcp_tool_call"),
+    ),
+    PydanticAIMetricSensorDescription(
         key="cumulative_input_tokens",
         translation_key="cumulative_input_tokens",
         icon="mdi:calculator",

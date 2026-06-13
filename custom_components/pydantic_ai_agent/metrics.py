@@ -37,6 +37,7 @@ class AgentRunMetrics:
     last_run_total_cost: float | None = None
     last_run_model_request_count: int | None = None
     last_run_tool_use_count: int | None = None
+    last_mcp_tool_call: str | None = None
     cumulative_input_tokens: int = 0
     cumulative_output_tokens: int = 0
     cumulative_cache_read_tokens: int = 0
@@ -139,6 +140,20 @@ def record_run_failure(
     record.consecutive_failures += 1
     record.provider_healthy = False
     record.last_run_succeeded = False
+    async_dispatcher_send(hass, metrics_signal(entry_id, subentry_id))
+
+
+def record_mcp_tool_call(
+    hass: HomeAssistant,
+    entry_id: str,
+    store: MetricsStore,
+    subentry_id: str,
+    *,
+    tool_name: str,
+) -> None:
+    """Record the last MCP tool call for one agent subentry."""
+    record = store.record_for(subentry_id)
+    record.last_mcp_tool_call = tool_name
     async_dispatcher_send(hass, metrics_signal(entry_id, subentry_id))
 
 

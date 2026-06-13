@@ -11,6 +11,9 @@ from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import section
 from homeassistant.helpers.selector import (
     BooleanSelector,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -23,11 +26,14 @@ from homeassistant.helpers.typing import VolDictType
 from ..const import (
     CONF_KEY_VALUE_VALUE,
     CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_CALL_CACHE_ENABLED,
+    CONF_MCP_CALL_CACHE_TTL,
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
+    DEFAULT_MCP_CALL_CACHE_TTL,
     SUBENTRY_TYPE_MCP_SERVER,
 )
 from ..mcp import (
@@ -46,6 +52,7 @@ from .helpers import (
 _LOGGER = logging.getLogger(__name__)
 
 _SECTION_ADVANCED_MCP = "advanced_mcp"
+_MAX_MCP_CALL_CACHE_TTL = 86_400
 
 
 def _normalise_selected_mcp_server_ids(raw_server_ids: object) -> list[str]:
@@ -179,6 +186,24 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
                             default=options.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True),
                         ): BooleanSelector(),
                         vol.Optional(
+                            CONF_MCP_CALL_CACHE_ENABLED,
+                            default=options.get(CONF_MCP_CALL_CACHE_ENABLED, False),
+                        ): BooleanSelector(),
+                        vol.Optional(
+                            CONF_MCP_CALL_CACHE_TTL,
+                            default=options.get(
+                                CONF_MCP_CALL_CACHE_TTL,
+                                DEFAULT_MCP_CALL_CACHE_TTL,
+                            ),
+                        ): NumberSelector(
+                            NumberSelectorConfig(
+                                mode=NumberSelectorMode.BOX,
+                                min=1,
+                                max=_MAX_MCP_CALL_CACHE_TTL,
+                                step=1,
+                            )
+                        ),
+                        vol.Optional(
                             CONF_MCP_DEFERRED_LOADING,
                             default=options.get(CONF_MCP_DEFERRED_LOADING, False),
                         ): BooleanSelector(),
@@ -251,6 +276,12 @@ def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str,
     data: dict[str, Any] = {
         CONF_NAME: str(user_input[CONF_NAME]).strip(),
         CONF_MCP_URL: normalise_mcp_url(user_input[CONF_MCP_URL]),
+        CONF_MCP_CALL_CACHE_ENABLED: bool(
+            user_input.get(CONF_MCP_CALL_CACHE_ENABLED, False)
+        ),
+        CONF_MCP_CALL_CACHE_TTL: _parse_mcp_call_cache_ttl(
+            user_input.get(CONF_MCP_CALL_CACHE_TTL, DEFAULT_MCP_CALL_CACHE_TTL)
+        ),
         CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
             user_input.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
         ),
@@ -265,6 +296,21 @@ def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str,
     if allowed_tools:
         data[CONF_MCP_ALLOWED_TOOLS] = allowed_tools
     return data
+
+
+def _parse_mcp_call_cache_ttl(value: object) -> int:
+    """Return a validated MCP call cache TTL in seconds."""
+    if isinstance(value, bool):
+        raise vol.Invalid("invalid_mcp_call_cache_ttl")
+    if not isinstance(value, str | int | float):
+        raise vol.Invalid("invalid_mcp_call_cache_ttl")
+    try:
+        ttl = int(value)
+    except (TypeError, ValueError) as err:
+        raise vol.Invalid("invalid_mcp_call_cache_ttl") from err
+    if ttl < 1 or ttl > _MAX_MCP_CALL_CACHE_TTL:
+        raise vol.Invalid("invalid_mcp_call_cache_ttl")
+    return ttl
 
 
 def _mcp_url_already_configured(

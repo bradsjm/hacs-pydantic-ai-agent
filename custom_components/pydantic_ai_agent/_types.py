@@ -34,6 +34,16 @@ class MCPServerRuntimeData:
     url: str
     headers: dict[str, str] = field(default_factory=dict)
     allowed_tools: list[str] = field(default_factory=list)
+    call_cache_enabled: bool = False
+    call_cache_ttl: int = 300
+
+
+@dataclass(kw_only=True)
+class MCPCallCacheEntry:
+    """One cached MCP tool call result."""
+
+    expires_at: float
+    result: Any
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -45,6 +55,7 @@ class WorkspaceRuntimeData:
     mcp_servers: dict[str, MCPServerRuntimeData] = field(default_factory=dict)
     model_profiles: dict[str, Any] = field(default_factory=dict)
     mcp_tool_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    mcp_call_cache: dict[str, MCPCallCacheEntry] = field(default_factory=dict)
     metrics: MetricsStore = field(default_factory=MetricsStore)
     latest_stream_traces: dict[str, dict[str, Any]] = field(default_factory=dict)
     latest_run_diagnostics: dict[str, dict[str, Any]] = field(default_factory=dict)

@@ -56,11 +56,13 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
 )
 from custom_components.pydantic_ai_agent.config_flows.mcp_helpers import (
     _format_mcp_headers,
+    _mcp_server_data_from_user_input,
     _mcp_server_select_options,
     _mcp_tool_options,
     _mcp_tools_schema,
     _mcp_url_already_configured,
     _mcp_url_identity,
+    _parse_mcp_call_cache_ttl,
     _selected_mcp_server_error,
 )
 from custom_components.pydantic_ai_agent.config_flows.skill_helpers import (
@@ -81,6 +83,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_ITERATIONS,
     CONF_MAX_TOKENS,
     CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_CALL_CACHE_ENABLED,
+    CONF_MCP_CALL_CACHE_TTL,
     CONF_MCP_HEADERS,
     CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
@@ -99,6 +103,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_THINKING,
     CONF_TIMEOUT,
     CONF_TOOL_RETRIES,
+    DEFAULT_MCP_CALL_CACHE_TTL,
     DOMAIN,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
@@ -1138,6 +1143,37 @@ def test_format_mcp_headers_returns_selector_rows() -> None:
         {CONF_KEY_VALUE_KEY: "X-Z", CONF_KEY_VALUE_VALUE: "last"},
     ]
     assert _format_mcp_headers(None) == []
+
+
+def test_mcp_server_data_from_user_input_defaults_and_normalizes_cache_fields() -> None:
+    defaults = _mcp_server_data_from_user_input(
+        {
+            CONF_NAME: "  Echo MCP  ",
+            CONF_MCP_URL: "https://mcp.example.com/mcp",
+        }
+    )
+
+    assert defaults[CONF_NAME] == "Echo MCP"
+    assert defaults[CONF_MCP_CALL_CACHE_ENABLED] is False
+    assert defaults[CONF_MCP_CALL_CACHE_TTL] == DEFAULT_MCP_CALL_CACHE_TTL
+
+    configured = _mcp_server_data_from_user_input(
+        {
+            CONF_NAME: "Echo MCP",
+            CONF_MCP_URL: "https://mcp.example.com/mcp",
+            CONF_MCP_CALL_CACHE_ENABLED: True,
+            CONF_MCP_CALL_CACHE_TTL: "600",
+        }
+    )
+
+    assert configured[CONF_MCP_CALL_CACHE_ENABLED] is True
+    assert configured[CONF_MCP_CALL_CACHE_TTL] == 600
+
+
+@pytest.mark.parametrize("value", [True, 0, "0", object()])
+def test_parse_mcp_call_cache_ttl_rejects_invalid_values(value: object) -> None:
+    with pytest.raises(vol.Invalid, match="invalid_mcp_call_cache_ttl"):
+        _parse_mcp_call_cache_ttl(value)
 
 
 def test_mcp_tool_options_use_name_only_labels() -> None:

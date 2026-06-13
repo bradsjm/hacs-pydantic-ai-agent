@@ -91,6 +91,7 @@ async def run_model_profile(
     mcp_toolsets = await async_runtime_mcp_toolsets(
         hass,
         entry,
+        subentry.subentry_id,
         subentry.data.get(CONF_MCP_SERVER_IDS),
     )
     toolsets = [*mcp_toolsets, *virtual_toolsets, *extra_toolsets]

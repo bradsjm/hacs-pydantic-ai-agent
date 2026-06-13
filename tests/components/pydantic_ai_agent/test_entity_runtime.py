@@ -234,8 +234,13 @@ def test_diagnostic_entity_descriptions_use_translation_keys() -> None:
         *BINARY_SENSOR_DESCRIPTIONS,
         *CONFIG_BINARY_SENSOR_DESCRIPTIONS,
     )
+    last_mcp_tool_call = next(
+        d for d in SENSOR_DESCRIPTIONS if d.key == "last_mcp_tool_call"
+    )
+
     assert all(d.translation_key == d.key for d in descriptions)
     assert all(not isinstance(d.name, str) for d in descriptions)
+    assert last_mcp_tool_call.entity_registry_enabled_default is True
 
 
 def test_should_fallback_for_timeout_usage_and_transport_api_errors() -> None:
