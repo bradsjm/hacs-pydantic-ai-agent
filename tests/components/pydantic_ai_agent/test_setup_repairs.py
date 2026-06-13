@@ -96,6 +96,87 @@ async def test_setup_entry_model_errors_create_repair_issue(
     }
 
 
+async def test_setup_entry_uses_non_streaming_probe_for_disabled_conversation(
+    hass: HomeAssistant,
+) -> None:
+    """Test disabled-streaming conversations validate with stream=False."""
+    profile_ref = model_profile_ref("provider-1", "profile-1")
+    entry = _workspace_entry(
+        (
+            _provider_subentry(),
+            _conversation_subentry(
+                profile_ref,
+                extra_data={"streaming_enabled": False},
+            ),
+        )
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
+            new_callable=AsyncMock,
+        ) as async_probe_model_mock,
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    assert async_probe_model_mock.await_args is not None
+    assert async_probe_model_mock.await_args.kwargs["stream"] is False
+
+
+async def test_setup_entry_keeps_streaming_repair_issue_when_non_streaming_probe_passes(
+    hass: HomeAssistant,
+) -> None:
+    """Test mixed stream modes do not share one repair issue key."""
+    profile_ref = model_profile_ref("provider-1", "profile-1")
+    entry = _workspace_entry(
+        (
+            _provider_subentry(),
+            conversation_subentry_data(
+                profile_ref,
+                subentry_id="streaming-conversation",
+            ),
+            conversation_subentry_data(
+                profile_ref,
+                subentry_id="non-streaming-conversation",
+                title="Non-streaming Agent",
+                agent_name="Non-streaming Agent",
+                streaming_enabled=False,
+            ),
+        )
+    )
+    entry.add_to_hass(hass)
+
+    async def probe(*args, **kwargs):
+        if kwargs.get("stream") is True:
+            raise ProviderValidationError(
+                "model_does_not_support_streaming",
+                "provider rejected streaming",
+            )
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
+            side_effect=probe,
+        ),
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN, model_validation_issue_id(entry, profile_ref, {})
+    )
+    assert issue is not None
+    assert entry.runtime_data.model_validation_failures == {
+        f"streaming-conversation:{profile_ref}": "model_does_not_support_streaming"
+    }
+
+
 async def test_setup_entry_auth_errors_create_provider_auth_repair_issue(
     hass: HomeAssistant,
 ) -> None:
@@ -234,7 +315,7 @@ async def test_setup_entry_keeps_provider_auth_issue_until_all_provider_probes_p
     )
     entry.add_to_hass(hass)
 
-    async def probe(hass, provider_data, model, settings):
+    async def probe(hass, provider_data, model, settings, **kwargs):
         if model == "auth-model":
             raise ProviderValidationError("invalid_auth", "provider rejected", 401)
 

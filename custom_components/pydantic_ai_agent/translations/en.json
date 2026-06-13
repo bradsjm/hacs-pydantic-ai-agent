@@ -239,6 +239,15 @@
           },
           "description": "Choose the language model profile and Home Assistant tool access for this conversation agent.",
           "sections": {
+            "advanced_options": {
+              "data": {
+                "streaming_enabled": "Progressive streaming responses"
+              },
+              "data_description": {
+                "streaming_enabled": "Stream partial assistant responses live as they are generated. Disable to wait for the full response before Home Assistant receives it. Enabled by default."
+              },
+              "name": "Advanced options"
+            },
             "external_tools": {
               "data": {
                 "mcp_server_ids": "MCP servers",
@@ -431,8 +440,8 @@
         "positive_number": "Enter a number greater than zero.",
         "provider_error": "{error_message}",
         "provider_extra_body_unsupported": "{error_message}",
-        "templated_extra_body_path_conflict": "Templated request-body paths cannot overlap. Remove conflicting paths like `a` and `a.b`.",
         "rate_limited": "{error_message}",
+        "templated_extra_body_path_conflict": "Templated request-body paths cannot overlap. Remove conflicting paths like `a` and `a.b`.",
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
       },
@@ -483,19 +492,19 @@
           "sections": {
             "advanced_model_settings": {
               "data": {
-                "templated_extra_body": "Templated extra body",
                 "frequency_penalty": "Frequency penalty",
                 "parallel_tool_calls": "Parallel tool calls",
                 "presence_penalty": "Presence penalty",
                 "seed": "Seed",
+                "templated_extra_body": "Templated extra body",
                 "top_p": "Top P"
               },
               "data_description": {
-                "templated_extra_body": "Optional request-body fields rendered from Home Assistant templates and merged into extra_body for this model profile.",
                 "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
                 "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
                 "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
                 "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
+                "templated_extra_body": "Optional request-body fields rendered from Home Assistant templates and merged into extra_body for this model profile.",
                 "top_p": "Nucleus sampling value. Leave empty to use the provider default."
               },
               "name": "Advanced model settings"

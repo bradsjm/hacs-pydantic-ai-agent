@@ -263,8 +263,7 @@ async def test_streaming_tool_retry_exhaustion_reports_tool_context(
                         tool_name="turn_on",
                         tool_call_id="tool-1",
                         content=(
-                            'Home Assistant tool "turn_on" failed: '
-                            "device lookup failed"
+                            'Home Assistant tool "turn_on" failed: device lookup failed'
                         ),
                     )
                 )

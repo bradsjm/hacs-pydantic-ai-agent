@@ -1,7 +1,5 @@
 """Schema builder helpers for config flows."""
 
-from __future__ import annotations
-
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -37,6 +35,7 @@ from ..const import (
     CONF_PRIMARY_MODEL_REF,
     CONF_PROMPT,
     CONF_SKILLS,
+    CONF_STREAMING_ENABLED,
     CONF_THINKING,
     CONF_TOOL_RETRIES,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
@@ -62,6 +61,7 @@ from ._constants import (
     _MODEL_SETTING_TOP_P,
     _RUN_SETTING_KEYS,
     _SECTION_ADVANCED_MODEL_SETTINGS,
+    _SECTION_ADVANCED_OPTIONS,
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
@@ -213,6 +213,16 @@ def _conversation_schema(
     )
     schema[_section_schema_key(_SECTION_HASS_CONTROL, hass_control_schema)] = section(
         vol.Schema(hass_control_schema), {"collapsed": True}
+    )
+    advanced_options_schema: VolDictType = {}
+    advanced_options_schema[
+        vol.Optional(
+            CONF_STREAMING_ENABLED,
+            default=options.get(CONF_STREAMING_ENABLED, True),
+        )
+    ] = BooleanSelector()
+    schema[_section_schema_key(_SECTION_ADVANCED_OPTIONS, advanced_options_schema)] = (
+        section(vol.Schema(advanced_options_schema), {"collapsed": True})
     )
     external_tools_schema: VolDictType = {}
     external_tools_schema[
@@ -446,6 +456,7 @@ def _conversation_data_from_user_input(
     user_input = _flatten_section_data(
         user_input,
         (
+            _SECTION_ADVANCED_OPTIONS,
             _SECTION_EXTERNAL_TOOLS,
             _SECTION_FALLBACK_MODELS,
             _SECTION_HASS_CONTROL,
@@ -459,6 +470,8 @@ def _conversation_data_from_user_input(
     )
     if not data.get(CONF_LLM_HASS_API):
         data.pop(CONF_LLM_HASS_API, None)
+    if data.get(CONF_STREAMING_ENABLED, True) is not False:
+        data.pop(CONF_STREAMING_ENABLED, None)
     if not data.get(CONF_WEB_FETCH_ENABLED):
         data.pop(CONF_WEB_FETCH_ENABLED, None)
     if data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is not True:

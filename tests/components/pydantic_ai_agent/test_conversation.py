@@ -7,6 +7,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
+    CONF_STREAMING_ENABLED,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     DOMAIN,
 )
@@ -38,6 +39,7 @@ def _entry(
     llm_hass_api=None,
     skills=None,
     *,
+    streaming_enabled=True,
     virtual_workspace_enabled=False,
     web_fetch_enabled=False,
     model_settings=None,
@@ -49,6 +51,7 @@ def _entry(
                 _MODEL_PROFILE_REF,
                 llm_hass_api=llm_hass_api,
                 skills=skills,
+                streaming_enabled=streaming_enabled,
                 virtual_workspace_enabled=virtual_workspace_enabled,
                 web_fetch_enabled=web_fetch_enabled,
                 extra_data=extra_data,
@@ -148,10 +151,21 @@ def test_conversation_entity_controls_home_assistant_with_llm_api():
 
 
 def test_conversation_entity_advertises_streaming():
-    entity = PydanticAIConversationEntity(
-        _entry(None), next(iter(_entry(None).subentries.values()))
-    )
+    entry = _entry(None)
+    entity = PydanticAIConversationEntity(entry, next(iter(entry.subentries.values())))
     assert entity.supports_streaming is True
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    assert attributes[CONF_STREAMING_ENABLED] is True
+
+
+def test_conversation_entity_disables_streaming_when_configured():
+    entry = _entry(None, streaming_enabled=False)
+    entity = PydanticAIConversationEntity(entry, next(iter(entry.subentries.values())))
+    assert entity.supports_streaming is False
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    assert attributes[CONF_STREAMING_ENABLED] is False
 
 
 @pytest.mark.parametrize(

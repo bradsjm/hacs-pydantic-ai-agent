@@ -30,7 +30,13 @@ from custom_components.pydantic_ai_agent.provider_validation import (
 )
 from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
-from pydantic_ai import PartEndEvent, PartStartEvent, TextPart, ToolCallPart
+from pydantic_ai import (
+    ModelResponse,
+    PartEndEvent,
+    PartStartEvent,
+    TextPart,
+    ToolCallPart,
+)
 from pydantic_ai.exceptions import ModelHTTPError
 
 
@@ -201,6 +207,31 @@ async def test_probe_model_streaming_not_supported_reported(
 
     assert exc_info.value.reason == "model_does_not_support_streaming"
     assert exc_info.value.message == "Streamed requests not supported"
+
+
+async def test_probe_model_uses_non_streaming_request_when_disabled(
+    hass: HomeAssistant,
+) -> None:
+    """Test provider validation can probe via non-streaming requests."""
+    model = object()
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.provider_validation._openai_compatible_model",
+            return_value=model,
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.provider_validation.model_request",
+            return_value=ModelResponse(parts=[TextPart(content="OK")]),
+        ) as model_request,
+        patch(
+            "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
+        ) as model_request_stream,
+    ):
+        await async_probe_model(hass, _provider_data(), "gpt-test", stream=False)
+
+    model_request.assert_called_once()
+    model_request_stream.assert_not_called()
 
 
 async def test_probe_model_maps_raw_httpx_timeout(hass: HomeAssistant) -> None:

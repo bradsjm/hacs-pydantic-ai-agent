@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..generated_titles import DEFAULT_AGENT_TITLE_SUFFIX, generated_default_title
 from .common import (
+    _SECTION_ADVANCED_OPTIONS,
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
@@ -71,6 +72,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
             flat_user_input = _flatten_section_data(
                 user_input,
                 (
+                    _SECTION_ADVANCED_OPTIONS,
                     _SECTION_EXTERNAL_TOOLS,
                     _SECTION_FALLBACK_MODELS,
                     _SECTION_HASS_CONTROL,
