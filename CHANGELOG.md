@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Add a conversation streaming toggle that can disable progressive responses per agent.
+- Move the conversation streaming toggle into Run settings while keeping existing agents streaming by default.
+- Fix setup validation, repair handling, and runtime execution so conversation streaming settings are applied consistently.
+
 ## 0.2.0
 
 - Add provider-owned model profile management, discovery, validation, and fallback selection flows.
