@@ -1,7 +1,5 @@
 """Schema builder helpers for config flows."""
 
-from __future__ import annotations
-
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -37,6 +35,7 @@ from ..const import (
     CONF_PRIMARY_MODEL_REF,
     CONF_PROMPT,
     CONF_SKILLS,
+    CONF_STREAMING_ENABLED,
     CONF_THINKING,
     CONF_TOOL_RETRIES,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
@@ -194,8 +193,15 @@ def _conversation_schema(
             ],
         ),
     )
-    schema[_section_schema_key(_SECTION_RUN_SETTINGS, run_settings_schema.schema)] = (
-        section(run_settings_schema, {"collapsed": True})
+    run_settings_fields = dict(run_settings_schema.schema)
+    run_settings_fields[
+        vol.Optional(
+            CONF_STREAMING_ENABLED,
+            default=options.get(CONF_STREAMING_ENABLED, True),
+        )
+    ] = BooleanSelector()
+    schema[_section_schema_key(_SECTION_RUN_SETTINGS, run_settings_fields)] = section(
+        vol.Schema(run_settings_fields), {"collapsed": True}
     )
     api_schema_key = vol.Optional(CONF_LLM_HASS_API)
     if CONF_LLM_HASS_API in options:
@@ -459,6 +465,8 @@ def _conversation_data_from_user_input(
     )
     if not data.get(CONF_LLM_HASS_API):
         data.pop(CONF_LLM_HASS_API, None)
+    if data.get(CONF_STREAMING_ENABLED, True) is not False:
+        data.pop(CONF_STREAMING_ENABLED, None)
     if not data.get(CONF_WEB_FETCH_ENABLED):
         data.pop(CONF_WEB_FETCH_ENABLED, None)
     if data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is not True:

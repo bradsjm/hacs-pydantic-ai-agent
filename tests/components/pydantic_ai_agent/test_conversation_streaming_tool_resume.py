@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
+from custom_components.pydantic_ai_agent.conversation import _merged_assistant_speech
 from homeassistant.components import conversation
 from homeassistant.components.conversation.chat_log import (
     DATA_CHAT_LOGS,
@@ -30,6 +31,22 @@ from tests.components.pydantic_ai_agent.test_conversation_streaming import (
     _entry,
     _ResultWithMessages,
 )
+
+
+def test_merged_assistant_speech_prefers_full_resumed_answer() -> None:
+    """Test a resumed full answer replaces an earlier prefix fragment."""
+    assert (
+        _merged_assistant_speech(
+            [
+                AssistantContent(agent_id="agent", content="Turning on "),
+                AssistantContent(
+                    agent_id="agent",
+                    content="\n\nTurning on the kitchen light. Done!",
+                ),
+            ]
+        )
+        == "Turning on the kitchen light. Done!"
+    )
 
 
 async def test_streaming_backfill_preserves_tool_resume_separator(
@@ -104,7 +121,7 @@ async def test_streaming_backfill_preserves_tool_resume_separator(
             agent_id=entity_id,
         )
 
-    assert result.response.speech["plain"]["speech"] == "\n\ndone!"
+    assert result.response.speech["plain"]["speech"] == "turning \n\ndone!"
     assert result.conversation_id is not None
     assistant_messages = [
         content
@@ -188,7 +205,7 @@ async def test_streaming_backfill_appends_tool_resume_separator_after_tool_resul
             agent_id=entity_id,
         )
 
-    assert result.response.speech["plain"]["speech"] == "\n\ndone!"
+    assert result.response.speech["plain"]["speech"] == "turning \n\ndone!"
     assert result.conversation_id is not None
     assistant_messages = [
         content
@@ -301,7 +318,7 @@ async def test_streaming_backfill_preserves_separator_after_resumed_thinking(
         ):
             result = await entity._async_handle_message(user_input, chat_log)
 
-    assert result.response.speech["plain"]["speech"] == "\n\ndone!"
+    assert result.response.speech["plain"]["speech"] == "turning \n\ndone!"
     assert streamed_deltas[-1] == {"content": "\n\ndone!"}
     assert result.conversation_id is not None
     assistant_messages = [

@@ -18,7 +18,7 @@ from pydantic_ai import (
     TextPartDelta,
     ToolCallPart,
 )
-from pydantic_ai.direct import model_request_stream
+from pydantic_ai.direct import model_request, model_request_stream
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
@@ -235,6 +235,28 @@ async def _run_probe_stream(
             )
 
 
+async def _run_probe(
+    model: Model,
+    settings: dict[str, Any],
+    model_request_parameters: ModelRequestParameters | None,
+) -> None:
+    """Run a probe request without streaming and validate the response."""
+    response = await model_request(
+        model,
+        _probe_messages(None),
+        model_settings=ModelSettings(**settings),
+        model_request_parameters=model_request_parameters,
+    )
+    if not any(
+        isinstance(part, TextPart) and part.content
+        for part in getattr(response, "parts", ())
+    ):
+        raise ProviderValidationError(
+            "provider_error",
+            "The provider returned an empty response.",
+        )
+
+
 def _build_probe_request_parameters(
     structured_output_mode: str | None,
     thinking: ThinkingLevel | None,
@@ -272,6 +294,7 @@ async def async_probe_model(
     model_settings: Mapping[str, Any] | None = None,
     *,
     structured_output_mode: str | None = None,
+    stream: bool = True,
 ) -> None:
     """Probe model access with the same streaming path used at runtime."""
     try:
@@ -286,9 +309,12 @@ async def async_probe_model(
         model_request_parameters = _build_probe_request_parameters(
             structured_output_mode, thinking
         )
-        await _run_probe_stream(
-            model, settings, model_request_parameters, structured_output_mode
-        )
+        if structured_output_mode is not None or stream:
+            await _run_probe_stream(
+                model, settings, model_request_parameters, structured_output_mode
+            )
+        else:
+            await _run_probe(model, settings, model_request_parameters)
     except ModelHTTPError as err:
         if structured_output_mode is not None:
             raise _map_structured_http_error(

@@ -245,11 +245,15 @@ def _should_fallback(err: Exception) -> bool:
         )
     if isinstance(err, ModelHTTPError):
         http_error = cast(ModelHTTPError, err)
-        return http_error.status_code in {
-            408,
-            409,
-            429,
-        } or 500 <= http_error.status_code <= 599
+        return (
+            http_error.status_code
+            in {
+                408,
+                409,
+                429,
+            }
+            or 500 <= http_error.status_code <= 599
+        )
     if isinstance(err, TimeoutError | httpx.TimeoutException | UsageLimitExceeded):
         return True
     if isinstance(err, ModelAPIError):

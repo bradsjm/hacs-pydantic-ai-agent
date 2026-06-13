@@ -274,6 +274,7 @@
               "data": {
                 "max_iterations": "Max iterations",
                 "max_tokens": "Max tokens",
+                "streaming_enabled": "Progressive streaming responses",
                 "thinking": "Thinking (Reasoning) Mode",
                 "timeout": "Timeout",
                 "tool_retries": "Tool retries"
@@ -281,6 +282,7 @@
               "data_description": {
                 "max_iterations": "Maximum Pydantic AI agent request iterations for one conversation turn. Default: 10.",
                 "max_tokens": "Maximum tokens the model may generate per response. Leave empty to use the provider/model default.",
+                "streaming_enabled": "Stream partial assistant responses live as they are generated. Disable to wait for the full response before Home Assistant receives it. Enabled by default.",
                 "thinking": "Optional reasoning effort for this conversation agent if supported by the model. Leave empty to use the provider/model default.",
                 "timeout": "Provider request timeout in seconds. Default: 10.0.",
                 "tool_retries": "Maximum number of times the model may retry a failed tool call during one conversation turn. This applies to all tools available during the run. Set to 0 to disable tool retries. Default: 3."
@@ -431,8 +433,8 @@
         "positive_number": "Enter a number greater than zero.",
         "provider_error": "{error_message}",
         "provider_extra_body_unsupported": "{error_message}",
-        "templated_extra_body_path_conflict": "Templated request-body paths cannot overlap. Remove conflicting paths like `a` and `a.b`.",
         "rate_limited": "{error_message}",
+        "templated_extra_body_path_conflict": "Templated request-body paths cannot overlap. Remove conflicting paths like `a` and `a.b`.",
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
       },
@@ -483,19 +485,19 @@
           "sections": {
             "advanced_model_settings": {
               "data": {
-                "templated_extra_body": "Templated extra body",
                 "frequency_penalty": "Frequency penalty",
                 "parallel_tool_calls": "Parallel tool calls",
                 "presence_penalty": "Presence penalty",
                 "seed": "Seed",
+                "templated_extra_body": "Templated extra body",
                 "top_p": "Top P"
               },
               "data_description": {
-                "templated_extra_body": "Optional request-body fields rendered from Home Assistant templates and merged into extra_body for this model profile.",
                 "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
                 "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
                 "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
                 "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",
+                "templated_extra_body": "Optional request-body fields rendered from Home Assistant templates and merged into extra_body for this model profile.",
                 "top_p": "Nucleus sampling value. Leave empty to use the provider default."
               },
               "name": "Advanced model settings"

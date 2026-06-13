@@ -18,6 +18,7 @@ from .const import (
     CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
+    CONF_STREAMING_ENABLED,
     CONF_THINKING,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -45,6 +46,7 @@ from .structured_output import structured_output_mode
 _LOGGER = logging.getLogger(__name__)
 
 _MODEL_VALIDATION_OUTPUT_MODE_KEY = "_pydantic_ai_agent_output_mode"
+_MODEL_VALIDATION_STREAM_KEY = "_pydantic_ai_agent_stream"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -57,6 +59,7 @@ class _ConfiguredModelProbe:
     model: str
     model_settings: dict[str, Any]
     output_mode: str | None
+    stream: bool
 
 
 def _configured_subentry_models(
@@ -64,7 +67,7 @@ def _configured_subentry_models(
 ) -> list[_ConfiguredModelProbe]:
     """Return unique model probes needed before the entry can load."""
     models: list[_ConfiguredModelProbe] = []
-    seen: dict[tuple[str, str, str, str | None], int] = {}
+    seen: dict[tuple[str, str, str, str | None, bool], int] = {}
 
     for subentry in entry.subentries.values():
         if subentry.subentry_type not in (
@@ -94,7 +97,7 @@ def _append_configured_subentry_models(
     subentry: ConfigSubentry,
     primary_ref: str,
     models: list[_ConfiguredModelProbe],
-    seen: dict[tuple[str, str, str, str | None], int],
+    seen: dict[tuple[str, str, str, str | None, bool], int],
 ) -> None:
     """Append provider probes referenced by one conversation or AI task subentry."""
     fallback_refs = subentry.data.get(CONF_FALLBACK_MODEL_REFS, [])
@@ -104,6 +107,10 @@ def _append_configured_subentry_models(
         structured_output_mode(subentry.data.get(CONF_OUTPUT_MODE))
         if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
         else None
+    )
+    stream = (
+        output_mode is not None
+        or subentry.data.get(CONF_STREAMING_ENABLED, True) is not False
     )
     refs = [primary_ref, *[ref for ref in fallback_refs if isinstance(ref, str)]]
     for ref in refs:
@@ -116,6 +123,7 @@ def _append_configured_subentry_models(
             ref,
             subentry.data,
             output_mode,
+            stream,
             models,
             seen,
         )
@@ -156,8 +164,9 @@ def _add_configured_model_probe(
     profile_ref: str,
     subentry_data: Mapping[str, Any],
     output_mode: str | None,
+    stream: bool,
     models: list[_ConfiguredModelProbe],
-    seen: dict[tuple[str, str, str, str | None], int],
+    seen: dict[tuple[str, str, str, str | None, bool], int],
 ) -> None:
     """Add or merge one unique configured-model probe for setup validation."""
     provider_subentry_id, profile_id = parse_model_profile_ref(profile_ref)
@@ -187,6 +196,7 @@ def _add_configured_model_probe(
         model,
         normalise_applied_model_settings(model_settings),
         output_mode,
+        stream,
     )
     failure_key = f"{subentry_id}:{profile_ref}"
     if dedupe_key in seen:
@@ -206,20 +216,21 @@ def _add_configured_model_probe(
             model=model,
             model_settings=model_settings,
             output_mode=output_mode,
+            stream=stream,
         )
     )
 
 
 def _repair_issue_model_settings(
-    model_settings: Mapping[str, Any], output_mode: str | None
+    model_settings: Mapping[str, Any], output_mode: str | None, stream: bool
 ) -> dict[str, Any]:
     """Return settings material that separates chat and structured probes."""
-    if output_mode is None:
-        return dict(model_settings)
-    return {
-        **model_settings,
-        _MODEL_VALIDATION_OUTPUT_MODE_KEY: output_mode,
-    }
+    repair_settings = dict(model_settings)
+    if output_mode is not None:
+        repair_settings[_MODEL_VALIDATION_OUTPUT_MODE_KEY] = output_mode
+    if stream is False:
+        repair_settings[_MODEL_VALIDATION_STREAM_KEY] = False
+    return repair_settings
 
 
 async def _async_validate_configured_models(
@@ -231,7 +242,7 @@ async def _async_validate_configured_models(
     validation_failures: dict[str, str] = {}
     for probe in _configured_subentry_models(entry):
         repair_settings = _repair_issue_model_settings(
-            probe.model_settings, probe.output_mode
+            probe.model_settings, probe.output_mode, probe.stream
         )
         current_issue_ids.add(
             model_validation_issue_id(entry, probe.issue_profile_id, repair_settings)
@@ -243,6 +254,7 @@ async def _async_validate_configured_models(
                     probe.provider_subentry.data,
                     probe.model,
                     probe.model_settings,
+                    stream=probe.stream,
                 )
             else:
                 await async_probe_model(
@@ -251,6 +263,7 @@ async def _async_validate_configured_models(
                     probe.model,
                     probe.model_settings,
                     structured_output_mode=probe.output_mode,
+                    stream=probe.stream,
                 )
         except ProviderValidationError as err:
             _LOGGER.warning(

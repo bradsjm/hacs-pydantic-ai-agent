@@ -363,8 +363,7 @@ def test_entity_tool_retries_defaults_to_three() -> None:
     entity = SimpleNamespace(subentry=SimpleNamespace(data={}))
 
     assert (
-        PydanticAIBaseLLMEntity._tool_retries(cast(Any, entity))
-        == DEFAULT_TOOL_RETRIES
+        PydanticAIBaseLLMEntity._tool_retries(cast(Any, entity)) == DEFAULT_TOOL_RETRIES
     )
 
 

@@ -34,6 +34,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
+    CONF_STREAMING_ENABLED,
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
@@ -143,6 +144,7 @@ def conversation_subentry_data(
     llm_hass_api: Sequence[str] | None = None,
     mcp_server_ids: Sequence[str] | None = None,
     skills: Sequence[str] | None = None,
+    streaming_enabled: bool = True,
     virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
     extra_data: Mapping[str, object] | None = None,
@@ -157,6 +159,8 @@ def conversation_subentry_data(
         data[CONF_MCP_SERVER_IDS] = list(mcp_server_ids)
     if skills is not None:
         data[CONF_SKILLS] = list(skills)
+    if not streaming_enabled:
+        data[CONF_STREAMING_ENABLED] = False
     if web_fetch_enabled:
         data[CONF_WEB_FETCH_ENABLED] = True
     if virtual_workspace_enabled:

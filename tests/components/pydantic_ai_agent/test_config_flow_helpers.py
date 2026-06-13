@@ -44,6 +44,7 @@ from custom_components.pydantic_ai_agent.config_flows.common import (
     _MODEL_PRICING_INPUT,
     _MODEL_PRICING_OUTPUT,
     _SECTION_FALLBACK_MODELS,
+    _SECTION_RUN_SETTINGS,
     _mcp_server_schema,
     _model_pricing_from_options,
     _model_profile_select_options,
@@ -93,6 +94,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
+    CONF_STREAMING_ENABLED,
     CONF_TEMPLATED_EXTRA_BODY,
     CONF_THINKING,
     CONF_TIMEOUT,
@@ -362,6 +364,40 @@ def test_agent_schema_multi_selectors_use_dropdown_mode(
     assert selector.config["multiple"] is True
 
 
+def test_conversation_schema_streaming_toggle_defaults_true(
+    hass: HomeAssistant,
+) -> None:
+    entry = workspace_entry((provider_subentry_data(),))
+    data_schema = _conversation_schema(hass, {}, entry)
+
+    assert CONF_STREAMING_ENABLED in _section_key_names(
+        data_schema, _SECTION_RUN_SETTINGS
+    )
+    assert (
+        serialized_section_default(data_schema, _SECTION_RUN_SETTINGS)[
+            CONF_STREAMING_ENABLED
+        ]
+        is True
+    )
+
+
+def test_conversation_schema_streaming_toggle_defaults_false_when_saved(
+    hass: HomeAssistant,
+) -> None:
+    entry = workspace_entry((provider_subentry_data(),))
+    data_schema = _conversation_schema(hass, {CONF_STREAMING_ENABLED: False}, entry)
+
+    assert CONF_STREAMING_ENABLED in _section_key_names(
+        data_schema, _SECTION_RUN_SETTINGS
+    )
+    assert (
+        serialized_section_default(data_schema, _SECTION_RUN_SETTINGS)[
+            CONF_STREAMING_ENABLED
+        ]
+        is False
+    )
+
+
 def test_fallback_model_profile_select_options_include_unavailable_selected_ref(
     hass: HomeAssistant,
 ) -> None:
@@ -548,6 +584,36 @@ def test_save_time_helpers_preserve_fallback_row_order(
         "provider-1:profile-3",
         "provider-1:profile-2",
     ]
+
+
+def test_conversation_data_from_user_input_prunes_default_streaming_true() -> None:
+    entry = _fallback_test_entry()
+
+    result = _conversation_data_from_user_input(
+        {
+            CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+            _SECTION_RUN_SETTINGS: {CONF_STREAMING_ENABLED: True},
+        },
+        {},
+        entry,
+    )
+
+    assert CONF_STREAMING_ENABLED not in result
+
+
+def test_conversation_data_from_user_input_persists_explicit_streaming_false() -> None:
+    entry = _fallback_test_entry()
+
+    result = _conversation_data_from_user_input(
+        {
+            CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+            _SECTION_RUN_SETTINGS: {CONF_STREAMING_ENABLED: False},
+        },
+        {},
+        entry,
+    )
+
+    assert result[CONF_STREAMING_ENABLED] is False
 
 
 @pytest.mark.parametrize(
