@@ -168,7 +168,11 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
                             CONF_MCP_HEADERS,
                             default=_format_mcp_headers(options.get(CONF_MCP_HEADERS)),
                         ): _key_value_rows_selector(
-                            CONF_KEY_VALUE_VALUE, {"text": None}
+                            CONF_KEY_VALUE_VALUE,
+                            {"text": None},
+                            key_label="header name",
+                            value_label="header value",
+                            translation_key=CONF_MCP_HEADERS,
                         ),
                         vol.Optional(
                             CONF_MCP_INCLUDE_RETURN_SCHEMA,
@@ -189,6 +193,18 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
 def _format_mcp_headers(headers: object) -> list[dict[str, str]]:
     """Return headers in selector-compatible row shape for the config form."""
     return _format_key_value_text_rows(headers)
+
+
+def _mcp_server_form_options(
+    options: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return MCP server data expanded into form-friendly values."""
+    form_options = _flatten_section_data(options or {}, (_SECTION_ADVANCED_MCP,))
+    if CONF_MCP_HEADERS in form_options:
+        form_options[CONF_MCP_HEADERS] = _format_mcp_headers(
+            form_options.get(CONF_MCP_HEADERS)
+        )
+    return form_options
 
 
 def _mcp_tool_options(

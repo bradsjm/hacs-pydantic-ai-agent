@@ -376,3 +376,59 @@ async def test_mcp_server_manage_tools_requires_at_least_one_tool(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "manage_tools"
     assert result["errors"] == {CONF_MCP_ALLOWED_TOOLS: "mcp_tools_not_allowlisted"}
+
+
+async def test_mcp_server_reconfigure_validation_uses_discovered_tools_for_no_tools(
+    hass: HomeAssistant,
+) -> None:
+    """Test reconfigure fails when discovery finds no tools."""
+    entry = await loaded_workspace_entry(
+        hass,
+        (
+            {
+                "subentry_id": "mcp-1",
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Echo MCP",
+                "unique_id": None,
+                "data": {
+                    CONF_NAME: "Echo MCP",
+                    CONF_MCP_URL: "https://mcp.example.com/mcp",
+                    CONF_MCP_ALLOWED_TOOLS: ["stale_tool"],
+                },
+            },
+        ),
+    )
+    subentry = next(iter(entry.subentries.values()))
+
+    async def discover_no_tools(
+        *_args: object, **_kwargs: object
+    ) -> list[dict[str, object]]:
+        return []
+
+    result = await subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+    result = await subentry_configure_result(
+        hass,
+        result["flow_id"],
+        {"next_step_id": "edit_server"},
+    )
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flows.mcp_server_flow.async_discover_mcp_tools_from_config",
+        new=discover_no_tools,
+    ):
+        result = await subentry_configure_result(
+            hass,
+            result["flow_id"],
+            {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "edit_server"
+    assert result["errors"] == {"base": "no_mcp_tools"}

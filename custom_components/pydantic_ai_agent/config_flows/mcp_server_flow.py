@@ -7,7 +7,9 @@ from homeassistant.helpers.selector import SelectOptionDict
 
 from ..const import (
     CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
+    CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_URL,
     DEFAULT_MCP_TIMEOUT,
 )
@@ -30,6 +32,7 @@ from .helpers import _flatten_section_data
 from .mcp_helpers import (
     _SECTION_ADVANCED_MCP,
     _mcp_server_data_from_user_input,
+    _mcp_server_form_options,
     _mcp_server_schema,
     _mcp_tool_options,
     _mcp_tools_schema,
@@ -76,7 +79,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Reconfigure an MCP server subentry."""
-        self._options = self._get_reconfigure_subentry().data.copy()
+        self._options = _mcp_server_form_options(self._get_reconfigure_subentry().data)
         return await self.async_step_reconfigure_menu(user_input)
 
     async def async_step_reconfigure_menu(
@@ -116,6 +119,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
             )
 
         flat_user_input = _flatten_section_data(user_input, (_SECTION_ADVANCED_MCP,))
+        form_options = _mcp_server_form_options(flat_user_input)
         errors: dict[str, str] = {}
         description_placeholders: dict[str, str] = {}
         try:
@@ -123,20 +127,13 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         except MCPValidationError as err:
             errors[CONF_MCP_URL] = err.reason
             description_placeholders = _mcp_validation_placeholders(err)
-            data = dict(flat_user_input)
         except vol.Invalid as err:
             reason = str(err) or "invalid_mcp_headers"
             if reason == "invalid_mcp_tools":
                 errors[CONF_MCP_ALLOWED_TOOLS] = reason
             else:
                 errors[CONF_MCP_HEADERS] = "invalid_mcp_headers"
-            data = dict(flat_user_input)
         else:
-            form_data = (
-                self._options
-                | data
-                | {CONF_MCP_HEADERS: flat_user_input.get(CONF_MCP_HEADERS, "")}
-            )
             (
                 validated_data,
                 _tool_options,
@@ -146,7 +143,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 self._current_subentry_id(),
             )
             if error is not None:
-                return self._show_server_form_error(step_id, form_data, error)
+                return self._show_server_form_error(step_id, form_options, error)
 
             assert validated_data is not None
             if _mcp_url_already_configured(
@@ -156,11 +153,11 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
             ):
                 return self.async_abort(reason="already_configured")
 
-            return self._async_finish_server_form(validated_data)
+            return self._async_finish_server_form(validated_data, flat_user_input)
 
         return self.async_show_form(
             step_id=step_id,
-            data_schema=_mcp_server_schema(self._options | data),
+            data_schema=_mcp_server_schema(form_options),
             errors=errors,
             description_placeholders=description_placeholders,
         )
@@ -187,24 +184,44 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         )
 
     def _storage_data_with_preserved_allowlist(
-        self, validated_data: dict[str, Any]
+        self,
+        validated_data: dict[str, Any],
+        user_input: dict[str, Any],
     ) -> dict[str, Any]:
-        """Return validated storage data preserving an existing explicit allowlist."""
+        """Return validated storage data preserving values not edited in this step."""
         storage_data = dict(validated_data)
-        if (
-            not self._is_new
-            and CONF_MCP_ALLOWED_TOOLS in self._get_reconfigure_subentry().data
-        ):
-            storage_data[CONF_MCP_ALLOWED_TOOLS] = parse_allowed_tools(
-                self._get_reconfigure_subentry().data.get(CONF_MCP_ALLOWED_TOOLS)
+        if self._is_new:
+            return storage_data
+
+        existing_data = self._get_reconfigure_subentry().data
+        if CONF_MCP_ALLOWED_TOOLS in existing_data:
+            storage_data.setdefault(
+                CONF_MCP_ALLOWED_TOOLS,
+                existing_data.get(CONF_MCP_ALLOWED_TOOLS),
             )
+
+        for key in (
+            CONF_MCP_HEADERS,
+            CONF_MCP_INCLUDE_RETURN_SCHEMA,
+            CONF_MCP_DEFERRED_LOADING,
+        ):
+            if key in user_input:
+                continue
+            if key in existing_data:
+                storage_data[key] = existing_data[key]
+            else:
+                storage_data.pop(key, None)
         return storage_data
 
     def _async_finish_server_form(
-        self, validated_data: dict[str, Any]
+        self,
+        validated_data: dict[str, Any],
+        user_input: dict[str, Any],
     ) -> SubentryFlowResult:
         """Create or update the MCP server after validation."""
-        storage_data = self._storage_data_with_preserved_allowlist(validated_data)
+        storage_data = self._storage_data_with_preserved_allowlist(
+            validated_data, user_input
+        )
         if self._is_new:
             return self.async_create_entry(
                 title=storage_data[CONF_NAME],
@@ -242,12 +259,12 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 existing_allowed_tools = parse_allowed_tools(
                     self._options.get(CONF_MCP_ALLOWED_TOOLS)
                 )
-                tool_options = _mcp_tool_options(tools, existing_allowed_tools)
-                if not tool_options:
+                if not tools:
                     raise MCPValidationError(
                         "no_mcp_tools",
                         "The MCP server did not expose any tools.",
                     )
+                tool_options = _mcp_tool_options(tools, existing_allowed_tools)
         except TimeoutError:
             validation_error = MCPValidationError(
                 "timeout",
