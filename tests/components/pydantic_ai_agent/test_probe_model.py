@@ -1,7 +1,5 @@
 """Test provider model probing for Pydantic AI Agent."""
 
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -13,7 +11,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_MAX_ITERATIONS,
     CONF_PROVIDER_EXTRA_BODY,
-    CONF_PROVIDER_MODE,
     CONF_TEMPLATED_EXTRA_BODY,
     CONF_THINKING,
     OUTPUT_MODE_NATIVE,
@@ -28,150 +25,23 @@ from custom_components.pydantic_ai_agent.provider_validation import (
     ProviderValidationError,
     async_probe_model,
 )
-from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
-from pydantic_ai import (
-    ModelResponse,
-    PartEndEvent,
-    PartStartEvent,
-    TextPart,
-    ToolCallPart,
+from pydantic_ai import ModelResponse, TextPart
+from tests.components.pydantic_ai_agent.support.probe_model import (
+    FailingStreamContext,
+    HTTPErrorStreamContext,
+    SingleEventStream,
+    StructuredTextStream,
+    StructuredToolStream,
+    provider_data,
+    stream_context,
 )
-from pydantic_ai.exceptions import ModelHTTPError
-
-
-class _SingleEventStream:
-    """Async stream with one validation event."""
-
-    def __init__(self) -> None:
-        """Initialize the stream."""
-        self._yielded = False
-
-    def __aiter__(self) -> _SingleEventStream:
-        """Return the async iterator."""
-        return self
-
-    async def __anext__(self) -> object:
-        """Return one event, then stop."""
-        if self._yielded:
-            raise StopAsyncIteration
-        self._yielded = True
-        return object()
-
-
-class _StructuredTextStream:
-    """Async stream with text structured-output events."""
-
-    def __init__(self, content: str = '{"ok":true}') -> None:
-        """Initialize the stream."""
-        self._events = iter(
-            (
-                PartStartEvent(index=0, part=TextPart(content=content)),
-                PartEndEvent(index=0, part=TextPart(content=content)),
-            )
-        )
-
-    def __aiter__(self) -> _StructuredTextStream:
-        """Return the async iterator."""
-        return self
-
-    async def __anext__(self) -> object:
-        """Return the next stream event."""
-        try:
-            return next(self._events)
-        except StopIteration as err:
-            raise StopAsyncIteration from err
-
-
-class _StructuredToolStream:
-    """Async stream with an output-tool event."""
-
-    def __init__(self) -> None:
-        """Initialize the stream."""
-        self._events = iter(
-            (
-                PartEndEvent(
-                    index=0,
-                    part=ToolCallPart(
-                        tool_name="pydantic_ai_agent_output_probe_response",
-                        args={"ok": True},
-                        tool_call_id="tool-1",
-                    ),
-                ),
-            )
-        )
-
-    def __aiter__(self) -> _StructuredToolStream:
-        """Return the async iterator."""
-        return self
-
-    async def __anext__(self) -> object:
-        """Return the next stream event."""
-        try:
-            return next(self._events)
-        except StopIteration as err:
-            raise StopAsyncIteration from err
-
-
-class _FailingStreamContext:
-    """Async context manager that fails before streaming starts."""
-
-    async def __aenter__(self) -> object:
-        """Raise the streaming failure."""
-        raise NotImplementedError("Streamed requests not supported")
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        traceback: object,
-    ) -> bool:
-        """Do not suppress exceptions."""
-        return False
-
-
-class _HTTPErrorStreamContext:
-    """Async context manager that fails with a provider HTTP error."""
-
-    def __init__(self, status_code: int = 429) -> None:
-        """Initialize the HTTP error status code."""
-        self._status_code = status_code
-
-    async def __aenter__(self) -> object:
-        """Raise a provider HTTP error."""
-        raise ModelHTTPError(
-            status_code=self._status_code, model_name="gpt-test", body=None
-        )
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        traceback: object,
-    ) -> bool:
-        """Do not suppress exceptions."""
-        return False
-
-
-def _provider_data(
-    provider_mode: str = PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-) -> dict[str, object]:
-    """Return provider data for model probes."""
-    return {
-        CONF_NAME: "Hosted OpenAI",
-        CONF_PROVIDER_MODE: provider_mode,
-        CONF_API_KEY: "sk-test",
-    }
 
 
 async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
     """Test provider validation completes a streaming response."""
     model = object()
-    stream_events = _SingleEventStream()
-
-    @asynccontextmanager
-    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
-        yield stream_events
+    stream_events = SingleEventStream()
 
     with (
         patch(
@@ -180,10 +50,10 @@ async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
         ),
         patch(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
-            side_effect=stream,
+            side_effect=lambda *_args, **_kwargs: stream_context(stream_events),
         ) as model_request_stream,
     ):
-        await async_probe_model(hass, _provider_data(), "gpt-test")
+        await async_probe_model(hass, provider_data(), "gpt-test")
 
     model_request_stream.assert_called_once()
     assert model_request_stream.call_args.kwargs["model_settings"]["timeout"] == 10.0
@@ -199,11 +69,11 @@ async def test_probe_model_streaming_not_supported_reported(
         ),
         patch(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
-            return_value=_FailingStreamContext(),
+            return_value=FailingStreamContext(),
         ),
         pytest.raises(ProviderValidationError) as exc_info,
     ):
-        await async_probe_model(hass, _provider_data(), "gpt-test")
+        await async_probe_model(hass, provider_data(), "gpt-test")
 
     assert exc_info.value.reason == "model_does_not_support_streaming"
     assert exc_info.value.message
@@ -228,7 +98,7 @@ async def test_probe_model_uses_non_streaming_request_when_disabled(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
         ) as model_request_stream,
     ):
-        await async_probe_model(hass, _provider_data(), "gpt-test", stream=False)
+        await async_probe_model(hass, provider_data(), "gpt-test", stream=False)
 
     model_request.assert_called_once()
     model_request_stream.assert_not_called()
@@ -248,7 +118,7 @@ async def test_probe_model_maps_raw_httpx_timeout(hass: HomeAssistant) -> None:
     ):
         await async_probe_model(
             hass,
-            _provider_data(PROVIDER_GOOGLE_GEMINI),
+            provider_data(PROVIDER_GOOGLE_GEMINI),
             "gemini-3.1-flash-lite",
         )
 
@@ -259,23 +129,17 @@ async def test_probe_model_maps_raw_httpx_timeout(hass: HomeAssistant) -> None:
 @pytest.mark.parametrize(
     ("output_mode", "stream_events"),
     [
-        (OUTPUT_MODE_NATIVE, _StructuredTextStream()),
-        (OUTPUT_MODE_PROMPTED, _StructuredTextStream()),
-        (OUTPUT_MODE_TOOL, _StructuredToolStream()),
+        (OUTPUT_MODE_NATIVE, StructuredTextStream()),
+        (OUTPUT_MODE_PROMPTED, StructuredTextStream()),
+        (OUTPUT_MODE_TOOL, StructuredToolStream()),
     ],
 )
 async def test_probe_model_can_require_structured_output(
     hass: HomeAssistant,
     output_mode: str,
-    stream_events: _StructuredTextStream | _StructuredToolStream,
+    stream_events: StructuredTextStream | StructuredToolStream,
 ) -> None:
     """Test provider probing can request each structured-output mode."""
-
-    @asynccontextmanager
-    async def stream(
-        *_: object, **__: object
-    ) -> AsyncGenerator[_StructuredTextStream | _StructuredToolStream]:
-        yield stream_events
 
     with (
         patch(
@@ -283,12 +147,12 @@ async def test_probe_model_can_require_structured_output(
         ),
         patch(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
-            side_effect=stream,
+            side_effect=lambda *_args, **_kwargs: stream_context(stream_events),
         ),
     ):
         await async_probe_model(
             hass,
-            _provider_data(),
+            provider_data(),
             "gpt-test",
             structured_output_mode=output_mode,
         )
@@ -298,10 +162,7 @@ async def test_probe_model_rejects_invalid_native_structured_output(
     hass: HomeAssistant,
 ) -> None:
     """Test native structured output probing rejects non-JSON responses."""
-
-    @asynccontextmanager
-    async def stream(*_: object, **__: object) -> AsyncGenerator[_StructuredTextStream]:
-        yield _StructuredTextStream("OK")
+    stream_events = StructuredTextStream("OK")
 
     with (
         patch(
@@ -309,13 +170,13 @@ async def test_probe_model_rejects_invalid_native_structured_output(
         ),
         patch(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
-            side_effect=stream,
+            side_effect=lambda *_args, **_kwargs: stream_context(stream_events),
         ),
         pytest.raises(ProviderValidationError) as exc_info,
     ):
         await async_probe_model(
             hass,
-            _provider_data(),
+            provider_data(),
             "gpt-test",
             structured_output_mode=OUTPUT_MODE_NATIVE,
         )
@@ -334,13 +195,13 @@ async def test_probe_model_maps_structured_http_400_to_output_mode_error(
         ),
         patch(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
-            return_value=_HTTPErrorStreamContext(status_code=400),
+            return_value=HTTPErrorStreamContext(status_code=400),
         ),
         pytest.raises(ProviderValidationError) as exc_info,
     ):
         await async_probe_model(
             hass,
-            _provider_data(),
+            provider_data(),
             "gpt-test",
             structured_output_mode=OUTPUT_MODE_TOOL,
         )
@@ -354,11 +215,7 @@ async def test_probe_model_merges_configured_model_settings(
     hass: HomeAssistant,
 ) -> None:
     """Test provider validation preserves configured model settings."""
-    stream_events = _SingleEventStream()
-
-    @asynccontextmanager
-    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
-        yield stream_events
+    stream_events = SingleEventStream()
 
     with (
         patch(
@@ -366,12 +223,12 @@ async def test_probe_model_merges_configured_model_settings(
         ),
         patch(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
-            side_effect=stream,
+            side_effect=lambda *_args, **_kwargs: stream_context(stream_events),
         ) as model_request_stream,
     ):
         await async_probe_model(
             hass,
-            _provider_data(),
+            provider_data(),
             "gpt-5",
             {
                 "temperature": 0.7,
@@ -412,11 +269,7 @@ async def test_probe_model_filters_thinking_by_effective_profile_support(
     expected_thinking: bool | str | None,
 ) -> None:
     """Test probe-time thinking respects effective profile capabilities."""
-    stream_events = _SingleEventStream()
-
-    @asynccontextmanager
-    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
-        yield stream_events
+    stream_events = SingleEventStream()
 
     with (
         patch(
@@ -424,12 +277,12 @@ async def test_probe_model_filters_thinking_by_effective_profile_support(
         ),
         patch(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
-            side_effect=stream,
+            side_effect=lambda *_args, **_kwargs: stream_context(stream_events),
         ) as model_request_stream,
     ):
         await async_probe_model(
             hass,
-            _provider_data(provider_mode),
+            provider_data(provider_mode),
             model_name,
             {CONF_THINKING: thinking},
         )
@@ -446,11 +299,7 @@ async def test_probe_model_filters_thinking_by_effective_profile_support(
 
 async def test_probe_model_renders_templated_extra_body(hass: HomeAssistant) -> None:
     """Test provider validation renders templated extra body."""
-    stream_events = _SingleEventStream()
-
-    @asynccontextmanager
-    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
-        yield stream_events
+    stream_events = SingleEventStream()
 
     with (
         patch(
@@ -458,12 +307,12 @@ async def test_probe_model_renders_templated_extra_body(hass: HomeAssistant) -> 
         ),
         patch(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
-            side_effect=stream,
+            side_effect=lambda *_args, **_kwargs: stream_context(stream_events),
         ) as model_request_stream,
     ):
         await async_probe_model(
             hass,
-            _provider_data()
+            provider_data()
             | {
                 CONF_PROVIDER_EXTRA_BODY: {
                     "service_tier": "flex",
@@ -501,11 +350,7 @@ async def test_probe_model_responses_uses_streamed_request(
 ) -> None:
     """Test Responses provider validation uses the streaming request path."""
     model = SimpleNamespace()
-    stream_events = _SingleEventStream()
-
-    @asynccontextmanager
-    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
-        yield stream_events
+    stream_events = SingleEventStream()
 
     with (
         patch(
@@ -514,12 +359,12 @@ async def test_probe_model_responses_uses_streamed_request(
         ),
         patch(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
-            side_effect=stream,
+            side_effect=lambda *_args, **_kwargs: stream_context(stream_events),
         ) as model_request_stream,
     ):
         await async_probe_model(
             hass,
-            _provider_data(PROVIDER_OPENAI_COMPATIBLE_RESPONSES),
+            provider_data(PROVIDER_OPENAI_COMPATIBLE_RESPONSES),
             "gpt-test",
         )
 
@@ -530,14 +375,10 @@ async def test_probe_model_openai_compatible_uses_normalized_base_url(
     hass: HomeAssistant,
 ) -> None:
     """Test OpenAI-compatible validation builds a provider with the base URL."""
-    data = _provider_data() | {CONF_BASE_URL: "http://localhost:11434/v1/"}
+    data = provider_data() | {CONF_BASE_URL: "http://localhost:11434/v1/"}
     provider = object()
     model = object()
-    stream_events = _SingleEventStream()
-
-    @asynccontextmanager
-    async def stream(*_: object, **__: object) -> AsyncGenerator[_SingleEventStream]:
-        yield stream_events
+    stream_events = SingleEventStream()
 
     with (
         patch(
@@ -550,7 +391,7 @@ async def test_probe_model_openai_compatible_uses_normalized_base_url(
         ) as compatible_chat_model,
         patch(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
-            side_effect=stream,
+            side_effect=lambda *_args, **_kwargs: stream_context(stream_events),
         ) as model_request_stream,
     ):
         await async_probe_model(hass, data, "local-model")

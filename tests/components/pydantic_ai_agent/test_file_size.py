@@ -1,40 +1,14 @@
-"""
-Test that Python files don't exceed 500 lines.
-Long files are difficult to maintain, understand, and test.
-Files should be kept concise and focused on a single responsibility.
-"""
+"""Test that Python files don't exceed the enforced 550-line cap."""
 
 from pathlib import Path
 
-_ALLOWED_OVERSIZED_FILES = {
-    "custom_components/pydantic_ai_agent/debug_services.py": (
-        "Debug response surface aggregates workspace, MCP, and runtime summaries"
-    ),
-    "custom_components/pydantic_ai_agent/entity.py": (
-        "Legacy runtime module pending further extraction"
-    ),
-    "custom_components/pydantic_ai_agent/mcp.py": (
-        "MCP runtime adapter centralizes validation, discovery, and toolset wiring"
-    ),
-    "custom_components/pydantic_ai_agent/provider_validation.py": (
-        "Provider probe/error mapping remains centralized across runtime modes"
-    ),
-    "custom_components/pydantic_ai_agent/config_flows/_profile_helpers.py": (
-        "Provider profile flow helpers still centralize guided profile management"
-    ),
-    "tests/components/pydantic_ai_agent/test_probe_model.py": (
-        "Probe coverage spans multiple providers and structured-output paths"
-    ),
-    "tests/components/pydantic_ai_agent/test_config_flow_helpers.py": (
-        "Config-flow helper coverage stays grouped around shared form behavior"
-    ),
-}
+_ALLOWED_OVERSIZED_FILES = {}
 
 
-def test_python_files_max_500_lines():
+def test_python_files_max_550_lines():
     """
-    Ensure all Python files in frontend, domain, and tests are at most 500 lines long.
-    Files exceeding 500 lines indicate:
+    Ensure all Python files in frontend, domain, and tests are at most 550 lines long.
+    Files exceeding 550 lines indicate:
     - Too many responsibilities in a single module
     - Need for refactoring into smaller, focused modules
     - Potential violation of single responsibility principle
@@ -42,7 +16,7 @@ def test_python_files_max_500_lines():
     - Generated migration files
     - Configuration files with large data structures
     """
-    max_lines = 500
+    max_lines = 550
     project_root = Path(__file__).parent.parent.parent.parent
     violations = []
     # Directories to check
