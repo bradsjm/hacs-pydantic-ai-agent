@@ -29,6 +29,7 @@ from ..const import (
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
+    CONF_PROVIDER_SECRET_HEADER_KEYS,
 )
 from ..generated_titles import DEFAULT_SERVICE_TITLE_SUFFIX, generated_default_title
 from ..provider_validation import ProviderValidationError
@@ -150,7 +151,8 @@ class ProviderSubentryFlowHandler(
         options = dict(subentry.data)
         options[CONF_CUSTOM_MODEL_NAMES] = _format_custom_model_names(options)
         options[CONF_PROVIDER_HEADERS] = _format_http_headers(
-            options.get(CONF_PROVIDER_HEADERS)
+            options.get(CONF_PROVIDER_HEADERS),
+            options.get(CONF_PROVIDER_SECRET_HEADER_KEYS),
         )
         options[CONF_PROVIDER_EXTRA_BODY] = _format_key_value_json_rows(
             options.get(CONF_PROVIDER_EXTRA_BODY)
@@ -331,12 +333,7 @@ class ProviderSubentryFlowHandler(
         custom_model_names = _provider_custom_model_names(existing_data)
         if not self._is_new and custom_model_names:
             storage_data[CONF_CUSTOM_MODEL_NAMES] = custom_model_names
-        if base_url := self._pending_data.get(CONF_BASE_URL):
-            storage_data[CONF_BASE_URL] = base_url
-        if provider_headers := self._pending_data.get(CONF_PROVIDER_HEADERS):
-            storage_data[CONF_PROVIDER_HEADERS] = provider_headers
-        if provider_extra_body := self._pending_data.get(CONF_PROVIDER_EXTRA_BODY):
-            storage_data[CONF_PROVIDER_EXTRA_BODY] = dict(provider_extra_body)
+        self._add_pending_provider_connection_settings(storage_data)
         if isinstance(
             provider_metadata := existing_data.get(CONF_PROVIDER_METADATA), Mapping
         ) and _catalog_provider_metadata_still_valid(existing_data, storage_data):
@@ -352,6 +349,23 @@ class ProviderSubentryFlowHandler(
             _clear_provider_model_cache(storage_data)
         self._pending_storage_data = storage_data
         return None
+
+    def _add_pending_provider_connection_settings(
+        self, storage_data: dict[str, Any]
+    ) -> None:
+        """Copy pending provider connection settings into storage data."""
+        if base_url := self._pending_data.get(CONF_BASE_URL):
+            storage_data[CONF_BASE_URL] = base_url
+        if provider_headers := self._pending_data.get(CONF_PROVIDER_HEADERS):
+            storage_data[CONF_PROVIDER_HEADERS] = provider_headers
+        if provider_secret_header_keys := self._pending_data.get(
+            CONF_PROVIDER_SECRET_HEADER_KEYS
+        ):
+            storage_data[CONF_PROVIDER_SECRET_HEADER_KEYS] = list(
+                provider_secret_header_keys
+            )
+        if provider_extra_body := self._pending_data.get(CONF_PROVIDER_EXTRA_BODY):
+            storage_data[CONF_PROVIDER_EXTRA_BODY] = dict(provider_extra_body)
 
     def _finish_provider_form(self) -> SubentryFlowResult:
         """Create or update the provider subentry after validation."""

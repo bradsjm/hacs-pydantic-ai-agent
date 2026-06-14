@@ -4,7 +4,9 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_CALL_CACHE_ENABLED,
     CONF_MCP_CALL_CACHE_TTL,
     CONF_MCP_DEFERRED_LOADING,
+    CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_SECRET_HEADER_KEYS,
     CONF_MCP_URL,
     DEFAULT_MCP_CALL_CACHE_TTL,
     DOMAIN,
@@ -22,6 +24,8 @@ def _mcp_entry(
     *,
     call_cache_enabled: bool | None = None,
     call_cache_ttl: int | None = None,
+    headers: dict[str, str] | None = None,
+    secret_header_keys: list[str] | None = None,
     include_return_schema: bool | None = None,
     deferred_loading: bool | None = None,
 ) -> MockConfigEntry:
@@ -34,6 +38,10 @@ def _mcp_entry(
         data[CONF_MCP_CALL_CACHE_ENABLED] = call_cache_enabled
     if call_cache_ttl is not None:
         data[CONF_MCP_CALL_CACHE_TTL] = call_cache_ttl
+    if headers is not None:
+        data[CONF_MCP_HEADERS] = headers
+    if secret_header_keys is not None:
+        data[CONF_MCP_SECRET_HEADER_KEYS] = secret_header_keys
     if include_return_schema is not None:
         data[CONF_MCP_INCLUDE_RETURN_SCHEMA] = include_return_schema
     if deferred_loading is not None:
@@ -110,3 +118,19 @@ def test_mcp_config_from_subentry_preserves_call_cache_settings() -> None:
 
     assert config[CONF_MCP_CALL_CACHE_ENABLED] is True
     assert config[CONF_MCP_CALL_CACHE_TTL] == 900
+
+
+def test_mcp_config_from_subentry_keeps_flat_headers_with_secret_metadata() -> None:
+    entry: MockConfigEntry = _mcp_entry(
+        headers={"Authorization": "Bearer secret", "X-Trace": "trace-1"},
+        secret_header_keys=["Authorization"],
+    )
+    subentry = next(iter(entry.subentries.values()))
+
+    config = mcp_config_from_subentry(subentry)
+
+    assert config[CONF_MCP_HEADERS] == {
+        "Authorization": "Bearer secret",
+        "X-Trace": "trace-1",
+    }
+    assert config[CONF_MCP_SECRET_HEADER_KEYS] == ["Authorization"]

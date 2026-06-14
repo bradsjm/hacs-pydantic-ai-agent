@@ -26,6 +26,7 @@ from custom_components.pydantic_ai_agent.config_flows._profile_helpers import (
     _selected_model_profile_error,
 )
 from custom_components.pydantic_ai_agent.config_flows._provider_data import (
+    _format_http_headers,
     _provider_connection_schema,
 )
 from custom_components.pydantic_ai_agent.config_flows._schema_helpers import (
@@ -77,6 +78,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_DESCRIPTION,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
+    CONF_KEY_VALUE_IS_SECRET,
     CONF_KEY_VALUE_JSON_VALUE,
     CONF_KEY_VALUE_KEY,
     CONF_KEY_VALUE_VALUE,
@@ -86,6 +88,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_CALL_CACHE_ENABLED,
     CONF_MCP_CALL_CACHE_TTL,
     CONF_MCP_HEADERS,
+    CONF_MCP_SECRET_HEADER_KEYS,
     CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
     CONF_MODEL,
@@ -95,6 +98,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
+    CONF_PROVIDER_SECRET_HEADER_KEYS,
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_SKILLS,
@@ -738,10 +742,16 @@ def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> 
     provider_schema = _provider_connection_schema(
         {
             CONF_PROVIDER_HEADERS: {"Authorization": "Bearer"},
+            CONF_PROVIDER_SECRET_HEADER_KEYS: ["Authorization"],
             CONF_PROVIDER_EXTRA_BODY: {"service_tier": "flex"},
         }
     )
-    mcp_schema = _mcp_server_schema({CONF_MCP_HEADERS: {"Authorization": "Bearer"}})
+    mcp_schema = _mcp_server_schema(
+        {
+            CONF_MCP_HEADERS: {"Authorization": "Bearer"},
+            CONF_MCP_SECRET_HEADER_KEYS: ["Authorization"],
+        }
+    )
 
     provider_headers_selector = _section_selector(
         provider_schema, "advanced_options", CONF_PROVIDER_HEADERS
@@ -767,6 +777,9 @@ def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> 
         provider_headers_selector.config["fields"][CONF_KEY_VALUE_VALUE]["label"]
         == "header value"
     )
+    assert provider_headers_selector.config["fields"][CONF_KEY_VALUE_IS_SECRET][
+        "selector"
+    ] == {"boolean": {}}
     assert (
         provider_extra_body_selector.config["translation_key"]
         == CONF_PROVIDER_EXTRA_BODY
@@ -784,6 +797,11 @@ def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> 
     assert provider_extra_body_selector.config["fields"][CONF_KEY_VALUE_JSON_VALUE][
         "selector"
     ] == {"template": {}}
+    assert CONF_KEY_VALUE_IS_SECRET not in provider_extra_body_selector.config["fields"]
+    mcp_headers_selector = cast(ObjectSelector, mcp_headers_selector)
+    assert mcp_headers_selector.config["fields"][CONF_KEY_VALUE_IS_SECRET][
+        "selector"
+    ] == {"boolean": {}}
 
 
 def test_parse_model_pricing_validates_and_clears_fields() -> None:
@@ -1134,10 +1152,33 @@ def test_selected_mcp_server_error_reports_stale_or_unallowlisted_server() -> No
     )
 
 
-def test_format_mcp_headers_returns_selector_rows() -> None:
-    assert _format_mcp_headers({"X-Z": "last", "Authorization": "Bearer token"}) == [
-        {CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer token"},
-        {CONF_KEY_VALUE_KEY: "X-Z", CONF_KEY_VALUE_VALUE: "last"},
+def test_format_http_headers_defaults_legacy_rows_to_non_secret() -> None:
+    assert _format_http_headers(
+        [{CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer token"}]
+    ) == [
+        {
+            CONF_KEY_VALUE_KEY: "Authorization",
+            CONF_KEY_VALUE_VALUE: "Bearer token",
+            CONF_KEY_VALUE_IS_SECRET: False,
+        }
+    ]
+
+
+def test_format_mcp_headers_returns_selector_rows_with_secret_flags() -> None:
+    assert _format_mcp_headers(
+        {"X-Z": "last", "Authorization": "Bearer token"},
+        ["Authorization"],
+    ) == [
+        {
+            CONF_KEY_VALUE_KEY: "Authorization",
+            CONF_KEY_VALUE_VALUE: "Bearer token",
+            CONF_KEY_VALUE_IS_SECRET: True,
+        },
+        {
+            CONF_KEY_VALUE_KEY: "X-Z",
+            CONF_KEY_VALUE_VALUE: "last",
+            CONF_KEY_VALUE_IS_SECRET: False,
+        },
     ]
     assert _format_mcp_headers(None) == []
 

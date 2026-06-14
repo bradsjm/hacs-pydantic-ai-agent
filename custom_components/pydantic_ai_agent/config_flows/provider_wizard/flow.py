@@ -16,6 +16,7 @@ from ...const import (
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
+    CONF_PROVIDER_SECRET_HEADER_KEYS,
 )
 from .const import CONF_CATALOG_PROVIDER_ID
 from .types import CatalogModelOption, CatalogProviderOption
@@ -32,6 +33,7 @@ def build_provider_data(
     provider_name: str | None = None,
     base_url: str | None = None,
     provider_headers: Mapping[str, str] | None = None,
+    provider_secret_header_keys: object = (),
     provider_extra_body: Mapping[str, object] | None = None,
     profile_id_factory: ProfileIdFactory | None = None,
 ) -> dict[str, object]:
@@ -51,6 +53,11 @@ def build_provider_data(
         data[CONF_BASE_URL] = effective_base_url.rstrip("/")
     if provider_headers:
         data[CONF_PROVIDER_HEADERS] = dict(provider_headers)
+        if (
+            isinstance(provider_secret_header_keys, list)
+            and provider_secret_header_keys
+        ):
+            data[CONF_PROVIDER_SECRET_HEADER_KEYS] = list(provider_secret_header_keys)
     if provider_extra_body:
         data[CONF_PROVIDER_EXTRA_BODY] = dict(provider_extra_body)
     return data

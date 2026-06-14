@@ -12,6 +12,7 @@ from ..const import (
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_SECRET_HEADER_KEYS,
     CONF_MCP_URL,
     DEFAULT_MCP_TIMEOUT,
 )
@@ -206,6 +207,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
 
         for key in (
             CONF_MCP_HEADERS,
+            CONF_MCP_SECRET_HEADER_KEYS,
             CONF_MCP_CALL_CACHE_ENABLED,
             CONF_MCP_CALL_CACHE_TTL,
             CONF_MCP_INCLUDE_RETURN_SCHEMA,

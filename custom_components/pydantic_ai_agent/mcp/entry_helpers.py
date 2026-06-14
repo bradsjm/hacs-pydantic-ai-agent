@@ -15,6 +15,7 @@ from ..const import (
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_SECRET_HEADER_KEYS,
     CONF_MCP_URL,
     DEFAULT_MCP_CALL_CACHE_TTL,
     SUBENTRY_TYPE_MCP_SERVER,
@@ -51,6 +52,7 @@ def mcp_config_from_subentry(subentry: Any) -> dict[str, Any]:
         CONF_NAME: subentry.title,
         CONF_MCP_URL: normalise_mcp_url(data.get(CONF_MCP_URL)),
         CONF_MCP_HEADERS: parse_mcp_headers(data.get(CONF_MCP_HEADERS)),
+        CONF_MCP_SECRET_HEADER_KEYS: data.get(CONF_MCP_SECRET_HEADER_KEYS, []),
         CONF_MCP_CALL_CACHE_ENABLED: bool(data.get(CONF_MCP_CALL_CACHE_ENABLED, False)),
         CONF_MCP_CALL_CACHE_TTL: int(
             data.get(CONF_MCP_CALL_CACHE_TTL, DEFAULT_MCP_CALL_CACHE_TTL)
@@ -71,6 +73,7 @@ def _mcp_config_from_data(
         CONF_NAME: data.get(CONF_NAME, server_id or "MCP server"),
         CONF_MCP_URL: normalise_mcp_url(data.get(CONF_MCP_URL)),
         CONF_MCP_HEADERS: parse_mcp_headers(data.get(CONF_MCP_HEADERS)),
+        CONF_MCP_SECRET_HEADER_KEYS: data.get(CONF_MCP_SECRET_HEADER_KEYS, []),
         CONF_MCP_CALL_CACHE_ENABLED: bool(data.get(CONF_MCP_CALL_CACHE_ENABLED, False)),
         CONF_MCP_CALL_CACHE_TTL: int(
             data.get(CONF_MCP_CALL_CACHE_TTL, DEFAULT_MCP_CALL_CACHE_TTL)

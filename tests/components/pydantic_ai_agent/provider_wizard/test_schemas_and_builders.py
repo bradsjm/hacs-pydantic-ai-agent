@@ -36,6 +36,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
     CONF_DISCOVERED,
     CONF_ENABLED,
+    CONF_KEY_VALUE_IS_SECRET,
     CONF_KEY_VALUE_JSON_VALUE,
     CONF_KEY_VALUE_KEY,
     CONF_KEY_VALUE_VALUE,
@@ -46,6 +47,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
+    CONF_PROVIDER_SECRET_HEADER_KEYS,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
@@ -120,6 +122,7 @@ def test_connection_schema_uses_structured_row_selectors() -> None:
         PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         {
             CONF_PROVIDER_HEADERS: {"Authorization": "Bearer token"},
+            CONF_PROVIDER_SECRET_HEADER_KEYS: ["Authorization"],
             CONF_PROVIDER_EXTRA_BODY: {"service_tier": "flex"},
         },
     )
@@ -141,6 +144,9 @@ def test_connection_schema_uses_structured_row_selectors() -> None:
         header_selector.config["fields"][CONF_KEY_VALUE_VALUE]["label"]
         == "header value"
     )
+    assert header_selector.config["fields"][CONF_KEY_VALUE_IS_SECRET]["selector"] == {
+        "boolean": {}
+    }
     assert extra_body_selector.config["translation_key"] == CONF_PROVIDER_EXTRA_BODY
     assert (
         extra_body_selector.config["fields"][CONF_KEY_VALUE_KEY]["label"]
@@ -154,7 +160,11 @@ def test_connection_schema_uses_structured_row_selectors() -> None:
         "selector"
     ] == {"template": {}}
     assert _nested_default_for_schema_key(schema, CONF_PROVIDER_HEADERS) == [
-        {CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer token"}
+        {
+            CONF_KEY_VALUE_KEY: "Authorization",
+            CONF_KEY_VALUE_VALUE: "Bearer token",
+            CONF_KEY_VALUE_IS_SECRET: True,
+        }
     ]
     assert _nested_default_for_schema_key(schema, CONF_PROVIDER_EXTRA_BODY) == [
         {CONF_KEY_VALUE_KEY: "service_tier", CONF_KEY_VALUE_JSON_VALUE: '"flex"'}
@@ -250,7 +260,8 @@ def test_build_provider_data_uses_runtime_provider_schema() -> None:
         provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         api_key=" sk-test ",
         selected_models=(_model("deepseek-chat"),),
-        provider_headers={"X-Test": "value"},
+        provider_headers={"Authorization": "Bearer guided", "X-Test": "value"},
+        provider_secret_header_keys=["Authorization"],
         profile_id_factory=lambda: "profile-1",
     )
 
@@ -258,7 +269,11 @@ def test_build_provider_data_uses_runtime_provider_schema() -> None:
     assert data[CONF_PROVIDER_MODE] == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS
     assert data[CONF_API_KEY] == "sk-test"
     assert data[CONF_BASE_URL] == "https://api.deepseek.com"
-    assert data[CONF_PROVIDER_HEADERS] == {"X-Test": "value"}
+    assert data[CONF_PROVIDER_HEADERS] == {
+        "Authorization": "Bearer guided",
+        "X-Test": "value",
+    }
+    assert data[CONF_PROVIDER_SECRET_HEADER_KEYS] == ["Authorization"]
     assert data[CONF_PROVIDER_METADATA] == {"catalog_provider_id": "deepseek"}
     profiles = cast(dict[str, dict[str, object]], data[CONF_MODEL_PROFILES])
     assert profiles["profile-1"][CONF_ENABLED] is True

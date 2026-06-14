@@ -4,6 +4,7 @@ from typing import Any, cast
 
 from custom_components.pydantic_ai_agent.const import (
     CONF_API_KEY,
+    CONF_KEY_VALUE_IS_SECRET,
     CONF_KEY_VALUE_JSON_VALUE,
     CONF_KEY_VALUE_KEY,
     CONF_KEY_VALUE_VALUE,
@@ -11,6 +12,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    CONF_PROVIDER_SECRET_HEADER_KEYS,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_PROVIDER,
 )
@@ -48,6 +50,7 @@ async def test_provider_edit_connection_structured_fields_round_trip(
     provider_data = _provider_subentry_data()
     provider_config = cast(dict[str, Any], provider_data["data"])
     provider_config[CONF_PROVIDER_HEADERS] = {"Authorization": "Bearer old"}
+    provider_config[CONF_PROVIDER_SECRET_HEADER_KEYS] = ["Authorization"]
     provider_config[CONF_PROVIDER_EXTRA_BODY] = {"service_tier": "default"}
     entry = await _loaded_workspace_entry(hass, (provider_data,))
     provider_subentry = next(iter(entry.subentries.values()))
@@ -67,7 +70,13 @@ async def test_provider_edit_connection_structured_fields_round_trip(
     assert _serialized_section_default(result["data_schema"], "advanced_options") == {}
     assert _section_field_default(
         result["data_schema"], "advanced_options", CONF_PROVIDER_HEADERS
-    ) == [{CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer old"}]
+    ) == [
+        {
+            CONF_KEY_VALUE_KEY: "Authorization",
+            CONF_KEY_VALUE_VALUE: "Bearer old",
+            CONF_KEY_VALUE_IS_SECRET: True,
+        }
+    ]
     assert _section_field_default(
         result["data_schema"], "advanced_options", CONF_PROVIDER_EXTRA_BODY
     ) == [{CONF_KEY_VALUE_KEY: "service_tier", CONF_KEY_VALUE_JSON_VALUE: '"default"'}]
@@ -84,7 +93,13 @@ async def test_provider_edit_connection_structured_fields_round_trip(
                     {
                         CONF_KEY_VALUE_KEY: "Authorization",
                         CONF_KEY_VALUE_VALUE: "Bearer new",
-                    }
+                        CONF_KEY_VALUE_IS_SECRET: True,
+                    },
+                    {
+                        CONF_KEY_VALUE_KEY: "X-Trace",
+                        CONF_KEY_VALUE_VALUE: "trace-1",
+                        CONF_KEY_VALUE_IS_SECRET: False,
+                    },
                 ],
                 CONF_PROVIDER_EXTRA_BODY: [
                     {
@@ -99,6 +114,35 @@ async def test_provider_edit_connection_structured_fields_round_trip(
     assert result["type"] is FlowResultType.ABORT
     updated_subentry = entry.subentries[provider_subentry.subentry_id]
     assert updated_subentry.data[CONF_PROVIDER_HEADERS] == {
-        "Authorization": "Bearer new"
+        "Authorization": "Bearer new",
+        "X-Trace": "trace-1",
     }
+    assert updated_subentry.data[CONF_PROVIDER_SECRET_HEADER_KEYS] == ["Authorization"]
     assert updated_subentry.data[CONF_PROVIDER_EXTRA_BODY] == {"service_tier": "flex"}
+
+    reopened_result = await _subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    reopened_result = await _subentry_configure_result(
+        hass, reopened_result["flow_id"], {"next_step_id": "edit_connection"}
+    )
+
+    assert _section_field_default(
+        reopened_result["data_schema"], "advanced_options", CONF_PROVIDER_HEADERS
+    ) == [
+        {
+            CONF_KEY_VALUE_KEY: "Authorization",
+            CONF_KEY_VALUE_VALUE: "Bearer new",
+            CONF_KEY_VALUE_IS_SECRET: True,
+        },
+        {
+            CONF_KEY_VALUE_KEY: "X-Trace",
+            CONF_KEY_VALUE_VALUE: "trace-1",
+            CONF_KEY_VALUE_IS_SECRET: False,
+        },
+    ]

@@ -24,6 +24,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_SECRET_HEADER_KEYS,
     CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
     CONF_MODEL,
@@ -34,6 +35,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    CONF_PROVIDER_SECRET_HEADER_KEYS,
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_TEMPLATED_EXTRA_BODY,
@@ -61,7 +63,6 @@ from tests.components.pydantic_ai_agent.support.runtime import diagnostics_suben
 _PROVIDER_SUBENTRY_ID = "provider-1"
 _MODEL_PROFILE_ID = "profile-1"
 _MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
-
 
 async def test_diagnostics_returns_redacted_bounded_config_entry_data(
     hass: HomeAssistant,
@@ -104,7 +105,11 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
                     CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                     CONF_API_KEY: "sk-secret",
                     CONF_BASE_URL: "http://localhost:11434/v1",
-                    CONF_PROVIDER_HEADERS: {"Authorization": "Bearer provider-secret"},
+                    CONF_PROVIDER_HEADERS: {
+                        "Authorization": "Bearer provider-secret",
+                        "X-Visible": "provider-visible",
+                    },
+                    CONF_PROVIDER_SECRET_HEADER_KEYS: ["Authorization"],
                     CONF_PROVIDER_EXTRA_BODY: {"api_key": "provider-body-secret"},
                     CONF_MODEL_PROFILES: {
                         _MODEL_PROFILE_ID: {
@@ -140,7 +145,11 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
                 "data": {
                     CONF_NAME: "Echo MCP",
                     CONF_MCP_URL: "https://mcp.example.com/mcp?token=secret",
-                    CONF_MCP_HEADERS: {"Authorization": "Bearer provider-secret"},
+                    CONF_MCP_HEADERS: {
+                        "Authorization": "Bearer mcp-secret",
+                        "X-Visible": "mcp-visible",
+                    },
+                    CONF_MCP_SECRET_HEADER_KEYS: ["Authorization"],
                     CONF_MCP_ALLOWED_TOOLS: ["echo"],
                     CONF_MCP_INCLUDE_RETURN_SCHEMA: False,
                     CONF_MCP_DEFERRED_LOADING: True,
@@ -194,7 +203,10 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
         diagnostics, subentry_type=SUBENTRY_TYPE_PROVIDER
     )["data"]
     assert provider_data[CONF_API_KEY] == REDACTED
-    assert provider_data[CONF_PROVIDER_HEADERS] == REDACTED
+    assert provider_data[CONF_PROVIDER_HEADERS] == {
+        "Authorization": REDACTED,
+        "X-Visible": "provider-visible",
+    }
     assert provider_data[CONF_PROVIDER_EXTRA_BODY] == {"api_key": REDACTED}
     assert provider_data[CONF_BASE_URL] == "http://localhost:11434/v1"
     model_data = provider_data[CONF_MODEL_PROFILES][_MODEL_PROFILE_ID]
@@ -212,7 +224,10 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
     )
     mcp_data = mcp_diagnostics["data"]
     assert mcp_data[CONF_MCP_URL] == REDACTED
-    assert mcp_data[CONF_MCP_HEADERS] == REDACTED
+    assert mcp_data[CONF_MCP_HEADERS] == {
+        "Authorization": REDACTED,
+        "X-Visible": "mcp-visible",
+    }
     assert mcp_diagnostics["configuration_summary"] == {
         "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
         "has_headers": True,
@@ -231,6 +246,68 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
     assert "sk-secret" not in json.dumps(diagnostics)
     assert "Private system prompt" not in json.dumps(diagnostics)
 
+async def test_diagnostics_keeps_legacy_header_mappings_visible(
+    hass: HomeAssistant,
+) -> None:
+    """Test header mappings without secret metadata stay visible in diagnostics."""
+    entry = MockConfigEntry(
+        version=2,
+        minor_version=0,
+        domain=DOMAIN,
+        title="Workspace",
+        data={CONF_NAME: "Workspace"},
+        source=config_entries.SOURCE_USER,
+        subentries_data=(
+            {
+                "subentry_id": _PROVIDER_SUBENTRY_ID,
+                "data": {
+                    CONF_NAME: "Local Provider",
+                    CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+                    CONF_API_KEY: "sk-secret",
+                    CONF_PROVIDER_HEADERS: {"Authorization": "Bearer legacy-provider"},
+                    CONF_MODEL_PROFILES: {
+                        _MODEL_PROFILE_ID: {
+                            "id": _MODEL_PROFILE_ID,
+                            CONF_NAME: "Reasoning Model",
+                            CONF_MODEL: "gpt-test",
+                            CONF_ENABLED: True,
+                        }
+                    },
+                    CONF_DEFAULT_MODEL_PROFILE_ID: _MODEL_PROFILE_ID,
+                },
+                "subentry_type": SUBENTRY_TYPE_PROVIDER,
+                "title": "Local Provider",
+                "unique_id": None,
+            },
+            {
+                "subentry_id": "mcp-1",
+                "data": {
+                    CONF_NAME: "Echo MCP",
+                    CONF_MCP_URL: "https://mcp.example.com/mcp",
+                    CONF_MCP_HEADERS: {"Authorization": "Bearer legacy-mcp"},
+                },
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Echo MCP",
+                "unique_id": None,
+            },
+        ),
+        options={},
+        unique_id=None,
+    )
+    entry.add_to_hass(hass)
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    provider_data = diagnostics_subentry(
+        diagnostics, subentry_type=SUBENTRY_TYPE_PROVIDER
+    )["data"]
+    assert provider_data[CONF_PROVIDER_HEADERS] == {
+        "Authorization": "Bearer legacy-provider"
+    }
+    mcp_data = diagnostics_subentry(
+        diagnostics, subentry_type=SUBENTRY_TYPE_MCP_SERVER
+    )["data"]
+    assert mcp_data[CONF_MCP_HEADERS] == {"Authorization": "Bearer legacy-mcp"}
 
 async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> None:
     """Test runtime diagnostic snapshots use the shared redaction policy."""
@@ -280,7 +357,6 @@ async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> Non
     assert "runtime-secret" not in json.dumps(diagnostics)
     assert "stream-secret" not in json.dumps(diagnostics)
 
-
 async def test_diagnostics_bounds_large_values(hass: HomeAssistant) -> None:
     """Test diagnostics bound large values without redacting them."""
     entry = MockConfigEntry(
@@ -316,7 +392,6 @@ async def test_diagnostics_bounds_large_values(hass: HomeAssistant) -> None:
     assert bounded_mapping["total_count"] == 125
     assert bounded_mapping["head"]["key_000"] == 0
     assert bounded_mapping["tail"]["key_124"] == 124
-
 
 async def test_device_diagnostics_filters_to_matching_subentry(
     hass: HomeAssistant,

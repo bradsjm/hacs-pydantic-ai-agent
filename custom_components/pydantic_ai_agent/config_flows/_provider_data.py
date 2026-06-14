@@ -23,6 +23,11 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.typing import VolDictType
 from homeassistant.util import dt as dt_util
 
+from .._header_metadata import (
+    format_header_rows,
+    normalize_secret_header_keys,
+    parse_header_rows,
+)
 from ..const import (
     CONF_BASE_URL,
     CONF_CUSTOM_MODEL_NAMES,
@@ -34,6 +39,7 @@ from ..const import (
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    CONF_PROVIDER_SECRET_HEADER_KEYS,
     DEFAULT_SERVICE_NAME,
     PROVIDER_MODES,
 )
@@ -49,11 +55,7 @@ from ._constants import (
     _SECTION_ADVANCED_OPTIONS,
     _SECTION_CUSTOMIZE_MODEL_LIST,
 )
-from ._key_value_rows import (
-    _format_key_value_json_rows,
-    _format_key_value_text_rows,
-    _parse_key_value_text_rows,
-)
+from ._key_value_rows import _format_key_value_json_rows
 from ._settings_parsing import (
     _model_setting_error,
     _parse_key_value_json_setting,
@@ -61,12 +63,14 @@ from ._settings_parsing import (
 from .helpers import _flatten_section_data, _key_value_rows_selector
 
 
-def _format_http_headers(headers: object) -> list[dict[str, str]]:
+def _format_http_headers(
+    headers: object, secret_header_keys: object = ()
+) -> list[dict[str, str | bool]]:
     """Return HTTP headers in selector-compatible row shape."""
-    return _format_key_value_text_rows(headers)
+    return format_header_rows(headers, secret_header_keys)
 
 
-def _parse_provider_headers(value: object) -> dict[str, str]:
+def _parse_provider_headers(value: object) -> tuple[dict[str, str], list[str]]:
     """Return provider HTTP headers from form input."""
     try:
         return _parse_http_headers(value)
@@ -77,15 +81,15 @@ def _parse_provider_headers(value: object) -> dict[str, str]:
         ) from err
 
 
-def _parse_http_headers(value: object) -> dict[str, str]:
+def _parse_http_headers(value: object) -> tuple[dict[str, str], list[str]]:
     """Return HTTP headers from selector rows or an existing mapping."""
     try:
-        headers = _parse_key_value_text_rows(value)
+        headers, secret_header_keys = parse_header_rows(value)
     except ValueError as err:
         raise vol.Invalid(str(err)) from err
     if not all(_HTTP_HEADER_NAME_PATTERN.fullmatch(key) for key in headers):
         raise vol.Invalid("invalid_headers")
-    return headers
+    return headers, normalize_secret_header_keys(headers, secret_header_keys)
 
 
 def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
@@ -118,12 +122,17 @@ def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol
             {
                 vol.Optional(
                     CONF_PROVIDER_HEADERS,
-                    default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
+                    default=_format_http_headers(
+                        data.get(CONF_PROVIDER_HEADERS),
+                        data.get(CONF_PROVIDER_SECRET_HEADER_KEYS),
+                    ),
                 ): _key_value_rows_selector(
                     CONF_KEY_VALUE_VALUE,
                     {"text": None},
                     key_label="header name",
                     value_label="header value",
+                    include_secret_toggle=True,
+                    secret_default=False,
                     translation_key=CONF_PROVIDER_HEADERS,
                 ),
                 vol.Optional(
@@ -246,14 +255,22 @@ def _provider_model_cache_key(data: Mapping[str, Any]) -> str:
     """Return a stable cache key for provider model discovery."""
     api_key = data.get(CONF_API_KEY)
     headers = data.get(CONF_PROVIDER_HEADERS)
+    raw_headers = dict(headers) if isinstance(headers, Mapping) else {}
+    headers_key: dict[str, str] | str = {}
+    if raw_headers:
+        headers_key = sha256(
+            json.dumps(
+                raw_headers,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
     return json.dumps(
         {
             CONF_PROVIDER_MODE: data.get(CONF_PROVIDER_MODE),
             CONF_API_KEY: sha256(str(api_key or "").encode()).hexdigest(),
             CONF_BASE_URL: data.get(CONF_BASE_URL),
-            CONF_PROVIDER_HEADERS: dict(headers)
-            if isinstance(headers, Mapping)
-            else {},
+            CONF_PROVIDER_HEADERS: headers_key,
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -300,11 +317,15 @@ def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
     )
     data[CONF_NAME] = str(data[CONF_NAME]).strip() or DEFAULT_SERVICE_NAME
     data[CONF_BASE_URL] = _normalise_base_url(data.get(CONF_BASE_URL))
-    headers = _parse_provider_headers(data.get(CONF_PROVIDER_HEADERS))
+    headers, secret_header_keys = _parse_provider_headers(
+        data.get(CONF_PROVIDER_HEADERS)
+    )
     if headers:
         data[CONF_PROVIDER_HEADERS] = headers
+        data[CONF_PROVIDER_SECRET_HEADER_KEYS] = secret_header_keys
     else:
         data.pop(CONF_PROVIDER_HEADERS, None)
+        data.pop(CONF_PROVIDER_SECRET_HEADER_KEYS, None)
     try:
         provider_extra_body = _parse_key_value_json_setting(
             data.get(CONF_PROVIDER_EXTRA_BODY, "")

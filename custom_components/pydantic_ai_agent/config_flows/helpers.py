@@ -12,7 +12,7 @@ from homeassistant.helpers.selector import (
 )
 from homeassistant.helpers.typing import VolDictType
 
-from ..const import CONF_KEY_VALUE_KEY
+from ..const import CONF_KEY_VALUE_IS_SECRET, CONF_KEY_VALUE_KEY
 
 
 def _sorted_select_options(
@@ -67,6 +67,8 @@ def _key_value_rows_selector(
     *,
     key_label: str | None = None,
     value_label: str | None = None,
+    include_secret_toggle: bool = False,
+    secret_default: bool = False,
     translation_key: str | None = None,
 ) -> ObjectSelector:
     """Return a repeated key/value row selector."""
@@ -79,13 +81,16 @@ def _key_value_rows_selector(
     )
     if value_label is not None:
         value_field_config["label"] = value_label
-    config = ObjectSelectorConfig(
-        multiple=True,
-        fields={
-            CONF_KEY_VALUE_KEY: key_field,
-            value_field: value_field_config,
-        },
-    )
+    fields = {
+        CONF_KEY_VALUE_KEY: key_field,
+        value_field: value_field_config,
+    }
+    if include_secret_toggle:
+        del secret_default
+        fields[CONF_KEY_VALUE_IS_SECRET] = ObjectSelectorField(
+            selector={"boolean": {}}, required=False
+        )
+    config = ObjectSelectorConfig(multiple=True, fields=fields)
     if translation_key is not None:
         config["translation_key"] = translation_key
     return ObjectSelector(config)

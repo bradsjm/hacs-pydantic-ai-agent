@@ -21,6 +21,7 @@ from ..const import (
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    CONF_PROVIDER_SECRET_HEADER_KEYS,
 )
 from ._profile_helpers import (
     _provider_validation_placeholders,
@@ -355,6 +356,9 @@ class ProviderWizardMixin:
             provider_name=str(self._wizard_connection_data[CONF_NAME]),
             base_url=self._wizard_connection_data.get(CONF_BASE_URL),
             provider_headers=dict(headers) if isinstance(headers, Mapping) else None,
+            provider_secret_header_keys=self._wizard_connection_data.get(
+                CONF_PROVIDER_SECRET_HEADER_KEYS
+            ),
             provider_extra_body=dict(extra_body)
             if isinstance(extra_body, Mapping)
             else None,

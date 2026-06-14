@@ -5,12 +5,14 @@ from unittest.mock import patch
 
 from custom_components.pydantic_ai_agent.config_flows import mcp_server_flow
 from custom_components.pydantic_ai_agent.const import (
+    CONF_KEY_VALUE_IS_SECRET,
     CONF_KEY_VALUE_KEY,
     CONF_KEY_VALUE_VALUE,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_SECRET_HEADER_KEYS,
     CONF_MCP_URL,
     CONF_NAME,
     SUBENTRY_TYPE_MCP_SERVER,
@@ -75,9 +77,13 @@ async def test_mcp_server_edit_round_trips_headers_as_structured_rows(
     hass: HomeAssistant,
 ) -> None:
     """Test MCP headers reopen as selector rows and save back as stored headers."""
+    subentry_data = mcp_server_subentry_data(headers={"Authorization": "Bearer old"})
+    subentry_config = subentry_data["data"]
+    assert isinstance(subentry_config, dict)
+    subentry_config[CONF_MCP_SECRET_HEADER_KEYS] = ["Authorization"]
     entry = await loaded_workspace_entry(
         hass,
-        (mcp_server_subentry_data(headers={"Authorization": "Bearer old"}),),
+        (subentry_data,),
     )
     subentry = next(iter(entry.subentries.values()))
 
@@ -86,7 +92,13 @@ async def test_mcp_server_edit_round_trips_headers_as_structured_rows(
     assert serialized_section_default(result["data_schema"], "advanced_mcp") == {}
     assert _section_field_default(
         result["data_schema"], "advanced_mcp", CONF_MCP_HEADERS
-    ) == [{CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer old"}]
+    ) == [
+        {
+            CONF_KEY_VALUE_KEY: "Authorization",
+            CONF_KEY_VALUE_VALUE: "Bearer old",
+            CONF_KEY_VALUE_IS_SECRET: True,
+        }
+    ]
 
     with patch.object(
         mcp_server_flow.MCPServerSubentryFlowHandler,
@@ -104,10 +116,12 @@ async def test_mcp_server_edit_round_trips_headers_as_structured_rows(
                         {
                             CONF_KEY_VALUE_KEY: "Authorization",
                             CONF_KEY_VALUE_VALUE: "Bearer new",
+                            CONF_KEY_VALUE_IS_SECRET: True,
                         },
                         {
                             CONF_KEY_VALUE_KEY: "X-Trace",
                             CONF_KEY_VALUE_VALUE: "trace-1",
+                            CONF_KEY_VALUE_IS_SECRET: False,
                         },
                     ]
                 },
@@ -120,6 +134,7 @@ async def test_mcp_server_edit_round_trips_headers_as_structured_rows(
         "Authorization": "Bearer new",
         "X-Trace": "trace-1",
     }
+    assert updated_subentry.data[CONF_MCP_SECRET_HEADER_KEYS] == ["Authorization"]
 
     reopened_result = await _start_edit_server_flow(
         hass, entry.entry_id, subentry.subentry_id
@@ -127,8 +142,16 @@ async def test_mcp_server_edit_round_trips_headers_as_structured_rows(
     assert _section_field_default(
         reopened_result["data_schema"], "advanced_mcp", CONF_MCP_HEADERS
     ) == [
-        {CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer new"},
-        {CONF_KEY_VALUE_KEY: "X-Trace", CONF_KEY_VALUE_VALUE: "trace-1"},
+        {
+            CONF_KEY_VALUE_KEY: "Authorization",
+            CONF_KEY_VALUE_VALUE: "Bearer new",
+            CONF_KEY_VALUE_IS_SECRET: True,
+        },
+        {
+            CONF_KEY_VALUE_KEY: "X-Trace",
+            CONF_KEY_VALUE_VALUE: "trace-1",
+            CONF_KEY_VALUE_IS_SECRET: False,
+        },
     ]
 
 
@@ -161,6 +184,7 @@ async def test_mcp_server_edit_clearing_headers_removes_stored_headers(
     assert result["type"] is FlowResultType.ABORT
     updated_subentry = entry.subentries[subentry.subentry_id]
     assert CONF_MCP_HEADERS not in updated_subentry.data
+    assert CONF_MCP_SECRET_HEADER_KEYS not in updated_subentry.data
 
 
 async def test_mcp_server_edit_preserves_existing_tool_allowlist(

@@ -349,7 +349,7 @@
                 "mcp_call_cache_enabled": "Reuse successful MCP tool results for identical calls to this server until the cache TTL expires.",
                 "mcp_call_cache_ttl": "How long to reuse a cached successful MCP tool result when caching is enabled. Allowed range: 1 to 86400 seconds.",
                 "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools.",
-                "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
+                "mcp_headers": "Optional HTTP headers. Add one header per row and enable Is secret for values that should be masked.",
                 "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility."
               },
               "name": "Advanced Options"
@@ -379,7 +379,7 @@
                 "mcp_call_cache_enabled": "Reuse successful MCP tool results for identical calls to this server until the cache TTL expires.",
                 "mcp_call_cache_ttl": "How long to reuse a cached successful MCP tool result when caching is enabled. Allowed range: 1 to 86400 seconds.",
                 "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools.",
-                "mcp_headers": "Optional HTTP headers, one per line, using 'Header-Name: value' format.",
+                "mcp_headers": "Optional HTTP headers. Add one header per row and enable Is secret for values that should be masked.",
                 "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility."
               },
               "name": "Advanced Options"
@@ -474,7 +474,7 @@
               },
               "data_description": {
                 "provider_extra_body": "Provider-specific request body fields for provider requests. Add one parameter per row; enter the value as JSON. Strings must be quoted.",
-                "provider_headers": "Optional HTTP headers for provider model discovery and requests. Add one header per row."
+                "provider_headers": "Optional HTTP headers for provider model discovery and requests. Add one header per row and enable Is secret for values that should be masked."
               },
               "name": "Advanced Options"
             }
@@ -546,7 +546,7 @@
               },
               "data_description": {
                 "provider_extra_body": "Provider-specific request body fields for provider requests. Add one parameter per row; enter the value as JSON. Strings must be quoted.",
-                "provider_headers": "Optional HTTP headers for provider model discovery and requests. Add one header per row."
+                "provider_headers": "Optional HTTP headers for provider model discovery and requests. Add one header per row and enable Is secret for values that should be masked."
               },
               "name": "Advanced Options"
             }
@@ -672,7 +672,7 @@
               },
               "data_description": {
                 "provider_extra_body": "Provider-specific request body fields for provider requests. Add one parameter per row; enter the value as JSON. Strings must be quoted.",
-                "provider_headers": "Optional HTTP headers for provider model discovery and requests. Add one header per row."
+                "provider_headers": "Optional HTTP headers for provider model discovery and requests. Add one header per row and enable Is secret for values that should be masked."
               },
               "name": "Advanced Options"
             }
@@ -844,6 +844,20 @@
     "fallback_model_refs": {
       "name": "Add Fallback Model"
     },
+    "mcp_headers": {
+      "fields": {
+        "is_secret": {
+          "name": "is secret"
+        },
+        "key": {
+          "name": "header name"
+        },
+        "value": {
+          "name": "header value"
+        }
+      },
+      "name": "Add HTTP Header"
+    },
     "output_mode": {
       "options": {
         "native": "Native",
@@ -864,6 +878,9 @@
     },
     "provider_headers": {
       "fields": {
+        "is_secret": {
+          "name": "is secret"
+        },
         "key": {
           "name": "header name"
         },

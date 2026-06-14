@@ -13,7 +13,7 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
-from ..config_flows._key_value_rows import _parse_key_value_text_rows
+from .._header_metadata import parse_header_rows
 from .errors import MCPValidationError
 from .models import ValidatedMCPURL
 
@@ -117,7 +117,7 @@ def validate_mcp_url_details(url: str) -> ValidatedMCPURL:
 def parse_mcp_headers(value: object) -> dict[str, str]:
     """Parse optional HTTP headers from selector rows or a stored mapping."""
     try:
-        headers = _parse_key_value_text_rows(value)
+        headers, _secret_header_keys = parse_header_rows(value)
     except ValueError as err:
         raise vol.Invalid(str(err)) from err
     if not all(_HTTP_HEADER_NAME_PATTERN.fullmatch(key) for key in headers):

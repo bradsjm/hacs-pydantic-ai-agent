@@ -23,6 +23,11 @@ from homeassistant.helpers.selector import (
 )
 from homeassistant.helpers.typing import VolDictType
 
+from .._header_metadata import (
+    format_header_rows,
+    normalize_secret_header_keys,
+    parse_header_rows,
+)
 from ..const import (
     CONF_KEY_VALUE_VALUE,
     CONF_MCP_ALLOWED_TOOLS,
@@ -31,6 +36,7 @@ from ..const import (
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_SECRET_HEADER_KEYS,
     CONF_MCP_SERVER_IDS,
     CONF_MCP_URL,
     DEFAULT_MCP_CALL_CACHE_TTL,
@@ -42,7 +48,6 @@ from ..mcp import (
     parse_allowed_tools,
     parse_mcp_headers,
 )
-from ._key_value_rows import _format_key_value_text_rows
 from .helpers import (
     _flatten_section_data,
     _key_value_rows_selector,
@@ -173,12 +178,17 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
                     {
                         vol.Optional(
                             CONF_MCP_HEADERS,
-                            default=_format_mcp_headers(options.get(CONF_MCP_HEADERS)),
+                            default=_format_mcp_headers(
+                                options.get(CONF_MCP_HEADERS),
+                                options.get(CONF_MCP_SECRET_HEADER_KEYS),
+                            ),
                         ): _key_value_rows_selector(
                             CONF_KEY_VALUE_VALUE,
                             {"text": None},
                             key_label="header name",
                             value_label="header value",
+                            include_secret_toggle=True,
+                            secret_default=False,
                             translation_key=CONF_MCP_HEADERS,
                         ),
                         vol.Optional(
@@ -215,9 +225,11 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
     )
 
 
-def _format_mcp_headers(headers: object) -> list[dict[str, str]]:
+def _format_mcp_headers(
+    headers: object, secret_header_keys: object = ()
+) -> list[dict[str, str | bool]]:
     """Return headers in selector-compatible row shape for the config form."""
-    return _format_key_value_text_rows(headers)
+    return format_header_rows(headers, secret_header_keys)
 
 
 def _mcp_server_form_options(
@@ -227,7 +239,8 @@ def _mcp_server_form_options(
     form_options = _flatten_section_data(options or {}, (_SECTION_ADVANCED_MCP,))
     if CONF_MCP_HEADERS in form_options:
         form_options[CONF_MCP_HEADERS] = _format_mcp_headers(
-            form_options.get(CONF_MCP_HEADERS)
+            form_options.get(CONF_MCP_HEADERS),
+            form_options.get(CONF_MCP_SECRET_HEADER_KEYS),
         )
     return form_options
 
@@ -289,13 +302,28 @@ def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str,
             user_input.get(CONF_MCP_DEFERRED_LOADING, False)
         ),
     }
-    headers = parse_mcp_headers(user_input.get(CONF_MCP_HEADERS))
+    headers, secret_header_keys = _parse_mcp_headers_with_secrets(
+        user_input.get(CONF_MCP_HEADERS)
+    )
     if headers:
         data[CONF_MCP_HEADERS] = headers
+        data[CONF_MCP_SECRET_HEADER_KEYS] = secret_header_keys
     allowed_tools = parse_allowed_tools(user_input.get(CONF_MCP_ALLOWED_TOOLS))
     if allowed_tools:
         data[CONF_MCP_ALLOWED_TOOLS] = allowed_tools
     return data
+
+
+def _parse_mcp_headers_with_secrets(value: object) -> tuple[dict[str, str], list[str]]:
+    """Parse optional HTTP headers and secret metadata from selector rows."""
+    try:
+        headers, secret_header_keys = parse_header_rows(value)
+    except ValueError as err:
+        raise vol.Invalid(str(err)) from err
+    validated_headers = parse_mcp_headers(headers)
+    return validated_headers, normalize_secret_header_keys(
+        validated_headers, secret_header_keys
+    )
 
 
 def _parse_mcp_call_cache_ttl(value: object) -> int:

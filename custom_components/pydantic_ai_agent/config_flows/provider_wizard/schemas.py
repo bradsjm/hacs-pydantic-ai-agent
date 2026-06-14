@@ -23,6 +23,7 @@ from ...const import (
     CONF_KEY_VALUE_VALUE,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
+    CONF_PROVIDER_SECRET_HEADER_KEYS,
     PROVIDER_ANTHROPIC,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
@@ -108,12 +109,17 @@ def connection_schema(
     advanced_schema: VolDictType = {
         vol.Optional(
             CONF_PROVIDER_HEADERS,
-            default=_format_http_headers(data.get(CONF_PROVIDER_HEADERS)),
+            default=_format_http_headers(
+                data.get(CONF_PROVIDER_HEADERS),
+                data.get(CONF_PROVIDER_SECRET_HEADER_KEYS),
+            ),
         ): _key_value_rows_selector(
             CONF_KEY_VALUE_VALUE,
             {"text": None},
             key_label="header name",
             value_label="header value",
+            include_secret_toggle=True,
+            secret_default=False,
             translation_key=CONF_PROVIDER_HEADERS,
         ),
     }
