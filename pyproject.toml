@@ -1,8 +1,9 @@
 [project]
 name = "hacs-pydantic-ai-agent"
-version = "0.2.1"
+version = "0.3"
 description = "Home Assistant custom integration for Pydantic AI Agent"
 readme = "README.md"
+topics = ["home-assistant", "custom-integration", "ai", "pydantic"]
 requires-python = ">=3.14.2"
 license = "Apache-2.0"
 dependencies = [
