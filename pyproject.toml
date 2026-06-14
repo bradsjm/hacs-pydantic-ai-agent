@@ -1,6 +1,6 @@
 [project]
 name = "hacs-pydantic-ai-agent"
-version = "0.3"
+version = "0.3.0"
 description = "Home Assistant custom integration for Pydantic AI Agent"
 readme = "README.md"
 topics = ["home-assistant", "custom-integration", "ai", "pydantic"]

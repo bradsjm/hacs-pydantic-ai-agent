@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Add MCP call-result caching plus a last-MCP-tool sensor for workspace runtime visibility.
+- Add secret header controls for provider and MCP configuration so only marked header values are redacted in diagnostics and shared outputs.
+- Refresh workflow and local toolchain dependencies used by validation and development.
+
 ## 0.2.1
 
 - Add a conversation streaming toggle that can disable progressive responses per agent.
