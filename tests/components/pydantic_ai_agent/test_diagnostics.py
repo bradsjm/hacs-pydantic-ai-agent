@@ -64,6 +64,7 @@ _PROVIDER_SUBENTRY_ID = "provider-1"
 _MODEL_PROFILE_ID = "profile-1"
 _MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
 
+
 async def test_diagnostics_returns_redacted_bounded_config_entry_data(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
@@ -246,6 +247,7 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
     assert "sk-secret" not in json.dumps(diagnostics)
     assert "Private system prompt" not in json.dumps(diagnostics)
 
+
 async def test_diagnostics_keeps_legacy_header_mappings_visible(
     hass: HomeAssistant,
 ) -> None:
@@ -309,6 +311,7 @@ async def test_diagnostics_keeps_legacy_header_mappings_visible(
     )["data"]
     assert mcp_data[CONF_MCP_HEADERS] == {"Authorization": "Bearer legacy-mcp"}
 
+
 async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> None:
     """Test runtime diagnostic snapshots use the shared redaction policy."""
     entry = MockConfigEntry(
@@ -357,6 +360,7 @@ async def test_diagnostics_redacts_runtime_snapshots(hass: HomeAssistant) -> Non
     assert "runtime-secret" not in json.dumps(diagnostics)
     assert "stream-secret" not in json.dumps(diagnostics)
 
+
 async def test_diagnostics_bounds_large_values(hass: HomeAssistant) -> None:
     """Test diagnostics bound large values without redacting them."""
     entry = MockConfigEntry(
@@ -392,6 +396,7 @@ async def test_diagnostics_bounds_large_values(hass: HomeAssistant) -> None:
     assert bounded_mapping["total_count"] == 125
     assert bounded_mapping["head"]["key_000"] == 0
     assert bounded_mapping["tail"]["key_124"] == 124
+
 
 async def test_device_diagnostics_filters_to_matching_subentry(
     hass: HomeAssistant,
