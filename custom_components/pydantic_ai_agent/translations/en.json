@@ -847,13 +847,13 @@
     "mcp_headers": {
       "fields": {
         "is_secret": {
-          "name": "is secret"
+          "name": "Is Secret (Keep Obfuscated)"
         },
         "key": {
-          "name": "header name"
+          "name": "Header name"
         },
         "value": {
-          "name": "header value"
+          "name": "Header value"
         }
       },
       "name": "Add HTTP Header"
@@ -879,13 +879,13 @@
     "provider_headers": {
       "fields": {
         "is_secret": {
-          "name": "is secret"
+          "name": "Is Secret (Keep Obfuscated)"
         },
         "key": {
-          "name": "header name"
+          "name": "Header name"
         },
         "value": {
-          "name": "header value"
+          "name": "Header value"
         }
       },
       "name": "Add HTTP Header"
