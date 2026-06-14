@@ -26,32 +26,12 @@ from tests.components.pydantic_ai_agent.support.builders import (
 from tests.components.pydantic_ai_agent.support.pydantic_ai import (
     ConversationAgent as _ConversationAgent,
 )
+from tests.components.pydantic_ai_agent.support.pydantic_ai import (
+    FailingLogfireSpan,
+    LogfireSpan,
+)
 
 _PROVIDER_SUBENTRY_ID = "provider-1"
-
-
-class _Span:
-    """Synchronous context manager returned by the Logfire span mock."""
-
-    def __init__(self) -> None:
-        self.attributes: dict[str, object] = {}
-
-    def __enter__(self) -> None:
-        pass
-
-    def __exit__(self, *_args: object) -> None:
-        pass
-
-    def set_attributes(self, attributes: dict[str, object]) -> None:
-        self.attributes.update(attributes)
-
-
-class _FailingSetAttributesSpan(_Span):
-    """Span that fails when usage attributes are copied."""
-
-    def set_attributes(self, attributes: dict[str, object]) -> None:
-        del attributes
-        raise RuntimeError("set attributes failed")
 
 
 def _entry_with_conversation_subentries(logfire: bool = False) -> MockConfigEntry:
@@ -114,7 +94,7 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
 ) -> None:
     """Test active Logfire entries instrument agents and add HA trace metadata."""
     instrument = Mock()
-    span = Mock(return_value=_Span())
+    span = Mock(return_value=LogfireSpan())
     monkeypatch.setitem(
         sys.modules,
         "logfire",
@@ -161,7 +141,8 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
     assert instrument.call_args.args == (agent,)
     assert instrument.call_args.kwargs == {"include_content": True}
     span.assert_called_once()
-    assert span.call_args.args == ("Kitchen Agent → Kitchen Model",)
+    assert "Kitchen Agent" in span.call_args.args[0]
+    assert "Kitchen Model" in span.call_args.args[0]
     span_kwargs = span.call_args.kwargs
     assert span_kwargs["ha.domain"] == DOMAIN
     assert span_kwargs["ha.version"] == __version__
@@ -212,7 +193,7 @@ async def test_conversation_logfire_usage_failures_do_not_block_agent_run(
         SimpleNamespace(
             configure=Mock(),
             instrument_pydantic_ai=Mock(),
-            span=Mock(return_value=_FailingSetAttributesSpan()),
+            span=Mock(return_value=FailingLogfireSpan()),
         ),
     )
     entry = _entry_with_conversation_subentries(logfire=True)

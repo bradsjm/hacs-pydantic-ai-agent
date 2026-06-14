@@ -9,9 +9,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_THINKING,
     PROVIDER_ANTHROPIC,
 )
-from custom_components.pydantic_ai_agent.context_management import (
-    SlidingWindowContextCapability,
-)
 from homeassistant.components import conversation
 from homeassistant.core import Context, HomeAssistant
 from pydantic_ai import (
@@ -19,23 +16,24 @@ from pydantic_ai import (
     ModelResponse,
     TextPart,
 )
-from pydantic_ai.capabilities import Thinking, WebFetch
+from pydantic_ai.capabilities import WebFetch
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
-    conversation_subentry_data,
     provider_runtime_data,
     provider_subentry_data,
-    workspace_entry,
-    workspace_runtime_data,
 )
 from tests.components.pydantic_ai_agent.support.pydantic_ai import (
     Agent as _Agent,
 )
 from tests.components.pydantic_ai_agent.support.pydantic_ai import (
-    Usage,
     request_limit_from_kwargs,
+)
+from tests.components.pydantic_ai_agent.support.runtime import (
+    assert_has_context_management_capability,
+    first_non_default_conversation_entity_id,
+    loaded_conversation_entry,
+    thinking_capabilities,
 )
 
 _PROVIDER_SUBENTRY_ID = "provider-1"
@@ -43,125 +41,36 @@ _MODEL_PROFILE_ID = "model-profile-1"
 _MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
 
 
-def _entry(
-    llm_hass_api: list[str] | None = None,
-    skills: list[str] | None = None,
-    *,
-    streaming_enabled: bool = True,
-    virtual_workspace_enabled: bool = False,
-    web_fetch_enabled: bool = False,
-    extra_data: dict[str, object] | None = None,
-) -> MockConfigEntry:
-    """Return a config entry with one conversation subentry."""
-    entry = workspace_entry(
-        (
-            conversation_subentry_data(
-                _MODEL_PROFILE_REF,
-                llm_hass_api=llm_hass_api,
-                skills=skills,
-                streaming_enabled=streaming_enabled,
-                virtual_workspace_enabled=virtual_workspace_enabled,
-                web_fetch_enabled=web_fetch_enabled,
-                extra_data=extra_data,
-            ),
-            provider_subentry_data(
-                subentry_id=_PROVIDER_SUBENTRY_ID,
-                title="Hosted OpenAI",
-                profile_id=_MODEL_PROFILE_ID,
-                provider_mode=PROVIDER_ANTHROPIC,
-                model="claude-sonnet-4",
-            ),
-        )
-    )
-    entry.runtime_data = workspace_runtime_data(
-        providers={
-            _PROVIDER_SUBENTRY_ID: provider_runtime_data(
-                subentry_id=_PROVIDER_SUBENTRY_ID,
-                name="Hosted OpenAI",
-                provider_mode=PROVIDER_ANTHROPIC,
-            )
-        },
-    )
-    return entry
-
-
-class _ResultWithMessages:
-    """Minimal Agent result with explicit final messages."""
-
-    def __init__(self, output: str, messages: list[ModelResponse]) -> None:
-        """Initialize the result."""
-        self.output = output
-        self.usage = Usage()
-        self._messages = messages
-
-    def new_messages(self) -> list[ModelResponse]:
-        """Return final Agent messages."""
-        return self._messages
-
-
-class _Span:
-    """Synchronous context manager returned by the Logfire span mock."""
-
-    def __init__(self) -> None:
-        """Initialize recorded attributes."""
-        self.attributes: dict[str, int] = {}
-
-    def __enter__(self) -> None:
-        """Enter the mocked span."""
-
-    def __exit__(self, *_args: object) -> None:
-        """Exit the mocked span."""
-
-    def set_attributes(self, attributes: dict[str, int]) -> None:
-        """Record attributes set on the mocked span."""
-        self.attributes.update(attributes)
-
-
-def _assert_context_management_capability(capabilities: list[object]) -> None:
-    """Assert the automatic context management capability is attached."""
-    assert any(
-        isinstance(capability, SlidingWindowContextCapability)
-        for capability in capabilities
-    )
-
-
-def _thinking_capabilities(capabilities: list[object]) -> list[Thinking]:
-    """Return Thinking capabilities from an Agent constructor call."""
-    return [
-        capability for capability in capabilities if isinstance(capability, Thinking)
-    ]
-
-
 async def test_conversation_runtime_uses_configured_max_iterations(
     hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
+    mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test conversation runs use the configured run iteration limit."""
-    entry = _entry(extra_data={CONF_MAX_ITERATIONS: 24})
+    del mock_probe_model, mock_chat_model_for_profile
+    entry = loaded_conversation_entry(
+        extra_data={CONF_MAX_ITERATIONS: 24},
+        provider_subentry=provider_subentry_data(
+            subentry_id=_PROVIDER_SUBENTRY_ID,
+            title="Hosted OpenAI",
+            profile_id=_MODEL_PROFILE_ID,
+            provider_mode=PROVIDER_ANTHROPIC,
+            model="claude-sonnet-4",
+        ),
+        provider_runtime=provider_runtime_data(
+            subentry_id=_PROVIDER_SUBENTRY_ID,
+            name="Hosted OpenAI",
+            provider_mode=PROVIDER_ANTHROPIC,
+        ),
+    )
     entry.add_to_hass(hass)
     agent = _Agent()
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
-    )
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
-            return_value=object(),
-        ),
-        patch(
-            "custom_components.pydantic_ai_agent.entity.Agent",
-            return_value=agent,
-        ),
-    ):
+    entity_id = first_non_default_conversation_entity_id(hass)
+    with patch("custom_components.pydantic_ai_agent.entity.Agent", return_value=agent):
         await conversation.async_converse(
             hass,
             "hello",
@@ -175,29 +84,34 @@ async def test_conversation_runtime_uses_configured_max_iterations(
 
 async def test_conversation_runtime_uses_thinking_capability(
     hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
+    mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test configured thinking is represented as a Pydantic AI capability."""
-    entry = _entry(extra_data={CONF_THINKING: "high"})
+    del mock_probe_model, mock_chat_model_for_profile
+    entry = loaded_conversation_entry(
+        extra_data={CONF_THINKING: "high"},
+        provider_subentry=provider_subentry_data(
+            subentry_id=_PROVIDER_SUBENTRY_ID,
+            title="Hosted OpenAI",
+            profile_id=_MODEL_PROFILE_ID,
+            provider_mode=PROVIDER_ANTHROPIC,
+            model="claude-sonnet-4",
+        ),
+        provider_runtime=provider_runtime_data(
+            subentry_id=_PROVIDER_SUBENTRY_ID,
+            name="Hosted OpenAI",
+            provider_mode=PROVIDER_ANTHROPIC,
+        ),
+    )
     entry.add_to_hass(hass)
     agent = _Agent()
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
-    )
+    entity_id = first_non_default_conversation_entity_id(hass)
     with (
-        patch(
-            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
-            return_value=object(),
-        ),
         patch(
             "custom_components.pydantic_ai_agent.entity.Agent",
             return_value=agent,
@@ -212,37 +126,42 @@ async def test_conversation_runtime_uses_thinking_capability(
         )
 
     capabilities = agent_class.call_args.kwargs["capabilities"]
-    _assert_context_management_capability(capabilities)
-    thinking = _thinking_capabilities(capabilities)
+    assert_has_context_management_capability(capabilities)
+    thinking = thinking_capabilities(capabilities)
     assert len(thinking) == 1
     assert thinking[0].effort == "high"
 
 
 async def test_conversation_runtime_keeps_explicit_disabled_thinking_capability(
     hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
+    mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test explicit disabled thinking is still passed as a capability."""
-    entry = _entry(extra_data={CONF_THINKING: False})
+    del mock_probe_model, mock_chat_model_for_profile
+    entry = loaded_conversation_entry(
+        extra_data={CONF_THINKING: False},
+        provider_subentry=provider_subentry_data(
+            subentry_id=_PROVIDER_SUBENTRY_ID,
+            title="Hosted OpenAI",
+            profile_id=_MODEL_PROFILE_ID,
+            provider_mode=PROVIDER_ANTHROPIC,
+            model="claude-sonnet-4",
+        ),
+        provider_runtime=provider_runtime_data(
+            subentry_id=_PROVIDER_SUBENTRY_ID,
+            name="Hosted OpenAI",
+            provider_mode=PROVIDER_ANTHROPIC,
+        ),
+    )
     entry.add_to_hass(hass)
     agent = _Agent()
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
-    )
+    entity_id = first_non_default_conversation_entity_id(hass)
     with (
-        patch(
-            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
-            return_value=object(),
-        ),
         patch(
             "custom_components.pydantic_ai_agent.entity.Agent",
             return_value=agent,
@@ -257,30 +176,24 @@ async def test_conversation_runtime_keeps_explicit_disabled_thinking_capability(
         )
 
     capabilities = agent_class.call_args.kwargs["capabilities"]
-    thinking = _thinking_capabilities(capabilities)
+    thinking = thinking_capabilities(capabilities)
     assert len(thinking) == 1
     assert thinking[0].effort is False
 
 
 async def test_conversation_runtime_supports_test_model_without_patching_agent_run(
     hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
 ) -> None:
     """Test a deterministic Pydantic AI TestModel runtime path."""
-    entry = _entry()
+    del mock_probe_model
+    entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
-    )
+    entity_id = first_non_default_conversation_entity_id(hass)
     with patch(
         "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
         return_value=TestModel(custom_output_text="test model response"),
@@ -298,9 +211,11 @@ async def test_conversation_runtime_supports_test_model_without_patching_agent_r
 
 async def test_conversation_runtime_supports_function_model_without_patching_agent_run(
     hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
 ) -> None:
     """Test a deterministic Pydantic AI FunctionModel runtime path."""
-    entry = _entry()
+    del mock_probe_model
+    entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
     captured_messages: list[ModelResponse] = []
 
@@ -318,18 +233,10 @@ async def test_conversation_runtime_supports_function_model_without_patching_age
         assert info.function_tools == []
         yield "function model response"
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
-    )
+    entity_id = first_non_default_conversation_entity_id(hass)
     with patch(
         "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
         return_value=FunctionModel(model_function, stream_function=stream_function),
@@ -349,34 +256,20 @@ async def test_conversation_runtime_supports_function_model_without_patching_age
 
 async def test_conversation_runtime_defaults_max_iterations(
     hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
+    mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test conversation runs keep the default iteration limit when unset."""
-    entry = _entry()
+    del mock_probe_model, mock_chat_model_for_profile
+    entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
     agent = _Agent()
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
-    )
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
-            return_value=object(),
-        ),
-        patch(
-            "custom_components.pydantic_ai_agent.entity.Agent",
-            return_value=agent,
-        ),
-    ):
+    entity_id = first_non_default_conversation_entity_id(hass)
+    with patch("custom_components.pydantic_ai_agent.entity.Agent", return_value=agent):
         await conversation.async_converse(
             hass,
             "hello",
@@ -390,30 +283,21 @@ async def test_conversation_runtime_defaults_max_iterations(
 
 async def test_conversation_runtime_passes_selected_skills_capabilities(
     hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
+    mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test selected conversation skills become Agent capabilities."""
-    entry = _entry(skills=["kitchen-skill"])
+    del mock_probe_model, mock_chat_model_for_profile
+    entry = loaded_conversation_entry(skills=["kitchen-skill"])
     entry.add_to_hass(hass)
-    capability = object()
+    capability = {"skill": "kitchen-skill"}
     agent = _Agent()
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
-    )
+    entity_id = first_non_default_conversation_entity_id(hass)
     with (
-        patch(
-            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
-            return_value=object(),
-        ),
         patch(
             "custom_components.pydantic_ai_agent.entity.async_skills_capabilities",
             new_callable=AsyncMock,
@@ -437,39 +321,28 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
     assert skills_capabilities.call_args.args[2] == ["kitchen-skill"]
     capabilities = agent_class.call_args.kwargs["capabilities"]
     assert capability in capabilities
-    _assert_context_management_capability(capabilities)
+    assert_has_context_management_capability(capabilities)
     assert agent.run_stream_events_calls == 1
     assert agent.run_calls == 0
 
 
 async def test_conversation_runtime_adds_web_fetch_capability(
     hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
+    mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test WebFetch-enabled conversation agents get the WebFetch capability."""
-    entry = _entry(web_fetch_enabled=True)
+    del mock_probe_model, mock_chat_model_for_profile
+    entry = loaded_conversation_entry(web_fetch_enabled=True)
     entry.add_to_hass(hass)
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
-    )
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
-            return_value=object(),
-        ),
-        patch(
-            "custom_components.pydantic_ai_agent.entity.Agent",
-            return_value=_Agent(),
-        ) as agent_class,
-    ):
+    entity_id = first_non_default_conversation_entity_id(hass)
+    with patch(
+        "custom_components.pydantic_ai_agent.entity.Agent",
+        return_value=_Agent(),
+    ) as agent_class:
         await conversation.async_converse(
             hass,
             "fetch https://example.com",
@@ -481,4 +354,4 @@ async def test_conversation_runtime_adds_web_fetch_capability(
     assert agent_class.call_args is not None
     capabilities = agent_class.call_args.kwargs["capabilities"]
     assert any(isinstance(capability, WebFetch) for capability in capabilities)
-    _assert_context_management_capability(capabilities)
+    assert_has_context_management_capability(capabilities)

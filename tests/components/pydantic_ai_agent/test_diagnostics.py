@@ -56,6 +56,7 @@ from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from tests.components.pydantic_ai_agent.support.runtime import diagnostics_subentry
 
 _PROVIDER_SUBENTRY_ID = "provider-1"
 _MODEL_PROFILE_ID = "profile-1"
@@ -172,10 +173,13 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
     assert diagnostics["entry"]["data"][CONF_LOGFIRE_TOKEN] == REDACTED
     assert diagnostics["entry"]["logfire_enabled"] is True
     assert diagnostics["entry"]["logfire_include_content"] is True
-    subentry_data = diagnostics["subentries"][0]["data"]
+    conversation_diagnostics = diagnostics_subentry(
+        diagnostics, subentry_type=SUBENTRY_TYPE_CONVERSATION
+    )
+    subentry_data = conversation_diagnostics["data"]
     assert subentry_data[CONF_PROMPT] == REDACTED
-    assert diagnostics["subentries"][0]["ha_tools_enabled"] is True
-    assert diagnostics["subentries"][0]["configuration_summary"] == {
+    assert conversation_diagnostics["ha_tools_enabled"] is True
+    assert conversation_diagnostics["configuration_summary"] == {
         "subentry_type": SUBENTRY_TYPE_CONVERSATION,
         "name": "Kitchen Agent",
         CONF_PRIMARY_MODEL_REF: _MODEL_PROFILE_REF,
@@ -186,7 +190,9 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
         "web_fetch_enabled": False,
         "virtual_workspace_enabled": False,
     }
-    provider_data = diagnostics["subentries"][1]["data"]
+    provider_data = diagnostics_subentry(
+        diagnostics, subentry_type=SUBENTRY_TYPE_PROVIDER
+    )["data"]
     assert provider_data[CONF_API_KEY] == REDACTED
     assert provider_data[CONF_PROVIDER_HEADERS] == REDACTED
     assert provider_data[CONF_PROVIDER_EXTRA_BODY] == {"api_key": REDACTED}
@@ -201,17 +207,22 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
         }
     ]
     assert model_data[CONF_MODEL_SETTINGS]["extra_body"] == {"api_key": REDACTED}
-    mcp_data = diagnostics["subentries"][2]["data"]
+    mcp_diagnostics = diagnostics_subentry(
+        diagnostics, subentry_type=SUBENTRY_TYPE_MCP_SERVER
+    )
+    mcp_data = mcp_diagnostics["data"]
     assert mcp_data[CONF_MCP_URL] == REDACTED
     assert mcp_data[CONF_MCP_HEADERS] == REDACTED
-    assert diagnostics["subentries"][2]["configuration_summary"] == {
+    assert mcp_diagnostics["configuration_summary"] == {
         "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
         "has_headers": True,
         "allowed_tool_count": 1,
         CONF_MCP_INCLUDE_RETURN_SCHEMA: False,
         CONF_MCP_DEFERRED_LOADING: True,
     }
-    skill_data = diagnostics["subentries"][3]["data"]
+    skill_data = diagnostics_subentry(diagnostics, subentry_type=SUBENTRY_TYPE_SKILL)[
+        "data"
+    ]
     assert skill_data[CONF_NAME] == "Kitchen Skill"
     assert skill_data[CONF_SKILL_CONTENT] == REDACTED
     assert skill_data[CONF_SKILL_REFERENCES] == [
@@ -404,7 +415,10 @@ async def test_device_diagnostics_filters_to_matching_subentry(
     diagnostics = await async_get_device_diagnostics(hass, entry, device)
 
     assert [item["subentry_id"] for item in diagnostics["subentries"]] == [matching_id]
-    assert diagnostics["subentries"][0]["data"][CONF_PROMPT] == REDACTED
+    assert (
+        diagnostics_subentry(diagnostics, subentry_id=matching_id)["data"][CONF_PROMPT]
+        == REDACTED
+    )
     assert diagnostics["runtime"] == {"loaded": True}
     assert "latest_stream_trace" not in diagnostics["runtime"]
     assert "metrics" not in diagnostics["runtime"]

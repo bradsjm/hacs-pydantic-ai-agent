@@ -345,6 +345,31 @@ def workspace_runtime_data(
     )
 
 
+def loaded_workspace_entry(
+    subentries_data: tuple[dict[str, object], ...],
+    *,
+    title: str = "Workspace",
+    data: Mapping[str, object] | None = None,
+    options: Mapping[str, object] | None = None,
+    providers: Mapping[str, ProviderRuntimeData] | None = None,
+    mcp_servers: Mapping[str, MCPServerRuntimeData] | None = None,
+    mcp_tool_cache: Mapping[str, list[dict[str, Any]]] | None = None,
+    logfire_enabled: bool = False,
+    logfire_include_content: bool = False,
+) -> MockConfigEntry:
+    """Return a workspace entry with populated runtime data."""
+    entry = workspace_entry(subentries_data, title=title, data=data, options=options)
+    entry.runtime_data = workspace_runtime_data(
+        workspace_name=title,
+        providers=providers,
+        mcp_servers=mcp_servers,
+        mcp_tool_cache=mcp_tool_cache,
+        logfire_enabled=logfire_enabled,
+        logfire_include_content=logfire_include_content,
+    )
+    return entry
+
+
 def mcp_server_runtime_data(
     *,
     subentry_id: str = "mcp-1",

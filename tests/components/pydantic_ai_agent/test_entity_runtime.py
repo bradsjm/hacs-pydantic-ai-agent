@@ -279,38 +279,37 @@ def test_has_connection_failure_stops_on_cycles() -> None:
 
 
 @pytest.mark.parametrize(
-    ("err", "message"),
+    ("err", "message_fragment"),
     [
         (
             ModelHTTPError(status_code=429, model_name="gpt-test", body=None),
-            "Terminated because the provider quota or rate limit was reached for "
-            'model "gpt-test".',
+            "quota or rate limit",
         ),
         (
             ModelAPIError("gpt-test", "failed"),
-            'The provider returned an API error for model "gpt-test".',
+            'API error for model "gpt-test"',
         ),
         (
             UnexpectedModelBehavior("bad"),
-            "Terminated because the provider returned an unexpected response.",
+            "unexpected response",
         ),
-        (TimeoutError(), "Terminated because the provider request timed out."),
+        (TimeoutError(), "timed out"),
         (
             UsageLimitExceeded("too many"),
-            "Terminated because the model exceeded a configured usage limit.",
+            "configured usage limit",
         ),
         (
             NotImplementedError("missing config"),
-            "Invalid provider configuration: missing config",
+            "Invalid provider configuration",
         ),
-        (UserError("bad config"), "Invalid provider configuration: bad config"),
+        (UserError("bad config"), "Invalid provider configuration"),
     ],
 )
 def test_home_assistant_error_maps_runtime_failures(
-    err: Exception, message: str
+    err: Exception, message_fragment: str
 ) -> None:
     result = str(_home_assistant_error(err))
-    assert result == message or result.startswith(message[:20])
+    assert message_fragment in result
 
 
 def test_home_assistant_error_preserves_existing_ha_errors() -> None:

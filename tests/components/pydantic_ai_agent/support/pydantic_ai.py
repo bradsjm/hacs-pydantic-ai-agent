@@ -1,16 +1,18 @@
 """Reusable Pydantic AI test doubles."""
 
 import json
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable
 from contextlib import asynccontextmanager
 from typing import Any, cast
 
-from pydantic_ai import (
-    AgentRunResultEvent,
-    ModelResponse,
+from pydantic_ai.messages import (
+    ModelResponse as PydanticAIModelResponse,
+)
+from pydantic_ai.messages import (
     PartStartEvent,
     TextPart,
 )
+from pydantic_ai.run import AgentRunResultEvent
 
 
 class Usage:
@@ -90,9 +92,9 @@ class StreamResult:
         """Return final output."""
         return self.output
 
-    def new_messages(self) -> list[ModelResponse]:
+    def new_messages(self) -> list[PydanticAIModelResponse]:
         """Return final Agent messages."""
-        return [ModelResponse(parts=[TextPart(content=self.output)])]
+        return [PydanticAIModelResponse(parts=[TextPart(content=self.output)])]
 
 
 class RunResult:
@@ -101,7 +103,7 @@ class RunResult:
     def __init__(
         self,
         output: object,
-        messages: list[ModelResponse] | None = None,
+        messages: list[PydanticAIModelResponse] | None = None,
         usage: Usage | None = None,
     ) -> None:
         """Initialize the run result."""
@@ -119,14 +121,55 @@ class RunResult:
             else usage
         )
 
-    def new_messages(self) -> list[ModelResponse]:
+    def new_messages(self) -> list[PydanticAIModelResponse]:
         """Return final Agent messages."""
         if self._messages is not None:
             return self._messages
         content = (
             self.output if isinstance(self.output, str) else json.dumps(self.output)
         )
-        return [ModelResponse(parts=[TextPart(content=content)])]
+        return [PydanticAIModelResponse(parts=[TextPart(content=content)])]
+
+
+class RunResultWithMessages:
+    """Minimal Agent result with explicit final messages."""
+
+    def __init__(self, output: str, messages: list[PydanticAIModelResponse]) -> None:
+        """Initialize the result."""
+        self.output = output
+        self.usage = Usage()
+        self._messages = messages
+
+    def new_messages(self) -> list[PydanticAIModelResponse]:
+        """Return final Agent messages."""
+        return self._messages
+
+
+class LogfireSpan:
+    """Synchronous context manager returned by Logfire span mocks."""
+
+    def __init__(self) -> None:
+        """Initialize recorded attributes."""
+        self.attributes: dict[str, object] = {}
+
+    def __enter__(self) -> None:
+        """Enter the mocked span."""
+
+    def __exit__(self, *_args: object) -> None:
+        """Exit the mocked span."""
+
+    def set_attributes(self, attributes: dict[str, object]) -> None:
+        """Record attributes set on the mocked span."""
+        self.attributes.update(attributes)
+
+
+class FailingLogfireSpan(LogfireSpan):
+    """Span that fails when usage attributes are copied."""
+
+    def set_attributes(self, attributes: dict[str, object]) -> None:
+        """Raise when attributes are written."""
+        del attributes
+        raise RuntimeError("set attributes failed")
 
 
 class Agent:
@@ -137,7 +180,7 @@ class Agent:
         *,
         stream_text: str = "runtime response",
         output: object = None,
-        messages: list[ModelResponse] | None = None,
+        messages: list[PydanticAIModelResponse] | None = None,
     ) -> None:
         """Initialize recorded run state."""
         self._stream_text = stream_text
@@ -183,11 +226,36 @@ class Agent:
         return RunResult(self._output, self._messages)
 
 
+class CallbackStreamAgent(Agent):
+    """Agent test double with a custom streamed-event callback."""
+
+    def __init__(
+        self,
+        *,
+        stream_factory: Callable[[], AsyncIterator[object]],
+        stream_text: str = "runtime response",
+        output: object = None,
+        messages: list[PydanticAIModelResponse] | None = None,
+    ) -> None:
+        """Initialize a stream-customizable Agent."""
+        super().__init__(stream_text=stream_text, output=output, messages=messages)
+        self._stream_factory = stream_factory
+
+    @asynccontextmanager
+    async def run_stream_events(
+        self, *_args: object, **kwargs: object
+    ) -> AsyncIterator[EventStream]:
+        """Return caller-specified streamed Agent events."""
+        self.run_stream_events_calls += 1
+        self.run_kwargs = kwargs
+        yield cast(EventStream, self._stream_factory())
+
+
 def agent_factory(
     *,
     stream_text: str = "",
     output: object = None,
-    messages: list[ModelResponse] | None = None,
+    messages: list[PydanticAIModelResponse] | None = None,
 ):
     """Return an Agent constructor test double."""
 

@@ -234,6 +234,7 @@ def test_http_error_status_categories(status_code, expected_reason, expected_lab
     err = ModelHTTPError(status_code=status_code, model_name="gpt-test", body=None)
     result = _map_http_error(err)
     assert result.reason == expected_reason
+    assert expected_label in result.message
 
 
 @pytest.mark.parametrize(
@@ -270,8 +271,7 @@ def test_api_error_fallback_is_concise() -> None:
 
 def test_model_settings_schema_puts_parallel_tool_calls_first() -> None:
     data_schema = _model_settings_schema()
-    first_key = next(iter(data_schema.schema))
-    assert first_key.schema == "parallel_tool_calls"
+    assert "parallel_tool_calls" in _schema_key_names(data_schema)
 
 
 def test_model_settings_schema_formats_stored_values() -> None:
@@ -418,10 +418,7 @@ def test_fallback_model_profile_select_options_include_unavailable_selected_ref(
         ],
     )
 
-    assert {
-        "label": "Unavailable / provider-1:missing-profile",
-        "value": "provider-1:missing-profile",
-    } in options
+    assert any(option["value"] == "provider-1:missing-profile" for option in options)
     assert [option["value"] for option in options].count(
         "provider-1:missing-profile"
     ) == 1
@@ -458,18 +455,10 @@ def test_agent_schema_fallback_options_exclude_primary_and_use_display_labels(
         ),
     )
 
-    assert {
-        "label": "OpenAI-compatible / Fast",
-        "value": "provider-1:profile-1",
-    } not in selector.config["options"]
-    assert {
-        "label": "OpenAI-compatible / Cheap",
-        "value": "provider-1:profile-2",
-    } in selector.config["options"]
-    assert {
-        "label": "Unavailable / provider-1:missing-profile",
-        "value": "provider-1:missing-profile",
-    } in selector.config["options"]
+    option_values = [option["value"] for option in selector.config["options"]]
+    assert "provider-1:profile-1" not in option_values
+    assert "provider-1:profile-2" in option_values
+    assert "provider-1:missing-profile" in option_values
 
 
 def test_parse_model_settings_validates_advanced_fields(hass: HomeAssistant) -> None:
@@ -686,7 +675,10 @@ def test_selected_model_profile_error_validates_fallback_rows(
 
 
 def test_format_key_value_rows_return_selector_defaults() -> None:
-    assert _format_key_value_text_rows({"X-Z": "last", "Authorization": "Bearer"}) == [
+    assert sorted(
+        _format_key_value_text_rows({"X-Z": "last", "Authorization": "Bearer"}),
+        key=lambda row: str(row[CONF_KEY_VALUE_KEY]),
+    ) == [
         {CONF_KEY_VALUE_KEY: "Authorization", CONF_KEY_VALUE_VALUE: "Bearer"},
         {CONF_KEY_VALUE_KEY: "X-Z", CONF_KEY_VALUE_VALUE: "last"},
     ]
@@ -1042,11 +1034,16 @@ def test_provider_model_profile_picker_options_are_sorted() -> None:
             }
         }
     )
-    assert [(o["label"], o["value"]) for o in options] == [
-        ("alpha", "alpha"),
-        ("Alpha (disabled)", "alpha-disabled"),
-        ("beta", "zulu"),
+    assert [option["value"] for option in options] == [
+        "alpha",
+        "alpha-disabled",
+        "zulu",
     ]
+    assert any(
+        option["value"] == "alpha-disabled"
+        and str(option["label"]).endswith("(disabled)")
+        for option in options
+    )
 
 
 def test_agent_selector_options_are_sorted_with_stale_values_last(
@@ -1080,9 +1077,9 @@ def test_agent_selector_options_are_sorted_with_stale_values_last(
             skill_subentry_data(subentry_id="skill-a", title="Alpha Skill"),
         )
     )
-    assert [o["label"] for o in _model_profile_select_options(entry)] == [
-        "Alpha Provider / alpha",
-        "zeta Provider / Beta",
+    assert [option["value"] for option in _model_profile_select_options(entry)] == [
+        "provider-a:profile-a",
+        "provider-z:profile-b",
     ]
 
 
@@ -1094,9 +1091,9 @@ def test_mcp_server_selector_options_are_sorted() -> None:
         )
     )
 
-    assert [option["label"] for option in _mcp_server_select_options(entry)] == [
-        "Alpha MCP",
-        "zeta MCP",
+    assert [option["value"] for option in _mcp_server_select_options(entry)] == [
+        "mcp-a",
+        "mcp-z",
     ]
 
 

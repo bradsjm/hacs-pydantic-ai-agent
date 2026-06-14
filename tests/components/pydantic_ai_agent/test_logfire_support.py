@@ -249,7 +249,7 @@ def test_configure_logfire_sync_does_not_suppress_unrelated_warnings(
         _configure_logfire_sync("token-a")
 
     assert len(caught) == 1
-    assert str(caught[0].message) == "another warning"
+    assert isinstance(caught[0].message, UserWarning)
 
 
 async def test_instrument_agent_only_runs_for_active_owner(

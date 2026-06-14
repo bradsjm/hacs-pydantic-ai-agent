@@ -1,7 +1,6 @@
 """Test streamed tool-resume separator preservation in conversation flows."""
 
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
@@ -25,11 +24,13 @@ from pydantic_ai import (
     ToolCallPart,
     ToolReturnPart,
 )
-from tests.components.pydantic_ai_agent.support.pydantic_ai import Agent as _Agent
-from tests.components.pydantic_ai_agent.support.pydantic_ai import EventStream
-from tests.components.pydantic_ai_agent.test_conversation_streaming import (
-    _entry,
-    _ResultWithMessages,
+from tests.components.pydantic_ai_agent.support.pydantic_ai import (
+    CallbackStreamAgent,
+    RunResultWithMessages,
+)
+from tests.components.pydantic_ai_agent.support.runtime import (
+    first_non_default_conversation_entity_id,
+    loaded_conversation_entry,
 )
 
 
@@ -51,69 +52,45 @@ def test_merged_assistant_speech_prefers_full_resumed_answer() -> None:
 
 async def test_streaming_backfill_preserves_tool_resume_separator(
     hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
+    mock_chat_model_for_profile: object,
 ) -> None:
     """Test final reconciliation keeps the streamed separator after tool results."""
-    entry = _entry()
+    del mock_probe_model, mock_chat_model_for_profile
+    entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
-
-    class ToolResumeAgent(_Agent):
-        @asynccontextmanager
-        async def run_stream_events(
-            self, *_args: object, **kwargs: object
-        ) -> AsyncIterator[EventStream]:
-            self.run_stream_events_calls += 1
-            self.run_kwargs = kwargs
-            result = _ResultWithMessages(
-                "turning \n\ndone!",
-                [ModelResponse(parts=[TextPart(content="done!")])],
-            )
-
-            async def stream() -> AsyncIterator[object]:
-                yield PartStartEvent(index=0, part=TextPart(content="turning "))
-                yield FunctionToolCallEvent(
-                    ToolCallPart(
-                        tool_name="HassTurnOn",
-                        args={"name": "Kitchen"},
-                        tool_call_id="tool-1",
-                    )
-                )
-                yield FunctionToolResultEvent(
-                    ToolReturnPart(
-                        tool_name="HassTurnOn",
-                        content={"success": True},
-                        tool_call_id="tool-1",
-                    )
-                )
-                yield PartStartEvent(index=0, part=TextPart(content="done"))
-                yield AgentRunResultEvent(cast(Any, result))
-
-            yield cast(EventStream, stream())
-
-    agent = ToolResumeAgent()
-
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
+    result = RunResultWithMessages(
+        "turning \n\ndone!",
+        [ModelResponse(parts=[TextPart(content="done!")])],
     )
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
-            return_value=object(),
-        ),
-        patch(
-            "custom_components.pydantic_ai_agent.entity.Agent",
-            return_value=agent,
-        ),
-    ):
-        result = await conversation.async_converse(
+
+    async def stream() -> AsyncIterator[object]:
+        yield PartStartEvent(index=0, part=TextPart(content="turning "))
+        yield FunctionToolCallEvent(
+            ToolCallPart(
+                tool_name="HassTurnOn",
+                args={"name": "Kitchen"},
+                tool_call_id="tool-1",
+            )
+        )
+        yield FunctionToolResultEvent(
+            ToolReturnPart(
+                tool_name="HassTurnOn",
+                content={"success": True},
+                tool_call_id="tool-1",
+            )
+        )
+        yield PartStartEvent(index=0, part=TextPart(content="done"))
+        yield AgentRunResultEvent(cast(Any, result))
+
+    agent = CallbackStreamAgent(stream_factory=stream)
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = first_non_default_conversation_entity_id(hass)
+    with patch("custom_components.pydantic_ai_agent.entity.Agent", return_value=agent):
+        convo_result = await conversation.async_converse(
             hass,
             "hello",
             None,
@@ -121,11 +98,11 @@ async def test_streaming_backfill_preserves_tool_resume_separator(
             agent_id=entity_id,
         )
 
-    assert result.response.speech["plain"]["speech"] == "turning \n\ndone!"
-    assert result.conversation_id is not None
+    assert convo_result.response.speech["plain"]["speech"] == "turning \n\ndone!"
+    assert convo_result.conversation_id is not None
     assistant_messages = [
         content
-        for content in hass.data[DATA_CHAT_LOGS][result.conversation_id].content
+        for content in hass.data[DATA_CHAT_LOGS][convo_result.conversation_id].content
         if isinstance(content, AssistantContent)
     ]
     assert [content.content for content in assistant_messages] == [
@@ -136,68 +113,44 @@ async def test_streaming_backfill_preserves_tool_resume_separator(
 
 async def test_streaming_backfill_appends_tool_resume_separator_after_tool_result_only(
     hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
+    mock_chat_model_for_profile: object,
 ) -> None:
     """Test backfill appends the separator after a trailing tool result."""
-    entry = _entry()
+    del mock_probe_model, mock_chat_model_for_profile
+    entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
-
-    class ToolResultOnlyBackfillAgent(_Agent):
-        @asynccontextmanager
-        async def run_stream_events(
-            self, *_args: object, **kwargs: object
-        ) -> AsyncIterator[EventStream]:
-            self.run_stream_events_calls += 1
-            self.run_kwargs = kwargs
-            result = _ResultWithMessages(
-                "turning \n\ndone!",
-                [ModelResponse(parts=[TextPart(content="done!")])],
-            )
-
-            async def stream() -> AsyncIterator[object]:
-                yield PartStartEvent(index=0, part=TextPart(content="turning "))
-                yield FunctionToolCallEvent(
-                    ToolCallPart(
-                        tool_name="HassTurnOn",
-                        args={"name": "Kitchen"},
-                        tool_call_id="tool-1",
-                    )
-                )
-                yield FunctionToolResultEvent(
-                    ToolReturnPart(
-                        tool_name="HassTurnOn",
-                        content={"success": True},
-                        tool_call_id="tool-1",
-                    )
-                )
-                yield AgentRunResultEvent(cast(Any, result))
-
-            yield cast(EventStream, stream())
-
-    agent = ToolResultOnlyBackfillAgent()
-
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
+    result = RunResultWithMessages(
+        "turning \n\ndone!",
+        [ModelResponse(parts=[TextPart(content="done!")])],
     )
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
-            return_value=object(),
-        ),
-        patch(
-            "custom_components.pydantic_ai_agent.entity.Agent",
-            return_value=agent,
-        ),
-    ):
-        result = await conversation.async_converse(
+
+    async def stream() -> AsyncIterator[object]:
+        yield PartStartEvent(index=0, part=TextPart(content="turning "))
+        yield FunctionToolCallEvent(
+            ToolCallPart(
+                tool_name="HassTurnOn",
+                args={"name": "Kitchen"},
+                tool_call_id="tool-1",
+            )
+        )
+        yield FunctionToolResultEvent(
+            ToolReturnPart(
+                tool_name="HassTurnOn",
+                content={"success": True},
+                tool_call_id="tool-1",
+            )
+        )
+        yield AgentRunResultEvent(cast(Any, result))
+
+    agent = CallbackStreamAgent(stream_factory=stream)
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = first_non_default_conversation_entity_id(hass)
+    with patch("custom_components.pydantic_ai_agent.entity.Agent", return_value=agent):
+        convo_result = await conversation.async_converse(
             hass,
             "hello",
             None,
@@ -205,11 +158,11 @@ async def test_streaming_backfill_appends_tool_resume_separator_after_tool_resul
             agent_id=entity_id,
         )
 
-    assert result.response.speech["plain"]["speech"] == "turning \n\ndone!"
-    assert result.conversation_id is not None
+    assert convo_result.response.speech["plain"]["speech"] == "turning \n\ndone!"
+    assert convo_result.conversation_id is not None
     assistant_messages = [
         content
-        for content in hass.data[DATA_CHAT_LOGS][result.conversation_id].content
+        for content in hass.data[DATA_CHAT_LOGS][convo_result.conversation_id].content
         if isinstance(content, AssistantContent)
     ]
     assert [content.content for content in assistant_messages] == [
@@ -220,81 +173,56 @@ async def test_streaming_backfill_appends_tool_resume_separator_after_tool_resul
 
 async def test_streaming_backfill_preserves_separator_after_resumed_thinking(
     hass: HomeAssistant,
+    mock_probe_model: AsyncMock,
+    mock_chat_model_for_profile: object,
 ) -> None:
     """Test post-tool thinking-only resume still backfills text with the separator."""
-    entry = _entry()
+    del mock_probe_model, mock_chat_model_for_profile
+    entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
-
-    class ToolResumeThinkingOnlyAgent(_Agent):
-        @asynccontextmanager
-        async def run_stream_events(
-            self, *_args: object, **kwargs: object
-        ) -> AsyncIterator[EventStream]:
-            self.run_stream_events_calls += 1
-            self.run_kwargs = kwargs
-            result = _ResultWithMessages(
-                "turning \n\ndone!",
-                [
-                    ModelResponse(
-                        parts=[
-                            ThinkingPart(content="thinking about confirmation"),
-                            TextPart(content="done!"),
-                        ]
-                    )
-                ],
+    result = RunResultWithMessages(
+        "turning \n\ndone!",
+        [
+            ModelResponse(
+                parts=[
+                    ThinkingPart(content="thinking about confirmation"),
+                    TextPart(content="done!"),
+                ]
             )
-
-            async def stream() -> AsyncIterator[object]:
-                yield PartStartEvent(index=0, part=TextPart(content="turning "))
-                yield FunctionToolCallEvent(
-                    ToolCallPart(
-                        tool_name="HassTurnOn",
-                        args={"name": "Kitchen"},
-                        tool_call_id="tool-1",
-                    )
-                )
-                yield FunctionToolResultEvent(
-                    ToolReturnPart(
-                        tool_name="HassTurnOn",
-                        content={"success": True},
-                        tool_call_id="tool-1",
-                    )
-                )
-                yield PartStartEvent(
-                    index=0,
-                    part=ThinkingPart(content="thinking about confirmation"),
-                )
-                yield AgentRunResultEvent(cast(Any, result))
-
-            yield cast(EventStream, stream())
-
-    agent = ToolResumeThinkingOnlyAgent()
-
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-
-    entity_id = next(
-        state.entity_id
-        for state in hass.states.async_all("conversation")
-        if state.entity_id != "conversation.home_assistant"
+        ],
     )
 
+    async def stream() -> AsyncIterator[object]:
+        yield PartStartEvent(index=0, part=TextPart(content="turning "))
+        yield FunctionToolCallEvent(
+            ToolCallPart(
+                tool_name="HassTurnOn",
+                args={"name": "Kitchen"},
+                tool_call_id="tool-1",
+            )
+        )
+        yield FunctionToolResultEvent(
+            ToolReturnPart(
+                tool_name="HassTurnOn",
+                content={"success": True},
+                tool_call_id="tool-1",
+            )
+        )
+        yield PartStartEvent(
+            index=0,
+            part=ThinkingPart(content="thinking about confirmation"),
+        )
+        yield AgentRunResultEvent(cast(Any, result))
+
+    agent = CallbackStreamAgent(stream_factory=stream)
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = first_non_default_conversation_entity_id(hass)
     streamed_deltas: list[dict[str, object]] = []
 
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
-            return_value=object(),
-        ),
-        patch(
-            "custom_components.pydantic_ai_agent.entity.Agent",
-            return_value=agent,
-        ),
-    ):
+    with patch("custom_components.pydantic_ai_agent.entity.Agent", return_value=agent):
         entity = cast(Any, hass.data[DATA_COMPONENT].get_entity(entity_id))
         user_input = conversation.ConversationInput(
             text="hello",
@@ -316,14 +244,14 @@ async def test_streaming_backfill_preserves_separator_after_resumed_thinking(
                 ),
             ) as chat_log,
         ):
-            result = await entity._async_handle_message(user_input, chat_log)
+            convo_result = await entity._async_handle_message(user_input, chat_log)
 
-    assert result.response.speech["plain"]["speech"] == "turning \n\ndone!"
+    assert convo_result.response.speech["plain"]["speech"] == "turning \n\ndone!"
     assert streamed_deltas[-1] == {"content": "\n\ndone!"}
-    assert result.conversation_id is not None
+    assert convo_result.conversation_id is not None
     assistant_messages = [
         content
-        for content in hass.data[DATA_CHAT_LOGS][result.conversation_id].content
+        for content in hass.data[DATA_CHAT_LOGS][convo_result.conversation_id].content
         if isinstance(content, AssistantContent)
     ]
     assert [content.content for content in assistant_messages] == [

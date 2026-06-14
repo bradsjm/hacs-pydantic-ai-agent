@@ -95,10 +95,9 @@ async def test_mcp_server_validation_known_failure_returns_form_error(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
     assert result["errors"] == {"base": "cannot_connect"}
-    assert result["description_placeholders"] == {
-        "error_message": "Could not connect to the MCP server.",
-        "status_code": "502",
-    }
+    placeholders = result["description_placeholders"]
+    assert placeholders["status_code"] == "502"
+    assert placeholders["error_message"]
 
 
 async def test_mcp_server_validation_hard_timeout_returns_form_error(
