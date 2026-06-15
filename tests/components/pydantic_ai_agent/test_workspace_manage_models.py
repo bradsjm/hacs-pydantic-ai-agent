@@ -63,7 +63,13 @@ async def _init_manage_models(hass, entry, subentry):
             "subentry_id": subentry.subentry_id,
         },
     )
-    return await _scr(hass, r["flow_id"], {"next_step_id": "manage_models"})
+    r = await _scr(hass, r["flow_id"], {"next_step_id": "manage_models"})
+    if r["type"] is FlowResultType.SHOW_PROGRESS:
+        assert r["step_id"] == "manage_models_prepare"
+        assert r["progress_action"] == "discover_models"
+        await hass.async_block_till_done()
+        r = await _scr(hass, r["flow_id"], None)
+    return r
 
 
 async def test_provider_manage_models_preselects_enabled_profiles(hass):
@@ -156,6 +162,28 @@ async def test_provider_manage_models_discovers_manual_provider_models(hass):
         {"label": "gpt-4.1-mini", "value": "gpt-4.1-mini"},
         {"label": "manual-model", "value": "manual-model"},
     ]
+
+
+async def test_provider_manage_models_starts_with_progress(hass):
+    entry = await loaded_workspace_entry(hass, (_psd(),))
+    cache_provider_catalog(hass, wizard_catalog())
+    subentry = next(iter(entry.subentries.values()))
+    result = await _sir(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+    result = await _scr(hass, result["flow_id"], {"next_step_id": "manage_models"})
+    assert result["type"] is FlowResultType.SHOW_PROGRESS
+    assert result["step_id"] == "manage_models_prepare"
+    assert result["progress_action"] == "discover_models"
+    await hass.async_block_till_done()
+    result = await _scr(hass, result["flow_id"], None)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "manage_models"
 
 
 async def test_provider_manage_models_creates_selected_catalog_profile(hass):

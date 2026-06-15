@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Mapping
 from typing import Any, Literal
@@ -79,6 +80,19 @@ class ProviderModelManagementMixin:
     def async_show_form(self, *args: object, **kwargs: object) -> SubentryFlowResult:
         return super().async_show_form(*args, **kwargs)  # type: ignore[misc]
 
+    def async_show_progress(
+        self, *args: object, **kwargs: object
+    ) -> SubentryFlowResult:
+        return super().async_show_progress(*args, **kwargs)  # type: ignore[misc]
+
+    def async_show_progress_done(
+        self, *args: object, **kwargs: object
+    ) -> SubentryFlowResult:
+        return super().async_show_progress_done(*args, **kwargs)  # type: ignore[misc]
+
+    def async_get_progress_task(self) -> asyncio.Task[Any] | None:
+        return super().async_get_progress_task()  # type: ignore[misc]
+
     async def async_step_manage_models(
         self, user_input: dict[str, object] | None = None
     ) -> SubentryFlowResult: ...
@@ -89,6 +103,62 @@ class ProviderModelManagementMixin:
     _profile_filters: ModelFilterOptions
     _profile_models: tuple[CatalogModelOption, ...]
     _profile_refresh_error: str | None
+    _manage_models_prepared: bool
+    _manage_models_prepare_result: SubentryFlowResult | None
+
+    def _start_manage_models_prepare(self) -> SubentryFlowResult:
+        """Start progress for provider model-management preparation."""
+        return self.async_show_progress(
+            step_id="manage_models_prepare",
+            progress_action="discover_models",
+            progress_task=self.hass.async_create_task(
+                self._async_prepare_manage_models_flow()
+            ),
+        )
+
+    async def async_step_manage_models_prepare(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Finish provider model-management preparation progress."""
+        del user_input
+        task = self.async_get_progress_task()
+        if task is not None and not task.done():
+            return self.async_show_progress(
+                step_id="manage_models_prepare",
+                progress_action="discover_models",
+                progress_task=task,
+            )
+        self._manage_models_prepare_result = None
+        if task is not None:
+            self._manage_models_prepare_result = await task
+        return self.async_show_progress_done(
+            next_step_id="manage_models_prepare_finish"
+        )
+
+    async def async_step_manage_models_prepare_finish(
+        self, user_input: dict[str, object] | None = None
+    ) -> SubentryFlowResult:
+        """Continue after provider model preparation progress."""
+        del user_input
+        self._manage_models_prepared = True
+        if result := self._manage_models_prepare_result:
+            self._manage_models_prepare_result = None
+            return result
+        return await self.async_step_manage_models()
+
+    async def _async_prepare_manage_models_entry(self) -> SubentryFlowResult | None:
+        """Prepare manage-models state before rendering or saving."""
+        if result := self._manage_models_prepare_result:
+            self._manage_models_prepare_result = None
+            return result
+        if not self._manage_models_prepared:
+            return self._start_manage_models_prepare()
+        if not getattr(self, "_profile_flow_data", None):
+            result = await self._async_prepare_manage_models_flow()
+            if result is not None:
+                return result
+        self._manage_models_prepared = True
+        return None
 
     async def _async_prepare_manage_models_flow(self) -> SubentryFlowResult | None:
         """Prepare catalog-backed model availability management."""

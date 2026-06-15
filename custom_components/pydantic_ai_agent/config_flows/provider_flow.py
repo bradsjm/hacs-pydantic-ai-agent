@@ -85,6 +85,8 @@ class ProviderSubentryFlowHandler(
     _profile_filters: ModelFilterOptions
     _profile_models: tuple[CatalogModelOption, ...]
     _profile_refresh_error: str | None
+    _manage_models_prepared: bool
+    _manage_models_prepare_result: SubentryFlowResult | None
     _selected_profile_id: str | None
     _pending_profile_data: dict[str, Any]
     _pending_profile_error: tuple[str, dict[str, str]] | None
@@ -122,6 +124,8 @@ class ProviderSubentryFlowHandler(
         self._profile_filters = ModelFilterOptions()
         self._profile_models = ()
         self._profile_refresh_error = None
+        self._manage_models_prepared = False
+        self._manage_models_prepare_result = None
         self._wizard_catalog = None
         self._wizard_catalog_error = None
         self._wizard_connection_data = {}
@@ -144,6 +148,8 @@ class ProviderSubentryFlowHandler(
         self._selected_profile_id = None
         self._profile_flow_data = {}
         self._profile_refresh_error = None
+        self._manage_models_prepared = False
+        self._manage_models_prepare_result = None
         return await self.async_step_reconfigure_menu()
 
     def _provider_form_options(self, subentry: ConfigSubentry) -> dict[str, Any]:
@@ -397,10 +403,13 @@ class ProviderSubentryFlowHandler(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Manage which provider-owned model profiles are available."""
-        if not getattr(self, "_profile_flow_data", None):
+        if result := await self._async_prepare_manage_models_entry():
+            return result
+        if not self._profile_flow_data:
             result = await self._async_prepare_manage_models_flow()
             if result is not None:
                 return result
+        self._manage_models_prepared = True
         if user_input is None:
             models = self._managed_models_for_selection()
             return self.async_show_form(

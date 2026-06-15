@@ -319,6 +319,10 @@
         "reconfigure": "Reconfigure MCP server",
         "user": "Add MCP server"
       },
+      "progress": {
+        "discover_mcp_tools": "Discovering MCP tools",
+        "validate_mcp_server": "Validating MCP server connection and tools"
+      },
       "step": {
         "edit_server": {
           "data": {
@@ -447,6 +451,7 @@
         "user": "Add provider"
       },
       "progress": {
+        "discover_models": "Loading available provider models",
         "load_model_catalog": "Loading provider and model catalog"
       },
       "step": {
