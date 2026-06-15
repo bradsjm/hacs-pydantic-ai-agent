@@ -22,7 +22,6 @@ from .const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
     CONF_MCP_SERVER_IDS,
-    CONF_OUTPUT_MODE,
     CONF_SKILLS,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
@@ -31,7 +30,7 @@ from .const import (
 from .entity import device_identifier_for_subentry, unique_id_for_subentry_entity
 from .metrics import AgentRunMetrics, metric_value, metrics_signal
 from .model_profiles import ModelProfile, primary_model_profile
-from .structured_output import structured_output_mode
+from .structured_output import resolved_structured_output_mode
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -308,8 +307,8 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
         icon="mdi:code-json",
         subentry_types=(SUBENTRY_TYPE_AI_TASK,),
         entity_registry_enabled_default=True,
-        value_fn=lambda _entry, subentry: structured_output_mode(
-            subentry.data.get(CONF_OUTPUT_MODE)
+        value_fn=lambda entry, subentry: resolved_structured_output_mode(
+            primary_model_profile(entry, subentry)
         ),
     ),
 )

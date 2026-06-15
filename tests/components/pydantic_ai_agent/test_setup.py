@@ -1,6 +1,6 @@
 """Test basic setup lifecycle for Pydantic AI Agent."""
 
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, patch
 
 from custom_components.pydantic_ai_agent import (
     PLATFORMS,
@@ -10,7 +10,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_TOKENS,
     CONF_THINKING,
     CONF_TIMEOUT,
-    OUTPUT_MODE_TOOL,
 )
 from custom_components.pydantic_ai_agent.model_profiles import model_profile_ref
 from homeassistant.core import HomeAssistant
@@ -55,7 +54,6 @@ def _ai_task_subentry(
     return ai_task_subentry_data(
         profile_ref,
         subentry_id="ai-task-1",
-        output_mode=OUTPUT_MODE_TOOL,
         extra_data=extra_data,
     )
 
@@ -78,19 +76,11 @@ async def test_setup_entry_stores_workspace_runtime_data(hass: HomeAssistant) ->
         )
     )
     entry.add_to_hass(hass)
-    provider_data = entry.subentries["provider-1"].data
-
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-            new_callable=AsyncMock,
-        ) as probe_model,
-        patch.object(
-            hass.config_entries,
-            "async_forward_entry_setups",
-            new_callable=AsyncMock,
-        ) as forward_setups,
-    ):
+    with patch.object(
+        hass.config_entries,
+        "async_forward_entry_setups",
+        new_callable=AsyncMock,
+    ) as forward_setups:
         assert await async_setup_entry(hass, entry)
 
     assert entry.runtime_data.workspace_name == "Workspace"
@@ -98,34 +88,12 @@ async def test_setup_entry_stores_workspace_runtime_data(hass: HomeAssistant) ->
     assert entry.runtime_data.providers["provider-1"].name == "OpenAI-compatible"
     assert entry.runtime_data.model_profiles[profile_ref].model_name == "gpt-test"
     forward_setups.assert_awaited_once_with(entry, PLATFORMS)
-    probe_model.assert_has_awaits(
-        [
-            call(
-                hass,
-                provider_data,
-                "gpt-test",
-                {},
-                profile_id="profile-1",
-                stream=True,
-            ),
-            call(
-                hass,
-                provider_data,
-                "gpt-test",
-                {},
-                profile_id="profile-1",
-                structured_output_mode=OUTPUT_MODE_TOOL,
-                stream=True,
-            ),
-        ],
-        any_order=True,
-    )
 
 
-async def test_setup_entry_validates_selected_model_setting_combinations(
+async def test_setup_entry_does_not_probe_selected_model_setting_combinations(
     hass: HomeAssistant,
 ) -> None:
-    """Test setup probes selected model/settings/output combinations."""
+    """Test setup succeeds without validating run-specific model combinations."""
     first_ref = model_profile_ref("provider-1", "first-profile")
     second_ref = model_profile_ref("provider-2", "second-profile")
     entry = _workspace_entry(
@@ -153,45 +121,18 @@ async def test_setup_entry_validates_selected_model_setting_combinations(
     )
     entry.add_to_hass(hass)
 
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-            new_callable=AsyncMock,
-        ) as probe_model,
-        patch.object(
-            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
-        ),
-    ):
+    with patch.object(
+        hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
+    ) as forward_setups:
         assert await async_setup_entry(hass, entry)
 
-    probe_model.assert_has_awaits(
-        [
-            call(
-                hass,
-                entry.subentries["provider-1"].data,
-                "shared-model",
-                {CONF_MAX_TOKENS: 512, CONF_TIMEOUT: 20.0},
-                profile_id="first-profile",
-                stream=True,
-            ),
-            call(
-                hass,
-                entry.subentries["provider-2"].data,
-                "shared-model",
-                {CONF_TIMEOUT: 30.0},
-                profile_id="second-profile",
-                structured_output_mode=OUTPUT_MODE_TOOL,
-                stream=True,
-            ),
-        ],
-        any_order=True,
-    )
+    forward_setups.assert_awaited_once_with(entry, PLATFORMS)
 
 
-async def test_setup_entry_probes_distinct_subentry_run_settings(
+async def test_setup_entry_does_not_probe_distinct_subentry_run_settings(
     hass: HomeAssistant,
 ) -> None:
-    """Test setup keeps same-model probes distinct by subentry run settings."""
+    """Test setup no longer validates per-subentry run settings at load time."""
     profile_ref = model_profile_ref("provider-1", "profile-1")
     entry = _workspace_entry(
         (
@@ -211,30 +152,10 @@ async def test_setup_entry_probes_distinct_subentry_run_settings(
         )
     )
     entry.add_to_hass(hass)
-    provider_data = entry.subentries["provider-1"].data
 
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-            new_callable=AsyncMock,
-        ) as probe_model,
-        patch.object(
-            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
-        ),
-    ):
+    with patch.object(
+        hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
+    ) as forward_setups:
         assert await async_setup_entry(hass, entry)
 
-    probe_model.assert_has_awaits(
-        [
-            call(
-                hass,
-                provider_data,
-                "shared-model",
-                {CONF_TIMEOUT: 20.0},
-                profile_id="profile-1",
-                stream=True,
-            ),
-        ],
-        any_order=True,
-    )
-    assert probe_model.await_count == 1
+    forward_setups.assert_awaited_once_with(entry, PLATFORMS)

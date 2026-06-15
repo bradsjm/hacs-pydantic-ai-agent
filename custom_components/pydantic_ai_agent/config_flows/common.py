@@ -52,7 +52,6 @@ from ..const import (
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_NAME,
-    CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
@@ -84,7 +83,6 @@ from ..provider_validation import (
     _format_api_error,
     _map_http_error,
     async_list_provider_model_names,
-    async_probe_model,
 )
 from ._ai_task_schema_helpers import (
     _ai_task_data_from_user_input,
@@ -110,7 +108,6 @@ from ._constants import (
     _MODEL_SETTING_THINKING,
     _MODEL_SETTING_TIMEOUT,
     _MODEL_SETTING_TOP_P,
-    _OUTPUT_MODE_OPTIONS,
     _PROVIDER_EXTRA_BODY_MODES,
     _REMOVED_MODEL_SETTING_KEYS,
     _RUN_SETTING_KEYS,
@@ -123,8 +120,6 @@ from ._constants import (
     _SECTION_MODEL_PRICING,
     _SECTION_RUN_SETTINGS,
     _SECTION_SKILLS,
-    _STRUCTURED_PROBE_OUTPUT_NAME,
-    _STRUCTURED_PROBE_SCHEMA,
     _THINKING_OPTIONS,
     _TODO_WORKSPACE_REQUIRED_FEATURES,
 )

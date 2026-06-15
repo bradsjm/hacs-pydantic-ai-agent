@@ -43,11 +43,10 @@ _MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
 
 async def test_conversation_runtime_uses_configured_max_iterations(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test conversation runs use the configured run iteration limit."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry(
         extra_data={CONF_MAX_ITERATIONS: 24},
         provider_subentry=provider_subentry_data(
@@ -84,11 +83,10 @@ async def test_conversation_runtime_uses_configured_max_iterations(
 
 async def test_conversation_runtime_uses_thinking_capability(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test configured thinking is represented as a Pydantic AI capability."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry(
         extra_data={CONF_THINKING: "high"},
         provider_subentry=provider_subentry_data(
@@ -134,11 +132,10 @@ async def test_conversation_runtime_uses_thinking_capability(
 
 async def test_conversation_runtime_keeps_explicit_disabled_thinking_capability(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test explicit disabled thinking is still passed as a capability."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry(
         extra_data={CONF_THINKING: False},
         provider_subentry=provider_subentry_data(
@@ -183,10 +180,8 @@ async def test_conversation_runtime_keeps_explicit_disabled_thinking_capability(
 
 async def test_conversation_runtime_supports_test_model_without_patching_agent_run(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
 ) -> None:
     """Test a deterministic Pydantic AI TestModel runtime path."""
-    del mock_probe_model
     entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
 
@@ -211,10 +206,8 @@ async def test_conversation_runtime_supports_test_model_without_patching_agent_r
 
 async def test_conversation_runtime_supports_function_model_without_patching_agent_run(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
 ) -> None:
     """Test a deterministic Pydantic AI FunctionModel runtime path."""
-    del mock_probe_model
     entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
     captured_messages: list[ModelResponse] = []
@@ -256,11 +249,10 @@ async def test_conversation_runtime_supports_function_model_without_patching_age
 
 async def test_conversation_runtime_defaults_max_iterations(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test conversation runs keep the default iteration limit when unset."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
     agent = _Agent()
@@ -283,11 +275,10 @@ async def test_conversation_runtime_defaults_max_iterations(
 
 async def test_conversation_runtime_passes_selected_skills_capabilities(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test selected conversation skills become Agent capabilities."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry(skills=["kitchen-skill"])
     entry.add_to_hass(hass)
     capability = {"skill": "kitchen-skill"}
@@ -328,11 +319,10 @@ async def test_conversation_runtime_passes_selected_skills_capabilities(
 
 async def test_conversation_runtime_adds_web_fetch_capability(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: TestModel,
 ) -> None:
     """Test WebFetch-enabled conversation agents get the WebFetch capability."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry(web_fetch_enabled=True)
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)

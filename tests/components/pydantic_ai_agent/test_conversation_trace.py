@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from custom_components.pydantic_ai_agent.chat_deltas import _StreamTraceRecorder
 from custom_components.pydantic_ai_agent.diagnostics import (
@@ -110,12 +110,8 @@ async def test_streaming_records_safe_trace_payload(
     entry.add_to_hass(hass)
     agent = TracedAgent()
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     entity_id = next(
         state.entity_id

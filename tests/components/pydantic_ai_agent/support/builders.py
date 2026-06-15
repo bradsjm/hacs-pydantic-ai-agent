@@ -25,7 +25,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
@@ -188,7 +187,6 @@ def ai_task_subentry_data(
     subentry_id: str | None = None,
     title: str = "Report task",
     task_name: str | None = None,
-    output_mode: str | None = None,
     mcp_server_ids: Sequence[str] | None = None,
     skills: Sequence[str] | None = None,
     virtual_workspace_enabled: bool = False,
@@ -200,8 +198,6 @@ def ai_task_subentry_data(
     data: dict[str, object] = {CONF_PRIMARY_MODEL_REF: profile_ref}
     if task_name is not None:
         data[CONF_AI_TASK_NAME] = task_name
-    if output_mode is not None:
-        data[CONF_OUTPUT_MODE] = output_mode
     if mcp_server_ids is not None:
         data[CONF_MCP_SERVER_IDS] = list(mcp_server_ids)
     if skills is not None:
@@ -301,7 +297,7 @@ def workspace_entry(
         options={} if options is None else dict(options),
         unique_id=None,
         version=2,
-        minor_version=2,
+        minor_version=3,
     )
 
 

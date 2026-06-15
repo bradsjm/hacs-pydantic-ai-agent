@@ -29,7 +29,6 @@ from ..const import (
     CONF_AI_TASK_NAME,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MCP_SERVER_IDS,
-    CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_SKILLS,
     CONF_THINKING,
@@ -37,13 +36,8 @@ from ..const import (
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
     DEFAULT_AI_TASK_NAME,
-    DEFAULT_OUTPUT_MODE,
-)
-from ..structured_output import (
-    structured_output_mode as normalise_structured_output_mode,
 )
 from ._constants import (
-    _OUTPUT_MODE_OPTIONS,
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
@@ -188,20 +182,6 @@ def _ai_task_data_schema(
         )
     ] = BooleanSelector()
     _append_mcp_server_schema_fields(external_tools_schema, options, entry)
-    schema[
-        vol.Required(
-            CONF_OUTPUT_MODE,
-            default=normalise_structured_output_mode(
-                options.get(CONF_OUTPUT_MODE, DEFAULT_OUTPUT_MODE)
-            ),
-        )
-    ] = SelectSelector(
-        SelectSelectorConfig(
-            options=list(_OUTPUT_MODE_OPTIONS),
-            mode=SelectSelectorMode.DROPDOWN,
-            translation_key=CONF_OUTPUT_MODE,
-        )
-    )
     schema[_section_schema_key(_SECTION_EXTERNAL_TOOLS, external_tools_schema)] = (
         section(vol.Schema(external_tools_schema), {"collapsed": True})
     )
@@ -218,7 +198,7 @@ def _ai_task_data_from_user_input(
     options: Mapping[str, Any],
     entry: ConfigEntry | None = None,
 ) -> dict[str, Any]:
-    """Return AI task subentry data with a selected structured output mode."""
+    """Return normalized AI task subentry data."""
     user_input = _flatten_section_data(
         user_input,
         (
@@ -232,10 +212,6 @@ def _ai_task_data_from_user_input(
     data = dict(user_input)
     data[CONF_FALLBACK_MODEL_REFS] = _normalise_fallback_model_refs(
         data.get(CONF_FALLBACK_MODEL_REFS, [])
-    )
-    data.setdefault(
-        CONF_OUTPUT_MODE,
-        normalise_structured_output_mode(options.get(CONF_OUTPUT_MODE)),
     )
     if not data.get(CONF_WEB_FETCH_ENABLED):
         data.pop(CONF_WEB_FETCH_ENABLED, None)

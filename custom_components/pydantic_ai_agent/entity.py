@@ -27,7 +27,6 @@ from ._entity_runner import run_model_profile
 from ._types import WorkspaceRuntimeData
 from .chat_deltas import _agent_events_to_chat_deltas as _agent_events_to_chat_deltas
 from .const import (
-    CONF_OUTPUT_MODE,
     CONF_SKILLS,
     CONF_TOOL_RETRIES,
     CONF_WEB_FETCH_ENABLED,
@@ -51,9 +50,9 @@ from .skills import async_skills_capabilities
 from .structured_output import (
     default_structure_serializer,
     output_tool_names,
+    resolved_structured_output_mode,
     structured_agent_output_type,
     structured_output_json_schema,
-    structured_output_mode,
     structured_output_name,
 )
 from .virtual_workspace import virtual_workspace_parts
@@ -91,13 +90,12 @@ class PydanticAIBaseLLMEntity:
 
     @cached_property
     def available(self) -> bool:
-        """Return if the primary model profile validated at setup."""
-        failures = self.entry.runtime_data.model_validation_failures
+        """Return if the primary model profile resolves at runtime."""
         try:
-            primary_profile = model_profile_chain(self.entry, self.subentry)[0]
-        except HomeAssistantError, IndexError:
+            primary_model_profile(self.entry, self.subentry)
+        except HomeAssistantError:
             return False
-        return f"{self.subentry.subentry_id}:{primary_profile.ref}" not in failures
+        return True
 
     async def _async_handle_chat_log(
         self,
@@ -132,21 +130,15 @@ class PydanticAIBaseLLMEntity:
             },
         )
 
-        output_mode = structured_output_mode(self.subentry.data.get(CONF_OUTPUT_MODE))
-        output_name = self._structured_output_name(chat_log.llm_api, structure_name)
-        agent_output_type: object = str
-        structured_output_tool_names: set[str] = set()
+        output_name: str | None = None
+        output_json_schema: dict[str, Any] | None = None
         if structure is not None:
-            structured_output_tool_names = output_tool_names(output_mode, output_name)
-            agent_output_type = structured_agent_output_type(
-                output_mode=output_mode,
-                output_name=output_name,
-                json_schema=structured_output_json_schema(
-                    structure,
-                    custom_serializer=default_structure_serializer(chat_log.llm_api),
-                ),
-                output_tool_retries=self._tool_retries(),
+            output_name = self._structured_output_name(chat_log.llm_api, structure_name)
+            output_json_schema = structured_output_json_schema(
+                structure,
+                custom_serializer=default_structure_serializer(chat_log.llm_api),
             )
+        agent_output_type: object = str
 
         messages = await chat_log_content_to_model_messages(self.hass, chat_log.content)
         user_prompt, message_history = split_last_user_prompt(messages)
@@ -174,6 +166,20 @@ class PydanticAIBaseLLMEntity:
 
         errors: list[BaseException] = []
         for index, profile in enumerate(profiles):
+            structured_output_tool_names: set[str] = set()
+            if output_name is not None and output_json_schema is not None:
+                output_mode = resolved_structured_output_mode(profile)
+                structured_output_tool_names = output_tool_names(
+                    output_mode, output_name
+                )
+                agent_output_type = structured_agent_output_type(
+                    output_mode=output_mode,
+                    output_name=output_name,
+                    json_schema=output_json_schema,
+                    output_tool_retries=self._tool_retries(),
+                )
+            else:
+                agent_output_type = str
             usage_limits = UsageLimits(
                 request_limit=run_max_iterations(self.subentry.data, max_iterations),
             )

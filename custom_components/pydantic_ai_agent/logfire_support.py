@@ -20,7 +20,6 @@ from .const import (
     CONF_AI_TASK_NAME,
     CONF_LOGFIRE_INCLUDE_CONTENT,
     CONF_LOGFIRE_TOKEN,
-    CONF_OUTPUT_MODE,
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
@@ -37,7 +36,7 @@ from .repair_issues import (
     async_create_logfire_token_conflict_issue,
     async_delete_logfire_token_conflict_issue,
 )
-from .structured_output import structured_output_mode
+from .structured_output import resolved_structured_output_mode
 
 _LOGGER = logging.getLogger(__name__)
 _LOGFIRE_STATE_KEY = "logfire"
@@ -349,9 +348,6 @@ def _span_attributes(
         "ha.attempt_index": attempt_index,
         "ha.attempt_count": attempt_count,
         "ha.is_fallback_attempt": attempt_index > 0,
-        "ha.structured_output_mode": structured_output_mode(
-            subentry.data.get(CONF_OUTPUT_MODE)
-        ),
         "ha.ha_tools_enabled": bool(llm_api_ids),
         "ha.llm_api_ids": llm_api_ids,
         "ha.logfire_include_content": logfire_include_content(hass, entry),
@@ -372,6 +368,9 @@ def _span_attributes(
             subentry.data.get(CONF_AGENT_NAME, subentry.title)
         )
     if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK:
+        attributes["ha.structured_output_mode"] = resolved_structured_output_mode(
+            profile
+        )
         attributes["ha.ai_task_name"] = str(
             subentry.data.get(CONF_AI_TASK_NAME, subentry.title)
         )

@@ -20,7 +20,6 @@ from .const import (
     CONF_MCP_SERVER_IDS,
     CONF_MODEL,
     CONF_MODEL_PRICING,
-    CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
     CONF_SKILL_CONTENT,
@@ -38,9 +37,11 @@ from .mcp import cached_mcp_tools
 from .metrics import AgentRunMetrics
 from .model_profiles import (
     model_profile_ref,
+    primary_model_profile,
     provider_model_profiles,
     provider_subentries,
 )
+from .structured_output import resolved_structured_output_mode
 
 
 def workspace_status(
@@ -178,12 +179,12 @@ def _subentries_status(entry: ConfigEntry) -> dict[str, list[dict[str, Any]]]:
             if subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER
         ],
         "conversations": [
-            _agent_subentry_status(subentry)
+            _agent_subentry_status(entry, subentry)
             for subentry in entry.subentries.values()
             if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION
         ],
         "ai_tasks": [
-            _agent_subentry_status(subentry)
+            _agent_subentry_status(entry, subentry)
             for subentry in entry.subentries.values()
             if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
         ],
@@ -214,9 +215,11 @@ def _provider_status(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str, 
     }
 
 
-def _agent_subentry_status(subentry: ConfigSubentry) -> dict[str, Any]:
+def _agent_subentry_status(
+    entry: ConfigEntry, subentry: ConfigSubentry
+) -> dict[str, Any]:
     data = subentry.data
-    return {
+    status = {
         "subentry_id": subentry.subentry_id,
         "title": subentry.title,
         "type": subentry.subentry_type,
@@ -231,8 +234,15 @@ def _agent_subentry_status(subentry: ConfigSubentry) -> dict[str, Any]:
             data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)
         ),
         "todo_workspace_enabled": bool(data.get(CONF_TODO_LIST_ENTITY_ID)),
-        "output_mode": data.get(CONF_OUTPUT_MODE),
     }
+    if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK:
+        try:
+            status["structured_output_mode"] = resolved_structured_output_mode(
+                primary_model_profile(entry, subentry)
+            )
+        except Exception:
+            status["structured_output_mode"] = None
+    return status
 
 
 def _mcp_server_status(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str, Any]:
@@ -279,9 +289,6 @@ def _runtime_status(runtime_data: object) -> dict[str, Any] | None:
             getattr(runtime_data, "mcp_tool_cache", {})
         ),
         "model_profile_count": len(getattr(runtime_data, "model_profiles", {})),
-        "model_validation_failure_count": len(
-            getattr(runtime_data, "model_validation_failures", {})
-        ),
         "metrics_record_count": len(records),
         "latest_run_diagnostic_count": len(latest_run_diagnostics),
         "logfire_enabled": bool(getattr(runtime_data, "logfire_enabled", False)),

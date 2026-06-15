@@ -12,7 +12,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
     CONF_SKILL_CONTENT,
@@ -64,11 +63,9 @@ def conversation_subentry(
     }
 
 
-def ai_task_subentry(output_mode: str | None = None) -> dict[str, object]:
+def ai_task_subentry() -> dict[str, object]:
     """Return a provider integration AI task subentry."""
     data: dict[str, object] = {CONF_PRIMARY_MODEL_REF: MODEL_REF}
-    if output_mode is not None:
-        data[CONF_OUTPUT_MODE] = output_mode
     return {
         "data": data,
         "subentry_type": SUBENTRY_TYPE_AI_TASK,
@@ -147,7 +144,7 @@ def entry(
     """Return a config entry for provider integration subentries."""
     return MockConfigEntry(
         version=2,
-        minor_version=2,
+        minor_version=3,
         domain=DOMAIN,
         title="Integration Workspace",
         data={CONF_NAME: "Integration Workspace"},
@@ -214,10 +211,9 @@ async def skill_conversation_entity_id(
 async def ai_task_entity_id(
     hass: HomeAssistant,
     provider_config: ProviderIntegrationConfig,
-    output_mode: str | None = None,
 ) -> str:
     """Set up an AI task entity and return its entity ID."""
-    await setup_entry(hass, entry(provider_config, ai_task_subentry(output_mode)))
+    await setup_entry(hass, entry(provider_config, ai_task_subentry()))
     entity_ids = [state.entity_id for state in hass.states.async_all("ai_task")]
     assert len(entity_ids) == 1
     return entity_ids[0]

@@ -185,6 +185,20 @@ def _migrate_profile_templated_extra_body(
             hass.config_entries.async_update_subentry(entry, subentry, data=data)
 
 
+def _remove_ai_task_legacy_output_mode(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
+) -> None:
+    """Remove deprecated stored AI task output-mode selections."""
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
+            continue
+        if "output_mode" not in subentry.data:
+            continue
+        data = dict(subentry.data)
+        data.pop("output_mode", None)
+        hass.config_entries.async_update_subentry(entry, subentry, data=data)
+
+
 def _migrated_profiles(
     profiles: Mapping[str, object],
 ) -> tuple[dict[str, object], bool]:

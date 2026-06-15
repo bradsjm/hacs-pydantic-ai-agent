@@ -116,8 +116,8 @@
   `scripts/test-provider-integration`.
 - Root `conftest.py` loads `pytest_homeassistant_custom_component`, and shared
   helpers live under `tests/components/pydantic_ai_agent/support/`.
-- Mock provider probes in unit tests unless the test explicitly covers
-  `async_probe_model`.
+- Mock provider model-list responses only when the test explicitly covers
+  provider discovery behavior.
 - Annotate test function parameters with concrete types where practical; avoid
   `Any` in tests when a real fixture type is available.
 - Prefer parametrized tests over branching and duplicate test bodies.

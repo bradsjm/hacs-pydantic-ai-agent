@@ -76,7 +76,7 @@ async def test_migration_removes_removed_in_repo_llm_api_refs(
 
     assert await async_migrate_entry(hass, cast(Any, entry))
 
-    assert entry.minor_version == 2
+    assert entry.minor_version == 3
     assert entry.subentries["conversation-1"].data[CONF_LLM_HASS_API] == [
         "external_llm_api"
     ]
@@ -183,7 +183,7 @@ async def test_migration_moves_chat_template_kwargs_to_templated_extra_body(
     migrated_profile = entry.subentries["provider-1"].data[CONF_MODEL_PROFILES][
         "profile-1"
     ]
-    assert entry.minor_version == 2
+    assert entry.minor_version == 3
     assert "chat_template_kwargs" not in migrated_profile[CONF_MODEL_SETTINGS]
     assert migrated_profile[CONF_MODEL_SETTINGS][CONF_TEMPLATED_EXTRA_BODY] == [
         {
@@ -192,6 +192,68 @@ async def test_migration_moves_chat_template_kwargs_to_templated_extra_body(
         }
     ]
     assert migrated_profile[CONF_MODEL_SETTINGS]["temperature"] == 0.2
+
+
+async def test_migration_strips_legacy_ai_task_output_mode(
+    hass: HomeAssistant,
+) -> None:
+    """Test v2.2 migration strips stored output_mode from AI task subentries."""
+    entry = MockConfigEntry(
+        version=2,
+        minor_version=2,
+        domain=DOMAIN,
+        title="Workspace",
+        data={CONF_NAME: "Workspace"},
+        subentries_data=(
+            {
+                "subentry_id": "task-legacy",
+                "subentry_type": SUBENTRY_TYPE_AI_TASK,
+                "title": "Legacy Task",
+                "unique_id": None,
+                "data": {
+                    CONF_AI_TASK_NAME: "Legacy Task",
+                    CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                    "output_mode": "tool",
+                },
+            },
+            {
+                "subentry_id": "task-clean",
+                "subentry_type": SUBENTRY_TYPE_AI_TASK,
+                "title": "Clean Task",
+                "unique_id": None,
+                "data": {
+                    CONF_AI_TASK_NAME: "Clean Task",
+                    CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                },
+            },
+            {
+                "subentry_id": "conversation-1",
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Agent",
+                "unique_id": None,
+                "data": {
+                    CONF_AGENT_NAME: "Agent",
+                    CONF_PRIMARY_MODEL_REF: "provider-1:profile-1",
+                },
+            },
+        ),
+        source=config_entries.SOURCE_USER,
+        unique_id=None,
+    )
+    entry.add_to_hass(hass)
+
+    assert await async_migrate_entry(hass, cast(Any, entry))
+
+    assert entry.minor_version == 3
+
+    legacy_data = entry.subentries["task-legacy"].data
+    assert "output_mode" not in legacy_data
+    assert legacy_data[CONF_AI_TASK_NAME] == "Legacy Task"
+    assert legacy_data[CONF_PRIMARY_MODEL_REF] == "provider-1:profile-1"
+
+    clean_data = entry.subentries["task-clean"].data
+    assert "output_mode" not in clean_data
+    assert clean_data[CONF_AI_TASK_NAME] == "Clean Task"
 
 
 async def test_remove_entry_removes_removed_memory_store(

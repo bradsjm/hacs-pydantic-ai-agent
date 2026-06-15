@@ -1,7 +1,5 @@
 """Test Pydantic AI Agent conversation entities."""
 
-from unittest.mock import AsyncMock, patch
-
 import pytest
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
@@ -248,12 +246,8 @@ async def test_conversation_subentries_add_separate_entity_agents(hass):
 async def test_diagnostic_entity_defaults_are_respected(hass):
     entry = _entry(None, skills=["skill-1", "skill-2"], virtual_workspace_enabled=True)
     entry.add_to_hass(hass)
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
     ereg = er.async_get(hass)
     for eid in (
         "sensor.kitchen_agent_last_run_model_profile",

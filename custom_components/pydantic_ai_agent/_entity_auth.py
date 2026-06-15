@@ -1,19 +1,20 @@
 """Auth-failure helpers used during entity agent runs."""
 
-from collections.abc import Mapping
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 from pydantic_ai.exceptions import ModelHTTPError
 
-from ._types import PydanticAIAgentConfigEntry
 from .provider_validation import ProviderValidationError
 from .repair_issues import (
     async_create_provider_auth_issue,
     async_delete_provider_auth_issue,
 )
 
-_AUTH_VALIDATION_FAILURE_REASONS = {"invalid_auth", "permission_denied"}
+if TYPE_CHECKING:
+    from ._types import PydanticAIAgentConfigEntry
 
 
 def _join_instructions(*parts: str | None) -> str | None:
@@ -22,26 +23,11 @@ def _join_instructions(*parts: str | None) -> str | None:
     return "\n\n".join(instructions) if instructions else None
 
 
-def _has_provider_auth_validation_failure(
-    failures: Mapping[str, str], provider_subentry_id: str
-) -> bool:
-    """Return if setup validation still has an auth issue for a provider."""
-    return any(
-        reason in _AUTH_VALIDATION_FAILURE_REASONS
-        and len(parts := failure_key.split(":")) >= 3
-        and parts[1] == provider_subentry_id
-        for failure_key, reason in failures.items()
-    )
-
-
 def _has_provider_auth_failure(
     entry: PydanticAIAgentConfigEntry, provider_subentry_id: str
 ) -> bool:
-    """Return if setup or runtime has a current auth issue for a provider."""
-    return _has_provider_auth_validation_failure(
-        entry.runtime_data.model_validation_failures,
-        provider_subentry_id,
-    ) or bool(
+    """Return if runtime has a current auth issue for a provider."""
+    return bool(
         entry.runtime_data.runtime_provider_auth_failures.get(provider_subentry_id)
     )
 
@@ -118,7 +104,9 @@ def _auth_status_code(err: BaseException) -> int | None:
     current: BaseException | None = err
     while current is not None and id(current) not in seen:
         seen.add(id(current))
-        if isinstance(current, ModelHTTPError) and current.status_code in {401, 403}:
-            return current.status_code
+        if isinstance(current, ModelHTTPError):
+            status_code = getattr(current, "status_code", None)
+            if status_code in {401, 403}:
+                return status_code
         current = current.__cause__ or current.__context__
     return None

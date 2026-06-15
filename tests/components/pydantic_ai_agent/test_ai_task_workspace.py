@@ -82,12 +82,8 @@ async def _setup_ai_task_entity(
     )
     entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     entity_ids = [state.entity_id for state in hass.states.async_all("ai_task")]
     assert len(entity_ids) == 1

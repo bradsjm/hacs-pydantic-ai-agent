@@ -22,7 +22,6 @@ from ._entity_auth import _clear_runtime_auth_failure_for_ref
 from .agent_subentries import iter_valid_agent_subentries
 from .const import (
     CONF_AI_TASK_NAME,
-    CONF_OUTPUT_MODE,
     CONF_TODO_LIST_ENTITY_ID,
     CONF_WEB_FETCH_ENABLED,
     SUBENTRY_TYPE_AI_TASK,
@@ -32,7 +31,7 @@ from .ha_todo_tools import TodoWorkspace, todo_workspace_lock
 from .metrics import EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED, fire_integration_event
 from .model_profiles import model_display_names, model_profile_chain
 from .run_state import AgentRunOutcome
-from .structured_output import structured_output_mode
+from .structured_output import resolved_structured_output_mode
 from .virtual_workspace import virtual_workspace_enabled
 
 
@@ -77,9 +76,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
             "model": profiles[0].model_name,
             "model_profile": profiles[0].title,
             "fallback_model_profiles": model_display_names(profiles[1:]),
-            "output_mode": structured_output_mode(
-                self.subentry.data.get(CONF_OUTPUT_MODE)
-            ),
+            "structured_output_mode": resolved_structured_output_mode(profiles[0]),
             "web_fetch_enabled": bool(
                 self.subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
             ),

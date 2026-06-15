@@ -9,7 +9,6 @@ import re
 from datetime import timedelta
 
 from homeassistant.components.todo.const import TodoListEntityFeature
-from homeassistant.helpers.selector import SelectOptionDict
 
 from ..const import (
     CONF_MAX_ITERATIONS,
@@ -20,14 +19,12 @@ from ..const import (
     PROVIDER_ANTHROPIC,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
-    STRUCTURED_OUTPUT_MODES,
 )
 from ..model_settings import (
     MODEL_SETTING_EXTRA_BODY,
     REMOVED_PROFILE_MODEL_SETTING_KEYS,
     RUN_SETTING_KEYS,
 )
-from ..structured_output import structured_output_name
 
 _HTTP_HEADER_NAME_PATTERN = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 
@@ -126,10 +123,6 @@ _THINKING_OPTIONS: tuple[str, ...] = (
     "xhigh",
 )
 
-_OUTPUT_MODE_OPTIONS: tuple[SelectOptionDict, ...] = tuple(
-    SelectOptionDict(value=value, label=value) for value in STRUCTURED_OUTPUT_MODES
-)
-
 _CONF_MODEL_PROFILE_ID = "model_profile_id"
 _SECTION_ADVANCED_MODEL_SETTINGS = "advanced_model_settings"
 _SECTION_OPENAI_COMPATIBLE_CAPABILITIES = "openai_compatible_capabilities"
@@ -148,14 +141,3 @@ _TODO_WORKSPACE_REQUIRED_FEATURES = (
     | TodoListEntityFeature.UPDATE_TODO_ITEM
     | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
 )
-
-_STRUCTURED_PROBE_OUTPUT_NAME = structured_output_name(
-    "probe_response", "probe_response"
-)
-
-_STRUCTURED_PROBE_SCHEMA: dict[str, object] = {
-    "type": "object",
-    "properties": {"ok": {"type": "boolean"}},
-    "required": ["ok"],
-    "additionalProperties": False,
-}

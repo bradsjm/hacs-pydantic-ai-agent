@@ -1,6 +1,6 @@
 """Test conversation streaming toggle behavior."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from homeassistant.components import conversation
 from homeassistant.core import Context, HomeAssistant
@@ -51,12 +51,8 @@ async def test_conversation_runtime_uses_non_streaming_run_when_disabled(
     entry.add_to_hass(hass)
     agent = _Agent(output="non-stream response")
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     entity_id = next(
         state.entity_id

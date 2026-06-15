@@ -67,23 +67,6 @@ def map_http_error(err: ModelHTTPError) -> ProviderValidationError:
     return ProviderValidationError(reason, _format_http_error(err), status_code)
 
 
-def map_structured_http_error(
-    err: ModelHTTPError, output_mode: str
-) -> ProviderValidationError:
-    """Map structured-output probe HTTP errors to capability errors."""
-    if err.status_code == 400:
-        return ProviderValidationError(
-            "unsupported_output_mode",
-            (
-                f'Model "{err.model_name}" rejected structured output mode '
-                f'"{output_mode}". Try a different structured output mode or a '
-                "model/provider that supports this mode."
-            ),
-            err.status_code,
-        )
-    return map_http_error(err)
-
-
 def _format_http_error(err: ModelHTTPError) -> str:
     message = (
         f"The provider returned error {err.status_code}"

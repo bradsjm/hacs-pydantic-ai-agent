@@ -57,7 +57,6 @@ CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT = (
 CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION = (
     "openai_supports_strict_tool_definition"
 )
-CONF_OUTPUT_MODE = "output_mode"
 CONF_PRIMARY_MODEL_REF = "primary_model_ref"
 CONF_PROMPT = "prompt"
 CONF_PROVIDER_EXTRA_BODY = "provider_extra_body"
@@ -106,7 +105,6 @@ STRUCTURED_OUTPUT_MODES = (
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
 )
-DEFAULT_OUTPUT_MODE = OUTPUT_MODE_TOOL
 
 DEFAULT_AGENT_NAME = "Conversation agent"
 DEFAULT_AI_TASK_NAME = "AI task"
@@ -124,6 +122,3 @@ def default_conversation_options() -> dict[str, object]:
     return {
         CONF_AGENT_NAME: DEFAULT_AGENT_NAME,
     }
-
-
-__all__ = ["CONF_API_KEY", "CONF_LLM_HASS_API", "CONF_NAME"]

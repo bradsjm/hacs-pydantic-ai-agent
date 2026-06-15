@@ -22,7 +22,6 @@ from .const import (
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_OUTPUT_MODE,
     CONF_PRIMARY_MODEL_REF,
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
@@ -43,7 +42,9 @@ from .logfire_support import (
     logfire_include_content,
     logfire_token_conflict,
 )
+from .model_profiles import primary_model_profile
 from .run_diagnostics import bound_diagnostics_data
+from .structured_output import resolved_structured_output_mode
 
 
 async def async_get_config_entry_diagnostics(
@@ -52,7 +53,7 @@ async def async_get_config_entry_diagnostics(
     """Return diagnostics for a config entry."""
     subentries = []
     for subentry in entry.subentries.values():
-        subentries.append(_subentry_diagnostics(subentry))
+        subentries.append(_subentry_diagnostics(entry, subentry))
 
     diagnostics = {
         "entry": {
@@ -83,7 +84,7 @@ async def async_get_device_diagnostics(
     if subentry_id is not None:
         subentry = entry.subentries.get(subentry_id)
         if subentry is not None:
-            subentries.append(_subentry_diagnostics(subentry))
+            subentries.append(_subentry_diagnostics(entry, subentry))
     diagnostics = {
         "entry": {
             "entry_id": entry.entry_id,
@@ -97,7 +98,9 @@ async def async_get_device_diagnostics(
     return cast(dict[str, Any], bound_diagnostics_data(diagnostics))
 
 
-def _subentry_diagnostics(subentry: ConfigSubentry) -> dict[str, Any]:
+def _subentry_diagnostics(
+    entry: ConfigEntry, subentry: ConfigSubentry
+) -> dict[str, Any]:
     """Return redacted diagnostics for one config subentry."""
     model_settings = subentry.data.get(CONF_MODEL_SETTINGS)
     model_profiles = subentry.data.get(CONF_MODEL_PROFILES)
@@ -106,7 +109,7 @@ def _subentry_diagnostics(subentry: ConfigSubentry) -> dict[str, Any]:
         "subentry_type": subentry.subentry_type,
         "title": subentry.title,
         "data": redact_data(dict(subentry.data)),
-        "configuration_summary": _configuration_summary(subentry),
+        "configuration_summary": _configuration_summary(entry, subentry),
         "model": subentry.data.get(CONF_MODEL),
         "default_model_profile_id": subentry.data.get(CONF_DEFAULT_MODEL_PROFILE_ID),
         "model_profile_count": len(model_profiles)
@@ -123,14 +126,8 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
     """Return safe config-entry runtime diagnostics."""
     runtime_data = getattr(entry, "runtime_data", None)
     if runtime_data is None:
-        return {
-            "model_validation_failure_count": 0,
-            "model_validation_failures": {},
-        }
-    diagnostics = {
-        "model_validation_failure_count": len(runtime_data.model_validation_failures),
-        "model_validation_failures": dict(runtime_data.model_validation_failures),
-    }
+        return {}
+    diagnostics: dict[str, Any] = {}
     if runtime_data.latest_run_diagnostics:
         diagnostics["latest_run_diagnostics"] = redact_data(
             runtime_data.latest_run_diagnostics
@@ -146,7 +143,9 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
     return diagnostics
 
 
-def _configuration_summary(subentry: ConfigSubentry) -> dict[str, Any]:
+def _configuration_summary(
+    entry: ConfigEntry, subentry: ConfigSubentry
+) -> dict[str, Any]:
     """Return a compact, unredacted configuration summary for one subentry."""
     data = subentry.data
     summary: dict[str, Any] = {
@@ -175,7 +174,8 @@ def _configuration_summary(subentry: ConfigSubentry) -> dict[str, Any]:
             }
         )
         if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK:
-            summary[CONF_OUTPUT_MODE] = data.get(CONF_OUTPUT_MODE)
+            if output_mode := _structured_output_mode_summary(entry, subentry):
+                summary["structured_output_mode"] = output_mode
             summary["todo_workspace_enabled"] = bool(data.get(CONF_TODO_LIST_ENTITY_ID))
     elif subentry.subentry_type == SUBENTRY_TYPE_PROVIDER:
         model_profiles = data.get(CONF_MODEL_PROFILES)
@@ -212,6 +212,18 @@ def _configuration_summary(subentry: ConfigSubentry) -> dict[str, Any]:
             }
         )
     return summary
+
+
+def _structured_output_mode_summary(
+    entry: ConfigEntry, subentry: ConfigSubentry
+) -> str | None:
+    """Return the computed AI task structured output mode when resolvable."""
+    if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
+        return None
+    try:
+        return resolved_structured_output_mode(primary_model_profile(entry, subentry))
+    except Exception:
+        return None
 
 
 def _device_subentry_id(device: dr.DeviceEntry) -> str | None:

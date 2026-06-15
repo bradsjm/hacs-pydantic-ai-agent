@@ -11,7 +11,7 @@ provider, conversation, AI task, and Skill config subentry flows.
   provider-owned model profiles.
 - `ConversationSubentryFlowHandler` creates conversation agent subentries.
 - `AITaskDataSubentryFlowHandler` creates AI task data-generation subentries and
-  probes selected models before saving.
+  validates selected model refs before saving.
 - `SkillSubentryFlowHandler` creates native text-only Skill subentries.
 
 ## Module Map
@@ -22,7 +22,7 @@ provider, conversation, AI task, and Skill config subentry flows.
   discovery, profile editing, profile enablement, pricing, and settings.
 - `conversation_flow.py` - conversation form validation and persistence.
 - `ai_task_flow.py` - AI task form validation, todo workspace selection, and
-  model probe progress steps.
+  persistence.
 - `skill_flow.py` - native Skill create and reconfigure flow.
 - `common.py` - shared schemas, parsing, normalization, selector options, model
   profile refs, run settings, pricing, and provider validation helpers.
@@ -55,7 +55,8 @@ shape used by the manual flow.
 
 ## Validation Boundaries
 
-- Provider models are probed through `provider_validation.py`.
+- Provider model names are discovered through `provider_validation.py` when a
+  flow needs a live model list.
 - Model profile refs are checked against loaded provider subentries.
 - Todo workspace selection is checked against HA todo entities and features.
 - Skill references are checked against Skill subentries before save.

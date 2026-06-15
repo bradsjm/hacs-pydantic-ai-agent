@@ -104,25 +104,17 @@
         "timeout": "{error_message}",
         "todo_list_not_found": "Selected todo workspace list was not found.",
         "todo_list_unsupported": "Selected todo workspace list must support creating, updating, deleting, and item descriptions.",
-        "unknown": "Unexpected error while validating the AI task. Check Home Assistant logs for details.",
-        "unsupported_output_mode": "{error_message}"
+        "unknown": "Unexpected error while validating the AI task. Check Home Assistant logs for details."
       },
       "initiate_flow": {
         "reconfigure": "Reconfigure AI task",
         "user": "Add AI task"
       },
-      "progress": {
-        "probe_model": "Validating language model"
-      },
       "step": {
         "init": {
           "data": {
             "ai_task_name": "Task name",
-            "output_mode": "Structured output mode",
             "primary_model_ref": "Primary language model profile"
-          },
-          "data_description": {
-            "output_mode": "Tool output is the default and works with providers that support tool calls. Native uses the provider's JSON schema support. Prompted asks for JSON in the prompt and validates the result."
           },
           "description": "Name this AI task and choose its language model profile for Home Assistant data generation.",
           "sections": {
@@ -525,7 +517,7 @@
               "data_description": {
                 "openai_supports_encrypted_reasoning_content": "Enable only when this OpenAI-compatible model supports encrypted reasoning content in Responses API output.",
                 "openai_supports_strict_tool_definition": "Enable only when this OpenAI-compatible model accepts strict tool definitions.",
-                "structured_output_support": "Choose the strongest structured-output mode this OpenAI-compatible model supports.",
+                "structured_output_support": "Choose the strongest structured-output mode this OpenAI-compatible model supports. ",
                 "supports_tools": "Enable when this OpenAI-compatible model supports tool calling.",
                 "thinking_support": "Choose whether this OpenAI-compatible model does not support thinking, supports optional thinking, or always keeps thinking enabled."
               },
@@ -877,13 +869,6 @@
         }
       },
       "name": "Add HTTP Header"
-    },
-    "output_mode": {
-      "options": {
-        "native": "Native",
-        "prompted": "Prompted",
-        "tool": "Tool"
-      }
     },
     "provider_extra_body": {
       "fields": {

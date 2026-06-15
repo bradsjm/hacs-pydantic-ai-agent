@@ -2,7 +2,6 @@
 
 import pytest
 from custom_components.pydantic_ai_agent.const import (
-    DEFAULT_OUTPUT_MODE,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
@@ -10,19 +9,9 @@ from custom_components.pydantic_ai_agent.const import (
 from custom_components.pydantic_ai_agent.structured_output import (
     output_tool_names,
     structured_model_request_parameters,
-    structured_output_mode,
     structured_output_name,
 )
 from pydantic_ai import ToolDefinition
-
-
-def test_structured_output_mode_defaults_unknown_values() -> None:
-    """Test only supported output modes are accepted."""
-    assert structured_output_mode(OUTPUT_MODE_TOOL) == OUTPUT_MODE_TOOL
-    assert structured_output_mode(OUTPUT_MODE_NATIVE) == OUTPUT_MODE_NATIVE
-    assert structured_output_mode(OUTPUT_MODE_PROMPTED) == OUTPUT_MODE_PROMPTED
-    assert structured_output_mode("invalid") == DEFAULT_OUTPUT_MODE
-    assert structured_output_mode(None) == DEFAULT_OUTPUT_MODE
 
 
 def test_structured_output_name_is_prefixed_bounded_and_collision_safe() -> None:

@@ -11,7 +11,7 @@ import httpx
 import pytest
 from custom_components.pydantic_ai_agent._entity_auth import (
     _clear_runtime_auth_failure,
-    _has_provider_auth_validation_failure,
+    _has_provider_auth_failure,
     _record_runtime_auth_failure,
 )
 from custom_components.pydantic_ai_agent.ai_task import PydanticAIAgentAITaskEntity
@@ -108,28 +108,7 @@ def test_agent_entities_keep_has_entity_name() -> None:
     assert task._attr_name is None
 
 
-def test_agent_entities_unavailable_when_all_profiles_failed_validation() -> None:
-    profile_ref = "provider-1:profile-1"
-    entry = workspace_entry(
-        (
-            provider_subentry_data(subentry_id="provider-1"),
-            conversation_subentry_data(profile_ref, subentry_id="conversation-1"),
-        )
-    )
-    runtime_data = workspace_runtime_data(
-        providers={"provider-1": provider_runtime_data(subentry_id="provider-1")}
-    )
-    runtime_data.model_validation_failures[f"conversation-1:{profile_ref}"] = (
-        "invalid_auth"
-    )
-    entry.runtime_data = runtime_data
-    entity = PydanticAIConversationEntity(
-        cast(Any, entry), entry.subentries["conversation-1"]
-    )
-    assert entity.available is False
-
-
-def test_agent_entities_ignore_other_subentry_validation_failures() -> None:
+def test_agent_entities_available_despite_runtime_provider_auth_failures() -> None:
     profile_ref = "provider-1:profile-1"
     entry = workspace_entry(
         (
@@ -141,17 +120,32 @@ def test_agent_entities_ignore_other_subentry_validation_failures() -> None:
     runtime_data = workspace_runtime_data(
         providers={"provider-1": provider_runtime_data(subentry_id="provider-1")}
     )
-    runtime_data.model_validation_failures[f"task-1:{profile_ref}"] = "invalid_auth"
+    runtime_data.runtime_provider_auth_failures["provider-1"] = [profile_ref]
     entry.runtime_data = runtime_data
     conv = PydanticAIConversationEntity(
         cast(Any, entry), entry.subentries["conversation-1"]
     )
     task = PydanticAIAgentAITaskEntity(cast(Any, entry), entry.subentries["task-1"])
     assert conv.available is True
-    assert task.available is False
+    assert task.available is True
 
 
-def test_agent_entities_unavailable_when_primary_profile_failed_validation() -> None:
+def test_agent_entities_require_primary_provider_at_runtime() -> None:
+    profile_ref = "provider-1:profile-1"
+    entry = workspace_entry(
+        (
+            provider_subentry_data(subentry_id="provider-1"),
+            conversation_subentry_data(profile_ref, subentry_id="conversation-1"),
+        )
+    )
+    entry.runtime_data = workspace_runtime_data()
+    with pytest.raises(HomeAssistantError, match="provider was not found"):
+        PydanticAIConversationEntity(
+            cast(Any, entry), entry.subentries["conversation-1"]
+        )
+
+
+def test_agent_entities_require_primary_profile_even_with_fallback() -> None:
     primary_ref = "provider-1:profile-1"
     fallback_ref = "provider-2:profile-1"
     entry = workspace_entry(
@@ -167,29 +161,39 @@ def test_agent_entities_unavailable_when_primary_profile_failed_validation() -> 
     )
     runtime_data = workspace_runtime_data(
         providers={
+            "provider-2": provider_runtime_data(subentry_id="provider-2"),
+        }
+    )
+    entry.runtime_data = runtime_data
+    with pytest.raises(HomeAssistantError, match="provider was not found"):
+        PydanticAIConversationEntity(
+            cast(Any, entry), entry.subentries["conversation-1"]
+        )
+
+
+def test_provider_auth_failure_detection_is_provider_scoped() -> None:
+    entry = workspace_entry(
+        (
+            provider_subentry_data(subentry_id="provider-1"),
+            provider_subentry_data(subentry_id="provider-2"),
+        )
+    )
+    entry.runtime_data = workspace_runtime_data(
+        providers={
             "provider-1": provider_runtime_data(subentry_id="provider-1"),
             "provider-2": provider_runtime_data(subentry_id="provider-2"),
         }
     )
-    runtime_data.model_validation_failures[f"conversation-1:{primary_ref}"] = (
-        "invalid_model"
-    )
-    entry.runtime_data = runtime_data
-    entity = PydanticAIConversationEntity(
-        cast(Any, entry), entry.subentries["conversation-1"]
-    )
-    assert entity.available is False
+    entry.runtime_data.runtime_provider_auth_failures["provider-1"] = [
+        "provider-1:profile-1"
+    ]
+    entry.runtime_data.runtime_provider_auth_failures["provider-2"] = [
+        "provider-2:profile-1"
+    ]
 
-
-def test_provider_auth_validation_failure_detection_is_provider_scoped() -> None:
-    failures = {
-        "conv-1:provider-1:profile-1": "invalid_auth",
-        "conv-2:provider-1:profile-2": "invalid_model",
-        "conv-3:provider-2:profile-1": "permission_denied",
-    }
-    assert _has_provider_auth_validation_failure(failures, "provider-1") is True
-    assert _has_provider_auth_validation_failure(failures, "provider-2") is True
-    assert _has_provider_auth_validation_failure(failures, "provider-3") is False
+    assert _has_provider_auth_failure(entry, "provider-1") is True
+    assert _has_provider_auth_failure(entry, "provider-2") is True
+    assert _has_provider_auth_failure(entry, "provider-3") is False
 
 
 def test_runtime_auth_failure_cleanup_is_profile_scoped(hass: HomeAssistant) -> None:

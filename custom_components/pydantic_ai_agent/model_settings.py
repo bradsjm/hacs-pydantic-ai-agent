@@ -24,17 +24,11 @@ RUN_SETTING_KEYS: Final[frozenset[str]] = frozenset(
         CONF_TOOL_RETRIES,
     }
 )
-RUN_VALIDATION_SETTING_KEYS: Final[frozenset[str]] = frozenset(
-    {CONF_MAX_TOKENS, CONF_THINKING, CONF_TIMEOUT}
-)
 REMOVED_PROFILE_MODEL_SETTING_KEYS: Final[frozenset[str]] = (
     RUN_SETTING_KEYS | frozenset({MODEL_SETTING_EXTRA_BODY})
 )
 RUNTIME_STRIPPED_MODEL_SETTING_KEYS: Final[frozenset[str]] = (
     RUN_SETTING_KEYS | frozenset({CONF_TEMPLATED_EXTRA_BODY, MODEL_SETTING_EXTRA_BODY})
-)
-PROBE_STRIPPED_MODEL_SETTING_KEYS: Final[frozenset[str]] = frozenset(
-    {CONF_MAX_ITERATIONS, MODEL_SETTING_EXTRA_BODY, CONF_THINKING}
 )
 
 
@@ -64,19 +58,6 @@ def normalise_applied_model_settings(settings: Mapping[str, Any]) -> str:
 def profile_model_settings(settings: Mapping[str, Any] | None) -> dict[str, Any]:
     """Return persisted profile settings without run-owned keys."""
     return strip_model_settings(settings, RUN_SETTING_KEYS)
-
-
-def validation_probe_model_settings(
-    profile_settings: Mapping[str, Any] | None, subentry_data: Mapping[str, Any]
-) -> dict[str, Any]:
-    """Return setup-probe settings with subentry run settings applied."""
-    settings = strip_model_settings(
-        profile_settings, REMOVED_PROFILE_MODEL_SETTING_KEYS
-    )
-    for key in RUN_VALIDATION_SETTING_KEYS:
-        if key in subentry_data:
-            settings[key] = subentry_data[key]
-    return settings
 
 
 def runtime_model_settings_data(

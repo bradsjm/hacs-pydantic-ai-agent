@@ -1,8 +1,10 @@
 """Structured output helpers for Pydantic AI model and Agent requests."""
 
+from __future__ import annotations
+
 import hashlib
 from collections.abc import Callable, Iterable
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.helpers import llm
 from homeassistant.util import slugify
@@ -19,22 +21,40 @@ from pydantic_ai.output import (
 from voluptuous_openapi import convert
 
 from .const import (
-    DEFAULT_OUTPUT_MODE,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
-    STRUCTURED_OUTPUT_MODES,
 )
+from .openai_compatible_profile import is_openai_compatible_provider_mode
+from .provider import model_profile_for_provider_mode
+
+if TYPE_CHECKING:
+    from .model_profiles import ResolvedModelProfile
 
 _OUTPUT_NAME_PREFIX = "pydantic_ai_agent_output_"
 _MAX_OUTPUT_NAME_LENGTH = 64
 
 
-def structured_output_mode(value: object) -> str:
-    """Return a supported structured output mode, defaulting to tool output."""
-    if isinstance(value, str) and value in STRUCTURED_OUTPUT_MODES:
-        return value
-    return DEFAULT_OUTPUT_MODE
+def resolved_structured_output_mode(profile: ResolvedModelProfile) -> str:
+    """Return the runtime structured output mode for one resolved profile."""
+    if is_openai_compatible_provider_mode(profile.provider_mode):
+        if profile.supports_tools is True:
+            return OUTPUT_MODE_TOOL
+        if profile.structured_output_support in {"json_object", "json_schema"}:
+            return OUTPUT_MODE_NATIVE
+        return OUTPUT_MODE_PROMPTED
+
+    runtime_profile = model_profile_for_provider_mode(
+        profile.provider_mode, profile.model_name
+    )
+    if runtime_profile is not None and runtime_profile.supports_tools:
+        return OUTPUT_MODE_TOOL
+    if runtime_profile is not None and (
+        runtime_profile.supports_json_schema_output
+        or runtime_profile.supports_json_object_output
+    ):
+        return OUTPUT_MODE_NATIVE
+    return OUTPUT_MODE_PROMPTED
 
 
 def structured_output_name(

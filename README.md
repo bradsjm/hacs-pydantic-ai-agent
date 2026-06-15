@@ -83,7 +83,8 @@ Model discovery is provider-specific. OpenAI-compatible modes use the
 OpenAI-compatible `/models` shape, Anthropic uses Anthropic's model listing API,
 and Google Gemini lists Gemini models that support `generateContent`. If model
 listing fails or a provider omits a model, the provider flow still accepts
-manual model entry and validates the selected profiles with provider probes.
+manual model entry and stores the selected provider-owned model profiles without
+live model probing.
 
 ### Conversation Agents
 
@@ -127,10 +128,11 @@ Each subentry has its own task name and creates an `ai_task.*` entity that
 supports Home Assistant data generation and attachments.
 
 AI task entities can return plain text or validate structured results against
-the schema requested by Home Assistant. Structured output defaults to tool output
-and can be changed to native or prompted output in the advanced AI task settings.
-Each AI task can also enable Web fetch independently of Home Assistant control
-tool selection.
+the schema requested by Home Assistant. When Home Assistant requests structured
+data, runtime chooses the highest supported strategy in the order `tool`,
+`native`, then `prompted` from the resolved model profile capabilities. Each AI
+task can also enable Web fetch independently of Home Assistant control tool
+selection.
 AI task requests use the same automatic model-request context trimming as
 conversation agents, including active-run preservation.
 AI tasks default to 30 agent request iterations unless the selected language model
@@ -169,24 +171,18 @@ diagnostics.
 
 ### Validation And Repairs
 
-The integration validates configured models with provider test requests when
-conversation-agent and AI-task subentries are created or reconfigured, and again
-when the workspace entry loads. Authentication failures during provider/profile
-flows are surfaced on those flows. Setup-time and runtime provider credential or
-permission failures create provider-scoped repair issues so the provider
-connection can be reconfigured without removing the workspace. Model,
-permission, provider-configuration, or streaming-capability failures that can be
-fixed by reconfiguration are surfaced as Home Assistant repair issues without
-preventing unrelated workspace resources from loading.
+The integration validates provider connection settings and selected model
+references during config flows, but it does not send live preflight model
+requests during setup or AI task save. Authentication failures during
+provider/profile flows are surfaced on those flows. Runtime provider credential
+or permission failures create provider-scoped repair issues so the provider
+connection can be reconfigured without removing the workspace.
 
 Conversation and AI task entities stay loaded during degraded provider setup.
-They are marked unavailable when all configured model profiles for the entity
-failed setup validation, and become available again after the workspace reloads
-with at least one successfully validated primary or fallback profile.
-
-Provider validation uses a short streamed Pydantic AI model probe. Runtime
-conversation responses stream only when the agent has no configured tool sources;
-tool-capable conversations use non-streamed requests.
+They are marked unavailable when required configured provider or model profile
+references can no longer be resolved. Runtime conversation responses stream only
+when the agent has no configured tool sources; tool-capable conversations use
+non-streamed requests.
 
 Diagnostics redact API keys, Logfire tokens, prompts, sensitive model settings,
 provider headers, Skill content, and Skill references.
@@ -229,9 +225,9 @@ updated from in-memory run metrics after each successful or failed run.
 
 - If a provider repair issue appears, reconfigure the provider connection and
   reload the workspace entry after saving.
-- If an agent entity is unavailable, check the repair issues and diagnostic
-  sensors for provider validation failures. At least one primary or fallback
-  model profile must validate successfully for the entity to become available.
+- If an agent entity is unavailable, check that its configured provider and
+  model profile references still exist and inspect runtime diagnostics for the
+  latest run failure classification.
 - If shared external tools are missing, confirm the selected Home Assistant LLM
   API exposes the expected Home Assistant Core MCP-backed tools.
 - If provider requests fail intermittently, check Home Assistant logs for the
@@ -272,9 +268,9 @@ claiming official Home Assistant certification.
 | UI-based setup via config flow                | Done    | [`config_flow.py`](custom_components/pydantic_ai_agent/config_flow.py) — full multi-step workspace, provider, subentry, and reconfigure flows                                                                                                                                                                                                                                                                                                      |
 | Form fields have context help text            | Done    | [`translations/en.json`](custom_components/pydantic_ai_agent/translations/en.json) — per-field `data_description` for every form step                                                                                                                                                                                                                                                                                                              |
 | Config entry data and options used correctly  | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) — workspace data read from `entry.data`; per-agent settings in subentry data                                                                                                                                                                                                                                                                                                      |
-| Full config flow test coverage                | Partial | [`test_workspace_config_flow_smoke.py`](tests/components/pydantic_ai_agent/test_workspace_config_flow_smoke.py), [`test_config_flow_helpers.py`](tests/components/pydantic_ai_agent/test_config_flow_helpers.py), and [`test_probe_model.py`](tests/components/pydantic_ai_agent/test_probe_model.py) — covers workspace/provider creation smoke paths, helper validation, and model probing; deeper provider reconfigure coverage remains pending |
-| Connection tested before config entry created | Done    | [`config_flow.py`](custom_components/pydantic_ai_agent/config_flow.py) — `async_probe_model` stream-tests the provider before entry creation                                                                                                                                                                                                                                                                                                       |
-| Integration readiness checked during setup    | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) — `_async_validate_configured_models` probes every configured model at load                                                                                                                                                                                                                                                                                                       |
+| Full config flow test coverage                | Partial | [`test_workspace_config_flow_smoke.py`](tests/components/pydantic_ai_agent/test_workspace_config_flow_smoke.py), [`test_config_flow_helpers.py`](tests/components/pydantic_ai_agent/test_config_flow_helpers.py), and provider/config reconfigure tests under [`tests/components/pydantic_ai_agent/`](tests/components/pydantic_ai_agent/) — covers workspace/provider creation smoke paths, helper validation, and AI task/conversation form behavior; deeper provider reconfigure coverage remains pending |
+| Connection tested before config entry created | Done    | [`config_flow.py`](custom_components/pydantic_ai_agent/config_flow.py) — validates provider connection settings and persists provider-owned model profiles without live model probing                                                                                                                                                                                                                                                               |
+| Integration readiness checked during setup    | Done    | [`__init__.py`](custom_components/pydantic_ai_agent/__init__.py) and [`_setup_helpers.py`](custom_components/pydantic_ai_agent/_setup_helpers.py) — resolve configured providers and model profiles without blocking setup on live preflight requests                                                                                                                                                                                             |
 | Duplicate config entries prevented            | Done    | [`config_flow.py`](custom_components/pydantic_ai_agent/config_flow.py) — workspace and provider flows prevent duplicate resources                                                                                                                                                                                                                                                                                                                  |
 | Every entity has a unique ID                  | Done    | [`entity.py`](custom_components/pydantic_ai_agent/entity.py) [`sensor.py`](custom_components/pydantic_ai_agent/sensor.py) — every entity has a stable `unique_id`                                                                                                                                                                                                                                                                                  |
 | Entities use `has_entity_name = True`         | Done    | [`conversation.py`](custom_components/pydantic_ai_agent/conversation.py), [`ai_task.py`](custom_components/pydantic_ai_agent/ai_task.py), [`sensor.py`](custom_components/pydantic_ai_agent/sensor.py), and [`binary_sensor.py`](custom_components/pydantic_ai_agent/binary_sensor.py) preserve `has_entity_name` on entity instances                                                                                                              |

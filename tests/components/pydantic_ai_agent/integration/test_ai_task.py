@@ -8,9 +8,7 @@ from homeassistant.core import HomeAssistant
 from .config import (
     AI_TASK_SENTINEL,
     AI_TASK_STRUCTURED_SENTINEL,
-    STRUCTURED_OUTPUT_MODES,
     ProviderIntegrationConfig,
-    StructuredOutputSupport,
 )
 from .entries import ai_task_entity_id, drain_stream_cleanup
 
@@ -36,17 +34,12 @@ async def test_ai_task_plain_generation(
     await drain_stream_cleanup(hass)
     assert AI_TASK_SENTINEL in str(result.data)
 
-
-@pytest.mark.parametrize("output_mode", STRUCTURED_OUTPUT_MODES)
 async def test_ai_task_structured_generation(
     hass: HomeAssistant,
     provider_config: ProviderIntegrationConfig,
-    structured_output_support: StructuredOutputSupport,
-    output_mode: str,
 ) -> None:
     """Test a live provider can generate schema-validated AI task data."""
-    structured_output_support.skip_if_unsupported(output_mode)
-    entity_id = await ai_task_entity_id(hass, provider_config, output_mode)
+    entity_id = await ai_task_entity_id(hass, provider_config)
 
     result = await ai_task.async_generate_data(
         hass,

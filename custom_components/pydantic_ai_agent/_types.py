@@ -59,7 +59,6 @@ class WorkspaceRuntimeData:
     metrics: MetricsStore = field(default_factory=MetricsStore)
     latest_stream_traces: dict[str, dict[str, Any]] = field(default_factory=dict)
     latest_run_diagnostics: dict[str, dict[str, Any]] = field(default_factory=dict)
-    model_validation_failures: dict[str, str] = field(default_factory=dict)
     runtime_provider_auth_failures: dict[str, list[str]] = field(default_factory=dict)
     logfire_enabled: bool = False
     logfire_include_content: bool = False

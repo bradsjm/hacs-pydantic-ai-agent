@@ -10,12 +10,7 @@ from custom_components.pydantic_ai_agent import (
 from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
 )
-from custom_components.pydantic_ai_agent.model_profiles import model_profile_ref
-from custom_components.pydantic_ai_agent.provider_validation import (
-    ProviderValidationError,
-)
 from custom_components.pydantic_ai_agent.repair_issues import (
-    model_validation_issue_id,
     provider_auth_issue_id,
 )
 from homeassistant.core import HomeAssistant
@@ -24,7 +19,6 @@ from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     conversation_subentry_data,
-    model_profile_data,
     provider_subentry_data,
     workspace_entry,
 )
@@ -63,156 +57,43 @@ def _workspace_entry(
     return workspace_entry(subentries_data, data=data)
 
 
-async def test_setup_entry_model_errors_create_repair_issue(
+def _legacy_model_validation_issue_id(entry: MockConfigEntry, suffix: str) -> str:
+    """Return a legacy setup-time model validation issue id."""
+    return f"model_validation_{entry.entry_id}_{suffix}"
+
+
+async def test_setup_entry_removes_legacy_model_validation_repair_issue(
     hass: HomeAssistant,
 ) -> None:
-    """Test selected model validation failures create repair issues."""
-    profile_ref = model_profile_ref("provider-1", "profile-1")
-    failure_key = f"conversation-1:{profile_ref}"
+    """Test setup always clears legacy probe-driven model validation issues."""
+    profile_ref = "provider-1:profile-1"
     entry = _workspace_entry(
         (_provider_subentry(), _conversation_subentry(profile_ref))
     )
     entry.add_to_hass(hass)
+    issue_id = _legacy_model_validation_issue_id(entry, "conversation-1")
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        severity=ir.IssueSeverity.ERROR,
+        translation_key="model_validation_failed",
+    )
 
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-            side_effect=ProviderValidationError("invalid_model", "model unavailable"),
-        ),
-        patch.object(
-            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
-        ),
+    with patch.object(
+        hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
     ):
         assert await async_setup_entry(hass, entry)
 
-    issue = ir.async_get(hass).async_get_issue(
-        DOMAIN, model_validation_issue_id(entry, profile_ref, {})
-    )
-    assert issue is not None
-    assert issue.is_fixable is False
-    assert issue.translation_key == "model_validation_failed"
-    assert entry.runtime_data.model_validation_failures == {
-        failure_key: "invalid_model"
-    }
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
 
 
-async def test_setup_entry_uses_non_streaming_probe_for_disabled_conversation(
+async def test_setup_entry_preserves_provider_auth_issue_for_current_provider(
     hass: HomeAssistant,
 ) -> None:
-    """Test disabled-streaming conversations validate with stream=False."""
-    profile_ref = model_profile_ref("provider-1", "profile-1")
-    entry = _workspace_entry(
-        (
-            _provider_subentry(),
-            _conversation_subentry(
-                profile_ref,
-                extra_data={"streaming_enabled": False},
-            ),
-        )
-    )
-    entry.add_to_hass(hass)
-
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-            new_callable=AsyncMock,
-        ) as async_probe_model_mock,
-        patch.object(
-            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
-        ),
-    ):
-        assert await async_setup_entry(hass, entry)
-
-    assert async_probe_model_mock.await_args is not None
-    assert async_probe_model_mock.await_args.kwargs["stream"] is False
-
-
-async def test_setup_entry_keeps_streaming_repair_issue_when_non_streaming_probe_passes(
-    hass: HomeAssistant,
-) -> None:
-    """Test mixed stream modes do not share one repair issue key."""
-    profile_ref = model_profile_ref("provider-1", "profile-1")
-    entry = _workspace_entry(
-        (
-            _provider_subentry(),
-            conversation_subentry_data(
-                profile_ref,
-                subentry_id="streaming-conversation",
-            ),
-            conversation_subentry_data(
-                profile_ref,
-                subentry_id="non-streaming-conversation",
-                title="Non-streaming Agent",
-                agent_name="Non-streaming Agent",
-                streaming_enabled=False,
-            ),
-        )
-    )
-    entry.add_to_hass(hass)
-
-    async def probe(*args, **kwargs):
-        if kwargs.get("stream") is True:
-            raise ProviderValidationError(
-                "model_does_not_support_streaming",
-                "provider rejected streaming",
-            )
-
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-            side_effect=probe,
-        ),
-        patch.object(
-            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
-        ),
-    ):
-        assert await async_setup_entry(hass, entry)
-
-    issue = ir.async_get(hass).async_get_issue(
-        DOMAIN, model_validation_issue_id(entry, profile_ref, {})
-    )
-    assert issue is not None
-    assert entry.runtime_data.model_validation_failures == {
-        f"streaming-conversation:{profile_ref}": "model_does_not_support_streaming"
-    }
-
-
-async def test_setup_entry_auth_errors_create_provider_auth_repair_issue(
-    hass: HomeAssistant,
-) -> None:
-    """Test provider auth failures create provider-scoped repair issues."""
-    profile_ref = model_profile_ref("provider-1", "profile-1")
-    entry = _workspace_entry(
-        (_provider_subentry(), _conversation_subentry(profile_ref))
-    )
-    entry.add_to_hass(hass)
-
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-            side_effect=ProviderValidationError(
-                "invalid_auth", "provider rejected credentials", 401
-            ),
-        ),
-        patch.object(
-            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
-        ),
-    ):
-        assert await async_setup_entry(hass, entry)
-
-    issue = ir.async_get(hass).async_get_issue(
-        DOMAIN, provider_auth_issue_id(entry, "provider-1")
-    )
-    assert issue is not None
-    assert issue.is_fixable is False
-    assert issue.translation_key == "provider_auth_failed"
-
-
-async def test_setup_entry_non_auth_model_error_clears_provider_auth_issue(
-    hass: HomeAssistant,
-) -> None:
-    """Test non-auth validation failures remove stale provider auth repairs."""
-    profile_ref = model_profile_ref("provider-1", "profile-1")
+    """Test setup no longer clears auth issues for still-configured providers."""
+    profile_ref = "provider-1:profile-1"
     entry = _workspace_entry(
         (_provider_subentry(), _conversation_subentry(profile_ref))
     )
@@ -227,115 +108,44 @@ async def test_setup_entry_non_auth_model_error_clears_provider_auth_issue(
         translation_key="provider_auth_failed",
     )
 
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-            side_effect=ProviderValidationError("invalid_model", "model unavailable"),
-        ),
-        patch.object(
-            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
-        ),
+    with patch.object(
+        hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
     ):
         assert await async_setup_entry(hass, entry)
 
-    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+    assert issue is not None
+    assert issue.translation_key == "provider_auth_failed"
 
 
-async def test_setup_entry_success_clears_model_validation_repair_issue(
+async def test_setup_entry_removes_stale_provider_auth_issue_for_removed_provider(
     hass: HomeAssistant,
 ) -> None:
-    """Test successful setup clears stale model validation repair issues."""
-    profile_ref = model_profile_ref("provider-1", "profile-1")
+    """Test setup removes auth issues for provider subentries that no longer exist."""
+    profile_ref = "provider-2:profile-1"
     entry = _workspace_entry(
-        (_provider_subentry(), _conversation_subentry(profile_ref))
+        (
+            _provider_subentry(subentry_id="provider-2"),
+            _conversation_subentry(profile_ref),
+        )
     )
     entry.add_to_hass(hass)
+    stale_issue_id = provider_auth_issue_id(entry, "provider-1")
     ir.async_create_issue(
         hass,
         DOMAIN,
-        model_validation_issue_id(entry, profile_ref, {}),
-        is_fixable=False,
-        severity=ir.IssueSeverity.ERROR,
-        translation_key="model_validation_failed",
-    )
-    ir.async_create_issue(
-        hass,
-        DOMAIN,
-        provider_auth_issue_id(entry, "provider-1"),
+        stale_issue_id,
         is_fixable=False,
         severity=ir.IssueSeverity.ERROR,
         translation_key="provider_auth_failed",
     )
 
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-            new_callable=AsyncMock,
-        ),
-        patch.object(
-            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
-        ),
+    with patch.object(
+        hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
     ):
         assert await async_setup_entry(hass, entry)
 
-    assert (
-        ir.async_get(hass).async_get_issue(
-            DOMAIN, model_validation_issue_id(entry, profile_ref, {})
-        )
-        is None
-    )
-
-
-async def test_setup_entry_keeps_provider_auth_issue_until_all_provider_probes_pass(
-    hass: HomeAssistant,
-) -> None:
-    """Test provider auth repairs are not cleared by another profile probe."""
-    entry = _workspace_entry(
-        (
-            _provider_subentry(
-                model_profiles={
-                    "auth-profile": model_profile_data(
-                        profile_id="auth-profile", model="auth-model"
-                    ),
-                    "working-profile": model_profile_data(
-                        profile_id="working-profile", model="working-model"
-                    ),
-                },
-            ),
-            conversation_subentry_data(
-                "provider-1:auth-profile", subentry_id="auth-conversation"
-            ),
-            conversation_subentry_data(
-                "provider-1:working-profile",
-                subentry_id="working-conversation",
-                title="Working Agent",
-                agent_name="Working Agent",
-            ),
-        )
-    )
-    entry.add_to_hass(hass)
-
-    async def probe(hass, provider_data, model, settings, **kwargs):
-        if model == "auth-model":
-            raise ProviderValidationError("invalid_auth", "provider rejected", 401)
-
-    with (
-        patch(
-            "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-            side_effect=probe,
-        ),
-        patch.object(
-            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
-        ),
-    ):
-        assert await async_setup_entry(hass, entry)
-
-    assert (
-        ir.async_get(hass).async_get_issue(
-            DOMAIN, provider_auth_issue_id(entry, "provider-1")
-        )
-        is not None
-    )
+    assert ir.async_get(hass).async_get_issue(DOMAIN, stale_issue_id) is None
 
 
 async def test_setup_entry_removes_stale_subentry_registry_entries(

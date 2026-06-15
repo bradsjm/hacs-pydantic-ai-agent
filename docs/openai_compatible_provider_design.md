@@ -19,7 +19,7 @@ Implemented source areas:
 | Low-level HTTP client              | `custom_components/pydantic_ai_agent/openai_compatible_client/`  |
 | Pydantic AI model/provider adapter | `custom_components/pydantic_ai_agent/openai_compatible_adapter/` |
 | Home Assistant model factory       | `custom_components/pydantic_ai_agent/provider.py`                |
-| Config-flow provider probe         | `custom_components/pydantic_ai_agent/config_flow.py`             |
+| Config-flow provider validation    | `custom_components/pydantic_ai_agent/config_flow.py`             |
 | Runtime agent construction         | `custom_components/pydantic_ai_agent/entity.py`                  |
 | Provider integration tests         | `tests/components/pydantic_ai_agent/integration/`                |
 
@@ -53,7 +53,7 @@ The in-repo adapter exists to:
 - Support plain text, tool calls, tool results, structured output modes, model
   settings, and usage mapping for both provider modes.
 - Support SSE streaming for both Chat Completions and Responses provider modes,
-  including provider probing and Home Assistant conversation runtime streaming.
+  including Home Assistant conversation runtime streaming.
 - Keep diagnostics and tests free of API keys, headers, `.env` values, and raw
   provider payloads.
 
@@ -199,15 +199,16 @@ integration:
 - `prompted` output through `response_format: {"type": "json_object"}` when the
   active model profile supports JSON object output.
 
-Structured output support is provider/model dependent. Provider integration tests
-skip structured tool-output E2E cases when the configured model rejects that mode
-with a controlled validation error.
+Structured output support is provider/model dependent. The integration chooses
+the runtime strategy from resolved model capabilities with the precedence
+`tool > native > prompted` and lets incorrect capability metadata fail at run
+time.
 
 ## Streaming
 
 The low-level client and Pydantic AI adapter support SSE streaming because the
-provider validation probe and direct adapter tests use Pydantic AI's streamed
-request path.
+conversation runtime and direct adapter tests use Pydantic AI's streamed request
+path.
 
 Streaming implementation details:
 
@@ -223,8 +224,8 @@ Streaming implementation details:
   non-streamed requests for provider-compatible tool-result follow-up handling;
 - streamed conversation handling does not append final `new_messages()` after
   live deltas, preventing duplicate final assistant text;
-- the provider integration probe test drains the event loop after validation to avoid
-  racing async-generator finalization.
+- provider integration tests should drain the event loop after streamed runs to
+  avoid racing async-generator finalization.
 
 ## Error Handling
 

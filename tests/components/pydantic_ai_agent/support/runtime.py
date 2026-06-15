@@ -73,7 +73,6 @@ def loaded_conversation_entry(
 
 def loaded_ai_task_entry(
     *,
-    output_mode: str | None = None,
     include_task_name: bool = True,
     subentry_title: str = "AI task subentry title",
     extra_data: Mapping[str, object] | None = None,
@@ -93,7 +92,6 @@ def loaded_ai_task_entry(
             profile_ref,
             title=subentry_title,
             task_name="Report task" if include_task_name else None,
-            output_mode=output_mode,
             extra_data=extra_data,
         ),
     )

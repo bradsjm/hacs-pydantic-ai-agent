@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_ITERATIONS,
@@ -51,11 +51,10 @@ _MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
 
 async def test_streaming_iteration_failure_updates_chat_and_sensors(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: object,
 ) -> None:
     """Test streaming usage-limit failures stay actionable after partial output."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry(extra_data={CONF_MAX_ITERATIONS: 24})
     entry.add_to_hass(hass)
 
@@ -94,11 +93,10 @@ async def test_streaming_iteration_failure_updates_chat_and_sensors(
 
 async def test_streaming_backfills_final_text_after_thinking_only_events(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: object,
 ) -> None:
     """Test final result text is used when live events only stream thinking."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
     result = RunResultWithMessages(
@@ -148,11 +146,10 @@ async def test_streaming_backfills_final_text_after_thinking_only_events(
 
 async def test_streaming_tool_retry_exhaustion_reports_tool_context(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: object,
 ) -> None:
     """Test streamed exhausted tool retries surface actionable tool context."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry(extra_data={CONF_TOOL_RETRIES: 2})
     entry.add_to_hass(hass)
 
@@ -207,11 +204,10 @@ async def test_streaming_tool_retry_exhaustion_reports_tool_context(
 
 async def test_streaming_backfills_missing_final_text_suffix(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: object,
 ) -> None:
     """Test final speech is complete when live text misses the final suffix."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
     result = RunResultWithMessages(
@@ -251,11 +247,10 @@ async def test_streaming_backfills_missing_final_text_suffix(
 
 async def test_streaming_does_not_duplicate_already_streamed_final_text(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: object,
 ) -> None:
     """Test final result text is not replayed when live events streamed it."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
     agent = _Agent(stream_text="Hello. How can I help you?")

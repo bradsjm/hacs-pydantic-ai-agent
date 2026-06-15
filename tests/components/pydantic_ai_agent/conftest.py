@@ -1,7 +1,7 @@
 """Test fixtures for Pydantic AI Agent."""
 
 from collections.abc import Iterator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -19,16 +19,6 @@ def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
 async def initialize_homeassistant_component(hass: HomeAssistant) -> None:
     """Initialize exposed-entity storage required by conversation setup."""
     assert await async_setup_component(hass, "homeassistant", {})
-
-
-@pytest.fixture
-def mock_probe_model() -> Iterator[AsyncMock]:
-    """Patch model probing during test entry setup."""
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ) as probe_model:
-        yield probe_model
 
 
 @pytest.fixture

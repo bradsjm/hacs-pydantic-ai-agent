@@ -5,24 +5,13 @@ from urllib.parse import urlparse
 
 import pytest
 import pytest_socket
-from custom_components.pydantic_ai_agent.provider_validation import (
-    ProviderValidationError,
-    async_probe_model,
-)
-from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component import plugins as ha_pytest_plugins
 
 from .config import (
-    MODEL_PROFILE_ID,
-    PROVIDER_INTEGRATION_TIMEOUT,
-    STRUCTURED_OUTPUT_MODES,
-    STRUCTURED_OUTPUT_SKIP_REASONS,
     ModelParam,
     ProviderIntegrationConfig,
     Secret,
-    StructuredOutputSupport,
 )
-from .entries import drain_stream_cleanup
 from .env import env_values, provider_model_params
 
 
@@ -67,45 +56,4 @@ def enable_provider_network(
     pytest_socket.socket_allow_hosts(
         ["localhost", "127.0.0.1", "::1", host],
         allow_unix_socket=True,
-    )
-
-
-@pytest.fixture(name="structured_output_support")
-async def fixture_structured_output_support(
-    hass: HomeAssistant, provider_config: ProviderIntegrationConfig
-) -> StructuredOutputSupport:
-    """Return structured output modes supported by the configured model."""
-    supported_modes: list[str] = []
-    failures: dict[str, ProviderValidationError] = {}
-    for output_mode in STRUCTURED_OUTPUT_MODES:
-        try:
-            await async_probe_model(
-                hass,
-                provider_config.provider_data,
-                provider_config.model,
-                {"timeout": PROVIDER_INTEGRATION_TIMEOUT},
-                profile_id=MODEL_PROFILE_ID,
-                structured_output_mode=output_mode,
-            )
-        except ProviderValidationError as err:
-            if err.reason not in STRUCTURED_OUTPUT_SKIP_REASONS:
-                raise
-            failures[output_mode] = err
-        else:
-            supported_modes.append(output_mode)
-        finally:
-            await drain_stream_cleanup(hass)
-
-    if not supported_modes:
-        details = "; ".join(
-            f"{mode}: {failures[mode].reason}: {failures[mode].message}"
-            for mode in STRUCTURED_OUTPUT_MODES
-        )
-        pytest.skip(
-            "Configured provider integration model does not support any structured "
-            f"output mode required by AI task tests: {details}"
-        )
-
-    return StructuredOutputSupport(
-        supported_modes=tuple(supported_modes), failures=failures
     )

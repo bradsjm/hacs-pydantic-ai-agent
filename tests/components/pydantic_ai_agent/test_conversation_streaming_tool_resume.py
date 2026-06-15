@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from custom_components.pydantic_ai_agent.conversation import _merged_assistant_speech
 from homeassistant.components import conversation
@@ -52,11 +52,10 @@ def test_merged_assistant_speech_prefers_full_resumed_answer() -> None:
 
 async def test_streaming_backfill_preserves_tool_resume_separator(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: object,
 ) -> None:
     """Test final reconciliation keeps the streamed separator after tool results."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
     result = RunResultWithMessages(
@@ -113,11 +112,10 @@ async def test_streaming_backfill_preserves_tool_resume_separator(
 
 async def test_streaming_backfill_appends_tool_resume_separator_after_tool_result_only(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: object,
 ) -> None:
     """Test backfill appends the separator after a trailing tool result."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
     result = RunResultWithMessages(
@@ -173,11 +171,10 @@ async def test_streaming_backfill_appends_tool_resume_separator_after_tool_resul
 
 async def test_streaming_backfill_preserves_separator_after_resumed_thinking(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: object,
 ) -> None:
     """Test post-tool thinking-only resume still backfills text with the separator."""
-    del mock_probe_model, mock_chat_model_for_profile
+    del mock_chat_model_for_profile
     entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
     result = RunResultWithMessages(

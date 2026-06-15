@@ -1,6 +1,6 @@
 """Test Pydantic AI Agent AI task entity setup and data generation."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import voluptuous as vol
 from custom_components.pydantic_ai_agent.ai_task import (
@@ -12,7 +12,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_ITERATIONS,
     CONF_THINKING,
     DOMAIN,
-    OUTPUT_MODE_TOOL,
+    OUTPUT_MODE_NATIVE,
     PROVIDER_ANTHROPIC,
 )
 from homeassistant.components import ai_task
@@ -20,6 +20,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
 from pydantic_ai.models.test import TestModel
 from tests.components.pydantic_ai_agent.support.builders import (
+    model_profile_data,
     provider_runtime_data,
     provider_subentry_data,
 )
@@ -47,15 +48,11 @@ _MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
 
 async def _setup_ai_task_entity(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
-    output_mode: str | None = None,
     *,
     extra_data: dict[str, object] | None = None,
     enable_diagnostics: bool = False,
 ) -> str:
-    del mock_probe_model
     entry = loaded_ai_task_entry(
-        output_mode=output_mode,
         extra_data=extra_data,
         provider_subentry=provider_subentry_data(
             subentry_id=_PROVIDER_SUBENTRY_ID,
@@ -147,13 +144,41 @@ def test_ai_task_entity_features() -> None:
     assert ai_task.AITaskEntityFeature.GENERATE_IMAGE not in entity.supported_features
 
 
+def test_ai_task_entity_uses_runtime_structured_output_mode() -> None:
+    entry = loaded_ai_task_entry(
+        provider_subentry=provider_subentry_data(
+            subentry_id=_PROVIDER_SUBENTRY_ID,
+            title="Hosted OpenAI",
+            profile_id=_MODEL_PROFILE_ID,
+            profile_name="Task Model",
+            model="gpt-test",
+            model_profiles={
+                _MODEL_PROFILE_ID: model_profile_data(
+                    profile_id=_MODEL_PROFILE_ID,
+                    name="Task Model",
+                    model="gpt-test",
+                    extra_data={
+                        "supports_tools": False,
+                        "structured_output_support": "json_schema",
+                        "openai_supports_strict_tool_definition": False,
+                    },
+                )
+            },
+        ),
+    )
+    subentry = next(iter(entry.subentries.values()))
+    entity = PydanticAIAgentAITaskEntity(entry, subentry)
+
+    assert entity.extra_state_attributes is not None
+    assert entity.extra_state_attributes["structured_output_mode"] == OUTPUT_MODE_NATIVE
+
+
 async def test_plain_data_task_returns_text(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: TestModel,
 ) -> None:
     del mock_chat_model_for_profile
-    entity_id = await _setup_ai_task_entity(hass, mock_probe_model)
+    entity_id = await _setup_ai_task_entity(hass)
 
     with (
         patch(
@@ -180,13 +205,11 @@ async def test_plain_data_task_returns_text(
 
 async def test_ai_task_runtime_uses_configured_max_iterations(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: TestModel,
 ) -> None:
     del mock_chat_model_for_profile
     entity_id = await _setup_ai_task_entity(
         hass,
-        mock_probe_model,
         extra_data={CONF_MAX_ITERATIONS: 26},
     )
     agent = _Agent(stream_text="plain result", output="plain result")
@@ -205,11 +228,10 @@ async def test_ai_task_runtime_uses_configured_max_iterations(
 
 async def test_ai_task_runtime_defaults_max_iterations(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: TestModel,
 ) -> None:
     del mock_chat_model_for_profile
-    entity_id = await _setup_ai_task_entity(hass, mock_probe_model)
+    entity_id = await _setup_ai_task_entity(hass)
     agent = _Agent(stream_text="plain result", output="plain result")
 
     with patch("custom_components.pydantic_ai_agent.entity.Agent", return_value=agent):
@@ -226,13 +248,11 @@ async def test_ai_task_runtime_defaults_max_iterations(
 
 async def test_ai_task_runtime_keeps_explicit_disabled_thinking_capability(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
     mock_chat_model_for_profile: TestModel,
 ) -> None:
     del mock_chat_model_for_profile
     entity_id = await _setup_ai_task_entity(
         hass,
-        mock_probe_model,
         extra_data={CONF_THINKING: False},
     )
     agent = _Agent(stream_text="plain result", output="plain result")
@@ -256,9 +276,8 @@ async def test_ai_task_runtime_keeps_explicit_disabled_thinking_capability(
 
 async def test_structured_data_task_supports_test_model_without_patching_agent_run(
     hass: HomeAssistant,
-    mock_probe_model: AsyncMock,
 ) -> None:
-    entity_id = await _setup_ai_task_entity(hass, mock_probe_model, OUTPUT_MODE_TOOL)
+    entity_id = await _setup_ai_task_entity(hass)
 
     with patch(
         "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",

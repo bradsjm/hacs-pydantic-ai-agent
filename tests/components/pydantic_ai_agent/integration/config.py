@@ -1,10 +1,8 @@
 """Shared configuration for live provider integration tests."""
 
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import pytest
 from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
     CONF_DEFAULT_MODEL_PROFILE_ID,
@@ -12,13 +10,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_PROVIDER_MODE,
-    OUTPUT_MODE_NATIVE,
-    OUTPUT_MODE_PROMPTED,
-    OUTPUT_MODE_TOOL,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-)
-from custom_components.pydantic_ai_agent.provider_validation import (
-    ProviderValidationError,
 )
 from homeassistant.const import CONF_API_KEY, CONF_NAME
 
@@ -44,18 +36,6 @@ MODEL_PROFILE_ID = "provider_integration_model_profile"
 MODEL_REF = f"{PROVIDER_ID}:{MODEL_PROFILE_ID}"
 WORKSPACE_SKILL_ID = "pydantic_ai_agent_integration_skill"
 UNSELECTED_WORKSPACE_SKILL_ID = "pydantic_ai_agent_integration_unselected_skill"
-
-STRUCTURED_OUTPUT_SKIP_REASONS = {
-    "invalid_model",
-    "invalid_provider_config",
-    "unsupported_output_mode",
-}
-STRUCTURED_OUTPUT_MODES = (
-    OUTPUT_MODE_TOOL,
-    OUTPUT_MODE_NATIVE,
-    OUTPUT_MODE_PROMPTED,
-)
-
 
 @dataclass(frozen=True, kw_only=True)
 class ProviderIntegrationConfig:
@@ -95,25 +75,6 @@ class ModelParam:
 
     model: str
     skip_reason: str | None = None
-
-
-@dataclass(frozen=True, kw_only=True)
-class StructuredOutputSupport:
-    """Structured output modes supported by the configured provider model."""
-
-    supported_modes: tuple[str, ...]
-    failures: Mapping[str, ProviderValidationError]
-
-    def skip_if_unsupported(self, output_mode: str) -> None:
-        """Skip the current test if the output mode is unsupported."""
-        if output_mode in self.supported_modes:
-            return
-        err = self.failures[output_mode]
-        pytest.skip(
-            f"Configured provider integration model does not support {output_mode} "
-            f"structured output: {err.reason}: {err.message}"
-        )
-
 
 class Secret(str):
     """String value with a redacted repr for pytest failure output."""

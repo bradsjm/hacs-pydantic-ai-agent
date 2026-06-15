@@ -1,7 +1,7 @@
 """Test Pydantic AI Agent conversation virtual workspace and fallback."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from custom_components.pydantic_ai_agent.const import (
     CONF_FALLBACK_MODEL_REFS,
@@ -66,12 +66,8 @@ async def test_conversation_runtime_adds_virtual_workspace_tools(
     entry.add_to_hass(hass)
     fake_toolset = object()
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     entity_id = next(
         state.entity_id
@@ -168,12 +164,8 @@ async def test_conversation_runtime_recreates_virtual_workspace_for_fallback(
     first_toolset = object()
     second_toolset = object()
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     entity_id = next(
         state.entity_id

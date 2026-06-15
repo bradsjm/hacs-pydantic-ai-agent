@@ -12,12 +12,12 @@ from homeassistant.exceptions import ServiceValidationError
 from ._migration import (
     _async_remove_removed_memory_store,
     _migrate_profile_templated_extra_body,
+    _remove_ai_task_legacy_output_mode,
     _remove_removed_device_registry_entry,
     _remove_removed_entity_registry_entries,
     _remove_removed_llm_api_refs,
     _remove_stale_subentry_registry_entries,
 )
-from ._model_validation import _async_validate_configured_models
 from ._run_diagnostics_service import async_register_run_diagnostics_service
 from ._setup_helpers import (
     _mcp_server_runtimes,
@@ -58,6 +58,8 @@ from .metrics import (
 from .repair_issues import (
     async_delete_entry_repair_issues,
     async_delete_logfire_token_conflict_issue,
+    async_delete_model_validation_issues,
+    async_delete_stale_provider_auth_issues,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -130,10 +132,11 @@ async def async_setup_entry(
             logfire_enabled=logfire_enabled(hass, entry),
             logfire_include_content=logfire_include_content(hass, entry),
         )
-        model_validation_failures = await _async_validate_configured_models(hass, entry)
-        entry.runtime_data = replace(
-            entry.runtime_data,
-            model_validation_failures=model_validation_failures,
+        async_delete_model_validation_issues(hass, entry)
+        async_delete_stale_provider_auth_issues(
+            hass,
+            entry,
+            set(provider_runtimes),
         )
         _remove_stale_subentry_registry_entries(hass, entry)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -189,6 +192,9 @@ async def async_migrate_entry(
         _migrate_profile_templated_extra_body(hass, entry)
         hass.config_entries.async_update_entry(entry, minor_version=2)
     if entry.minor_version == 2:
+        _remove_ai_task_legacy_output_mode(hass, entry)
+        hass.config_entries.async_update_entry(entry, minor_version=3)
+    if entry.minor_version == 3:
         return True
 
     _LOGGER.error(

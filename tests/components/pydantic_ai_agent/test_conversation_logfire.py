@@ -2,13 +2,12 @@
 
 import sys
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_PRICING,
     DOMAIN,
-    OUTPUT_MODE_TOOL,
 )
 from custom_components.pydantic_ai_agent.logfire_support import _INTEGRATION_VERSION
 from homeassistant.components import conversation
@@ -103,12 +102,8 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
     entry = _entry_with_conversation_subentries(logfire=True)
     entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     entity_ids = sorted(
         state.entity_id
@@ -159,7 +154,6 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
     assert span_kwargs["ha.provider_title"] == "Hosted OpenAI"
     assert span_kwargs["ha.provider_subentry_id"] == _PROVIDER_SUBENTRY_ID
     assert span_kwargs["ha.agent_name"] == "Kitchen Agent"
-    assert span_kwargs["ha.structured_output_mode"] == OUTPUT_MODE_TOOL
     assert span_kwargs["ha.entity_id"] == kitchen_entity_id
     assert span_kwargs["ha.conversation_id"] == "conversation-test"
     assert span_kwargs["ha.logfire_include_content"] is True
@@ -168,6 +162,7 @@ async def test_conversation_logfire_instruments_agent_with_ha_metadata(
     assert span_kwargs["gen_ai.provider.name"] == "openai"
     assert span_kwargs["gen_ai.request.model"] == "gpt-kitchen"
     assert span_kwargs["gen_ai.response.model"] == "gpt-kitchen"
+    assert "ha.structured_output_mode" not in span_kwargs
     assert "ha.output_mode" not in span_kwargs
 
     usage_attributes = span.return_value.attributes
@@ -199,12 +194,8 @@ async def test_conversation_logfire_usage_failures_do_not_block_agent_run(
     entry = _entry_with_conversation_subentries(logfire=True)
     entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     entity_id = next(
         state.entity_id
@@ -249,12 +240,8 @@ async def test_conversation_logfire_failures_do_not_block_agent_run(
     entry = _entry_with_conversation_subentries(logfire=True)
     entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.pydantic_ai_agent._model_validation.async_probe_model",
-        new_callable=AsyncMock,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     entity_ids = sorted(
         state.entity_id
