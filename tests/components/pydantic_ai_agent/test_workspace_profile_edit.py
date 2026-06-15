@@ -3,8 +3,13 @@
 from typing import Any, cast
 from unittest.mock import patch
 
+import pytest
 from custom_components.pydantic_ai_agent.config_flows._constants import (
+    _MODEL_PRICING_CACHE_READ,
+    _MODEL_PRICING_INPUT,
+    _MODEL_PRICING_OUTPUT,
     _SECTION_ADVANCED_MODEL_SETTINGS,
+    _SECTION_MODEL_PRICING,
     _SECTION_OPENAI_COMPATIBLE_CAPABILITIES,
 )
 from custom_components.pydantic_ai_agent.const import (
@@ -13,6 +18,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_DISCOVERED,
     CONF_ENABLED,
     CONF_MODEL,
+    CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_NAME,
@@ -49,6 +55,15 @@ from tests.components.pydantic_ai_agent.support.schemas import (
 )
 
 type _FlowResultDict = dict[str, Any]
+
+
+def _pricing_section_defaults(pricing: dict[str, float]) -> dict[str, float]:
+    """Return pricing data keyed the same way as the form section."""
+    return {
+        _MODEL_PRICING_INPUT: pricing["input"],
+        _MODEL_PRICING_OUTPUT: pricing["output"],
+        _MODEL_PRICING_CACHE_READ: pricing["cache_read"],
+    }
 
 
 async def _subentry_init_result(
@@ -316,6 +331,72 @@ async def test_provider_edit_model_profile_templated_extra_body_round_trip(
     assert _serialized_section_default(
         result["data_schema"], _SECTION_ADVANCED_MODEL_SETTINGS
     ) == {CONF_TEMPLATED_EXTRA_BODY: templated_extra_body}
+
+
+@pytest.mark.parametrize(
+    "pricing",
+    [
+        {"input": 0.15, "output": 0.6, "cache_read": 0.02},
+        {"input": 0.0, "output": 1.25, "cache_read": 0.0},
+    ],
+)
+async def test_provider_edit_model_profile_pricing_round_trip(
+    hass: HomeAssistant, pricing: dict[str, float]
+) -> None:
+    """Test pricing persists and reloads in the pricing section."""
+    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
+    provider_subentry = next(iter(entry.subentries.values()))
+
+    result = await _subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await _subentry_configure_result(
+        hass, result["flow_id"], {"next_step_id": "customize_model_profile"}
+    )
+    result = await _subentry_configure_result(
+        hass, result["flow_id"], {"model_profile_id": "profile-1"}
+    )
+
+    result = await _subentry_configure_result(
+        hass,
+        result["flow_id"],
+        {
+            CONF_NAME: "GPT Mini",
+            CONF_MODEL: "gpt-4.1-mini",
+            _SECTION_MODEL_PRICING: _pricing_section_defaults(pricing),
+        },
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated_profile = entry.subentries[provider_subentry.subentry_id].data[
+        CONF_MODEL_PROFILES
+    ]["profile-1"]
+    assert updated_profile[CONF_MODEL_PRICING] == pricing
+
+    result = await _subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await _subentry_configure_result(
+        hass, result["flow_id"], {"next_step_id": "customize_model_profile"}
+    )
+    result = await _subentry_configure_result(
+        hass, result["flow_id"], {"model_profile_id": "profile-1"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert _serialized_section_default(
+        result["data_schema"], _SECTION_MODEL_PRICING
+    ) == _pricing_section_defaults(pricing)
 
 
 async def test_provider_edit_openai_profile_capabilities_round_trip(

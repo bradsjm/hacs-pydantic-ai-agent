@@ -419,24 +419,26 @@ def _model_pricing_schema(options: Mapping[str, Any] | None = None) -> vol.Schem
     pricing = options.get(CONF_MODEL_PRICING, {})
     if not isinstance(pricing, Mapping):
         pricing = {}
+    input_key = vol.Optional(_MODEL_PRICING_INPUT)
+    if pricing.get("input") is not None:
+        input_key = vol.Optional(_MODEL_PRICING_INPUT, default=pricing["input"])
+    output_key = vol.Optional(_MODEL_PRICING_OUTPUT)
+    if pricing.get("output") is not None:
+        output_key = vol.Optional(_MODEL_PRICING_OUTPUT, default=pricing["output"])
+    cache_read_key = vol.Optional(_MODEL_PRICING_CACHE_READ)
+    if pricing.get("cache_read") is not None:
+        cache_read_key = vol.Optional(
+            _MODEL_PRICING_CACHE_READ, default=pricing["cache_read"]
+        )
     return vol.Schema(
         {
-            vol.Optional(
-                _MODEL_PRICING_INPUT,
-                description={"suggested_value": pricing.get("input")},
-            ): NumberSelector(
+            input_key: NumberSelector(
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
             ),
-            vol.Optional(
-                _MODEL_PRICING_OUTPUT,
-                description={"suggested_value": pricing.get("output")},
-            ): NumberSelector(
+            output_key: NumberSelector(
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
             ),
-            vol.Optional(
-                _MODEL_PRICING_CACHE_READ,
-                description={"suggested_value": pricing.get("cache_read")},
-            ): NumberSelector(
+            cache_read_key: NumberSelector(
                 NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
             ),
         }

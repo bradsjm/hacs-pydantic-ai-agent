@@ -9,8 +9,14 @@ from custom_components.pydantic_ai_agent.config_flows._ai_task_schema_helpers im
     _ai_task_data_from_user_input,
     _ai_task_data_schema,
 )
+from custom_components.pydantic_ai_agent.config_flows._constants import (
+    _MODEL_PRICING_CACHE_READ,
+    _MODEL_PRICING_INPUT,
+    _SECTION_MODEL_PRICING,
+)
 from custom_components.pydantic_ai_agent.config_flows._profile_helpers import (
     _fallback_model_profile_select_options,
+    _model_profile_edit_schema,
     _selected_model_profile_error,
 )
 from custom_components.pydantic_ai_agent.config_flows._schema_helpers import (
@@ -28,11 +34,13 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MCP_SERVER_IDS,
+    CONF_MODEL_PRICING,
     CONF_MODEL_SETTINGS,
     CONF_PRIMARY_MODEL_REF,
     CONF_SKILLS,
     CONF_STREAMING_ENABLED,
     CONF_TEMPLATED_EXTRA_BODY,
+    PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
 )
 from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
@@ -40,6 +48,7 @@ from homeassistant.helpers.selector import SelectSelector, SelectSelectorMode
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     mcp_server_subentry_data,
+    model_profile_data,
     provider_subentry_data,
     skill_subentry_data,
     workspace_entry,
@@ -83,6 +92,30 @@ def test_model_settings_schema_formats_stored_values() -> None:
             CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE: "{{ true }}",
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected_default"),
+    [
+        (model_profile_data(), {}),
+        (
+            model_profile_data(
+                extra_data={CONF_MODEL_PRICING: {"input": 0.4, "cache_read": 0.0}}
+            ),
+            {_MODEL_PRICING_INPUT: 0.4, _MODEL_PRICING_CACHE_READ: 0.0},
+        ),
+    ],
+)
+def test_model_profile_edit_schema_serializes_pricing_defaults_only_when_present(
+    profile: dict[str, object], expected_default: dict[str, float]
+) -> None:
+    data_schema = _model_profile_edit_schema(
+        profile, PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS
+    )
+
+    assert serialized_section_default(data_schema, _SECTION_MODEL_PRICING) == (
+        expected_default
+    )
 
 
 @pytest.mark.parametrize(
