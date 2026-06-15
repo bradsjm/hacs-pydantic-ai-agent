@@ -1,4 +1,5 @@
 {
+  "title": "Pydantic AI Agent",
   "config": {
     "abort": {
       "already_configured": "This workspace is already configured.",
