@@ -15,8 +15,15 @@ from ..const import (
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_NAME,
+    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PROVIDER_EXTRA_BODY,
+    CONF_PROVIDER_MODE,
+    CONF_SUPPORTS_TOOLS,
     CONF_TEMPLATED_EXTRA_BODY,
+)
+from ..openai_compatible_profile import (
+    PersistedOpenAICompatibleProfile,
+    is_openai_compatible_provider_mode,
 )
 from ..templated_extra_body import merge_extra_body, render_templated_extra_body
 from ._constants import (
@@ -28,6 +35,7 @@ from ._constants import (
     _MODEL_PRICING_OUTPUT,
     _SECTION_ADVANCED_MODEL_SETTINGS,
     _SECTION_MODEL_PRICING,
+    _SECTION_OPENAI_COMPATIBLE_CAPABILITIES,
 )
 from ._profile_helpers import (
     _model_profile_edit_schema,
@@ -136,7 +144,11 @@ class ProviderProfileMixin:
         if user_input is not None:
             flat_user_input = _flatten_section_data(
                 user_input,
-                (_SECTION_ADVANCED_MODEL_SETTINGS, _SECTION_MODEL_PRICING),
+                (
+                    _SECTION_ADVANCED_MODEL_SETTINGS,
+                    _SECTION_MODEL_PRICING,
+                    _SECTION_OPENAI_COMPATIBLE_CAPABILITIES,
+                ),
             )
             parsed_settings, errors, cleared = _parse_model_settings(
                 self.hass,
@@ -186,11 +198,66 @@ class ProviderProfileMixin:
                         | {
                             CONF_MODEL_SETTINGS: model_settings,
                             CONF_MODEL_PRICING: model_pricing,
-                        }
+                        },
+                        str(
+                            self._current_profile_flow_data().get(
+                                CONF_PROVIDER_MODE, ""
+                            )
+                        ),
                     ),
                     errors=errors,
                 )
-            self._pending_profile_data = dict(profile) | data
+            pending_profile = dict(profile) | data
+            if is_openai_compatible_provider_mode(
+                str(self._current_profile_flow_data().get(CONF_PROVIDER_MODE, ""))
+            ):
+                if (
+                    not bool(pending_profile.get(CONF_SUPPORTS_TOOLS, False))
+                    and pending_profile.get(
+                        CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION, False
+                    )
+                    is True
+                ):
+                    return self.async_show_form(
+                        step_id="edit_model_profile",
+                        data_schema=_model_profile_edit_schema(
+                            pending_profile
+                            | {
+                                CONF_MODEL_SETTINGS: model_settings,
+                                CONF_MODEL_PRICING: model_pricing,
+                            },
+                            str(
+                                self._current_profile_flow_data().get(
+                                    CONF_PROVIDER_MODE, ""
+                                )
+                            ),
+                        ),
+                        errors={
+                            CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: (
+                                "strict_tool_definition_requires_tools"
+                            )
+                        },
+                    )
+                try:
+                    PersistedOpenAICompatibleProfile.from_mapping(pending_profile)
+                except (KeyError, ValueError):
+                    return self.async_show_form(
+                        step_id="edit_model_profile",
+                        data_schema=_model_profile_edit_schema(
+                            pending_profile
+                            | {
+                                CONF_MODEL_SETTINGS: model_settings,
+                                CONF_MODEL_PRICING: model_pricing,
+                            },
+                            str(
+                                self._current_profile_flow_data().get(
+                                    CONF_PROVIDER_MODE, ""
+                                )
+                            ),
+                        ),
+                        errors={"base": "openai_compatible_profile_incomplete"},
+                    )
+            self._pending_profile_data = pending_profile
             self._pending_model_settings = dict(model_settings)
             self._pending_model_pricing = dict(model_pricing)
             self._pending_profile_error = None
@@ -204,7 +271,10 @@ class ProviderProfileMixin:
             return await self.async_step_model_profile_finish()
         return self.async_show_form(
             step_id="edit_model_profile",
-            data_schema=_model_profile_edit_schema(profile),
+            data_schema=_model_profile_edit_schema(
+                profile,
+                str(self._current_profile_flow_data().get(CONF_PROVIDER_MODE, "")),
+            ),
         )
 
     async def async_step_model_profile_finish(
@@ -220,7 +290,10 @@ class ProviderProfileMixin:
             reason, placeholders = self._pending_profile_error
             return self.async_show_form(
                 step_id="edit_model_profile",
-                data_schema=_model_profile_edit_schema(self._pending_profile_data),
+                data_schema=_model_profile_edit_schema(
+                    self._pending_profile_data,
+                    str(self._current_profile_flow_data().get(CONF_PROVIDER_MODE, "")),
+                ),
                 errors={"base": reason},
                 description_placeholders=placeholders,
             )

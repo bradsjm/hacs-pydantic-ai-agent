@@ -44,6 +44,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from tests.components.pydantic_ai_agent.support.builders import model_profile_data
 from tests.components.pydantic_ai_agent.support.schemas import (
     schema_key_names as _schema_key_names,
 )
@@ -116,12 +117,11 @@ def _provider_subentry_data() -> dict[str, object]:
             CONF_API_KEY: "sk-test",
             CONF_PROVIDER_METADATA: {CONF_CATALOG_PROVIDER_ID: "openai"},
             CONF_MODEL_PROFILES: {
-                "profile-1": {
-                    "id": "profile-1",
-                    CONF_NAME: "GPT Mini",
-                    CONF_MODEL: "gpt-4.1-mini",
-                    CONF_ENABLED: True,
-                }
+                "profile-1": model_profile_data(
+                    profile_id="profile-1",
+                    name="GPT Mini",
+                    model="gpt-4.1-mini",
+                )
             },
         },
     }

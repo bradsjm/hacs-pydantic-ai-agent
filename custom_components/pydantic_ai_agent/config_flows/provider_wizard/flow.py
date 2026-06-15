@@ -12,11 +12,16 @@ from ...const import (
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
+    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
+    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
     CONF_PROVIDER_SECRET_HEADER_KEYS,
+    CONF_STRUCTURED_OUTPUT_SUPPORT,
+    CONF_SUPPORTS_TOOLS,
+    CONF_THINKING_SUPPORT,
 )
 from .const import CONF_CATALOG_PROVIDER_ID
 from .types import CatalogModelOption, CatalogProviderOption
@@ -79,6 +84,15 @@ def build_model_profiles(
             CONF_MODEL: model.id,
             CONF_ENABLED: True,
             CONF_DISCOVERED: True,
+            CONF_THINKING_SUPPORT: model.thinking_support,
+            CONF_STRUCTURED_OUTPUT_SUPPORT: model.structured_output_support,
+            CONF_SUPPORTS_TOOLS: model.supports_tools,
+            CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: (
+                model.openai_supports_strict_tool_definition
+            ),
+            CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: (
+                model.openai_supports_encrypted_reasoning_content
+            ),
         }
         pricing = _model_pricing(model)
         if pricing:

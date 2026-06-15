@@ -4,7 +4,11 @@ import pytest
 from custom_components.pydantic_ai_agent.provider_validation import async_probe_model
 from homeassistant.core import HomeAssistant
 
-from .config import PROVIDER_INTEGRATION_TIMEOUT, ProviderIntegrationConfig
+from .config import (
+    MODEL_PROFILE_ID,
+    PROVIDER_INTEGRATION_TIMEOUT,
+    ProviderIntegrationConfig,
+)
 from .entries import drain_stream_cleanup
 
 pytestmark = [
@@ -22,5 +26,6 @@ async def test_provider_probe_succeeds(
         provider_config.provider_data,
         provider_config.model,
         {"timeout": PROVIDER_INTEGRATION_TIMEOUT},
+        profile_id=MODEL_PROFILE_ID,
     )
     await drain_stream_cleanup(hass)

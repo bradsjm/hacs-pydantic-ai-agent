@@ -20,10 +20,15 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
+    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
+    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
+    CONF_STRUCTURED_OUTPUT_SUPPORT,
+    CONF_SUPPORTS_TOOLS,
     CONF_THINKING,
+    CONF_THINKING_SUPPORT,
     CONF_TIMEOUT,
     DOMAIN,
     PROVIDER_ANTHROPIC,
@@ -43,6 +48,10 @@ from custom_components.pydantic_ai_agent.model_profiles import (
     resolve_model_profile,
     thinking_capability,
 )
+from custom_components.pydantic_ai_agent.openai_compatible_profile import (
+    default_openai_compatible_profile_data,
+)
+from custom_components.pydantic_ai_agent.provider import openai_compatible_model_profile
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_NAME
@@ -92,6 +101,11 @@ def _workspace_entry() -> MockConfigEntry:
             CONF_MODEL_PRICING: {"input": 0.4, "output": 1.6, "cache_read": 0.1},
             CONF_ENABLED: True,
             CONF_DISCOVERED: True,
+            CONF_THINKING_SUPPORT: "supported",
+            CONF_STRUCTURED_OUTPUT_SUPPORT: "json_schema",
+            CONF_SUPPORTS_TOOLS: True,
+            CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: False,
+            CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: True,
         },
         "fallback-profile": {
             "id": "fallback-profile",
@@ -99,6 +113,7 @@ def _workspace_entry() -> MockConfigEntry:
             CONF_MODEL: "gpt-fallback",
             CONF_ENABLED: True,
             CONF_DISCOVERED: False,
+            **default_openai_compatible_profile_data(),
         },
     }
     entry = MockConfigEntry(
@@ -158,6 +173,11 @@ def test_resolve_model_profile_reads_provider_owned_profile() -> None:
     assert profile.provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS
     assert profile.model_name == "gpt-test"
     assert profile.model_pricing == {"input": 0.4, "output": 1.6, "cache_read": 0.1}
+    assert profile.thinking_support == "supported"
+    assert profile.structured_output_support == "json_schema"
+    assert profile.supports_tools is True
+    assert profile.openai_supports_strict_tool_definition is False
+    assert profile.openai_supports_encrypted_reasoning_content is True
     assert model_profile_exists(entry, profile.ref) is True
 
 
@@ -187,13 +207,20 @@ def test_chat_model_for_profile_uses_provider_runtime_credentials(
         result = chat_model_for_profile(hass, entry, profile)
 
     assert result is model
+    profile_arg = completions_model.call_args.kwargs["profile"]
     completions_model.assert_called_once_with(
         hass,
         api_key="sk-test",
         base_url="https://provider.example.com/v1",
         headers={"X-Test": "provider"},
         model_name="gpt-test",
+        profile=profile_arg,
     )
+    assert profile_arg.supports_thinking is True
+    assert profile_arg.supports_json_schema_output is True
+    assert profile_arg.supports_json_object_output is True
+    assert profile_arg.openai_supports_strict_tool_definition is False
+    assert profile_arg.openai_supports_encrypted_reasoning_content is True
 
 
 def test_model_profile_chain_keeps_primary_then_ordered_fallback() -> None:
@@ -236,6 +263,11 @@ def test_run_settings_override_legacy_profile_run_settings() -> None:
             CONF_THINKING: "low",
             CONF_TIMEOUT: 20.0,
         },
+        thinking_support="supported",
+        structured_output_support="json_schema",
+        supports_tools=True,
+        openai_supports_strict_tool_definition=False,
+        openai_supports_encrypted_reasoning_content=False,
     )
 
     settings = model_settings(
@@ -270,9 +302,74 @@ def test_thinking_capability_omits_unsupported_effective_profile() -> None:
         provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         model_name="deepseek-v4-flash",
         model_settings={},
+        thinking_support="none",
+        structured_output_support="none",
+        supports_tools=True,
+        openai_supports_strict_tool_definition=True,
+        openai_supports_encrypted_reasoning_content=False,
     )
 
     assert thinking_capability({CONF_THINKING: "high"}, profile) is None
+
+
+def test_openai_profile_mapping_uses_persisted_capabilities_not_model_name() -> None:
+    """Test OpenAI-compatible profile mapping uses persisted capability data."""
+    profile = ModelProfile(
+        ref=model_profile_ref("provider-1", "profile-1"),
+        provider_subentry_id="provider-1",
+        profile_id="profile-1",
+        title="DeepSeek R1",
+        provider_title="Provider",
+        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        model_name="deepseek-r1",
+        model_settings={},
+        thinking_support="supported",
+        structured_output_support="json_object",
+        supports_tools=False,
+        openai_supports_strict_tool_definition=False,
+        openai_supports_encrypted_reasoning_content=True,
+    )
+    runtime_profile = openai_compatible_model_profile(
+        {
+            CONF_THINKING_SUPPORT: profile.thinking_support,
+            CONF_STRUCTURED_OUTPUT_SUPPORT: profile.structured_output_support,
+            CONF_SUPPORTS_TOOLS: profile.supports_tools,
+            CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: (
+                profile.openai_supports_strict_tool_definition
+            ),
+            CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: (
+                profile.openai_supports_encrypted_reasoning_content
+            ),
+        }
+    )
+
+    assert runtime_profile.supports_thinking is True
+    assert runtime_profile.thinking_always_enabled is False
+    assert runtime_profile.supports_json_schema_output is False
+    assert runtime_profile.supports_json_object_output is True
+    assert runtime_profile.supports_tools is False
+
+
+@pytest.mark.parametrize(
+    "missing_key",
+    [
+        CONF_THINKING_SUPPORT,
+        CONF_STRUCTURED_OUTPUT_SUPPORT,
+        CONF_SUPPORTS_TOOLS,
+        CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
+        CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
+    ],
+)
+def test_incomplete_old_openai_profile_is_not_usable(missing_key: str) -> None:
+    """Test incomplete OpenAI-compatible profiles require reconfiguration."""
+    entry = _workspace_entry()
+    provider = entry.subentries["provider-1"]
+    profile = provider.data[CONF_MODEL_PROFILES]["primary-profile"]
+    del profile[missing_key]
+
+    assert configured_model_profile_exists(entry, "provider-1:primary-profile") is False
+    with pytest.raises(HomeAssistantError):
+        resolve_model_profile(entry, "provider-1:primary-profile")
 
 
 def test_thinking_capability_keeps_supported_effective_profile() -> None:

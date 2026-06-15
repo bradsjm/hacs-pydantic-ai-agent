@@ -100,12 +100,20 @@ async def test_setup_entry_stores_workspace_runtime_data(hass: HomeAssistant) ->
     forward_setups.assert_awaited_once_with(entry, PLATFORMS)
     probe_model.assert_has_awaits(
         [
-            call(hass, provider_data, "gpt-test", {}, stream=True),
             call(
                 hass,
                 provider_data,
                 "gpt-test",
                 {},
+                profile_id="profile-1",
+                stream=True,
+            ),
+            call(
+                hass,
+                provider_data,
+                "gpt-test",
+                {},
+                profile_id="profile-1",
                 structured_output_mode=OUTPUT_MODE_TOOL,
                 stream=True,
             ),
@@ -163,6 +171,7 @@ async def test_setup_entry_validates_selected_model_setting_combinations(
                 entry.subentries["provider-1"].data,
                 "shared-model",
                 {CONF_MAX_TOKENS: 512, CONF_TIMEOUT: 20.0},
+                profile_id="first-profile",
                 stream=True,
             ),
             call(
@@ -170,6 +179,7 @@ async def test_setup_entry_validates_selected_model_setting_combinations(
                 entry.subentries["provider-2"].data,
                 "shared-model",
                 {CONF_TIMEOUT: 30.0},
+                profile_id="second-profile",
                 structured_output_mode=OUTPUT_MODE_TOOL,
                 stream=True,
             ),
@@ -221,6 +231,7 @@ async def test_setup_entry_probes_distinct_subentry_run_settings(
                 provider_data,
                 "shared-model",
                 {CONF_TIMEOUT: 20.0},
+                profile_id="profile-1",
                 stream=True,
             ),
         ],

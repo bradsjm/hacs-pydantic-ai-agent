@@ -6,6 +6,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_API_KEY
+from homeassistant.exceptions import HomeAssistantError
 
 from ._types import (
     MCPServerRuntimeData,
@@ -80,7 +81,13 @@ def _resolved_model_profiles(
         provider_subentry_id, _profile_id = parse_model_profile_ref(ref)
         if provider_subentry_id not in provider_runtimes:
             continue
-        profiles[ref] = resolve_model_profile(entry, ref)
+        try:
+            profiles[ref] = resolve_model_profile(entry, ref)
+        except HomeAssistantError:
+            _LOGGER.warning(
+                "Skipping unusable provider model profile %s during setup",
+                ref,
+            )
     return profiles
 
 

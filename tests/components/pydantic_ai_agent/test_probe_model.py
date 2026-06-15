@@ -53,7 +53,12 @@ async def test_probe_model_uses_streaming(hass: HomeAssistant) -> None:
             side_effect=lambda *_args, **_kwargs: stream_context(stream_events),
         ) as model_request_stream,
     ):
-        await async_probe_model(hass, provider_data(), "gpt-test")
+        await async_probe_model(
+            hass,
+            provider_data(),
+            "gpt-test",
+            profile_id="profile-1",
+        )
 
     model_request_stream.assert_called_once()
     assert model_request_stream.call_args.kwargs["model_settings"]["timeout"] == 10.0
@@ -73,7 +78,12 @@ async def test_probe_model_streaming_not_supported_reported(
         ),
         pytest.raises(ProviderValidationError) as exc_info,
     ):
-        await async_probe_model(hass, provider_data(), "gpt-test")
+        await async_probe_model(
+            hass,
+            provider_data(),
+            "gpt-test",
+            profile_id="profile-1",
+        )
 
     assert exc_info.value.reason == "model_does_not_support_streaming"
     assert exc_info.value.message
@@ -98,7 +108,13 @@ async def test_probe_model_uses_non_streaming_request_when_disabled(
             "custom_components.pydantic_ai_agent.provider_validation.model_request_stream",
         ) as model_request_stream,
     ):
-        await async_probe_model(hass, provider_data(), "gpt-test", stream=False)
+        await async_probe_model(
+            hass,
+            provider_data(),
+            "gpt-test",
+            profile_id="profile-1",
+            stream=False,
+        )
 
     model_request.assert_called_once()
     model_request_stream.assert_not_called()
@@ -154,6 +170,7 @@ async def test_probe_model_can_require_structured_output(
             hass,
             provider_data(),
             "gpt-test",
+            profile_id="profile-1",
             structured_output_mode=output_mode,
         )
 
@@ -178,6 +195,7 @@ async def test_probe_model_rejects_invalid_native_structured_output(
             hass,
             provider_data(),
             "gpt-test",
+            profile_id="profile-1",
             structured_output_mode=OUTPUT_MODE_NATIVE,
         )
 
@@ -203,6 +221,7 @@ async def test_probe_model_maps_structured_http_400_to_output_mode_error(
             hass,
             provider_data(),
             "gpt-test",
+            profile_id="profile-1",
             structured_output_mode=OUTPUT_MODE_TOOL,
         )
 
@@ -228,7 +247,7 @@ async def test_probe_model_merges_configured_model_settings(
     ):
         await async_probe_model(
             hass,
-            provider_data(),
+            provider_data(model_name="gpt-5", thinking_support="supported"),
             "gpt-5",
             {
                 "temperature": 0.7,
@@ -236,6 +255,7 @@ async def test_probe_model_merges_configured_model_settings(
                 CONF_MAX_ITERATIONS: 20,
                 CONF_THINKING: "high",
             },
+            profile_id="profile-1",
         )
 
     model_settings = model_request_stream.call_args.kwargs["model_settings"]
@@ -282,9 +302,10 @@ async def test_probe_model_filters_thinking_by_effective_profile_support(
     ):
         await async_probe_model(
             hass,
-            provider_data(provider_mode),
+            provider_data(provider_mode, model_name),
             model_name,
             {CONF_THINKING: thinking},
+            profile_id="profile-1",
         )
 
     request_parameters = model_request_stream.call_args.kwargs[
@@ -334,6 +355,7 @@ async def test_probe_model_renders_templated_extra_body(hass: HomeAssistant) -> 
                     },
                 ],
             },
+            profile_id="profile-1",
         )
 
     model_settings = model_request_stream.call_args.kwargs["model_settings"]
@@ -366,6 +388,7 @@ async def test_probe_model_responses_uses_streamed_request(
             hass,
             provider_data(PROVIDER_OPENAI_COMPATIBLE_RESPONSES),
             "gpt-test",
+            profile_id="profile-1",
         )
 
     model_request_stream.assert_called_once()
@@ -375,7 +398,9 @@ async def test_probe_model_openai_compatible_uses_normalized_base_url(
     hass: HomeAssistant,
 ) -> None:
     """Test OpenAI-compatible validation builds a provider with the base URL."""
-    data = provider_data() | {CONF_BASE_URL: "http://localhost:11434/v1/"}
+    data = provider_data(model_name="local-model") | {
+        CONF_BASE_URL: "http://localhost:11434/v1/"
+    }
     provider = object()
     model = object()
     stream_events = SingleEventStream()
@@ -394,11 +419,19 @@ async def test_probe_model_openai_compatible_uses_normalized_base_url(
             side_effect=lambda *_args, **_kwargs: stream_context(stream_events),
         ) as model_request_stream,
     ):
-        await async_probe_model(hass, data, "local-model")
+        await async_probe_model(
+            hass,
+            data,
+            "local-model",
+            profile_id="profile-1",
+        )
 
     compatible_provider.assert_called_once()
     assert (
         compatible_provider.call_args.kwargs["base_url"] == "http://localhost:11434/v1"
     )
-    compatible_chat_model.assert_called_once_with("local-model", provider=provider)
+    assert compatible_chat_model.call_count == 1
+    assert compatible_chat_model.call_args.args == ("local-model",)
+    assert compatible_chat_model.call_args.kwargs["provider"] is provider
+    assert compatible_chat_model.call_args.kwargs["profile"] is not None
     model_request_stream.assert_called_once()

@@ -5,7 +5,6 @@ from typing import overload
 import httpx
 from pydantic_ai.models import create_async_http_client
 from pydantic_ai.profiles import ModelProfile
-from pydantic_ai.profiles.openai import openai_model_profile
 from pydantic_ai.providers import Provider
 
 from ..openai_compatible_client import AsyncOpenAICompatible
@@ -34,7 +33,8 @@ class OpenAICompatibleProvider(Provider[AsyncOpenAICompatible]):
     @staticmethod
     def model_profile(model_name: str) -> ModelProfile | None:
         """Return a Chat Completions compatible model profile."""
-        return openai_model_profile(model_name)
+        del model_name
+        return None
 
     @overload
     def __init__(

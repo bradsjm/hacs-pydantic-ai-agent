@@ -438,11 +438,13 @@
         "model_required": "Select at least one model.",
         "no_models_available": "No models match these filters. Adjust filters or choose custom provider setup.",
         "non_negative_number": "Enter zero or a positive number.",
+        "openai_compatible_profile_incomplete": "Open the compatibility section and save all required OpenAI-compatible capability settings.",
         "permission_denied": "{error_message}",
         "positive_number": "Enter a number greater than zero.",
         "provider_error": "{error_message}",
         "provider_extra_body_unsupported": "{error_message}",
         "rate_limited": "{error_message}",
+        "strict_tool_definition_requires_tools": "Strict tool definitions require tool support to be enabled.",
         "templated_extra_body_path_conflict": "Templated request-body paths cannot overlap. Remove conflicting paths like `a` and `a.b`.",
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the provider. Check Home Assistant logs for details."
@@ -510,6 +512,23 @@
                 "top_p": "Nucleus sampling value. Leave empty to use the provider default."
               },
               "name": "Advanced model settings"
+            },
+            "openai_compatible_capabilities": {
+              "data": {
+                "openai_supports_encrypted_reasoning_content": "Encrypted reasoning content",
+                "openai_supports_strict_tool_definition": "Strict tool definitions",
+                "structured_output_support": "Structured output support",
+                "supports_tools": "Tool support",
+                "thinking_support": "Thinking support"
+              },
+              "data_description": {
+                "openai_supports_encrypted_reasoning_content": "Enable only when this OpenAI-compatible model supports encrypted reasoning content in Responses API output.",
+                "openai_supports_strict_tool_definition": "Enable only when this OpenAI-compatible model accepts strict tool definitions.",
+                "structured_output_support": "Choose the strongest structured-output mode this OpenAI-compatible model supports.",
+                "supports_tools": "Enable when this OpenAI-compatible model supports tool calling.",
+                "thinking_support": "Choose whether this OpenAI-compatible model does not support thinking, supports optional thinking, or always keeps thinking enabled."
+              },
+              "name": "OpenAI-compatible capabilities"
             },
             "model_pricing": {
               "data": {

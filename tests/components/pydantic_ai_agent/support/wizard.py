@@ -126,6 +126,8 @@ def wizard_model(
         context_limit=128000,
         output_limit=16000,
         status=None,
+        thinking_support="none",
+        structured_output_support="json_object",
     )
 
 

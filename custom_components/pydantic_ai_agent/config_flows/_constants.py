@@ -132,6 +132,7 @@ _OUTPUT_MODE_OPTIONS: tuple[SelectOptionDict, ...] = tuple(
 
 _CONF_MODEL_PROFILE_ID = "model_profile_id"
 _SECTION_ADVANCED_MODEL_SETTINGS = "advanced_model_settings"
+_SECTION_OPENAI_COMPATIBLE_CAPABILITIES = "openai_compatible_capabilities"
 _SECTION_ADVANCED_OPTIONS = "advanced_options"
 _SECTION_EXTERNAL_TOOLS = "external_tools"
 _SECTION_FALLBACK_MODELS = "fallback_models"

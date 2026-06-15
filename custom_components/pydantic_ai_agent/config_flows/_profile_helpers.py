@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import section
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -34,8 +35,13 @@ from ..const import (
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
+    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
+    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
+    CONF_STRUCTURED_OUTPUT_SUPPORT,
+    CONF_SUPPORTS_TOOLS,
+    CONF_THINKING_SUPPORT,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
 )
@@ -46,14 +52,21 @@ from ..model_profiles import (
     model_profile_ref,
     parse_model_profile_ref,
     provider_model_profiles,
+    provider_profile_thinking_support,
     provider_subentries,
 )
-from ..provider import model_thinking_support
+from ..openai_compatible_profile import (
+    OPENAI_COMPATIBLE_STRUCTURED_OUTPUT_SUPPORT_OPTIONS,
+    OPENAI_COMPATIBLE_THINKING_SUPPORT_OPTIONS,
+    default_openai_compatible_profile_data,
+    is_openai_compatible_provider_mode,
+)
 from ._constants import (
     _CONF_MODEL_PROFILE_ID,
     _MODEL_SETTING_TEMPERATURE,
     _SECTION_ADVANCED_MODEL_SETTINGS,
     _SECTION_MODEL_PRICING,
+    _SECTION_OPENAI_COMPATIBLE_CAPABILITIES,
 )
 from ._profile_validation_logging import (  # noqa: F401
     _log_provider_validation_failure,
@@ -119,16 +132,17 @@ def _run_settings_visibility(
         if provider_subentry is None:
             continue
         profile = provider_model_profiles(provider_subentry).get(profile_id)
-        model_name = profile.get(CONF_MODEL) if isinstance(profile, Mapping) else None
         provider_mode = provider_subentry.data.get(CONF_PROVIDER_MODE)
-        if not isinstance(model_name, str) or not isinstance(provider_mode, str):
+        if not isinstance(profile, Mapping) or not isinstance(provider_mode, str):
             continue
         try:
-            support = model_thinking_support(provider_mode, model_name)
-        except ValueError:
+            supported, can_disable = provider_profile_thinking_support(
+                provider_mode, profile
+            )
+        except (KeyError, ValueError):
             continue
-        supports_thinking = supports_thinking or support.supported
-        can_disable_thinking = can_disable_thinking or support.can_disable
+        supports_thinking = supports_thinking or supported
+        can_disable_thinking = can_disable_thinking or can_disable
     if not selected_refs and not supports_thinking:
         return RunSettingsVisibility()
     return RunSettingsVisibility(
@@ -340,6 +354,7 @@ def _provider_profile_selector_schema(
 
 def _model_profile_edit_schema(
     profile: Mapping[str, Any],
+    provider_mode: str,
 ) -> vol.Schema:
     """Return the provider-owned model profile edit schema."""
     from ._schema_helpers import _model_pricing_schema, _model_settings_schema
@@ -376,6 +391,58 @@ def _model_profile_edit_schema(
             _SECTION_ADVANCED_MODEL_SETTINGS, advanced_model_settings_schema.schema
         )
     ] = section(advanced_model_settings_schema, {"collapsed": True})
+    if is_openai_compatible_provider_mode(provider_mode):
+        capability_defaults = default_openai_compatible_profile_data() | {
+            key: profile[key]
+            for key in default_openai_compatible_profile_data()
+            if key in profile
+        }
+        capability_schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_THINKING_SUPPORT,
+                    default=capability_defaults[CONF_THINKING_SUPPORT],
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=list(OPENAI_COMPATIBLE_THINKING_SUPPORT_OPTIONS),
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Required(
+                    CONF_STRUCTURED_OUTPUT_SUPPORT,
+                    default=capability_defaults[CONF_STRUCTURED_OUTPUT_SUPPORT],
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=list(
+                            OPENAI_COMPATIBLE_STRUCTURED_OUTPUT_SUPPORT_OPTIONS
+                        ),
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Required(
+                    CONF_SUPPORTS_TOOLS,
+                    default=capability_defaults[CONF_SUPPORTS_TOOLS],
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
+                    default=capability_defaults[
+                        CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION
+                    ],
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
+                    default=capability_defaults[
+                        CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT
+                    ],
+                ): BooleanSelector(),
+            }
+        )
+        schema[
+            _section_schema_key(
+                _SECTION_OPENAI_COMPATIBLE_CAPABILITIES,
+                capability_schema.schema,
+            )
+        ] = section(capability_schema, {"collapsed": True})
     model_pricing_schema = _model_pricing_schema(options)
     schema[_section_schema_key(_SECTION_MODEL_PRICING, model_pricing_schema.schema)] = (
         section(model_pricing_schema, {"collapsed": True})

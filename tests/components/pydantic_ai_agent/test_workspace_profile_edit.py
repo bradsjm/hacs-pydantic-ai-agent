@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from custom_components.pydantic_ai_agent.config_flows._constants import (
     _SECTION_ADVANCED_MODEL_SETTINGS,
+    _SECTION_OPENAI_COMPATIBLE_CAPABILITIES,
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
@@ -15,10 +16,15 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_NAME,
+    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
+    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
+    CONF_STRUCTURED_OUTPUT_SUPPORT,
+    CONF_SUPPORTS_TOOLS,
     CONF_TEMPLATED_EXTRA_BODY,
+    CONF_THINKING_SUPPORT,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_AI_TASK,
@@ -31,6 +37,7 @@ from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from tests.components.pydantic_ai_agent.support.builders import model_profile_data
 from tests.components.pydantic_ai_agent.support.schemas import (
     schema_key_names as _schema_key_names,
 )
@@ -100,12 +107,11 @@ def _provider_subentry_data() -> dict[str, object]:
             CONF_API_KEY: "sk-test",
             CONF_PROVIDER_METADATA: {"catalog_provider_id": "openai"},
             CONF_MODEL_PROFILES: {
-                "profile-1": {
-                    "id": "profile-1",
-                    CONF_NAME: "GPT Mini",
-                    CONF_MODEL: "gpt-4.1-mini",
-                    CONF_ENABLED: True,
-                }
+                "profile-1": model_profile_data(
+                    profile_id="profile-1",
+                    name="GPT Mini",
+                    model="gpt-4.1-mini",
+                )
             },
         },
     }
@@ -310,3 +316,78 @@ async def test_provider_edit_model_profile_templated_extra_body_round_trip(
     assert _serialized_section_default(
         result["data_schema"], _SECTION_ADVANCED_MODEL_SETTINGS
     ) == {CONF_TEMPLATED_EXTRA_BODY: templated_extra_body}
+
+
+async def test_provider_edit_openai_profile_capabilities_round_trip(
+    hass: HomeAssistant,
+) -> None:
+    """Test OpenAI-compatible capability settings persist and reload."""
+    entry = await _loaded_workspace_entry(hass, (_provider_subentry_data(),))
+    provider_subentry = next(iter(entry.subentries.values()))
+
+    result = await _subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await _subentry_configure_result(
+        hass, result["flow_id"], {"next_step_id": "customize_model_profile"}
+    )
+    result = await _subentry_configure_result(
+        hass, result["flow_id"], {"model_profile_id": "profile-1"}
+    )
+
+    result = await _subentry_configure_result(
+        hass,
+        result["flow_id"],
+        {
+            CONF_NAME: "GPT Mini",
+            CONF_MODEL: "gpt-4.1-mini",
+            _SECTION_OPENAI_COMPATIBLE_CAPABILITIES: {
+                CONF_THINKING_SUPPORT: "always",
+                CONF_STRUCTURED_OUTPUT_SUPPORT: "json_object",
+                CONF_SUPPORTS_TOOLS: True,
+                CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: False,
+                CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: True,
+            },
+        },
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated_profile = entry.subentries[provider_subentry.subentry_id].data[
+        CONF_MODEL_PROFILES
+    ]["profile-1"]
+    assert updated_profile[CONF_THINKING_SUPPORT] == "always"
+    assert updated_profile[CONF_STRUCTURED_OUTPUT_SUPPORT] == "json_object"
+    assert updated_profile[CONF_SUPPORTS_TOOLS] is True
+    assert updated_profile[CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION] is False
+    assert updated_profile[CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT] is True
+
+    result = await _subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": provider_subentry.subentry_id,
+        },
+    )
+    result = await _subentry_configure_result(
+        hass, result["flow_id"], {"next_step_id": "customize_model_profile"}
+    )
+    result = await _subentry_configure_result(
+        hass, result["flow_id"], {"model_profile_id": "profile-1"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert _serialized_section_default(
+        result["data_schema"], _SECTION_OPENAI_COMPATIBLE_CAPABILITIES
+    ) == {
+        CONF_THINKING_SUPPORT: "always",
+        CONF_STRUCTURED_OUTPUT_SUPPORT: "json_object",
+        CONF_SUPPORTS_TOOLS: True,
+        CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: False,
+        CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: True,
+    }

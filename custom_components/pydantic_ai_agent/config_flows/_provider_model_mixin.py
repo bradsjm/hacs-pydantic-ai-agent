@@ -16,7 +16,12 @@ from ..const import (
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
+    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
+    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PROVIDER_METADATA,
+    CONF_STRUCTURED_OUTPUT_SUPPORT,
+    CONF_SUPPORTS_TOOLS,
+    CONF_THINKING_SUPPORT,
 )
 from ..model_profiles import provider_model_profiles
 from ._profile_helpers import (
@@ -246,6 +251,25 @@ class ProviderModelManagementMixin:
                     context_limit=0,
                     output_limit=0,
                     status=None,
+                    thinking_support=str(
+                        profile.get(CONF_THINKING_SUPPORT, "none")
+                    ),
+                    structured_output_support=str(
+                        profile.get(CONF_STRUCTURED_OUTPUT_SUPPORT, "none")
+                    ),
+                    supports_tools=bool(profile.get(CONF_SUPPORTS_TOOLS, True)),
+                    openai_supports_strict_tool_definition=bool(
+                        profile.get(
+                            CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
+                            True,
+                        )
+                    ),
+                    openai_supports_encrypted_reasoning_content=bool(
+                        profile.get(
+                            CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
+                            False,
+                        )
+                    ),
                 )
         return tuple(managed_models.values())
 

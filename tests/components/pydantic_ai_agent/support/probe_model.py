@@ -4,8 +4,15 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from custom_components.pydantic_ai_agent.const import (
+    CONF_ENABLED,
+    CONF_MODEL,
+    CONF_MODEL_PROFILES,
     CONF_PROVIDER_MODE,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+)
+from custom_components.pydantic_ai_agent.openai_compatible_profile import (
+    default_openai_compatible_profile_data,
 )
 from homeassistant.const import CONF_API_KEY, CONF_NAME
 from pydantic_ai.exceptions import ModelHTTPError
@@ -127,13 +134,30 @@ class HTTPErrorStreamContext:
 
 def provider_data(
     provider_mode: str = PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+    model_name: str = "gpt-test",
+    *,
+    thinking_support: str = "none",
 ) -> dict[str, object]:
     """Return provider data for model probes."""
-    return {
+    data: dict[str, object] = {
         CONF_NAME: "Hosted OpenAI",
         CONF_PROVIDER_MODE: provider_mode,
         CONF_API_KEY: "sk-test",
     }
+    if provider_mode in {
+        PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
+    }:
+        data[CONF_MODEL_PROFILES] = {
+            "profile-1": {
+                "id": "profile-1",
+                CONF_MODEL: model_name,
+                CONF_ENABLED: True,
+                **default_openai_compatible_profile_data(),
+                "thinking_support": thinking_support,
+            }
+        }
+    return data
 
 
 @asynccontextmanager

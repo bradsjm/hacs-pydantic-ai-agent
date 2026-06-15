@@ -37,6 +37,11 @@ class CatalogModelOption:
     input_price: float | None = None
     output_price: float | None = None
     cache_read_price: float | None = None
+    thinking_support: str = "none"
+    structured_output_support: str = "none"
+    supports_tools: bool = True
+    openai_supports_strict_tool_definition: bool = True
+    openai_supports_encrypted_reasoning_content: bool = False
 
 
 @dataclass(frozen=True, slots=True)

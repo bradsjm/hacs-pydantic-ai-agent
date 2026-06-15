@@ -230,6 +230,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                     provider_subentry.data,
                     current_model,
                     model_settings,
+                    profile_id=profile_id,
                     structured_output_mode=data[CONF_OUTPUT_MODE],
                 )
         except ProviderValidationError as err:

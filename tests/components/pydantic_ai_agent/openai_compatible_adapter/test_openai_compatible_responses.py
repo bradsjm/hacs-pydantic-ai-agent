@@ -12,6 +12,7 @@ from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
 from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
     _responses_message_mapping as responses_message_mapping,
 )
+from custom_components.pydantic_ai_agent.provider import openai_compatible_model_profile
 from pydantic_ai.messages import (
     BinaryContent,
     ModelRequest,
@@ -41,7 +42,22 @@ def _responses_model_with_transport(
         http_client=http_client,
         name="openai-compatible-responses",
     )
-    return OpenAICompatibleResponsesModel(model_name, provider=provider), http_client
+    return (
+        OpenAICompatibleResponsesModel(
+            model_name,
+            provider=provider,
+            profile=openai_compatible_model_profile(
+                {
+                    "thinking_support": "supported",
+                    "structured_output_support": "json_schema",
+                    "supports_tools": True,
+                    "openai_supports_strict_tool_definition": True,
+                    "openai_supports_encrypted_reasoning_content": True,
+                }
+            ),
+        ),
+        http_client,
+    )
 
 
 async def _unused_handler(request: httpx.Request) -> httpx.Response:
@@ -151,19 +167,14 @@ async def test_responses_request_maps_tools_structured_output_and_reasoning() ->
     body = captured["body"]
     assert isinstance(body, dict)
     assert body["tools"] == [
-        {
-            "type": "function",
-            "name": "turn_on",
-            "description": "Turn on a light",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False,
-                "required": [],
-            },
-            "strict": True,
-        }
-    ]
+            {
+                "type": "function",
+                "name": "turn_on",
+                "description": "Turn on a light",
+                "parameters": {"type": "object", "properties": {}},
+                "strict": True,
+            }
+        ]
     assert body["tool_choice"] == "auto"
     assert body["max_output_tokens"] == 20
     assert body["reasoning"] == {"effort": "medium"}
@@ -172,12 +183,7 @@ async def test_responses_request_maps_tools_structured_output_and_reasoning() ->
         "format": {
             "type": "json_schema",
             "name": "probe_response",
-            "schema": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False,
-                "required": [],
-            },
+            "schema": {"type": "object"},
             "strict": True,
         }
     }

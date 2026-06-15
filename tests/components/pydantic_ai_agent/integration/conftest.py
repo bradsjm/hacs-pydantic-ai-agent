@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component import plugins as ha_pytest_plugins
 
 from .config import (
+    MODEL_PROFILE_ID,
     PROVIDER_INTEGRATION_TIMEOUT,
     STRUCTURED_OUTPUT_MODES,
     STRUCTURED_OUTPUT_SKIP_REASONS,
@@ -83,6 +84,7 @@ async def fixture_structured_output_support(
                 provider_config.provider_data,
                 provider_config.model,
                 {"timeout": PROVIDER_INTEGRATION_TIMEOUT},
+                profile_id=MODEL_PROFILE_ID,
                 structured_output_mode=output_mode,
             )
         except ProviderValidationError as err:

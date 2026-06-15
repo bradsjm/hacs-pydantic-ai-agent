@@ -3,7 +3,7 @@
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME
@@ -11,7 +11,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai.capabilities import Thinking
 from pydantic_ai.models import Model
-from pydantic_ai.settings import ModelSettings as PydanticAIModelSettings
+from pydantic_ai.profiles import ModelProfile as PydanticAIProfile
+from pydantic_ai.settings import (
+    ModelSettings as PydanticAIModelSettings,
+)
+from pydantic_ai.settings import ThinkingLevel
 
 from .const import (
     CONF_ENABLED,
@@ -21,10 +25,15 @@ from .const import (
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
+    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
+    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_MODE,
+    CONF_STRUCTURED_OUTPUT_SUPPORT,
+    CONF_SUPPORTS_TOOLS,
     CONF_THINKING,
+    CONF_THINKING_SUPPORT,
     CONF_TIMEOUT,
     DEFAULT_TIMEOUT,
     PROVIDER_ANTHROPIC,
@@ -34,12 +43,20 @@ from .const import (
     SUBENTRY_TYPE_PROVIDER,
 )
 from .model_settings import profile_model_settings, runtime_model_settings_data
+from .openai_compatible_profile import (
+    PersistedOpenAICompatibleProfile,
+    is_openai_compatible_provider_mode,
+)
 from .provider import (
     anthropic_model,
     effective_thinking_setting,
     google_gemini_model,
+    model_thinking_support,
     openai_compatible_completions_model,
+    openai_compatible_effective_thinking_setting,
+    openai_compatible_model_profile,
     openai_compatible_responses_model,
+    openai_compatible_thinking_support,
 )
 
 if TYPE_CHECKING:
@@ -61,6 +78,11 @@ class ResolvedModelProfile:
     model_name: str
     model_settings: dict[str, Any]
     model_pricing: dict[str, float] = field(default_factory=dict)
+    thinking_support: str | None = None
+    structured_output_support: str | None = None
+    supports_tools: bool | None = None
+    openai_supports_strict_tool_definition: bool | None = None
+    openai_supports_encrypted_reasoning_content: bool | None = None
 
 
 ModelProfile = ResolvedModelProfile
@@ -138,8 +160,18 @@ def configured_model_profile_exists(
     profile = provider_model_profiles(provider_subentry).get(profile_id)
     if profile is None or not _profile_enabled(profile):
         return False
+    provider_mode = provider_subentry.data.get(CONF_PROVIDER_MODE)
+    if not isinstance(provider_mode, str):
+        return False
     model_name = profile.get(CONF_MODEL)
-    return isinstance(model_name, str) and bool(model_name.strip())
+    if not isinstance(model_name, str) or not model_name.strip():
+        return False
+    if is_openai_compatible_provider_mode(provider_mode):
+        try:
+            PersistedOpenAICompatibleProfile.from_mapping(profile)
+        except (KeyError, ValueError):
+            return False
+    return True
 
 
 def resolve_model_profile(
@@ -159,6 +191,9 @@ def resolve_model_profile(
     profile = provider_model_profiles(provider_subentry).get(profile_id)
     if profile is None or not _profile_enabled(profile):
         raise HomeAssistantError("Configured model profile was not found")
+    provider_mode = provider_subentry.data.get(CONF_PROVIDER_MODE)
+    if not isinstance(provider_mode, str):
+        raise HomeAssistantError("Configured model profile provider was not found")
     model_name = profile.get(CONF_MODEL)
     if not isinstance(model_name, str) or not model_name.strip():
         raise HomeAssistantError("Configured model profile is missing a model name")
@@ -168,16 +203,38 @@ def resolve_model_profile(
     )
     raw_pricing = profile.get(CONF_MODEL_PRICING)
     model_pricing = _profile_pricing(raw_pricing)
+    openai_profile = _resolved_openai_compatible_profile(provider_mode, profile)
     return ResolvedModelProfile(
         ref=raw_ref,
         provider_subentry_id=provider_subentry_id,
         profile_id=profile_id,
         title=_profile_title(profile, model_name),
         provider_title=provider_subentry.title,
-        provider_mode=str(provider_subentry.data.get(CONF_PROVIDER_MODE, "")),
+        provider_mode=provider_mode,
         model_name=model_name,
         model_pricing=model_pricing,
         model_settings=model_settings,
+        thinking_support=(
+            openai_profile.thinking_support if openai_profile is not None else None
+        ),
+        structured_output_support=(
+            openai_profile.structured_output_support
+            if openai_profile is not None
+            else None
+        ),
+        supports_tools=(
+            openai_profile.supports_tools if openai_profile is not None else None
+        ),
+        openai_supports_strict_tool_definition=(
+            openai_profile.openai_supports_strict_tool_definition
+            if openai_profile is not None
+            else None
+        ),
+        openai_supports_encrypted_reasoning_content=(
+            openai_profile.openai_supports_encrypted_reasoning_content
+            if openai_profile is not None
+            else None
+        ),
     )
 
 
@@ -261,13 +318,21 @@ def thinking_capability(
     if CONF_THINKING not in run_settings:
         return None
     if profile is not None:
-        thinking = effective_thinking_setting(
-            profile.provider_mode, profile.model_name, run_settings[CONF_THINKING]
-        )
+        requested_thinking = cast(ThinkingLevel, run_settings[CONF_THINKING])
+        if is_openai_compatible_provider_mode(profile.provider_mode):
+            thinking = _resolved_openai_effective_thinking_setting(
+                profile, requested_thinking
+            )
+        else:
+            thinking = effective_thinking_setting(
+                profile.provider_mode,
+                profile.model_name,
+                requested_thinking,
+            )
         if thinking is None:
             return None
         return Thinking(effort=thinking)
-    return Thinking(effort=run_settings[CONF_THINKING])
+    return Thinking(effort=cast(ThinkingLevel, run_settings[CONF_THINKING]))
 
 
 def max_iterations(run_settings: Mapping[str, Any], default: int) -> int:
@@ -311,9 +376,17 @@ def chat_model_for_profile(
     }
     try:
         if provider_runtime.provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS:
-            return openai_compatible_completions_model(hass, **kwargs)
+            return openai_compatible_completions_model(
+                hass,
+                **kwargs,
+                profile=_resolved_openai_model_profile(profile),
+            )
         if provider_runtime.provider_mode == PROVIDER_OPENAI_COMPATIBLE_RESPONSES:
-            return openai_compatible_responses_model(hass, **kwargs)
+            return openai_compatible_responses_model(
+                hass,
+                **kwargs,
+                profile=_resolved_openai_model_profile(profile),
+            )
         if provider_runtime.provider_mode == PROVIDER_ANTHROPIC:
             return anthropic_model(hass, **kwargs)
         if provider_runtime.provider_mode == PROVIDER_GOOGLE_GEMINI:
@@ -333,3 +406,86 @@ def _profile_enabled(profile: Mapping[str, Any]) -> bool:
 def _profile_title(profile: Mapping[str, Any], model_name: str) -> str:
     """Return a human-readable profile title."""
     return model_profile_display_name(profile) or model_name
+
+
+def provider_profile_thinking_support(
+    provider_mode: str, profile: Mapping[str, Any]
+) -> tuple[bool, bool]:
+    """Return thinking support for one persisted provider-owned profile."""
+    if is_openai_compatible_provider_mode(provider_mode):
+        support = openai_compatible_thinking_support(profile)
+        return support.supported, support.can_disable
+    model_name = profile.get(CONF_MODEL)
+    if not isinstance(model_name, str) or not model_name.strip():
+        return False, False
+    support = model_thinking_support(provider_mode, model_name)
+    return support.supported, support.can_disable
+
+
+def effective_profile_thinking_setting(
+    provider_mode: str,
+    profile: Mapping[str, Any],
+    thinking: ThinkingLevel | None,
+) -> ThinkingLevel | None:
+    """Return thinking validated against one persisted provider-owned profile."""
+    if is_openai_compatible_provider_mode(provider_mode):
+        return openai_compatible_effective_thinking_setting(profile, thinking)
+    model_name = profile.get(CONF_MODEL)
+    if not isinstance(model_name, str) or not model_name.strip():
+        return None
+    return effective_thinking_setting(provider_mode, model_name, thinking)
+
+
+def _resolved_openai_compatible_profile(
+    provider_mode: str, profile: Mapping[str, Any]
+) -> PersistedOpenAICompatibleProfile | None:
+    """Return parsed persisted OpenAI-compatible capabilities for one profile."""
+    if not is_openai_compatible_provider_mode(provider_mode):
+        return None
+    try:
+        return PersistedOpenAICompatibleProfile.from_mapping(profile)
+    except (KeyError, ValueError) as err:
+        raise HomeAssistantError(
+            "Configured OpenAI-compatible model profile is incomplete"
+        ) from err
+
+
+def _resolved_openai_profile_data(profile: ResolvedModelProfile) -> dict[str, Any]:
+    """Return persisted OpenAI-compatible capability fields for one profile."""
+    if (
+        profile.thinking_support is None
+        or profile.structured_output_support is None
+        or profile.supports_tools is None
+        or profile.openai_supports_strict_tool_definition is None
+        or profile.openai_supports_encrypted_reasoning_content is None
+    ):
+        raise HomeAssistantError(
+            "Configured OpenAI-compatible model profile is incomplete"
+        )
+    return {
+        CONF_THINKING_SUPPORT: profile.thinking_support,
+        CONF_STRUCTURED_OUTPUT_SUPPORT: profile.structured_output_support,
+        CONF_SUPPORTS_TOOLS: profile.supports_tools,
+        CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: (
+            profile.openai_supports_strict_tool_definition
+        ),
+        CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: (
+            profile.openai_supports_encrypted_reasoning_content
+        ),
+    }
+
+
+def _resolved_openai_model_profile(
+    profile: ResolvedModelProfile,
+) -> PydanticAIProfile:
+    """Return an OpenAIModelProfile synthesized from one resolved profile."""
+    return openai_compatible_model_profile(_resolved_openai_profile_data(profile))
+
+
+def _resolved_openai_effective_thinking_setting(
+    profile: ResolvedModelProfile, thinking: ThinkingLevel | None
+) -> ThinkingLevel | None:
+    """Return persisted-profile thinking for one resolved OpenAI-compatible model."""
+    return openai_compatible_effective_thinking_setting(
+        _resolved_openai_profile_data(profile), thinking
+    )

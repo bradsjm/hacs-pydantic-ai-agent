@@ -24,12 +24,15 @@ from .const import (
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_PROVIDER,
 )
-from .model_profiles import parse_model_profile_ref, provider_model_profiles
+from .model_profiles import (
+    effective_profile_thinking_setting,
+    parse_model_profile_ref,
+    provider_model_profiles,
+)
 from .model_settings import (
     normalise_applied_model_settings,
     validation_probe_model_settings,
 )
-from .provider import effective_thinking_setting
 from .provider_validation import ProviderValidationError, async_probe_model
 from .repair_issues import (
     async_create_model_validation_issue,
@@ -67,7 +70,7 @@ def _configured_subentry_models(
 ) -> list[_ConfiguredModelProbe]:
     """Return unique model probes needed before the entry can load."""
     models: list[_ConfiguredModelProbe] = []
-    seen: dict[tuple[str, str, str, str | None, bool], int] = {}
+    seen: dict[tuple[str, str, str, str, str | None, bool], int] = {}
 
     for subentry in entry.subentries.values():
         if subentry.subentry_type not in (
@@ -97,7 +100,7 @@ def _append_configured_subentry_models(
     subentry: ConfigSubentry,
     primary_ref: str,
     models: list[_ConfiguredModelProbe],
-    seen: dict[tuple[str, str, str, str | None, bool], int],
+    seen: dict[tuple[str, str, str, str, str | None, bool], int],
 ) -> None:
     """Append provider probes referenced by one conversation or AI task subentry."""
     fallback_refs = subentry.data.get(CONF_FALLBACK_MODEL_REFS, [])
@@ -166,7 +169,7 @@ def _add_configured_model_probe(
     output_mode: str | None,
     stream: bool,
     models: list[_ConfiguredModelProbe],
-    seen: dict[tuple[str, str, str, str | None, bool], int],
+    seen: dict[tuple[str, str, str, str, str | None, bool], int],
 ) -> None:
     """Add or merge one unique configured-model probe for setup validation."""
     provider_subentry_id, profile_id = parse_model_profile_ref(profile_ref)
@@ -182,17 +185,21 @@ def _add_configured_model_probe(
     model_settings = validation_probe_model_settings(
         settings if isinstance(settings, Mapping) else {}, subentry_data
     )
-    effective_thinking = effective_thinking_setting(
-        str(provider_subentry.data.get(CONF_PROVIDER_MODE, "")),
-        model,
-        model_settings.get(CONF_THINKING),
-    )
+    try:
+        effective_thinking = effective_profile_thinking_setting(
+            str(provider_subentry.data.get(CONF_PROVIDER_MODE, "")),
+            profile,
+            model_settings.get(CONF_THINKING),
+        )
+    except (HomeAssistantError, KeyError, ValueError):
+        effective_thinking = None
     if effective_thinking is None:
         model_settings.pop(CONF_THINKING, None)
     else:
         model_settings[CONF_THINKING] = effective_thinking
     dedupe_key = (
         provider_subentry.subentry_id,
+        profile_ref,
         model,
         normalise_applied_model_settings(model_settings),
         output_mode,
@@ -254,6 +261,7 @@ async def _async_validate_configured_models(
                     probe.provider_subentry.data,
                     probe.model,
                     probe.model_settings,
+                    profile_id=parse_model_profile_ref(probe.issue_profile_id)[1],
                     stream=probe.stream,
                 )
             else:
@@ -262,6 +270,7 @@ async def _async_validate_configured_models(
                     probe.provider_subentry.data,
                     probe.model,
                     probe.model_settings,
+                    profile_id=parse_model_profile_ref(probe.issue_profile_id)[1],
                     structured_output_mode=probe.output_mode,
                     stream=probe.stream,
                 )

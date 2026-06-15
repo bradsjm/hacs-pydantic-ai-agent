@@ -37,6 +37,8 @@ from ._provider_validation_errors import (
 )
 from .const import (
     CONF_BASE_URL,
+    CONF_MODEL,
+    CONF_MODEL_PROFILES,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
@@ -57,6 +59,7 @@ from .model_settings import (
     PROBE_STRIPPED_MODEL_SETTING_KEYS,
     strip_model_settings,
 )
+from .openai_compatible_profile import is_openai_compatible_provider_mode
 from .provider import (
     anthropic_model,
     effective_thinking_setting,
@@ -66,6 +69,8 @@ from .provider import (
     normalise_base_url,
     openai_compatible_client_from_config,
     openai_compatible_completions_model_from_config,
+    openai_compatible_effective_thinking_setting,
+    openai_compatible_model_profile,
     openai_compatible_responses_model_from_config,
 )
 from .structured_output import (
@@ -107,17 +112,35 @@ def provider_extra_body_supported(data: Mapping[str, Any]) -> bool:
 
 
 def _openai_compatible_model(
-    hass: HomeAssistant, data: Mapping[str, Any], model_name: str
+    hass: HomeAssistant,
+    data: Mapping[str, Any],
+    model_name: str,
+    *,
+    profile_id: str | None = None,
 ) -> Model:
     """Build a Pydantic AI model for validation."""
     provider_mode = data[CONF_PROVIDER_MODE]
-    try:
+    if is_openai_compatible_provider_mode(provider_mode):
+        try:
+            profile = openai_compatible_model_profile(
+                _persisted_openai_compatible_profile_data(data, model_name, profile_id)
+            )
+        except (KeyError, ValueError) as err:
+            raise ProviderValidationError("invalid_provider_config", str(err)) from err
         if provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS:
             return openai_compatible_completions_model_from_config(
-                hass, data, model_name
+                hass,
+                data,
+                model_name,
+                profile=profile,
             )
-        if provider_mode == PROVIDER_OPENAI_COMPATIBLE_RESPONSES:
-            return openai_compatible_responses_model_from_config(hass, data, model_name)
+        return openai_compatible_responses_model_from_config(
+            hass,
+            data,
+            model_name,
+            profile=profile,
+        )
+    try:
         kwargs = {
             "api_key": data[CONF_API_KEY],
             "base_url": normalise_base_url(data.get(CONF_BASE_URL)),
@@ -276,15 +299,57 @@ def _build_probe_request_parameters(
 
 
 def _probe_thinking(
-    data: Mapping[str, Any], model_name: str, thinking: ThinkingLevel | None
+    data: Mapping[str, Any],
+    model_name: str,
+    thinking: ThinkingLevel | None,
+    *,
+    profile_id: str | None = None,
 ) -> ThinkingLevel | None:
     """Return probe thinking only when the effective runtime profile supports it."""
     try:
+        provider_mode = data[CONF_PROVIDER_MODE]
+        if is_openai_compatible_provider_mode(provider_mode):
+            return openai_compatible_effective_thinking_setting(
+                _persisted_openai_compatible_profile_data(
+                    data, model_name, profile_id
+                ),
+                thinking,
+            )
         return effective_thinking_setting(
-            data[CONF_PROVIDER_MODE], model_name, thinking
+            provider_mode, model_name, thinking
         )
-    except ValueError:
+    except (KeyError, ValueError) as err:
+        if is_openai_compatible_provider_mode(data[CONF_PROVIDER_MODE]):
+            raise ProviderValidationError("invalid_provider_config", str(err)) from err
         return None
+
+
+def _persisted_openai_compatible_profile_data(
+    data: Mapping[str, Any],
+    model_name: str,
+    profile_id: str | None = None,
+) -> Mapping[str, Any]:
+    """Return persisted OpenAI-compatible profile data for one model probe."""
+    profiles = data.get(CONF_MODEL_PROFILES)
+    if not isinstance(profiles, Mapping):
+        raise ProviderValidationError(
+            "invalid_provider_config",
+            "OpenAI-compatible model profiles require persisted capability settings.",
+        )
+    if profile_id is None:
+        raise ProviderValidationError(
+            "invalid_provider_config",
+            "OpenAI-compatible model probes require a persisted profile id.",
+        )
+    profile = profiles.get(profile_id)
+    if isinstance(profile, Mapping):
+        configured_model_name = profile.get(CONF_MODEL)
+        if configured_model_name == model_name:
+            return profile
+    raise ProviderValidationError(
+        "invalid_provider_config",
+        "OpenAI-compatible model profile capabilities were not found.",
+    )
 
 
 async def async_probe_model(
@@ -293,6 +358,7 @@ async def async_probe_model(
     model_name: str,
     model_settings: Mapping[str, Any] | None = None,
     *,
+    profile_id: str | None = None,
     structured_output_mode: str | None = None,
     stream: bool = True,
 ) -> None:
@@ -304,8 +370,18 @@ async def async_probe_model(
             if model_settings is None
             else model_settings.get(_MODEL_SETTING_THINKING)
         )
-        thinking = _probe_thinking(data, model_name, thinking)
-        model = _openai_compatible_model(hass, data, model_name)
+        thinking = _probe_thinking(
+            data,
+            model_name,
+            thinking,
+            profile_id=profile_id,
+        )
+        model = _openai_compatible_model(
+            hass,
+            data,
+            model_name,
+            profile_id=profile_id,
+        )
         model_request_parameters = _build_probe_request_parameters(
             structured_output_mode, thinking
         )

@@ -107,6 +107,17 @@ def _normalize_models(
                 input_price=_price(pricing.get("input")),
                 output_price=_price(pricing.get("output")),
                 cache_read_price=_price(pricing.get("cache_read")),
+                thinking_support=(
+                    "supported" if raw_model.get("reasoning") is True else "none"
+                ),
+                structured_output_support=(
+                    "json_object"
+                    if raw_model.get("structured_output") is True
+                    else "none"
+                ),
+                supports_tools=raw_model.get("tool_call") is True,
+                openai_supports_strict_tool_definition=True,
+                openai_supports_encrypted_reasoning_content=False,
             )
         )
     return tuple(sorted(models, key=lambda model: (model.name.casefold(), model.id)))

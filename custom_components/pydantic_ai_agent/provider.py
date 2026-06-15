@@ -12,6 +12,7 @@ from pydantic_ai.models import Model
 from pydantic_ai.profiles import ModelProfile
 from pydantic_ai.profiles.anthropic import anthropic_model_profile
 from pydantic_ai.profiles.google import google_model_profile
+from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.settings import ThinkingLevel
 
 from .const import (
@@ -28,6 +29,7 @@ from .openai_compatible_adapter import (
     OpenAICompatibleResponsesModel,
 )
 from .openai_compatible_client import AsyncOpenAICompatible
+from .openai_compatible_profile import PersistedOpenAICompatibleProfile
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -85,7 +87,7 @@ def model_profile_for_provider_mode(
         PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     }:
-        return OpenAICompatibleProvider.model_profile(model_name)
+        return None
     return None
 
 
@@ -118,6 +120,35 @@ def effective_thinking_setting(
     if thinking is False and not support.can_disable:
         return None
     return thinking
+
+
+def openai_compatible_model_profile(
+    profile_data: Mapping[str, Any],
+) -> OpenAIModelProfile:
+    """Return an OpenAIModelProfile built only from persisted profile data."""
+    return PersistedOpenAICompatibleProfile.from_mapping(
+        profile_data
+    ).as_model_profile()
+
+
+def openai_compatible_thinking_support(
+    profile_data: Mapping[str, Any],
+) -> ThinkingSupport:
+    """Return thinking support from persisted OpenAI-compatible profile data."""
+    profile = PersistedOpenAICompatibleProfile.from_mapping(profile_data)
+    return ThinkingSupport(
+        supported=profile.supports_thinking(),
+        can_disable=profile.can_disable_thinking(),
+    )
+
+
+def openai_compatible_effective_thinking_setting(
+    profile_data: Mapping[str, Any], thinking: ThinkingLevel | None
+) -> ThinkingLevel | None:
+    """Return thinking from persisted OpenAI-compatible profile data."""
+    return PersistedOpenAICompatibleProfile.from_mapping(
+        profile_data
+    ).effective_thinking_setting(thinking)
 
 
 def _strip_version_suffix(base_url: str | None, *versions: str) -> str | None:
@@ -206,6 +237,7 @@ def openai_compatible_completions_model(
     base_url: str | None,
     headers: dict[str, str] | None = None,
     model_name: str,
+    profile: ModelProfile | None = None,
 ) -> Model:
     """Build a Pydantic AI OpenAI-compatible Completions model."""
     provider = OpenAICompatibleProvider(
@@ -217,7 +249,7 @@ def openai_compatible_completions_model(
         # connection-pooling configuration.
         http_client=get_async_client(hass),
     )
-    return OpenAICompatibleChatModel(model_name, provider=provider)
+    return OpenAICompatibleChatModel(model_name, provider=provider, profile=profile)
 
 
 def openai_compatible_responses_model(
@@ -227,6 +259,7 @@ def openai_compatible_responses_model(
     base_url: str | None,
     headers: dict[str, str] | None = None,
     model_name: str,
+    profile: ModelProfile | None = None,
 ) -> Model:
     """Build a Pydantic AI OpenAI-compatible Responses model."""
     provider = OpenAICompatibleProvider(
@@ -238,7 +271,9 @@ def openai_compatible_responses_model(
         # connection-pooling configuration.
         http_client=get_async_client(hass),
     )
-    return OpenAICompatibleResponsesModel(model_name, provider=provider)
+    return OpenAICompatibleResponsesModel(
+        model_name, provider=provider, profile=profile
+    )
 
 
 def _api_url(base_url: str, path: str) -> str:
@@ -364,7 +399,11 @@ def openai_compatible_client_from_config(
 
 
 def openai_compatible_completions_model_from_config(
-    hass: HomeAssistant, data: Mapping[str, Any], model_name: str
+    hass: HomeAssistant,
+    data: Mapping[str, Any],
+    model_name: str,
+    *,
+    profile: ModelProfile | None = None,
 ) -> Model:
     """Build a Pydantic AI Completions model from config entry data."""
     headers = data.get(CONF_PROVIDER_HEADERS)
@@ -374,11 +413,16 @@ def openai_compatible_completions_model_from_config(
         base_url=normalise_base_url(data.get(CONF_BASE_URL)),
         headers=dict(headers) if isinstance(headers, Mapping) else None,
         model_name=model_name,
+        profile=profile,
     )
 
 
 def openai_compatible_responses_model_from_config(
-    hass: HomeAssistant, data: Mapping[str, Any], model_name: str
+    hass: HomeAssistant,
+    data: Mapping[str, Any],
+    model_name: str,
+    *,
+    profile: ModelProfile | None = None,
 ) -> Model:
     """Build a Pydantic AI Responses model from config entry data."""
     headers = data.get(CONF_PROVIDER_HEADERS)
@@ -388,4 +432,5 @@ def openai_compatible_responses_model_from_config(
         base_url=normalise_base_url(data.get(CONF_BASE_URL)),
         headers=dict(headers) if isinstance(headers, Mapping) else None,
         model_name=model_name,
+        profile=profile,
     )

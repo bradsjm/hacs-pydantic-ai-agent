@@ -7,6 +7,10 @@ from pathlib import Path
 import pytest
 from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
+    CONF_DEFAULT_MODEL_PROFILE_ID,
+    CONF_ENABLED,
+    CONF_MODEL,
+    CONF_MODEL_PROFILES,
     CONF_PROVIDER_MODE,
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
@@ -62,13 +66,26 @@ class ProviderIntegrationConfig:
     base_url: str
 
     @property
-    def provider_data(self) -> dict[str, str]:
+    def provider_data(self) -> dict[str, object]:
         """Return config-entry provider data for OpenAI-compatible mode."""
         return {
             CONF_NAME: "Live OpenAI-compatible Provider",
             CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
             CONF_API_KEY: self.api_key,
             CONF_BASE_URL: self.base_url,
+            CONF_DEFAULT_MODEL_PROFILE_ID: MODEL_PROFILE_ID,
+            CONF_MODEL_PROFILES: {
+                MODEL_PROFILE_ID: {
+                    "id": MODEL_PROFILE_ID,
+                    CONF_MODEL: self.model,
+                    CONF_ENABLED: True,
+                    "thinking_support": "supported",
+                    "structured_output_support": "json_schema",
+                    "supports_tools": True,
+                    "openai_supports_strict_tool_definition": True,
+                    "openai_supports_encrypted_reasoning_content": False,
+                }
+            },
         }
 
 

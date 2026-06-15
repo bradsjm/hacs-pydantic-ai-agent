@@ -51,6 +51,12 @@ CONF_MODEL = "model"
 CONF_MODEL_PRICING = "model_pricing"
 CONF_MODEL_PROFILES = "model_profiles"
 CONF_MODEL_SETTINGS = "model_settings"
+CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT = (
+    "openai_supports_encrypted_reasoning_content"
+)
+CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION = (
+    "openai_supports_strict_tool_definition"
+)
 CONF_OUTPUT_MODE = "output_mode"
 CONF_PRIMARY_MODEL_REF = "primary_model_ref"
 CONF_PROMPT = "prompt"
@@ -65,7 +71,10 @@ CONF_SKILL_CONTENT = "content"
 CONF_SKILL_REFERENCES = "references"
 CONF_SKILLS = "skills"
 CONF_STREAMING_ENABLED = "streaming_enabled"
+CONF_STRUCTURED_OUTPUT_SUPPORT = "structured_output_support"
+CONF_SUPPORTS_TOOLS = "supports_tools"
 CONF_THINKING = "thinking"
+CONF_THINKING_SUPPORT = "thinking_support"
 CONF_TIMEOUT = "timeout"
 CONF_TOOL_RETRIES = "tool_retries"
 CONF_TODO_LIST_ENTITY_ID = "todo_list_entity_id"

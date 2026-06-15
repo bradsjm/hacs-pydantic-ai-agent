@@ -13,9 +13,7 @@ from custom_components.pydantic_ai_agent.config_flows.workspace_flow import (
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
-    CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
-    CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
@@ -36,6 +34,7 @@ from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_validation as cv
+from tests.components.pydantic_ai_agent.support.builders import model_profile_data
 from tests.components.pydantic_ai_agent.support.wizard import (
     entry_flow_configure_result,
     entry_flow_init_result,
@@ -65,12 +64,11 @@ async def test_conversation_entity_streaming_supports_model_profile_ref(
                     CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                     CONF_API_KEY: "sk-test",
                     CONF_MODEL_PROFILES: {
-                        default_profile_id: {
-                            "id": default_profile_id,
-                            CONF_NAME: "GPT Mini",
-                            CONF_MODEL: "gpt-4.1-mini",
-                            CONF_ENABLED: True,
-                        }
+                        default_profile_id: model_profile_data(
+                            profile_id=default_profile_id,
+                            name="GPT Mini",
+                            model="gpt-4.1-mini",
+                        )
                     },
                 },
             },
@@ -155,12 +153,11 @@ async def test_conversation_disabled_skills_ignores_invalid_folder(
                     CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                     CONF_API_KEY: "sk-test",
                     CONF_MODEL_PROFILES: {
-                        default_profile_id: {
-                            "id": default_profile_id,
-                            CONF_NAME: "GPT Mini",
-                            CONF_MODEL: "gpt-4.1-mini",
-                            CONF_ENABLED: True,
-                        }
+                        default_profile_id: model_profile_data(
+                            profile_id=default_profile_id,
+                            name="GPT Mini",
+                            model="gpt-4.1-mini",
+                        )
                     },
                 },
             },
@@ -211,24 +208,21 @@ async def test_conversation_subentry_persists_fallback_row_order(
                     CONF_PROVIDER_MODE: PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
                     CONF_API_KEY: "sk-test",
                     CONF_MODEL_PROFILES: {
-                        "profile-1": {
-                            "id": "profile-1",
-                            CONF_NAME: "GPT Mini",
-                            CONF_MODEL: "gpt-4.1-mini",
-                            CONF_ENABLED: True,
-                        },
-                        "profile-2": {
-                            "id": "profile-2",
-                            CONF_NAME: "GPT Cheap",
-                            CONF_MODEL: "gpt-4.1-nano",
-                            CONF_ENABLED: True,
-                        },
-                        "profile-3": {
-                            "id": "profile-3",
-                            CONF_NAME: "GPT Backup",
-                            CONF_MODEL: "gpt-4.1",
-                            CONF_ENABLED: True,
-                        },
+                        "profile-1": model_profile_data(
+                            profile_id="profile-1",
+                            name="GPT Mini",
+                            model="gpt-4.1-mini",
+                        ),
+                        "profile-2": model_profile_data(
+                            profile_id="profile-2",
+                            name="GPT Cheap",
+                            model="gpt-4.1-nano",
+                        ),
+                        "profile-3": model_profile_data(
+                            profile_id="profile-3",
+                            name="GPT Backup",
+                            model="gpt-4.1",
+                        ),
                     },
                 },
             },

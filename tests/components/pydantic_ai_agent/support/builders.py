@@ -46,6 +46,9 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
+from custom_components.pydantic_ai_agent.openai_compatible_profile import (
+    default_openai_compatible_profile_data,
+)
 from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY, CONF_NAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -67,6 +70,7 @@ def model_profile_data(
         CONF_NAME: name,
         CONF_MODEL: model,
         CONF_ENABLED: enabled,
+        **default_openai_compatible_profile_data(),
     }
     if discovered is not None:
         data[CONF_DISCOVERED] = discovered

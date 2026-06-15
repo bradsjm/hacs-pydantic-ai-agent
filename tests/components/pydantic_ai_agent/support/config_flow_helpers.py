@@ -57,14 +57,25 @@ def section_selector(data_schema: vol.Schema, section_name: str, field: str) -> 
     raise AssertionError(f"Section field {section_name}.{field} not found")
 
 
-def thinking_test_entry(provider_mode: str, model_name: str) -> MockConfigEntry:
+def thinking_test_entry(
+    provider_mode: str,
+    model_name: str,
+    *,
+    thinking_support: str | None = None,
+) -> MockConfigEntry:
     """Return a workspace entry for thinking-support tests."""
+    extra_data = {}
+    if provider_mode.startswith("openai_compatible") and thinking_support is not None:
+        extra_data = {"thinking_support": thinking_support}
     return workspace_entry(
         (
             provider_subentry_data(
                 provider_mode=provider_mode,
                 model_profiles={
-                    "profile-1": model_profile_data(model=model_name),
+                    "profile-1": model_profile_data(
+                        model=model_name,
+                        extra_data=extra_data,
+                    ),
                 },
             ),
         )

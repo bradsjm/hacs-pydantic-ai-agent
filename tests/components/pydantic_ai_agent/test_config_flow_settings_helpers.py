@@ -268,18 +268,34 @@ def test_run_settings_schema_keeps_false_thinking_option_when_disablable() -> No
 
 
 @pytest.mark.parametrize(
-    ("provider_mode", "model_name", "supports_thinking"),
+    ("provider_mode", "model_name", "thinking_support", "supports_thinking"),
     [
-        (PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS, "deepseek-v4-flash", False),
-        (PROVIDER_ANTHROPIC, "claude-sonnet-4", True),
+        (
+            PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            "deepseek-v4-flash",
+            "none",
+            False,
+        ),
+        (
+            PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+            "deepseek-v4-flash",
+            "supported",
+            True,
+        ),
+        (PROVIDER_ANTHROPIC, "claude-sonnet-4", None, True),
     ],
 )
 def test_run_settings_visibility_reflects_effective_profile_thinking_support(
     provider_mode: str,
     model_name: str,
+    thinking_support: str | None,
     supports_thinking: bool,
 ) -> None:
-    entry = thinking_test_entry(provider_mode, model_name)
+    entry = thinking_test_entry(
+        provider_mode,
+        model_name,
+        thinking_support=thinking_support,
+    )
 
     visibility = _run_settings_visibility(entry)
 
@@ -315,6 +331,7 @@ def test_save_time_helpers_prune_unsupported_thinking(
     entry = thinking_test_entry(
         PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         "deepseek-v4-flash",
+        thinking_support="none",
     )
 
     result = helper(user_input, {}, entry)
