@@ -51,8 +51,6 @@ def _responses_model_with_transport(
                     "thinking_support": "supported",
                     "structured_output_support": "json_schema",
                     "supports_tools": True,
-                    "openai_supports_strict_tool_definition": True,
-                    "openai_supports_encrypted_reasoning_content": True,
                 }
             ),
         ),
@@ -178,7 +176,7 @@ async def test_responses_request_maps_tools_structured_output_and_reasoning() ->
     assert body["tool_choice"] == "auto"
     assert body["max_output_tokens"] == 20
     assert body["reasoning"] == {"effort": "medium"}
-    assert body["include"] == ["reasoning.encrypted_content"]
+    assert "include" not in body
     assert body["text"] == {
         "format": {
             "type": "json_schema",

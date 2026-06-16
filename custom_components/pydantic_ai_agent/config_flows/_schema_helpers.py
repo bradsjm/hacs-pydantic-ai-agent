@@ -51,7 +51,6 @@ from ._constants import (
     _MODEL_SETTING_FREQUENCY_PENALTY,
     _MODEL_SETTING_MAX_ITERATIONS,
     _MODEL_SETTING_MAX_TOKENS,
-    _MODEL_SETTING_PARALLEL_TOOL_CALLS,
     _MODEL_SETTING_PRESENCE_PENALTY,
     _MODEL_SETTING_SEED,
     _MODEL_SETTING_TEMPERATURE,
@@ -303,15 +302,8 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
     model_settings = options.get(CONF_MODEL_SETTINGS, {})
     if not isinstance(model_settings, Mapping):
         model_settings = {}
-    parallel_tool_calls_key = vol.Optional(_MODEL_SETTING_PARALLEL_TOOL_CALLS)
-    if _MODEL_SETTING_PARALLEL_TOOL_CALLS in model_settings:
-        parallel_tool_calls_key = vol.Optional(
-            _MODEL_SETTING_PARALLEL_TOOL_CALLS,
-            default=model_settings[_MODEL_SETTING_PARALLEL_TOOL_CALLS],
-        )
     return vol.Schema(
         {
-            parallel_tool_calls_key: BooleanSelector(),
             vol.Optional(
                 _MODEL_SETTING_TOP_P,
                 description={

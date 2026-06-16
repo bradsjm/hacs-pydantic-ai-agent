@@ -17,8 +17,6 @@ from ..const import (
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
-    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
-    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PROVIDER_METADATA,
     CONF_STRUCTURED_OUTPUT_SUPPORT,
     CONF_SUPPORTS_TOOLS,
@@ -317,6 +315,7 @@ class ProviderModelManagementMixin:
                     structured_output=None,
                     reasoning=False,
                     attachment=False,
+                    input_modalities=(),
                     text_output=True,
                     context_limit=0,
                     output_limit=0,
@@ -328,18 +327,6 @@ class ProviderModelManagementMixin:
                         profile.get(CONF_STRUCTURED_OUTPUT_SUPPORT, "none")
                     ),
                     supports_tools=bool(profile.get(CONF_SUPPORTS_TOOLS, True)),
-                    openai_supports_strict_tool_definition=bool(
-                        profile.get(
-                            CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
-                            True,
-                        )
-                    ),
-                    openai_supports_encrypted_reasoning_content=bool(
-                        profile.get(
-                            CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
-                            False,
-                        )
-                    ),
                 )
         return tuple(managed_models.values())
 

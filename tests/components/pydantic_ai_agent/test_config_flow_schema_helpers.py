@@ -12,7 +12,9 @@ from custom_components.pydantic_ai_agent.config_flows._ai_task_schema_helpers im
 from custom_components.pydantic_ai_agent.config_flows._constants import (
     _MODEL_PRICING_CACHE_READ,
     _MODEL_PRICING_INPUT,
+    _MODEL_SETTING_PARALLEL_TOOL_CALLS,
     _SECTION_MODEL_PRICING,
+    _SECTION_OPENAI_COMPATIBLE_CAPABILITIES,
 )
 from custom_components.pydantic_ai_agent.config_flows._profile_helpers import (
     _fallback_model_profile_select_options,
@@ -39,7 +41,10 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_PRIMARY_MODEL_REF,
     CONF_SKILLS,
     CONF_STREAMING_ENABLED,
+    CONF_STRUCTURED_OUTPUT_SUPPORT,
+    CONF_SUPPORTS_TOOLS,
     CONF_TEMPLATED_EXTRA_BODY,
+    CONF_THINKING_SUPPORT,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
 )
 from homeassistant.const import CONF_LLM_HASS_API
@@ -65,9 +70,22 @@ from tests.components.pydantic_ai_agent.support.schemas import (
 )
 
 
-def test_model_settings_schema_puts_parallel_tool_calls_first() -> None:
+def test_model_settings_schema_omits_parallel_tool_calls() -> None:
     data_schema = _model_settings_schema()
-    assert "parallel_tool_calls" in schema_key_names(data_schema)
+    assert "parallel_tool_calls" not in schema_key_names(data_schema)
+
+
+def test_model_profile_edit_capability_schema_contains_parallel_tool_calls() -> None:
+    data_schema = _model_profile_edit_schema(
+        model_profile_data(), PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS
+    )
+
+    assert section_key_names(data_schema, _SECTION_OPENAI_COMPATIBLE_CAPABILITIES) == {
+        CONF_THINKING_SUPPORT,
+        CONF_STRUCTURED_OUTPUT_SUPPORT,
+        CONF_SUPPORTS_TOOLS,
+        _MODEL_SETTING_PARALLEL_TOOL_CALLS,
+    }
 
 
 def test_model_settings_schema_formats_stored_values() -> None:

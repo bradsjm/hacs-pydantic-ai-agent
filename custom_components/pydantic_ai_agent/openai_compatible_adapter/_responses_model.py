@@ -202,9 +202,6 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
             stream=stream,
             timeout=model_settings.get("timeout", NOT_GIVEN),
             reasoning=_reasoning(model_settings, model_request_parameters),
-            include=["reasoning.encrypted_content"]
-            if openai_profile.openai_supports_encrypted_reasoning_content
-            else omit,
             user=model_settings.get("user", model_settings.get("openai_user", omit)),
             temperature=model_settings.get("temperature", omit),
             top_p=model_settings.get("top_p", omit),

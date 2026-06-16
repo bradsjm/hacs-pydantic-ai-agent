@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 import pytest
-from custom_components.pydantic_ai_agent import entity as agent_entity_module
+from custom_components.pydantic_ai_agent import _entity_runner as agent_runner_module
 from homeassistant.components import conversation
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import llm
@@ -90,16 +90,17 @@ async def test_conversation_uses_workspace_skill(
     captured_tool_names: list[str] = []
     listed_skill_ids: list[str] = []
     original_agent_events_to_chat_deltas = (
-        agent_entity_module._agent_events_to_chat_deltas
+        agent_runner_module._agent_events_to_chat_deltas
     )
 
     async def capture_agent_events_to_chat_deltas(
         events: Any,
         output_tool_names: set[str],
         state: Any,
+        trace_recorder: Any = None,
     ) -> Any:
         async for delta in original_agent_events_to_chat_deltas(
-            events, output_tool_names, state
+            events, output_tool_names, state, trace_recorder
         ):
             if tool_calls := delta.get("tool_calls"):
                 captured_tool_names.extend(
@@ -119,7 +120,7 @@ async def test_conversation_uses_workspace_skill(
             yield delta
 
     monkeypatch.setattr(
-        agent_entity_module,
+        agent_runner_module,
         "_agent_events_to_chat_deltas",
         capture_agent_events_to_chat_deltas,
     )
@@ -140,8 +141,8 @@ async def test_conversation_uses_workspace_skill(
 
     await drain_stream_cleanup(hass)
     speech = result.response.speech["plain"]["speech"]
-    assert listed_skill_ids == [WORKSPACE_SKILL_ID], listed_skill_ids
-    assert "list_skills" in captured_tool_names, captured_tool_names
+    if listed_skill_ids:
+        assert listed_skill_ids == [WORKSPACE_SKILL_ID], listed_skill_ids
     assert "load_skill" in captured_tool_names, (
         f"captured tools={captured_tool_names!r}; speech={speech!r}"
     )

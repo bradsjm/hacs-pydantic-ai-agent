@@ -122,6 +122,7 @@ def wizard_model(
         structured_output=True,
         reasoning=False,
         attachment=False,
+        input_modalities=(),
         text_output=True,
         context_limit=128000,
         output_limit=16000,

@@ -57,13 +57,12 @@ class ProviderIntegrationConfig:
             CONF_MODEL_PROFILES: {
                 MODEL_PROFILE_ID: {
                     "id": MODEL_PROFILE_ID,
+                    CONF_NAME: "Live OpenAI-compatible Model",
                     CONF_MODEL: self.model,
                     CONF_ENABLED: True,
                     "thinking_support": "supported",
                     "structured_output_support": "json_schema",
                     "supports_tools": True,
-                    "openai_supports_strict_tool_definition": True,
-                    "openai_supports_encrypted_reasoning_content": False,
                 }
             },
         }

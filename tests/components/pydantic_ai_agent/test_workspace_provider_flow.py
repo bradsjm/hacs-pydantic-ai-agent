@@ -15,8 +15,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_ENABLED,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
-    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
-    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PROVIDER_MODE,
     CONF_STRUCTURED_OUTPUT_SUPPORT,
     CONF_SUPPORTS_TOOLS,
@@ -220,8 +218,6 @@ async def test_guided_provider_subentry_creates_enabled_profile(
     assert profile[CONF_THINKING_SUPPORT] == "none"
     assert profile[CONF_STRUCTURED_OUTPUT_SUPPORT] == "json_object"
     assert profile[CONF_SUPPORTS_TOOLS] is True
-    assert profile[CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION] is True
-    assert profile[CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT] is False
 
 
 async def test_guided_provider_hidden_models_shows_filter_step(

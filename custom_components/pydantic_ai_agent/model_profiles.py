@@ -25,8 +25,6 @@ from .const import (
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
-    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_MODE,
@@ -81,8 +79,6 @@ class ResolvedModelProfile:
     thinking_support: str | None = None
     structured_output_support: str | None = None
     supports_tools: bool | None = None
-    openai_supports_strict_tool_definition: bool | None = None
-    openai_supports_encrypted_reasoning_content: bool | None = None
 
 
 ModelProfile = ResolvedModelProfile
@@ -224,16 +220,6 @@ def resolve_model_profile(
         ),
         supports_tools=(
             openai_profile.supports_tools if openai_profile is not None else None
-        ),
-        openai_supports_strict_tool_definition=(
-            openai_profile.openai_supports_strict_tool_definition
-            if openai_profile is not None
-            else None
-        ),
-        openai_supports_encrypted_reasoning_content=(
-            openai_profile.openai_supports_encrypted_reasoning_content
-            if openai_profile is not None
-            else None
         ),
     )
 
@@ -456,8 +442,6 @@ def _resolved_openai_profile_data(profile: ResolvedModelProfile) -> dict[str, An
         profile.thinking_support is None
         or profile.structured_output_support is None
         or profile.supports_tools is None
-        or profile.openai_supports_strict_tool_definition is None
-        or profile.openai_supports_encrypted_reasoning_content is None
     ):
         raise HomeAssistantError(
             "Configured OpenAI-compatible model profile is incomplete"
@@ -466,12 +450,6 @@ def _resolved_openai_profile_data(profile: ResolvedModelProfile) -> dict[str, An
         CONF_THINKING_SUPPORT: profile.thinking_support,
         CONF_STRUCTURED_OUTPUT_SUPPORT: profile.structured_output_support,
         CONF_SUPPORTS_TOOLS: profile.supports_tools,
-        CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: (
-            profile.openai_supports_strict_tool_definition
-        ),
-        CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: (
-            profile.openai_supports_encrypted_reasoning_content
-        ),
     }
 
 

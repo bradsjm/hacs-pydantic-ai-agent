@@ -10,8 +10,6 @@ from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.settings import ThinkingLevel
 
 from .const import (
-    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
-    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_STRUCTURED_OUTPUT_SUPPORT,
     CONF_SUPPORTS_TOOLS,
     CONF_THINKING_SUPPORT,
@@ -39,8 +37,6 @@ class PersistedOpenAICompatibleProfile:
     thinking_support: ThinkingSupportMode
     structured_output_support: StructuredOutputSupportMode
     supports_tools: bool
-    openai_supports_strict_tool_definition: bool
-    openai_supports_encrypted_reasoning_content: bool
 
     @classmethod
     def from_mapping(
@@ -62,32 +58,10 @@ class PersistedOpenAICompatibleProfile:
         if not isinstance(supports_tools, bool):
             raise ValueError(f"Invalid {CONF_SUPPORTS_TOOLS!r} value")
 
-        strict_tool_definition = profile_data[
-            CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION
-        ]
-        if not isinstance(strict_tool_definition, bool):
-            raise ValueError(
-                f"Invalid {CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION!r} value"
-            )
-
-        encrypted_reasoning_content = profile_data[
-            CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT
-        ]
-        if not isinstance(encrypted_reasoning_content, bool):
-            raise ValueError(
-                "Invalid"
-                f" {CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT!r} value"
-            )
-
-        if not supports_tools and strict_tool_definition:
-            raise ValueError("Strict tool definitions require tool support")
-
         return cls(
             thinking_support=thinking_support,
             structured_output_support=structured_output_support,
             supports_tools=supports_tools,
-            openai_supports_strict_tool_definition=strict_tool_definition,
-            openai_supports_encrypted_reasoning_content=encrypted_reasoning_content,
         )
 
     def supports_thinking(self) -> bool:
@@ -121,12 +95,7 @@ class PersistedOpenAICompatibleProfile:
             supports_json_schema_output=self.structured_output_support
             == "json_schema",
             supports_json_object_output=supports_json_object_output,
-            openai_supports_strict_tool_definition=(
-                self.openai_supports_strict_tool_definition
-            ),
-            openai_supports_encrypted_reasoning_content=(
-                self.openai_supports_encrypted_reasoning_content
-            ),
+            openai_supports_strict_tool_definition=True,
             openai_system_prompt_role="system",
         )
 
@@ -145,6 +114,4 @@ def default_openai_compatible_profile_data() -> dict[str, object]:
         CONF_THINKING_SUPPORT: "none",
         CONF_STRUCTURED_OUTPUT_SUPPORT: "none",
         CONF_SUPPORTS_TOOLS: True,
-        CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: True,
-        CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: False,
     }

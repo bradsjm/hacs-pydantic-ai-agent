@@ -30,6 +30,7 @@ class CatalogModelOption:
     structured_output: bool | None
     reasoning: bool
     attachment: bool
+    input_modalities: tuple[str, ...]
     text_output: bool
     context_limit: int
     output_limit: int
@@ -40,8 +41,6 @@ class CatalogModelOption:
     thinking_support: str = "none"
     structured_output_support: str = "none"
     supports_tools: bool = True
-    openai_supports_strict_tool_definition: bool = True
-    openai_supports_encrypted_reasoning_content: bool = False
 
 
 @dataclass(frozen=True, slots=True)

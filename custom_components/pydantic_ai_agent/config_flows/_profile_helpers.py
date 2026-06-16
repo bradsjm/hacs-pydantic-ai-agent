@@ -35,8 +35,6 @@ from ..const import (
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
-    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
-    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_MODE,
     CONF_STRUCTURED_OUTPUT_SUPPORT,
@@ -56,13 +54,12 @@ from ..model_profiles import (
     provider_subentries,
 )
 from ..openai_compatible_profile import (
-    OPENAI_COMPATIBLE_STRUCTURED_OUTPUT_SUPPORT_OPTIONS,
-    OPENAI_COMPATIBLE_THINKING_SUPPORT_OPTIONS,
     default_openai_compatible_profile_data,
     is_openai_compatible_provider_mode,
 )
 from ._constants import (
     _CONF_MODEL_PROFILE_ID,
+    _MODEL_SETTING_PARALLEL_TOOL_CALLS,
     _MODEL_SETTING_TEMPERATURE,
     _SECTION_ADVANCED_MODEL_SETTINGS,
     _SECTION_MODEL_PRICING,
@@ -75,6 +72,7 @@ from ._profile_validation_logging import (  # noqa: F401
 )
 from ._settings_parsing import _model_settings_from_options
 from .helpers import _section_schema_key, _sorted_select_options
+from .provider_wizard.types import CatalogModelOption
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -404,7 +402,11 @@ def _model_profile_edit_schema(
                     default=capability_defaults[CONF_THINKING_SUPPORT],
                 ): SelectSelector(
                     SelectSelectorConfig(
-                        options=list(OPENAI_COMPATIBLE_THINKING_SUPPORT_OPTIONS),
+                        options=[
+                            SelectOptionDict(label="None", value="none"),
+                            SelectOptionDict(label="Supported", value="supported"),
+                            SelectOptionDict(label="Always", value="always"),
+                        ],
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
@@ -413,9 +415,15 @@ def _model_profile_edit_schema(
                     default=capability_defaults[CONF_STRUCTURED_OUTPUT_SUPPORT],
                 ): SelectSelector(
                     SelectSelectorConfig(
-                        options=list(
-                            OPENAI_COMPATIBLE_STRUCTURED_OUTPUT_SUPPORT_OPTIONS
-                        ),
+                        options=[
+                            SelectOptionDict(label="None", value="none"),
+                            SelectOptionDict(
+                                label="JSON Object", value="json_object"
+                            ),
+                            SelectOptionDict(
+                                label="JSON Schema", value="json_schema"
+                            ),
+                        ],
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
@@ -424,16 +432,16 @@ def _model_profile_edit_schema(
                     default=capability_defaults[CONF_SUPPORTS_TOOLS],
                 ): BooleanSelector(),
                 vol.Required(
-                    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
-                    default=capability_defaults[
-                        CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION
-                    ],
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
-                    default=capability_defaults[
-                        CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT
-                    ],
+                    _MODEL_SETTING_PARALLEL_TOOL_CALLS,
+                    default=(
+                        bool(
+                            options[CONF_MODEL_SETTINGS].get(
+                                _MODEL_SETTING_PARALLEL_TOOL_CALLS, False
+                            )
+                        )
+                        if isinstance(options[CONF_MODEL_SETTINGS], Mapping)
+                        else False
+                    ),
                 ): BooleanSelector(),
             }
         )
@@ -448,6 +456,92 @@ def _model_profile_edit_schema(
         section(model_pricing_schema, {"collapsed": True})
     )
     return vol.Schema(schema)
+
+
+def model_profile_description_placeholders(
+    profile: Mapping[str, Any], model: CatalogModelOption | None
+) -> dict[str, str]:
+    """Return description placeholders for the edit model profile form."""
+    return {"catalog_details": _model_profile_catalog_details(profile, model)}
+
+
+def _model_profile_catalog_details(
+    profile: Mapping[str, Any], model: CatalogModelOption | None
+) -> str:
+    """Return human-readable catalog details for one model profile."""
+    del profile
+    if model is None:
+        return "Catalog details unavailable for this model."
+    details: list[str] = []
+    if model.family:
+        details.append(f"Family: {model.family}")
+    capabilities = _catalog_capabilities(model)
+    if capabilities:
+        details.append(f"Capabilities: {', '.join(capabilities)}")
+    inputs = " ".join(_input_modality_labels(model))
+    if inputs:
+        details.append(f"Input: {inputs}")
+    limits = _catalog_limits(model)
+    if limits:
+        details.append(f"Limits: {', '.join(limits)}")
+    if model.status:
+        details.append(f"Status: {model.status}")
+    pricing = _catalog_pricing(model)
+    if pricing:
+        details.append(f"Pricing: {', '.join(pricing)}")
+    if details:
+        return "\n".join(details)
+    return "Catalog details unavailable for this model."
+
+
+def _catalog_capabilities(model: CatalogModelOption) -> list[str]:
+    """Return human-readable catalog capability labels."""
+    capabilities: list[str] = []
+    if model.reasoning:
+        capabilities.append("reasoning")
+    if model.supports_tools:
+        capabilities.append("tools")
+    if model.structured_output:
+        capabilities.append("structured output")
+    return capabilities
+
+
+def _catalog_limits(model: CatalogModelOption) -> list[str]:
+    """Return human-readable catalog limit labels."""
+    limits: list[str] = []
+    if model.context_limit:
+        limits.append(f"{model.context_limit:,} ctx")
+    if model.output_limit:
+        limits.append(f"{model.output_limit:,} output")
+    return limits
+
+
+def _catalog_pricing(model: CatalogModelOption) -> list[str]:
+    """Return human-readable catalog pricing labels."""
+    pricing: list[str] = []
+    if model.input_price is not None:
+        pricing.append(f"input ${model.input_price:g}/1M")
+    if model.output_price is not None:
+        pricing.append(f"output ${model.output_price:g}/1M")
+    if model.cache_read_price is not None:
+        pricing.append(f"cache read ${model.cache_read_price:g}/1M")
+    return pricing
+
+
+def _input_modality_labels(model: CatalogModelOption) -> tuple[str, ...]:
+    """Return glyph and name labels for one model's input modalities."""
+    labels = {
+        "text": "⊤ text",  # noqa: RUF001
+        "image": "▣ image",
+        "video": "▶ video",
+        "audio": "♪ audio",
+        "pdf": "▤ pdf",
+    }
+    return tuple(
+        labels[modality]
+        for modality in model.input_modalities
+        if modality in labels
+    )
 
 
 def _model_profile_select_options(entry: ConfigEntry | None) -> list[SelectOptionDict]:

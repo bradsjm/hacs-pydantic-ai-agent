@@ -11,14 +11,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from ..const import (
+    CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_NAME,
-    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PROVIDER_EXTRA_BODY,
+    CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
-    CONF_SUPPORTS_TOOLS,
     CONF_TEMPLATED_EXTRA_BODY,
 )
 from ..openai_compatible_profile import (
@@ -33,6 +33,7 @@ from ._constants import (
     _MODEL_PRICING_CACHE_READ,
     _MODEL_PRICING_INPUT,
     _MODEL_PRICING_OUTPUT,
+    _MODEL_SETTING_PARALLEL_TOOL_CALLS,
     _SECTION_ADVANCED_MODEL_SETTINGS,
     _SECTION_MODEL_PRICING,
     _SECTION_OPENAI_COMPATIBLE_CAPABILITIES,
@@ -41,6 +42,7 @@ from ._profile_helpers import (
     _model_profile_edit_schema,
     _provider_profile_options,
     _provider_profile_selector_schema,
+    model_profile_description_placeholders,
 )
 from ._settings_parsing import (
     _merge_model_pricing,
@@ -54,6 +56,10 @@ from ._settings_parsing import (
     _store_model_settings,
 )
 from .helpers import _flatten_section_data
+from .provider_wizard.catalog_cache import catalog_manager
+from .provider_wizard.const import CONF_CATALOG_PROVIDER_ID
+from .provider_wizard.models_dev import CatalogLoadError
+from .provider_wizard.types import CatalogModelOption
 
 _CONF_MODEL_PROFILE_ID = _CONF_MODEL_PROFILE_ID
 
@@ -93,6 +99,7 @@ class ProviderProfileMixin:
     _pending_model_pricing: dict[str, float]
     _pending_profile_error: tuple[str, dict[str, str]] | None
     _profile_refresh_error: str | None
+    _profile_models: tuple[CatalogModelOption, ...]
 
     async def async_step_customize_model_profile(
         self, user_input: dict[str, Any] | None = None
@@ -102,6 +109,9 @@ class ProviderProfileMixin:
         self._profile_flow_data = dict(self._get_reconfigure_subentry().data)
         self._profile_refresh_error = None
         self._selected_profile_id = None
+        self._profile_models = await self._async_profile_catalog_models(
+            self._profile_flow_data
+        )
         return await self.async_step_pick_model_profile()
 
     async def async_step_pick_model_profile(
@@ -153,7 +163,9 @@ class ProviderProfileMixin:
             parsed_settings, errors, cleared = _parse_model_settings(
                 self.hass,
                 flat_user_input,
-                _MAIN_MODEL_SETTING_KEYS | _ADVANCED_MODEL_SETTING_KEYS,
+                _MAIN_MODEL_SETTING_KEYS
+                | _ADVANCED_MODEL_SETTING_KEYS
+                | {_MODEL_SETTING_PARALLEL_TOOL_CALLS},
             )
             pricing_field_keys = {
                 _MODEL_PRICING_INPUT,
@@ -206,38 +218,14 @@ class ProviderProfileMixin:
                         ),
                     ),
                     errors=errors,
+                    description_placeholders=self._model_profile_description_placeholders(
+                        profile,
+                    ),
                 )
             pending_profile = dict(profile) | data
             if is_openai_compatible_provider_mode(
                 str(self._current_profile_flow_data().get(CONF_PROVIDER_MODE, ""))
             ):
-                if (
-                    not bool(pending_profile.get(CONF_SUPPORTS_TOOLS, False))
-                    and pending_profile.get(
-                        CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION, False
-                    )
-                    is True
-                ):
-                    return self.async_show_form(
-                        step_id="edit_model_profile",
-                        data_schema=_model_profile_edit_schema(
-                            pending_profile
-                            | {
-                                CONF_MODEL_SETTINGS: model_settings,
-                                CONF_MODEL_PRICING: model_pricing,
-                            },
-                            str(
-                                self._current_profile_flow_data().get(
-                                    CONF_PROVIDER_MODE, ""
-                                )
-                            ),
-                        ),
-                        errors={
-                            CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: (
-                                "strict_tool_definition_requires_tools"
-                            )
-                        },
-                    )
                 try:
                     PersistedOpenAICompatibleProfile.from_mapping(pending_profile)
                 except (KeyError, ValueError):
@@ -256,6 +244,9 @@ class ProviderProfileMixin:
                             ),
                         ),
                         errors={"base": "openai_compatible_profile_incomplete"},
+                        description_placeholders=self._model_profile_description_placeholders(
+                            pending_profile,
+                        ),
                     )
             self._pending_profile_data = pending_profile
             self._pending_model_settings = dict(model_settings)
@@ -274,6 +265,9 @@ class ProviderProfileMixin:
             data_schema=_model_profile_edit_schema(
                 profile,
                 str(self._current_profile_flow_data().get(CONF_PROVIDER_MODE, "")),
+            ),
+            description_placeholders=self._model_profile_description_placeholders(
+                profile,
             ),
         )
 
@@ -312,3 +306,41 @@ class ProviderProfileMixin:
         if profile_flow_data := getattr(self, "_profile_flow_data", None):
             return profile_flow_data
         return dict(self._get_reconfigure_subentry().data)
+
+    def _model_profile_description_placeholders(
+        self, profile: Mapping[str, Any]
+    ) -> dict[str, str]:
+        """Return edit-model-profile description placeholders."""
+        model_name = profile.get(CONF_MODEL)
+        model = None
+        if isinstance(model_name, str):
+            model = next(
+                (
+                    candidate
+                    for candidate in getattr(self, "_profile_models", ())
+                    if candidate.id == model_name
+                ),
+                None,
+            )
+        return model_profile_description_placeholders(profile, model)
+
+    async def _async_profile_catalog_models(
+        self, data: Mapping[str, Any]
+    ) -> tuple[CatalogModelOption, ...]:
+        """Return catalog models for profile-edit descriptions when available."""
+        metadata = data.get(CONF_PROVIDER_METADATA)
+        catalog_provider_id = (
+            metadata.get(CONF_CATALOG_PROVIDER_ID)
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        if not isinstance(catalog_provider_id, str):
+            return ()
+        try:
+            catalog = await catalog_manager(self.hass).async_get_catalog()
+        except CatalogLoadError:
+            return ()
+        provider = catalog.providers.get(catalog_provider_id)
+        if provider is None:
+            return ()
+        return catalog.models_for_provider(provider.id)

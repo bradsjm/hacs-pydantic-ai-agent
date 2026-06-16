@@ -32,6 +32,7 @@ def _custom_model_options(model_names: list[str]) -> tuple[CatalogModelOption, .
             structured_output=None,
             reasoning=False,
             attachment=False,
+            input_modalities=(),
             text_output=True,
             context_limit=0,
             output_limit=0,
@@ -39,8 +40,6 @@ def _custom_model_options(model_names: list[str]) -> tuple[CatalogModelOption, .
             thinking_support="none",
             structured_output_support="none",
             supports_tools=True,
-            openai_supports_strict_tool_definition=True,
-            openai_supports_encrypted_reasoning_content=False,
         )
         for model_name in model_names
     )
@@ -103,6 +102,7 @@ def _discovered_model_options(
             structured_output=None,
             reasoning=False,
             attachment=False,
+            input_modalities=(),
             text_output=True,
             context_limit=0,
             output_limit=0,
@@ -110,8 +110,6 @@ def _discovered_model_options(
             thinking_support="none",
             structured_output_support="none",
             supports_tools=True,
-            openai_supports_strict_tool_definition=True,
-            openai_supports_encrypted_reasoning_content=False,
         )
         for model_name in model_names
     )

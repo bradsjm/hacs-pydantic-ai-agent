@@ -129,6 +129,9 @@ def provider_subentry(
                     CONF_MODEL_SETTINGS: {"timeout": PROVIDER_INTEGRATION_TIMEOUT},
                     CONF_ENABLED: True,
                     CONF_DISCOVERED: False,
+                    "thinking_support": "supported",
+                    "structured_output_support": "json_schema",
+                    "supports_tools": True,
                 }
             },
         },

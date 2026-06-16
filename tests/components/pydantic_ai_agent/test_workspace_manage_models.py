@@ -78,8 +78,8 @@ async def test_provider_manage_models_preselects_enabled_profiles(hass):
     r = await _init_manage_models(hass, entry, next(iter(entry.subentries.values())))
     assert _sd(r["data_schema"], CONF_SELECTED_MODEL_IDS) == ["gpt-4.1-mini"]
     assert _sso(r["data_schema"], CONF_SELECTED_MODEL_IDS) == [
-        {"label": "GPT 4.1 (128K context)", "value": "gpt-4.1"},
-        {"label": "GPT 4.1 Mini (128K context)", "value": "gpt-4.1-mini"},
+        {"label": "GPT 4.1 (tools, 128K ctx)", "value": "gpt-4.1"},
+        {"label": "GPT 4.1 Mini (tools, 128K ctx)", "value": "gpt-4.1-mini"},
     ]
 
 
@@ -159,8 +159,8 @@ async def test_provider_manage_models_discovers_manual_provider_models(hass):
             hass, entry, next(iter(entry.subentries.values()))
         )
     assert _sso(r["data_schema"], CONF_SELECTED_MODEL_IDS) == [
-        {"label": "gpt-4.1-mini", "value": "gpt-4.1-mini"},
-        {"label": "manual-model", "value": "manual-model"},
+        {"label": "gpt-4.1-mini (tools)", "value": "gpt-4.1-mini"},
+        {"label": "manual-model (tools)", "value": "manual-model"},
     ]
 
 

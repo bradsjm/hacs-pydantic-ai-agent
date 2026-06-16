@@ -8,6 +8,7 @@ from custom_components.pydantic_ai_agent.config_flows._constants import (
     _MODEL_PRICING_CACHE_READ,
     _MODEL_PRICING_INPUT,
     _MODEL_PRICING_OUTPUT,
+    _MODEL_SETTING_PARALLEL_TOOL_CALLS,
     _SECTION_ADVANCED_MODEL_SETTINGS,
     _SECTION_MODEL_PRICING,
     _SECTION_OPENAI_COMPATIBLE_CAPABILITIES,
@@ -22,8 +23,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_NAME,
-    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
-    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
@@ -52,6 +51,10 @@ from tests.components.pydantic_ai_agent.support.schemas import (
 )
 from tests.components.pydantic_ai_agent.support.schemas import (
     serialized_section_default as _serialized_section_default,
+)
+from tests.components.pydantic_ai_agent.support.wizard import (
+    cache_provider_catalog,
+    wizard_catalog,
 )
 
 type _FlowResultDict = dict[str, Any]
@@ -89,6 +92,7 @@ async def _subentry_configure_result(
 async def _loaded_workspace_entry(
     hass: HomeAssistant, subentries_data: tuple[dict[str, object], ...] = ()
 ) -> MockConfigEntry:
+    cache_provider_catalog(hass, wizard_catalog())
     entry = MockConfigEntry(
         version=2,
         minor_version=2,
@@ -431,8 +435,7 @@ async def test_provider_edit_openai_profile_capabilities_round_trip(
                 CONF_THINKING_SUPPORT: "always",
                 CONF_STRUCTURED_OUTPUT_SUPPORT: "json_object",
                 CONF_SUPPORTS_TOOLS: True,
-                CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: False,
-                CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: True,
+                _MODEL_SETTING_PARALLEL_TOOL_CALLS: True,
             },
         },
     )
@@ -444,8 +447,10 @@ async def test_provider_edit_openai_profile_capabilities_round_trip(
     assert updated_profile[CONF_THINKING_SUPPORT] == "always"
     assert updated_profile[CONF_STRUCTURED_OUTPUT_SUPPORT] == "json_object"
     assert updated_profile[CONF_SUPPORTS_TOOLS] is True
-    assert updated_profile[CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION] is False
-    assert updated_profile[CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT] is True
+    assert (
+        updated_profile[CONF_MODEL_SETTINGS][_MODEL_SETTING_PARALLEL_TOOL_CALLS]
+        is True
+    )
 
     result = await _subentry_init_result(
         hass,
@@ -469,6 +474,5 @@ async def test_provider_edit_openai_profile_capabilities_round_trip(
         CONF_THINKING_SUPPORT: "always",
         CONF_STRUCTURED_OUTPUT_SUPPORT: "json_object",
         CONF_SUPPORTS_TOOLS: True,
-        CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: False,
-        CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: True,
+        _MODEL_SETTING_PARALLEL_TOOL_CALLS: True,
     }

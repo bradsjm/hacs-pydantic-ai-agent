@@ -20,8 +20,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
-    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
-    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PRIMARY_MODEL_REF,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
@@ -104,8 +102,6 @@ def _workspace_entry() -> MockConfigEntry:
             CONF_THINKING_SUPPORT: "supported",
             CONF_STRUCTURED_OUTPUT_SUPPORT: "json_schema",
             CONF_SUPPORTS_TOOLS: True,
-            CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: False,
-            CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: True,
         },
         "fallback-profile": {
             "id": "fallback-profile",
@@ -176,8 +172,6 @@ def test_resolve_model_profile_reads_provider_owned_profile() -> None:
     assert profile.thinking_support == "supported"
     assert profile.structured_output_support == "json_schema"
     assert profile.supports_tools is True
-    assert profile.openai_supports_strict_tool_definition is False
-    assert profile.openai_supports_encrypted_reasoning_content is True
     assert model_profile_exists(entry, profile.ref) is True
 
 
@@ -219,8 +213,7 @@ def test_chat_model_for_profile_uses_provider_runtime_credentials(
     assert profile_arg.supports_thinking is True
     assert profile_arg.supports_json_schema_output is True
     assert profile_arg.supports_json_object_output is True
-    assert profile_arg.openai_supports_strict_tool_definition is False
-    assert profile_arg.openai_supports_encrypted_reasoning_content is True
+    assert profile_arg.openai_supports_strict_tool_definition is True
 
 
 def test_model_profile_chain_keeps_primary_then_ordered_fallback() -> None:
@@ -266,8 +259,6 @@ def test_run_settings_override_legacy_profile_run_settings() -> None:
         thinking_support="supported",
         structured_output_support="json_schema",
         supports_tools=True,
-        openai_supports_strict_tool_definition=False,
-        openai_supports_encrypted_reasoning_content=False,
     )
 
     settings = model_settings(
@@ -305,8 +296,6 @@ def test_thinking_capability_omits_unsupported_effective_profile() -> None:
         thinking_support="none",
         structured_output_support="none",
         supports_tools=True,
-        openai_supports_strict_tool_definition=True,
-        openai_supports_encrypted_reasoning_content=False,
     )
 
     assert thinking_capability({CONF_THINKING: "high"}, profile) is None
@@ -326,20 +315,12 @@ def test_openai_profile_mapping_uses_persisted_capabilities_not_model_name() -> 
         thinking_support="supported",
         structured_output_support="json_object",
         supports_tools=False,
-        openai_supports_strict_tool_definition=False,
-        openai_supports_encrypted_reasoning_content=True,
     )
     runtime_profile = openai_compatible_model_profile(
         {
             CONF_THINKING_SUPPORT: profile.thinking_support,
             CONF_STRUCTURED_OUTPUT_SUPPORT: profile.structured_output_support,
             CONF_SUPPORTS_TOOLS: profile.supports_tools,
-            CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: (
-                profile.openai_supports_strict_tool_definition
-            ),
-            CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: (
-                profile.openai_supports_encrypted_reasoning_content
-            ),
         }
     )
 
@@ -348,6 +329,7 @@ def test_openai_profile_mapping_uses_persisted_capabilities_not_model_name() -> 
     assert runtime_profile.supports_json_schema_output is False
     assert runtime_profile.supports_json_object_output is True
     assert runtime_profile.supports_tools is False
+    assert runtime_profile.openai_supports_strict_tool_definition is True
 
 
 @pytest.mark.parametrize(
@@ -356,8 +338,6 @@ def test_openai_profile_mapping_uses_persisted_capabilities_not_model_name() -> 
         CONF_THINKING_SUPPORT,
         CONF_STRUCTURED_OUTPUT_SUPPORT,
         CONF_SUPPORTS_TOOLS,
-        CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
-        CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
     ],
 )
 def test_incomplete_old_openai_profile_is_not_usable(missing_key: str) -> None:

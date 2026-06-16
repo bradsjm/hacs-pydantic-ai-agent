@@ -288,18 +288,34 @@ def _model_label(model: CatalogModelOption) -> str:
     badges: list[str] = []
     if model.reasoning:
         badges.append("reasoning")
-    if model.attachment:
-        badges.append("attachments")
+    if model.supports_tools:
+        badges.append("tools")
     if model.context_limit:
-        badges.append(f"{_format_context_limit(model.context_limit)} context")
-    return f"{model.name} ({', '.join(badges)})" if badges else model.name
+        badges.append(f"{_format_context_limit(model.context_limit)} ctx")
+    label = f"{model.name} ({', '.join(badges)})" if badges else model.name
+    modality_glyphs = " ".join(_modality_glyphs(model.input_modalities))
+    return f"{label} {modality_glyphs}" if modality_glyphs else label
 
 
 def _format_context_limit(context_limit: int) -> str:
     """Return a compact context limit label."""
     if context_limit < 1000:
         return str(context_limit)
+    if context_limit > 999000:
+        return f"{round(context_limit / 1_000_000)}M"
     return f"{round(context_limit / 1000):,}K"
+
+
+def _modality_glyphs(modalities: tuple[str, ...]) -> tuple[str, ...]:
+    """Return display glyphs for normalized input modalities."""
+    glyphs = {
+        "text": "⊤",  # noqa: RUF001
+        "image": "▣",
+        "video": "▶",
+        "audio": "♪",
+        "pdf": "▤",
+    }
+    return tuple(glyphs[modality] for modality in modalities if modality in glyphs)
 
 
 def _flatten_section_data(

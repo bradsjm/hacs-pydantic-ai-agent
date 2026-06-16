@@ -51,12 +51,6 @@ CONF_MODEL = "model"
 CONF_MODEL_PRICING = "model_pricing"
 CONF_MODEL_PROFILES = "model_profiles"
 CONF_MODEL_SETTINGS = "model_settings"
-CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT = (
-    "openai_supports_encrypted_reasoning_content"
-)
-CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION = (
-    "openai_supports_strict_tool_definition"
-)
 CONF_PRIMARY_MODEL_REF = "primary_model_ref"
 CONF_PROMPT = "prompt"
 CONF_PROVIDER_EXTRA_BODY = "provider_extra_body"

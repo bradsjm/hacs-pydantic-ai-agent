@@ -80,8 +80,10 @@ def _normalize_models(
             continue
         model_id = _string(raw_model.get("id")) or raw_model_id
         modalities = raw_model.get("modalities")
+        input_modalities: object = ()
         output_modalities: object = ()
         if isinstance(modalities, Mapping):
+            input_modalities = modalities.get("input", ())
             output_modalities = modalities.get("output", ())
         limit = raw_model.get("limit")
         context_limit = output_limit = 0
@@ -100,6 +102,7 @@ def _normalize_models(
                 structured_output=_optional_bool(raw_model.get("structured_output")),
                 reasoning=raw_model.get("reasoning") is True,
                 attachment=raw_model.get("attachment") is True,
+                input_modalities=_modalities(input_modalities),
                 text_output=_has_text_output(output_modalities),
                 context_limit=context_limit,
                 output_limit=output_limit,
@@ -116,8 +119,6 @@ def _normalize_models(
                     else "none"
                 ),
                 supports_tools=raw_model.get("tool_call") is True,
-                openai_supports_strict_tool_definition=True,
-                openai_supports_encrypted_reasoning_content=False,
             )
         )
     return tuple(sorted(models, key=lambda model: (model.name.casefold(), model.id)))
@@ -168,6 +169,15 @@ def _has_text_output(output_modalities: object) -> bool:
     if not isinstance(output_modalities, list | tuple):
         return False
     return any(value == "text" for value in output_modalities)
+
+
+def _modalities(values: object) -> tuple[str, ...]:
+    """Return normalized modality names in display order."""
+    if not isinstance(values, list | tuple):
+        return ()
+    supported = ("text", "image", "video", "audio", "pdf")
+    available = {value for value in values if isinstance(value, str)}
+    return tuple(value for value in supported if value in available)
 
 
 def _int(value: object) -> int:

@@ -43,8 +43,6 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
-    CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT,
-    CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_METADATA,
@@ -233,8 +231,6 @@ def test_build_model_profiles_enables_selected_models() -> None:
             CONF_THINKING_SUPPORT: "none",
             CONF_STRUCTURED_OUTPUT_SUPPORT: "json_object",
             CONF_SUPPORTS_TOOLS: True,
-            CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION: True,
-            CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT: False,
         }
     }
 
@@ -252,6 +248,7 @@ def test_build_model_profiles_persists_explicit_negative_openai_capabilities() -
                 structured_output=False,
                 reasoning=False,
                 attachment=False,
+                input_modalities=(),
                 text_output=True,
                 context_limit=0,
                 output_limit=0,
@@ -259,8 +256,6 @@ def test_build_model_profiles_persists_explicit_negative_openai_capabilities() -
                 thinking_support="none",
                 structured_output_support="none",
                 supports_tools=False,
-                openai_supports_strict_tool_definition=False,
-                openai_supports_encrypted_reasoning_content=False,
             ),
         ),
         profile_id_factory=lambda: "p1",
@@ -269,10 +264,6 @@ def test_build_model_profiles_persists_explicit_negative_openai_capabilities() -
     assert profiles["p1"][CONF_THINKING_SUPPORT] == "none"
     assert profiles["p1"][CONF_STRUCTURED_OUTPUT_SUPPORT] == "none"
     assert profiles["p1"][CONF_SUPPORTS_TOOLS] is False
-    assert profiles["p1"][CONF_OPENAI_SUPPORTS_STRICT_TOOL_DEFINITION] is False
-    assert (
-        profiles["p1"][CONF_OPENAI_SUPPORTS_ENCRYPTED_REASONING_CONTENT] is False
-    )
 
 
 def test_build_model_profiles_seeds_catalog_pricing() -> None:
@@ -439,6 +430,7 @@ def _model(
         structured_output=True,
         reasoning=reasoning,
         attachment=attachment,
+        input_modalities=(),
         text_output=True,
         context_limit=context_limit,
         output_limit=0,

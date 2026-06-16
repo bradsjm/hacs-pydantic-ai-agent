@@ -176,6 +176,35 @@ def test_normalize_catalog_keeps_supported_compact_data() -> None:
     assert model.input_price == 0.4
     assert model.output_price == 1.6
     assert model.cache_read_price == 0.1
+    assert model.input_modalities == ()
+
+
+def test_normalize_catalog_maps_input_modalities_in_display_order() -> None:
+    """Test models.dev input modalities are normalized for display."""
+    catalog = normalize_catalog(
+        {
+            "openai": {
+                "id": "openai",
+                "name": "OpenAI",
+                "npm": "@ai-sdk/openai",
+                "env": ["OPENAI_API_KEY"],
+                "models": {
+                    "gpt-test": {
+                        "name": "GPT Test",
+                        "tool_call": True,
+                        "structured_output": True,
+                        "modalities": {
+                            "input": ["pdf", "text", "image"],
+                            "output": ["text"],
+                        },
+                    }
+                },
+            }
+        }
+    )
+
+    model = catalog.models_for_provider("openai")[0]
+    assert model.input_modalities == ("text", "image", "pdf")
 
 
 def test_normalize_catalog_ignores_invalid_pricing_values() -> None:
@@ -289,6 +318,7 @@ def _model(
         structured_output=structured_output,
         reasoning=False,
         attachment=False,
+        input_modalities=(),
         text_output=text_output,
         context_limit=0,
         output_limit=0,
