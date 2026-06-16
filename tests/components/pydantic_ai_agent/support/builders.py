@@ -45,7 +45,7 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
-from custom_components.pydantic_ai_agent.openai_compatible_profile import (
+from custom_components.pydantic_ai_agent.models.openai_compatible_profile import (
     default_openai_compatible_profile_data,
 )
 from homeassistant import config_entries

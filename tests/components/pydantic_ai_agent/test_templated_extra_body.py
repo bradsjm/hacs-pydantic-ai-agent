@@ -8,8 +8,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
     CONF_TEMPLATED_EXTRA_BODY,
 )
-from custom_components.pydantic_ai_agent.model_profiles import ModelProfile
-from custom_components.pydantic_ai_agent.model_request_settings import (
+from custom_components.pydantic_ai_agent.models.model_profiles import ModelProfile
+from custom_components.pydantic_ai_agent.models.model_request_settings import (
     _model_settings_with_templated_extra_body,
 )
 from homeassistant.core import HomeAssistant
@@ -109,7 +109,7 @@ def test_model_settings_with_templated_extra_body_rejects_non_json_render(
     )
     with (
         patch(
-            "custom_components.pydantic_ai_agent.templated_extra_body.Template.async_render",
+            "custom_components.pydantic_ai_agent.models.templated_extra_body.Template.async_render",
             return_value=object(),
         ),
         pytest.raises(HomeAssistantError),

@@ -13,8 +13,6 @@ from homeassistant.util import slugify
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.toolsets import AbstractToolset
 
-from .._redaction import redact_data
-from .._types import MCPCallCacheEntry, WorkspaceRuntimeData
 from ..const import (
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_CALL_CACHE_ENABLED,
@@ -25,7 +23,9 @@ from ..const import (
     CONF_MCP_URL,
     DEFAULT_MCP_TIMEOUT,
 )
-from ..metrics import record_mcp_tool_call
+from ..observability.metrics import record_mcp_tool_call
+from ..runtime.redaction import redact_data
+from ..runtime.types import MCPCallCacheEntry, WorkspaceRuntimeData
 from .client import _mcp_client
 from .entry_helpers import mcp_config_from_subentry, mcp_subentries
 from .errors import MCPValidationError

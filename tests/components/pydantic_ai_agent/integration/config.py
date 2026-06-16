@@ -37,6 +37,7 @@ MODEL_REF = f"{PROVIDER_ID}:{MODEL_PROFILE_ID}"
 WORKSPACE_SKILL_ID = "pydantic_ai_agent_integration_skill"
 UNSELECTED_WORKSPACE_SKILL_ID = "pydantic_ai_agent_integration_unselected_skill"
 
+
 @dataclass(frozen=True, kw_only=True)
 class ProviderIntegrationConfig:
     """Live provider configuration loaded from the test environment."""
@@ -74,6 +75,7 @@ class ModelParam:
 
     model: str
     skip_reason: str | None = None
+
 
 class Secret(str):
     """String value with a redacted repr for pytest failure output."""

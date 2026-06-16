@@ -22,10 +22,8 @@ from ..const import (
     CONF_SUPPORTS_TOOLS,
     CONF_THINKING_SUPPORT,
 )
-from ..model_profiles import provider_model_profiles
-from ._profile_helpers import (
-    _referenced_provider_profile_ids,
-)
+from ..models.model_profiles import provider_model_profiles
+from ._profile_selection import _referenced_provider_profile_ids
 from ._provider_data import (
     _cached_provider_model_names,
     _provider_custom_model_names,
@@ -200,7 +198,7 @@ class ProviderModelManagementMixin:
         """Return provider-discovered model options for availability management."""
         model_names = _cached_provider_model_names(data)
         if model_names is None:
-            from ..provider_validation import async_list_provider_model_names
+            from ..models.provider_validation import async_list_provider_model_names
 
             try:
                 model_names = await async_list_provider_model_names(self.hass, data)
@@ -284,7 +282,7 @@ class ProviderModelManagementMixin:
 
     def _managed_models_for_selection(self) -> tuple[CatalogModelOption, ...]:
         """Return filtered models plus enabled models hidden by those filters."""
-        from ..model_profiles import model_profile_display_name
+        from ..models.model_profiles import model_profile_display_name
 
         models_by_id = {model.id: model for model in self._profile_models}
         managed_models = {
@@ -322,9 +320,7 @@ class ProviderModelManagementMixin:
                     context_limit=0,
                     output_limit=0,
                     status=None,
-                    thinking_support=str(
-                        profile.get(CONF_THINKING_SUPPORT, "none")
-                    ),
+                    thinking_support=str(profile.get(CONF_THINKING_SUPPORT, "none")),
                     structured_output_support=str(
                         profile.get(CONF_STRUCTURED_OUTPUT_SUPPORT, "none")
                     ),
@@ -446,6 +442,7 @@ class ProviderModelManagementMixin:
             if not self._managed_models_for_selection():
                 errors["base"] = "no_models_available"
             else:
+                self._manage_models_show_filters = False
                 return await self.async_step_manage_models()
         return self.async_show_form(
             step_id="manage_model_filters",

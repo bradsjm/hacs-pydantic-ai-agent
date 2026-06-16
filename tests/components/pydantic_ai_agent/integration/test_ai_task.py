@@ -34,6 +34,7 @@ async def test_ai_task_plain_generation(
     await drain_stream_cleanup(hass)
     assert AI_TASK_SENTINEL in str(result.data)
 
+
 async def test_ai_task_structured_generation(
     hass: HomeAssistant,
     provider_config: ProviderIntegrationConfig,

@@ -17,7 +17,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
-from .agent_subentries import ValidAgentSubentry, iter_valid_agent_subentries
+from .agent.agent_subentries import ValidAgentSubentry, iter_valid_agent_subentries
 from .const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
@@ -28,9 +28,9 @@ from .const import (
     SUBENTRY_TYPE_CONVERSATION,
 )
 from .entity import device_identifier_for_subentry, unique_id_for_subentry_entity
-from .metrics import AgentRunMetrics, metric_value, metrics_signal
-from .model_profiles import ModelProfile, primary_model_profile
-from .structured_output import resolved_structured_output_mode
+from .models.model_profiles import ModelProfile, primary_model_profile
+from .models.structured_output import resolved_structured_output_mode
+from .observability.metrics import AgentRunMetrics, metric_value, metrics_signal
 
 
 @dataclass(frozen=True, kw_only=True)

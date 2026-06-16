@@ -18,7 +18,7 @@ from .const import (
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
-from .logfire_support import logfire_enabled
+from .observability.logfire_support import logfire_enabled
 
 
 @callback

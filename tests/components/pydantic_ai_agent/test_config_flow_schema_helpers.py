@@ -17,8 +17,10 @@ from custom_components.pydantic_ai_agent.config_flows._constants import (
     _SECTION_OPENAI_COMPATIBLE_CAPABILITIES,
 )
 from custom_components.pydantic_ai_agent.config_flows._profile_helpers import (
-    _fallback_model_profile_select_options,
     _model_profile_edit_schema,
+)
+from custom_components.pydantic_ai_agent.config_flows._profile_selection import (
+    _fallback_model_profile_select_options,
     _selected_model_profile_error,
 )
 from custom_components.pydantic_ai_agent.config_flows._schema_helpers import (

@@ -448,8 +448,7 @@ async def test_provider_edit_openai_profile_capabilities_round_trip(
     assert updated_profile[CONF_STRUCTURED_OUTPUT_SUPPORT] == "json_object"
     assert updated_profile[CONF_SUPPORTS_TOOLS] is True
     assert (
-        updated_profile[CONF_MODEL_SETTINGS][_MODEL_SETTING_PARALLEL_TOOL_CALLS]
-        is True
+        updated_profile[CONF_MODEL_SETTINGS][_MODEL_SETTING_PARALLEL_TOOL_CALLS] is True
     )
 
     result = await _subentry_init_result(

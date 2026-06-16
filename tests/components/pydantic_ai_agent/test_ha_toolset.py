@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import voluptuous as vol
-from custom_components.pydantic_ai_agent.ha_toolset import (
+from custom_components.pydantic_ai_agent.agent.ha_toolset import (
     tool_definitions_from_llm_api,
     tools_from_llm_api,
 )

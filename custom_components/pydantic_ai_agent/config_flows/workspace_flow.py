@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from ..generated_titles import (
-    DEFAULT_WORKSPACE_TITLE_SUFFIX,
-    generated_default_title,
-)
 from .ai_task_flow import AITaskDataSubentryFlowHandler
 from .common import (
     CONF_NAME,
@@ -23,6 +19,10 @@ from .common import (
     callback,
 )
 from .conversation_flow import ConversationSubentryFlowHandler
+from .generated_titles import (
+    DEFAULT_WORKSPACE_TITLE_SUFFIX,
+    generated_default_title,
+)
 from .mcp_server_flow import MCPServerSubentryFlowHandler
 from .provider_flow import ProviderSubentryFlowHandler
 from .skill_flow import SkillSubentryFlowHandler

@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from custom_components.pydantic_ai_agent.context_management import (
+from custom_components.pydantic_ai_agent.agent.context_management import (
     SlidingWindowContextCapability,
 )
 from homeassistant.components import ai_task

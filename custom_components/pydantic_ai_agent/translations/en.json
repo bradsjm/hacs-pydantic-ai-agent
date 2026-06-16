@@ -1,5 +1,4 @@
 {
-  "title": "Pydantic AI Agent",
   "config": {
     "abort": {
       "already_configured": "This workspace is already configured.",
@@ -509,6 +508,19 @@
               },
               "name": "Advanced model settings"
             },
+            "model_pricing": {
+              "data": {
+                "model_pricing_cache_read": "Cache-read price",
+                "model_pricing_input": "Input price",
+                "model_pricing_output": "Output price"
+              },
+              "data_description": {
+                "model_pricing_cache_read": "USD per 1 million cached input tokens read. Leave empty to clear this price.",
+                "model_pricing_input": "USD per 1 million non-cached input tokens. Leave empty to clear this price.",
+                "model_pricing_output": "USD per 1 million output tokens. Leave empty to clear this price."
+              },
+              "name": "Model pricing"
+            },
             "openai_compatible_capabilities": {
               "data": {
                 "parallel_tool_calls": "Parallel tool calls",
@@ -523,19 +535,6 @@
                 "thinking_support": "Choose whether this OpenAI-compatible model does not support thinking, supports optional thinking, or always keeps thinking enabled."
               },
               "name": "OpenAI-compatible capabilities"
-            },
-            "model_pricing": {
-              "data": {
-                "model_pricing_cache_read": "Cache-read price",
-                "model_pricing_input": "Input price",
-                "model_pricing_output": "Output price"
-              },
-              "data_description": {
-                "model_pricing_cache_read": "USD per 1 million cached input tokens read. Leave empty to clear this price.",
-                "model_pricing_input": "USD per 1 million non-cached input tokens. Leave empty to clear this price.",
-                "model_pricing_output": "USD per 1 million output tokens. Leave empty to clear this price."
-              },
-              "name": "Model pricing"
             }
           },
           "title": "Edit model profile"
@@ -1044,5 +1043,6 @@
       },
       "name": "Refresh MCP tools"
     }
-  }
+  },
+  "title": "Pydantic AI Agent"
 }

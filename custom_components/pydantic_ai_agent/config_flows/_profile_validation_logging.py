@@ -8,7 +8,7 @@ from homeassistant.components.todo.const import DOMAIN as TODO_DOMAIN
 from homeassistant.core import HomeAssistant
 
 from ..const import CONF_TODO_LIST_ENTITY_ID
-from ..provider_validation import ProviderValidationError
+from ..models.provider_validation import ProviderValidationError
 from ._constants import _TODO_WORKSPACE_REQUIRED_FEATURES
 
 _LOGGER = logging.getLogger(__name__)

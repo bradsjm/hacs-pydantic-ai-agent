@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import httpx
 import pytest
-from custom_components.pydantic_ai_agent._entity_auth import (
+from custom_components.pydantic_ai_agent.agent._entity_auth import (
     _clear_runtime_auth_failure,
     _has_provider_auth_failure,
     _record_runtime_auth_failure,
@@ -30,12 +30,15 @@ from custom_components.pydantic_ai_agent.conversation import (
     PydanticAIConversationEntity,
 )
 from custom_components.pydantic_ai_agent.entity import PydanticAIBaseLLMEntity
-from custom_components.pydantic_ai_agent.metrics import MetricsStore
-from custom_components.pydantic_ai_agent.model_profiles import ModelProfile
-from custom_components.pydantic_ai_agent.model_request_settings import (
+from custom_components.pydantic_ai_agent.models.model_profiles import ModelProfile
+from custom_components.pydantic_ai_agent.models.model_request_settings import (
     _model_settings_with_provider_extra_body,
 )
-from custom_components.pydantic_ai_agent.run_failures import (
+from custom_components.pydantic_ai_agent.models.structured_output import (
+    structured_agent_output_type,
+)
+from custom_components.pydantic_ai_agent.observability.metrics import MetricsStore
+from custom_components.pydantic_ai_agent.observability.run_failures import (
     _classify_run_failure,
     _has_connection_failure,
     _home_assistant_error,
@@ -45,9 +48,6 @@ from custom_components.pydantic_ai_agent.run_failures import (
 from custom_components.pydantic_ai_agent.sensor import (
     CONFIG_SENSOR_DESCRIPTIONS,
     SENSOR_DESCRIPTIONS,
-)
-from custom_components.pydantic_ai_agent.structured_output import (
-    structured_agent_output_type,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError

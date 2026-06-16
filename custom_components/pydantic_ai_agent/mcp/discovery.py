@@ -15,13 +15,13 @@ from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from pydantic_ai.mcp import MCPToolset
 
-from .._redaction import redact_data
 from ..const import (
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
     CONF_MCP_URL,
     DEFAULT_MCP_TIMEOUT,
 )
+from ..runtime.redaction import redact_data
 from .client import _mcp_client
 from .entry_helpers import (
     _mcp_config_from_data,

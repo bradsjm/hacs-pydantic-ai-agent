@@ -11,7 +11,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_THINKING,
     CONF_TIMEOUT,
 )
-from custom_components.pydantic_ai_agent.model_profiles import model_profile_ref
+from custom_components.pydantic_ai_agent.models.model_profiles import model_profile_ref
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (

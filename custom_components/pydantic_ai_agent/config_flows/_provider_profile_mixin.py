@@ -21,11 +21,11 @@ from ..const import (
     CONF_PROVIDER_MODE,
     CONF_TEMPLATED_EXTRA_BODY,
 )
-from ..openai_compatible_profile import (
+from ..models.openai_compatible_profile import (
     PersistedOpenAICompatibleProfile,
     is_openai_compatible_provider_mode,
 )
-from ..templated_extra_body import merge_extra_body, render_templated_extra_body
+from ..models.templated_extra_body import merge_extra_body, render_templated_extra_body
 from ._constants import (
     _ADVANCED_MODEL_SETTING_KEYS,
     _CONF_MODEL_PROFILE_ID,
@@ -228,7 +228,7 @@ class ProviderProfileMixin:
             ):
                 try:
                     PersistedOpenAICompatibleProfile.from_mapping(pending_profile)
-                except (KeyError, ValueError):
+                except KeyError, ValueError:
                     return self.async_show_form(
                         step_id="edit_model_profile",
                         data_schema=_model_profile_edit_schema(

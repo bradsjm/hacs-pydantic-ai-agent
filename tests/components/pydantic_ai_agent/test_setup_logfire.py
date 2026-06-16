@@ -14,7 +14,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_LOGFIRE_TOKEN,
     DOMAIN,
 )
-from custom_components.pydantic_ai_agent.logfire_support import (
+from custom_components.pydantic_ai_agent.observability.logfire_support import (
     async_release_logfire,
     logfire_active_for_entry,
     logfire_include_content,
@@ -39,7 +39,7 @@ async def test_unload_releases_logfire_owner_for_new_token(
     first_entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ) as configure_logfire:
         with patch.object(
             hass.config_entries,
@@ -86,7 +86,7 @@ async def test_logfire_release_waits_for_last_same_token_owner(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+            "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
         ) as configure_logfire,
         patch.object(
             hass.config_entries,
@@ -140,7 +140,7 @@ async def test_logfire_include_content_is_scoped_per_same_token_owner(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+            "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
         ),
         patch.object(
             hass.config_entries,
@@ -174,7 +174,7 @@ async def test_setup_failure_releases_logfire_owner(
     first_entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ) as configure_logfire:
         with (
             patch.object(
@@ -248,7 +248,7 @@ async def test_setup_cancellation_releases_logfire_owner(
     first_entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ) as configure_logfire:
         with (
             patch.object(
@@ -286,7 +286,7 @@ async def test_setup_retries_logfire_after_conflicting_owner_releases(
     second_entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ) as configure_logfire:
         with patch.object(
             hass.config_entries,
@@ -325,7 +325,7 @@ async def test_unload_promotes_loaded_conflicting_logfire_entry(
 
     with (
         patch(
-            "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+            "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
         ) as configure_logfire,
         patch.object(
             hass.config_entries,

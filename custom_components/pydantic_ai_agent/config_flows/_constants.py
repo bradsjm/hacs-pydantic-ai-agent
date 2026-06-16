@@ -20,7 +20,7 @@ from ..const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
-from ..model_settings import (
+from ..models.model_settings import (
     MODEL_SETTING_EXTRA_BODY,
     REMOVED_PROFILE_MODEL_SETTING_KEYS,
     RUN_SETTING_KEYS,

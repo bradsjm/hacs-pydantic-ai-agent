@@ -18,8 +18,10 @@ from homeassistant.helpers import llm
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
-from ._entity_auth import _clear_runtime_auth_failure_for_ref
-from .agent_subentries import iter_valid_agent_subentries
+from .agent._entity_auth import _clear_runtime_auth_failure_for_ref
+from .agent.agent_subentries import iter_valid_agent_subentries
+from .agent.ha_todo_tools import TodoWorkspace, todo_workspace_lock
+from .agent.run_state import AgentRunOutcome
 from .const import (
     CONF_AI_TASK_NAME,
     CONF_TODO_LIST_ENTITY_ID,
@@ -27,11 +29,12 @@ from .const import (
     SUBENTRY_TYPE_AI_TASK,
 )
 from .entity import PydanticAIBaseLLMEntity
-from .ha_todo_tools import TodoWorkspace, todo_workspace_lock
-from .metrics import EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED, fire_integration_event
-from .model_profiles import model_display_names, model_profile_chain
-from .run_state import AgentRunOutcome
-from .structured_output import resolved_structured_output_mode
+from .models.model_profiles import model_display_names, model_profile_chain
+from .models.structured_output import resolved_structured_output_mode
+from .observability.metrics import (
+    EVENT_STRUCTURED_AI_TASK_OUTPUT_GENERATED,
+    fire_integration_event,
+)
 from .virtual_workspace import virtual_workspace_enabled
 
 

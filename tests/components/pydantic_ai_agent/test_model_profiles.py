@@ -33,7 +33,7 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_PROVIDER,
 )
-from custom_components.pydantic_ai_agent.model_profiles import (
+from custom_components.pydantic_ai_agent.models.model_profiles import (
     ModelProfile,
     chat_model_for_profile,
     configured_model_profile_exists,
@@ -46,10 +46,12 @@ from custom_components.pydantic_ai_agent.model_profiles import (
     resolve_model_profile,
     thinking_capability,
 )
-from custom_components.pydantic_ai_agent.openai_compatible_profile import (
+from custom_components.pydantic_ai_agent.models.openai_compatible_profile import (
     default_openai_compatible_profile_data,
 )
-from custom_components.pydantic_ai_agent.provider import openai_compatible_model_profile
+from custom_components.pydantic_ai_agent.models.provider import (
+    openai_compatible_model_profile,
+)
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_NAME
@@ -195,7 +197,7 @@ def test_chat_model_for_profile_uses_provider_runtime_credentials(
     model = object()
 
     with patch(
-        "custom_components.pydantic_ai_agent.model_profiles.openai_compatible_completions_model",
+        "custom_components.pydantic_ai_agent.models.model_profiles.openai_compatible_completions_model",
         return_value=model,
     ) as completions_model:
         result = chat_model_for_profile(hass, entry, profile)

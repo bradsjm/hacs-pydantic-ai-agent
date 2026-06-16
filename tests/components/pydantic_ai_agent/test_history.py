@@ -4,7 +4,7 @@ import base64
 from pathlib import Path
 
 import pytest
-from custom_components.pydantic_ai_agent.history import (
+from custom_components.pydantic_ai_agent.agent.history import (
     chat_log_content_to_model_messages,
     split_last_user_prompt,
 )

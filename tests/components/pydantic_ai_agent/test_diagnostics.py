@@ -50,8 +50,10 @@ from custom_components.pydantic_ai_agent.diagnostics import (
     async_get_config_entry_diagnostics,
     async_get_device_diagnostics,
 )
-from custom_components.pydantic_ai_agent.logfire_support import async_configure_logfire
-from custom_components.pydantic_ai_agent.metrics import record_run_success
+from custom_components.pydantic_ai_agent.observability.logfire_support import (
+    async_configure_logfire,
+)
+from custom_components.pydantic_ai_agent.observability.metrics import record_run_success
 from homeassistant import config_entries
 from homeassistant.components.diagnostics import REDACTED
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME

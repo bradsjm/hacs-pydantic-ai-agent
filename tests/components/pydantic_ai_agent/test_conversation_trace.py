@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 from unittest.mock import patch
 
-from custom_components.pydantic_ai_agent.chat_deltas import _StreamTraceRecorder
+from custom_components.pydantic_ai_agent.agent.chat_deltas import _StreamTraceRecorder
 from custom_components.pydantic_ai_agent.diagnostics import (
     async_get_config_entry_diagnostics,
 )

@@ -6,17 +6,17 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
     CONF_PROVIDER_HEADERS,
 )
-from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
-    OpenAICompatibleChatModel,
-    OpenAICompatibleResponsesModel,
-)
-from custom_components.pydantic_ai_agent.provider import (
+from custom_components.pydantic_ai_agent.models.provider import (
     list_anthropic_model_names,
     list_google_gemini_model_names,
     normalise_base_url,
     openai_compatible_client_from_config,
     openai_compatible_completions_model_from_config,
     openai_compatible_responses_model_from_config,
+)
+from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
+    OpenAICompatibleChatModel,
+    OpenAICompatibleResponsesModel,
 )
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
@@ -122,7 +122,7 @@ async def test_list_anthropic_model_names_parses_paginated_response(
 
     http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.provider.get_async_client",
+        "custom_components.pydantic_ai_agent.models.provider.get_async_client",
         lambda _hass: http_client,
     )
     try:
@@ -178,7 +178,7 @@ async def test_list_google_gemini_model_names_filters_generate_content_models(
 
     http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     monkeypatch.setattr(
-        "custom_components.pydantic_ai_agent.provider.get_async_client",
+        "custom_components.pydantic_ai_agent.models.provider.get_async_client",
         lambda _hass: http_client,
     )
     try:

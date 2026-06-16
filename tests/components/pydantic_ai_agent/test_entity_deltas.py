@@ -6,11 +6,11 @@ from collections.abc import AsyncIterator
 from typing import Any, cast
 
 import pytest
-from custom_components.pydantic_ai_agent.chat_deltas import (
+from custom_components.pydantic_ai_agent.agent.chat_deltas import (
     _agent_events_to_chat_deltas,
     _agent_messages_to_chat_deltas,
 )
-from custom_components.pydantic_ai_agent.run_state import _StreamRunState
+from custom_components.pydantic_ai_agent.agent.run_state import _StreamRunState
 from custom_components.pydantic_ai_agent.virtual_workspace.const import (
     TOOL_RETURN_METADATA_SOURCE,
 )

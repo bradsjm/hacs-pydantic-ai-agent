@@ -152,7 +152,7 @@ async def test_provider_manage_models_discovers_manual_provider_models(hass):
         return ["gpt-4.1-mini", "manual-model"]
 
     with patch(
-        "custom_components.pydantic_ai_agent.provider_validation.async_list_provider_model_names",
+        "custom_components.pydantic_ai_agent.models.provider_validation.async_list_provider_model_names",
         new=fake_list,
     ):
         r = await _init_manage_models(

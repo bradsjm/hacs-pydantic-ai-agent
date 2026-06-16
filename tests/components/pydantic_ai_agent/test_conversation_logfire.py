@@ -9,7 +9,9 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_PRICING,
     DOMAIN,
 )
-from custom_components.pydantic_ai_agent.logfire_support import _INTEGRATION_VERSION
+from custom_components.pydantic_ai_agent.observability.logfire_support import (
+    _INTEGRATION_VERSION,
+)
 from homeassistant.components import conversation
 from homeassistant.const import __version__
 from homeassistant.core import Context, HomeAssistant

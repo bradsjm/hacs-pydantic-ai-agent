@@ -9,48 +9,26 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 
-from ._migration import (
-    _async_remove_removed_memory_store,
-    _migrate_profile_templated_extra_body,
-    _remove_ai_task_legacy_output_mode,
-    _remove_removed_device_registry_entry,
-    _remove_removed_entity_registry_entries,
-    _remove_removed_llm_api_refs,
-    _remove_stale_subentry_registry_entries,
-)
-from ._run_diagnostics_service import async_register_run_diagnostics_service
-from ._setup_helpers import (
-    _mcp_server_runtimes,
-    _provider_runtimes,
-    _resolved_model_profiles,
-)
-from ._types import (
-    MCPServerRuntimeData as MCPServerRuntimeData,
-)
-from ._types import (
-    ProviderRuntimeData as ProviderRuntimeData,
-)
-from ._types import (
-    PydanticAIAgentConfigEntry,
-)
-from ._types import (
-    WorkspaceRuntimeData as WorkspaceRuntimeData,
-)
 from .const import CONF_NAME, DOMAIN
-from .debug_services import async_setup_services as async_setup_debug_services
-from .logfire_support import (
-    async_configure_logfire,
-    async_release_logfire,
-    logfire_enabled,
-    logfire_include_content,
-)
 from .mcp import (
     MCPValidationError,
     async_refresh_mcp_tools,
     cached_mcp_tools,
     mcp_subentries,
 )
-from .metrics import (
+from .observability._run_diagnostics_service import (
+    async_register_run_diagnostics_service,
+)
+from .observability.debug_services import (
+    async_setup_services as async_setup_debug_services,
+)
+from .observability.logfire_support import (
+    async_configure_logfire,
+    async_release_logfire,
+    logfire_enabled,
+    logfire_include_content,
+)
+from .observability.metrics import (
     EVENT_MCP_TOOL_REFRESH_COMPLETED,
     EVENT_MCP_TOOL_REFRESH_FAILED,
     fire_integration_event,
@@ -60,6 +38,32 @@ from .repair_issues import (
     async_delete_logfire_token_conflict_issue,
     async_delete_model_validation_issues,
     async_delete_stale_provider_auth_issues,
+)
+from .runtime.migration import (
+    _async_remove_removed_memory_store,
+    _migrate_profile_templated_extra_body,
+    _remove_ai_task_legacy_output_mode,
+    _remove_removed_device_registry_entry,
+    _remove_removed_entity_registry_entries,
+    _remove_removed_llm_api_refs,
+    _remove_stale_subentry_registry_entries,
+)
+from .runtime.setup_helpers import (
+    _mcp_server_runtimes,
+    _provider_runtimes,
+    _resolved_model_profiles,
+)
+from .runtime.types import (
+    MCPServerRuntimeData as MCPServerRuntimeData,
+)
+from .runtime.types import (
+    ProviderRuntimeData as ProviderRuntimeData,
+)
+from .runtime.types import (
+    PydanticAIAgentConfigEntry,
+)
+from .runtime.types import (
+    WorkspaceRuntimeData as WorkspaceRuntimeData,
 )
 
 _LOGGER = logging.getLogger(__name__)

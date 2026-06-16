@@ -4,12 +4,12 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from custom_components.pydantic_ai_agent import ProviderRuntimeData
+from custom_components.pydantic_ai_agent.agent.context_management import (
+    SlidingWindowContextCapability,
+)
 from custom_components.pydantic_ai_agent.const import (
     CONF_DEFAULT_MODEL_PROFILE_ID,
     DOMAIN,
-)
-from custom_components.pydantic_ai_agent.context_management import (
-    SlidingWindowContextCapability,
 )
 from custom_components.pydantic_ai_agent.entity import unique_id_for_subentry_entity
 from homeassistant.config_entries import ConfigSubentry

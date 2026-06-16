@@ -44,12 +44,12 @@ from ._constants import (
     _SECTION_RUN_SETTINGS,
     _SECTION_SKILLS,
 )
-from ._profile_helpers import (
+from ._profile_helpers import _run_settings_visibility
+from ._profile_selection import (
     _deduplicate_fallback_model_refs,
     _fallback_model_profile_select_options,
     _model_profile_select_options,
     _normalise_fallback_model_refs,
-    _run_settings_visibility,
 )
 from ._schema_helpers import _run_settings_schema
 from ._settings_parsing import _normalise_run_settings

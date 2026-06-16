@@ -6,7 +6,7 @@ from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_PROMPTED,
     OUTPUT_MODE_TOOL,
 )
-from custom_components.pydantic_ai_agent.structured_output import (
+from custom_components.pydantic_ai_agent.models.structured_output import (
     output_tool_names,
     structured_model_request_parameters,
     structured_output_name,

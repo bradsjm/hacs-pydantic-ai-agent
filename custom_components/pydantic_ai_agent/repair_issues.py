@@ -5,7 +5,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 
 from .const import DOMAIN
-from .provider_validation import ProviderValidationError
+from .models.provider_validation import ProviderValidationError
 
 MODEL_VALIDATION_ISSUE_PREFIX = "model_validation"
 PROVIDER_AUTH_ISSUE_PREFIX = "provider_auth"
@@ -121,8 +121,7 @@ def async_delete_model_validation_issues(
     issue_ids = [
         issue_id
         for domain, issue_id in issue_registry.issues
-        if domain == DOMAIN
-        and issue_id.startswith(prefix)
+        if domain == DOMAIN and issue_id.startswith(prefix)
     ]
     for issue_id in issue_ids:
         ir.async_delete_issue(hass, DOMAIN, issue_id)

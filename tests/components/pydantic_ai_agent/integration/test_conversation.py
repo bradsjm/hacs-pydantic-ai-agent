@@ -4,7 +4,9 @@ from collections.abc import Mapping
 from typing import Any
 
 import pytest
-from custom_components.pydantic_ai_agent import _entity_runner as agent_runner_module
+from custom_components.pydantic_ai_agent.agent import (
+    _entity_runner as agent_runner_module,
+)
 from homeassistant.components import conversation
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import llm

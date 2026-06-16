@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from ..generated_titles import DEFAULT_AGENT_TITLE_SUFFIX, generated_default_title
 from .common import (
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
@@ -24,6 +23,7 @@ from .common import (
     _selected_model_profile_error,
     default_conversation_options,
 )
+from .generated_titles import DEFAULT_AGENT_TITLE_SUFFIX, generated_default_title
 from .helpers import _flatten_section_data
 from .mcp_helpers import _selected_mcp_server_error
 from .skill_helpers import _selected_skill_error

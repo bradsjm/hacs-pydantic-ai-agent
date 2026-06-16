@@ -67,13 +67,12 @@ from ._constants import (
     _SECTION_SKILLS,
     _THINKING_OPTIONS,
 )
-from ._profile_helpers import (
-    RunSettingsVisibility,
+from ._profile_helpers import RunSettingsVisibility, _run_settings_visibility
+from ._profile_selection import (
     _deduplicate_fallback_model_refs,
     _fallback_model_profile_select_options,
     _model_profile_select_options,
     _normalise_fallback_model_refs,
-    _run_settings_visibility,
 )
 from ._settings_parsing import (
     _format_templated_extra_body,

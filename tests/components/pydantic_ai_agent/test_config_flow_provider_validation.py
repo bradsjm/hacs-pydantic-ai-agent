@@ -26,7 +26,7 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
 )
-from custom_components.pydantic_ai_agent.provider_validation import (
+from custom_components.pydantic_ai_agent.models.provider_validation import (
     ProviderValidationError,
 )
 from homeassistant.core import HomeAssistant

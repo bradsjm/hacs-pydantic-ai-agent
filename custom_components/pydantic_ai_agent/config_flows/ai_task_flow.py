@@ -11,7 +11,6 @@ from homeassistant.config_entries import (
     SubentryFlowResult,
 )
 
-from ..generated_titles import DEFAULT_AI_TASK_TITLE_SUFFIX, generated_default_title
 from .common import (
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
@@ -29,6 +28,7 @@ from .common import (
     _selected_model_profile_error,
     _selected_todo_workspace_error,
 )
+from .generated_titles import DEFAULT_AI_TASK_TITLE_SUFFIX, generated_default_title
 from .helpers import _flatten_section_data
 from .mcp_helpers import _selected_mcp_server_error
 from .skill_helpers import _selected_skill_error

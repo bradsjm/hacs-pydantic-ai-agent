@@ -6,10 +6,6 @@ from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
-from custom_components.pydantic_ai_agent._types import (
-    MCPCallCacheEntry,
-    WorkspaceRuntimeData,
-)
 from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_CALL_CACHE_ENABLED,
@@ -24,6 +20,10 @@ from custom_components.pydantic_ai_agent.const import (
 from custom_components.pydantic_ai_agent.mcp import (
     MCPValidationError,
     async_runtime_mcp_toolsets,
+)
+from custom_components.pydantic_ai_agent.runtime.types import (
+    MCPCallCacheEntry,
+    WorkspaceRuntimeData,
 )
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME

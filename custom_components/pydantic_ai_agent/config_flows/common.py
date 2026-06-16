@@ -70,7 +70,7 @@ from ..const import (
     SUBENTRY_TYPE_SKILL,
     default_conversation_options,
 )
-from ..model_profiles import (
+from ..models.model_profiles import (
     configured_model_profile_exists,
     model_profile_display_name,
     model_profile_ref,
@@ -78,7 +78,7 @@ from ..model_profiles import (
     provider_model_profiles,
     provider_subentries,
 )
-from ..provider_validation import (
+from ..models.provider_validation import (
     ProviderValidationError,
     _format_api_error,
     _map_http_error,
@@ -125,16 +125,18 @@ from ._constants import (
 )
 from ._profile_helpers import (
     _classify_existing_provider_profile,
-    _fallback_model_profile_select_options,
     _model_profile_edit_schema,
-    _model_profile_select_options,
-    _normalise_fallback_model_refs,
     _normalise_provider_model_profiles,
     _normalised_provider_profile,
     _provider_model_profiles_for_discovery_mode,
-    _provider_profile_dependents,
     _provider_profile_options,
     _provider_profile_selector_schema,
+)
+from ._profile_selection import (
+    _fallback_model_profile_select_options,
+    _model_profile_select_options,
+    _normalise_fallback_model_refs,
+    _provider_profile_dependents,
     _referenced_provider_profile_ids,
     _selected_model_profile_error,
     _selected_model_profile_refs,

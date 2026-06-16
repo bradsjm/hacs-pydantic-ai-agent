@@ -31,8 +31,7 @@ from ..const import (
     CONF_PROVIDER_MODE,
     CONF_PROVIDER_SECRET_HEADER_KEYS,
 )
-from ..generated_titles import DEFAULT_SERVICE_TITLE_SUFFIX, generated_default_title
-from ..provider_validation import ProviderValidationError
+from ..models.provider_validation import ProviderValidationError
 from ._key_value_rows import _format_key_value_json_rows
 from ._profile_helpers import (
     _provider_validation_placeholders,
@@ -55,6 +54,7 @@ from ._provider_flow_helpers import (
 from ._provider_model_mixin import ProviderModelManagementMixin
 from ._provider_profile_mixin import ProviderProfileMixin
 from ._provider_wizard_mixin import ProviderWizardMixin
+from .generated_titles import DEFAULT_SERVICE_TITLE_SUFFIX, generated_default_title
 from .provider_wizard.const import CONF_SELECTED_MODEL_IDS
 from .provider_wizard.filters import ModelFilterOptions
 from .provider_wizard.schemas import model_selection_schema
@@ -170,7 +170,7 @@ class ProviderSubentryFlowHandler(
 
     def _provider_subentries(self) -> list[ConfigSubentry]:
         """Return provider subentries from the current entry."""
-        from ..model_profiles import provider_subentries
+        from ..models.model_profiles import provider_subentries
 
         return provider_subentries(self._get_entry())
 

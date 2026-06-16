@@ -5,6 +5,9 @@ from typing import cast
 
 import httpx
 import pytest
+from custom_components.pydantic_ai_agent.models.provider import (
+    openai_compatible_model_profile,
+)
 from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
     OpenAICompatibleProvider,
     OpenAICompatibleResponsesModel,
@@ -12,7 +15,6 @@ from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
 from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
     _responses_message_mapping as responses_message_mapping,
 )
-from custom_components.pydantic_ai_agent.provider import openai_compatible_model_profile
 from pydantic_ai.messages import (
     BinaryContent,
     ModelRequest,
@@ -165,14 +167,14 @@ async def test_responses_request_maps_tools_structured_output_and_reasoning() ->
     body = captured["body"]
     assert isinstance(body, dict)
     assert body["tools"] == [
-            {
-                "type": "function",
-                "name": "turn_on",
-                "description": "Turn on a light",
-                "parameters": {"type": "object", "properties": {}},
-                "strict": True,
-            }
-        ]
+        {
+            "type": "function",
+            "name": "turn_on",
+            "description": "Turn on a light",
+            "parameters": {"type": "object", "properties": {}},
+            "strict": True,
+        }
+    ]
     assert body["tool_choice"] == "auto"
     assert body["max_output_tokens"] == 20
     assert body["reasoning"] == {"effort": "medium"}

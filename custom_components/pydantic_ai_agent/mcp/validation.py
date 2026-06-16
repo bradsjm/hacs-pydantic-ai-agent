@@ -13,7 +13,7 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
-from .._header_metadata import parse_header_rows
+from ..runtime.header_metadata import parse_header_rows
 from .errors import MCPValidationError
 from .models import ValidatedMCPURL
 

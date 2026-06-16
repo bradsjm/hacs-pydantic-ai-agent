@@ -7,7 +7,7 @@ from typing import Any, cast
 from unittest.mock import Mock, patch
 
 import pytest
-from custom_components.pydantic_ai_agent._entity_run_results import (
+from custom_components.pydantic_ai_agent.agent._entity_run_results import (
     set_span_usage_attributes,
 )
 from custom_components.pydantic_ai_agent.const import (
@@ -17,7 +17,10 @@ from custom_components.pydantic_ai_agent.const import (
     DOMAIN,
     PROVIDER_GOOGLE_GEMINI,
 )
-from custom_components.pydantic_ai_agent.logfire_support import (
+from custom_components.pydantic_ai_agent.models.model_profiles import (
+    primary_model_profile,
+)
+from custom_components.pydantic_ai_agent.observability.logfire_support import (
     _configure_logfire_sync,
     _entry_logfire_token,
     _logfire_state,
@@ -29,7 +32,6 @@ from custom_components.pydantic_ai_agent.logfire_support import (
     logfire_include_content,
     logfire_token_conflict,
 )
-from custom_components.pydantic_ai_agent.model_profiles import primary_model_profile
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
@@ -68,7 +70,7 @@ async def test_async_configure_logfire_sets_first_owner(
     entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ) as configure_logfire:
         assert await async_configure_logfire(hass, entry) is True
 
@@ -91,7 +93,7 @@ async def test_async_configure_logfire_shares_same_token(
     second_entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ) as configure_logfire:
         assert await async_configure_logfire(hass, first_entry) is True
         assert await async_configure_logfire(hass, second_entry) is True
@@ -116,7 +118,7 @@ async def test_async_configure_logfire_creates_conflict_issue(
     issue_id = f"logfire_token_conflict_{second_entry.entry_id}"
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ):
         assert await async_configure_logfire(hass, first_entry) is True
         assert await async_configure_logfire(hass, second_entry) is False
@@ -138,7 +140,7 @@ async def test_async_release_logfire_keeps_same_token_owner_active(
     second_entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ):
         await async_configure_logfire(hass, first_entry)
         await async_configure_logfire(hass, second_entry)
@@ -166,7 +168,7 @@ async def test_async_release_logfire_promotes_loaded_conflicting_entries(
     third_entry.mock_state(hass, config_entries.ConfigEntryState.LOADED)
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ) as configure_logfire:
         assert await async_configure_logfire(hass, first_entry) is True
         assert await async_configure_logfire(hass, second_entry) is False
@@ -269,7 +271,7 @@ async def test_instrument_agent_only_runs_for_active_owner(
     inactive_entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ):
         await async_configure_logfire(hass, active_entry)
 
@@ -340,7 +342,7 @@ async def test_agent_run_span_adds_ai_task_specific_metadata(
     entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ):
         assert await async_configure_logfire(hass, entry) is True
 
@@ -395,7 +397,7 @@ async def test_agent_run_span_maps_gemini_operation_name(
     entry.add_to_hass(hass)
 
     with patch(
-        "custom_components.pydantic_ai_agent.logfire_support._configure_logfire_sync"
+        "custom_components.pydantic_ai_agent.observability.logfire_support._configure_logfire_sync"
     ):
         assert await async_configure_logfire(hass, entry) is True
 

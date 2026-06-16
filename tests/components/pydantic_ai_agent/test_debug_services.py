@@ -10,13 +10,13 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_PRICING,
     DOMAIN,
 )
-from custom_components.pydantic_ai_agent.debug_services import (
+from custom_components.pydantic_ai_agent.mcp.discovery import _cache_key
+from custom_components.pydantic_ai_agent.observability.debug_services import (
     SERVICE_GET_AGENT_METRICS,
     SERVICE_GET_TOOL_SOURCE_STATUS,
     SERVICE_GET_WORKSPACE_STATUS,
     SERVICE_LIST_MODEL_PROFILES,
 )
-from custom_components.pydantic_ai_agent.mcp.discovery import _cache_key
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from tests.components.pydantic_ai_agent.support.builders import (

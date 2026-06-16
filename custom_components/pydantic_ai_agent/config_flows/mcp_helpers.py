@@ -23,11 +23,6 @@ from homeassistant.helpers.selector import (
 )
 from homeassistant.helpers.typing import VolDictType
 
-from .._header_metadata import (
-    format_header_rows,
-    normalize_secret_header_keys,
-    parse_header_rows,
-)
 from ..const import (
     CONF_KEY_VALUE_VALUE,
     CONF_MCP_ALLOWED_TOOLS,
@@ -47,6 +42,11 @@ from ..mcp import (
     normalise_mcp_url,
     parse_allowed_tools,
     parse_mcp_headers,
+)
+from ..runtime.header_metadata import (
+    format_header_rows,
+    normalize_secret_header_keys,
+    parse_header_rows,
 )
 from .helpers import (
     _flatten_section_data,

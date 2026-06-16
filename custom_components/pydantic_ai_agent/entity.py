@@ -16,16 +16,22 @@ from pydantic_ai.capabilities import AbstractCapability, WebFetch
 from pydantic_ai.toolsets import AbstractToolset
 from pydantic_ai.usage import UsageLimits
 
-from ._entity_auth import _clear_runtime_auth_failure
-from ._entity_run_results import (
+from .agent._entity_auth import _clear_runtime_auth_failure
+from .agent._entity_run_results import (
     handle_profile_error,
     record_agent_run_failure,
     record_agent_run_success,
     store_run_diagnostics,
 )
-from ._entity_runner import run_model_profile
-from ._types import WorkspaceRuntimeData
-from .chat_deltas import _agent_events_to_chat_deltas as _agent_events_to_chat_deltas
+from .agent._entity_runner import run_model_profile
+from .agent.chat_deltas import (
+    _agent_events_to_chat_deltas as _agent_events_to_chat_deltas,
+)
+from .agent.context_management import SlidingWindowContextCapability
+from .agent.ha_toolset import tool_definitions_from_llm_api
+from .agent.history import chat_log_content_to_model_messages, split_last_user_prompt
+from .agent.run_state import AgentRunOutcome
+from .agent.skills import async_skills_capabilities
 from .const import (
     CONF_SKILLS,
     CONF_TOOL_RETRIES,
@@ -33,21 +39,14 @@ from .const import (
     DEFAULT_TOOL_RETRIES,
     DOMAIN,
 )
-from .context_management import SlidingWindowContextCapability
-from .ha_toolset import tool_definitions_from_llm_api
-from .history import chat_log_content_to_model_messages, split_last_user_prompt
-from .model_profiles import (
+from .models.model_profiles import (
     chat_model_for_profile,
     model_display_names,
     model_profile_chain,
     primary_model_profile,
 )
-from .model_profiles import max_iterations as run_max_iterations
-from .run_diagnostics import RunDiagnosticsRecorder
-from .run_failures import _AgentRunFailure
-from .run_state import AgentRunOutcome
-from .skills import async_skills_capabilities
-from .structured_output import (
+from .models.model_profiles import max_iterations as run_max_iterations
+from .models.structured_output import (
     default_structure_serializer,
     output_tool_names,
     resolved_structured_output_mode,
@@ -55,6 +54,9 @@ from .structured_output import (
     structured_output_json_schema,
     structured_output_name,
 )
+from .observability.run_diagnostics import RunDiagnosticsRecorder
+from .observability.run_failures import _AgentRunFailure
+from .runtime.types import WorkspaceRuntimeData
 from .virtual_workspace import virtual_workspace_parts
 
 type PydanticAIAgentConfigEntry = ConfigEntry[WorkspaceRuntimeData]

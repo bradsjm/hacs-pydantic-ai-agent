@@ -9,7 +9,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_TOOL_RETRIES,
     DOMAIN,
 )
-from custom_components.pydantic_ai_agent.metrics import (
+from custom_components.pydantic_ai_agent.observability.metrics import (
     EVENT_AGENT_RUN_FAILED,
 )
 from homeassistant.components import conversation

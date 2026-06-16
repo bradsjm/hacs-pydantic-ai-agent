@@ -3,10 +3,10 @@
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
+from custom_components.pydantic_ai_agent.agent.skills import async_skills_capabilities
 from custom_components.pydantic_ai_agent.const import (
     CONF_SKILLS,
 )
-from custom_components.pydantic_ai_agent.skills import async_skills_capabilities
 from homeassistant.core import HomeAssistant
 from tests.components.pydantic_ai_agent.support.builders import (
     conversation_subentry_data,

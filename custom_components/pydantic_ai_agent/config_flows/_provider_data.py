@@ -23,11 +23,6 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.typing import VolDictType
 from homeassistant.util import dt as dt_util
 
-from .._header_metadata import (
-    format_header_rows,
-    normalize_secret_header_keys,
-    parse_header_rows,
-)
 from ..const import (
     CONF_BASE_URL,
     CONF_CUSTOM_MODEL_NAMES,
@@ -43,8 +38,13 @@ from ..const import (
     DEFAULT_SERVICE_NAME,
     PROVIDER_MODES,
 )
-from ..provider import normalise_base_url
-from ..provider_validation import ProviderValidationError
+from ..models.provider import normalise_base_url
+from ..models.provider_validation import ProviderValidationError
+from ..runtime.header_metadata import (
+    format_header_rows,
+    normalize_secret_header_keys,
+    parse_header_rows,
+)
 from ._constants import (
     _BASE_URL_ENDPOINT_PATH_ENDINGS,
     _BASE_URL_ENDPOINT_SUFFIXES,

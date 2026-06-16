@@ -8,7 +8,6 @@ from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
-from ._redaction import redact_data
 from .const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
@@ -36,15 +35,16 @@ from .const import (
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
-from .logfire_support import (
+from .models.model_profiles import primary_model_profile
+from .models.structured_output import resolved_structured_output_mode
+from .observability.logfire_support import (
     logfire_active_for_entry,
     logfire_enabled,
     logfire_include_content,
     logfire_token_conflict,
 )
-from .model_profiles import primary_model_profile
-from .run_diagnostics import bound_diagnostics_data
-from .structured_output import resolved_structured_output_mode
+from .observability.run_diagnostics import bound_diagnostics_data
+from .runtime.redaction import redact_data
 
 
 async def async_get_config_entry_diagnostics(

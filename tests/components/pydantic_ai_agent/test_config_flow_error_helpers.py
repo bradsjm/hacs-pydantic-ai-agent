@@ -6,7 +6,7 @@ import ssl
 
 import httpx
 import pytest
-from custom_components.pydantic_ai_agent.provider_validation import (
+from custom_components.pydantic_ai_agent.models.provider_validation import (
     _format_api_error,
     _map_http_error,
 )

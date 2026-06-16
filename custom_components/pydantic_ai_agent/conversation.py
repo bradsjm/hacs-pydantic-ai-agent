@@ -11,7 +11,7 @@ from homeassistant.helpers import intent, llm
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
-from .agent_subentries import iter_valid_agent_subentries
+from .agent.agent_subentries import iter_valid_agent_subentries
 from .const import (
     CONF_AGENT_NAME,
     CONF_PROMPT,
@@ -21,7 +21,7 @@ from .const import (
     SUBENTRY_TYPE_CONVERSATION,
 )
 from .entity import PydanticAIBaseLLMEntity
-from .model_profiles import model_display_names, model_profile_chain
+from .models.model_profiles import model_display_names, model_profile_chain
 from .virtual_workspace import virtual_workspace_enabled
 
 _TOOL_RESUME_SEPARATOR = "\n\n"

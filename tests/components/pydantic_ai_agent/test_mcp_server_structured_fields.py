@@ -73,6 +73,22 @@ async def _start_edit_server_flow(
     return result
 
 
+async def _submit_edit_server_and_finish(
+    hass: HomeAssistant, flow_id: str, user_input: dict[str, Any]
+) -> dict[str, Any]:
+    """Submit edit_server, drive validation progress, and return final result."""
+    result = await subentry_configure_result(hass, flow_id, user_input)
+    assert result["type"] is FlowResultType.SHOW_PROGRESS
+    assert result["step_id"] == "validate_mcp_server_progress"
+    assert result["progress_action"] == "validate_mcp_server"
+    await hass.async_block_till_done()
+    result = await subentry_configure_result(hass, flow_id, None)
+    if result["type"] is FlowResultType.SHOW_PROGRESS_DONE:
+        assert result["next_step_id"] == "validate_mcp_server_finish"
+        result = await subentry_configure_result(hass, flow_id, None)
+    return result
+
+
 async def test_mcp_server_edit_round_trips_headers_as_structured_rows(
     hass: HomeAssistant,
 ) -> None:
@@ -105,7 +121,7 @@ async def test_mcp_server_edit_round_trips_headers_as_structured_rows(
         "_async_validate_mcp_server",
         new=_validate_mcp_server_success,
     ):
-        result = await subentry_configure_result(
+        result = await _submit_edit_server_and_finish(
             hass,
             result["flow_id"],
             {
@@ -171,7 +187,7 @@ async def test_mcp_server_edit_clearing_headers_removes_stored_headers(
         "_async_validate_mcp_server",
         new=_validate_mcp_server_success,
     ):
-        result = await subentry_configure_result(
+        result = await _submit_edit_server_and_finish(
             hass,
             result["flow_id"],
             {
@@ -203,7 +219,7 @@ async def test_mcp_server_edit_preserves_existing_tool_allowlist(
         "_async_validate_mcp_server",
         new=_validate_mcp_server_success,
     ):
-        result = await subentry_configure_result(
+        result = await _submit_edit_server_and_finish(
             hass,
             result["flow_id"],
             {
@@ -242,7 +258,7 @@ async def test_mcp_server_edit_empty_advanced_section_preserves_settings(
         "_async_validate_mcp_server",
         new=_validate_mcp_server_success,
     ):
-        result = await subentry_configure_result(
+        result = await _submit_edit_server_and_finish(
             hass,
             result["flow_id"],
             {

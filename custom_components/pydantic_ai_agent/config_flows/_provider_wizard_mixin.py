@@ -254,7 +254,7 @@ class ProviderWizardMixin:
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Collect guided provider connection details."""
-        from ..provider_validation import ProviderValidationError
+        from ..models.provider_validation import ProviderValidationError
 
         provider = self._wizard_provider
         driver = self._wizard_driver

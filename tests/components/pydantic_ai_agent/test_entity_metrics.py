@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 import pytest
-from custom_components.pydantic_ai_agent.metrics import (
+from custom_components.pydantic_ai_agent.observability.metrics import (
     MetricsStore,
     record_mcp_tool_call,
     record_run_failure,

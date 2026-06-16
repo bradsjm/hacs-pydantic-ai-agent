@@ -20,7 +20,7 @@ from ..const import (
     CONF_MODEL_SETTINGS,
     CONF_TOOL_RETRIES,
 )
-from ..templated_extra_body import validate_templated_extra_body_paths
+from ..models.templated_extra_body import validate_templated_extra_body_paths
 from ._constants import (
     _ADVANCED_MODEL_SETTING_KEYS,
     _MAIN_MODEL_SETTING_KEYS,
