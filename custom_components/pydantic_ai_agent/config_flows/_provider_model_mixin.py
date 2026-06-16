@@ -102,7 +102,7 @@ class ProviderModelManagementMixin:
     _profile_models: tuple[CatalogModelOption, ...]
     _profile_refresh_error: str | None
     _manage_models_prepared: bool
-    _manage_models_prepare_result: SubentryFlowResult | None
+    _manage_models_show_filters: bool
 
     def _start_manage_models_prepare(self) -> SubentryFlowResult:
         """Start progress for provider model-management preparation."""
@@ -126,9 +126,8 @@ class ProviderModelManagementMixin:
                 progress_action="discover_models",
                 progress_task=task,
             )
-        self._manage_models_prepare_result = None
         if task is not None:
-            self._manage_models_prepare_result = await task
+            await task
         return self.async_show_progress_done(
             next_step_id="manage_models_prepare_finish"
         )
@@ -139,58 +138,61 @@ class ProviderModelManagementMixin:
         """Continue after provider model preparation progress."""
         del user_input
         self._manage_models_prepared = True
-        if result := self._manage_models_prepare_result:
-            self._manage_models_prepare_result = None
-            return result
+        if self._profile_refresh_error is not None:
+            return self.async_show_form(
+                step_id="manage_models",
+                data_schema=vol.Schema({}),
+                errors={"base": self._profile_refresh_error},
+            )
+        if self._manage_models_show_filters:
+            return await self.async_step_manage_model_filters()
         return await self.async_step_manage_models()
 
     async def _async_prepare_manage_models_entry(self) -> SubentryFlowResult | None:
         """Prepare manage-models state before rendering or saving."""
-        if result := self._manage_models_prepare_result:
-            self._manage_models_prepare_result = None
-            return result
         if not self._manage_models_prepared:
             return self._start_manage_models_prepare()
         if not getattr(self, "_profile_flow_data", None):
-            result = await self._async_prepare_manage_models_flow()
-            if result is not None:
-                return result
+            await self._async_prepare_manage_models_flow()
         self._manage_models_prepared = True
+        if self._profile_refresh_error is not None:
+            return self.async_show_form(
+                step_id="manage_models",
+                data_schema=vol.Schema({}),
+                errors={"base": self._profile_refresh_error},
+            )
+        if self._manage_models_show_filters:
+            return await self.async_step_manage_model_filters()
         return None
 
-    async def _async_prepare_manage_models_flow(self) -> SubentryFlowResult | None:
+    async def _async_prepare_manage_models_flow(self) -> None:
         """Prepare catalog-backed model availability management."""
         data = dict(self._get_reconfigure_subentry().data)
         self._profile_flow_data = data
+        self._profile_refresh_error = None
         self._profile_filters = ModelFilterOptions()
+        self._profile_filter_provider = None
+        self._profile_models = ()
+        self._manage_models_show_filters = False
         if CONF_PROVIDER_METADATA not in data and (
             discovered_models := await self._async_discovered_models_for_manage(data)
         ):
-            self._profile_filter_provider = None
             self._profile_models = discovered_models
-            return None
+            return
         provider, models = await self._async_catalog_models_for_provider_data(data)
         if provider is None or not models:
             if discovered_models := await self._async_discovered_models_for_manage(
                 data
             ):
-                self._profile_filter_provider = None
                 self._profile_models = discovered_models
-                return None
+                return
             if _provider_custom_model_names(data):
-                self._profile_filter_provider = None
-                self._profile_models = ()
-                return None
-            return self.async_show_form(
-                step_id="manage_models",
-                data_schema=vol.Schema({}),
-                errors={"base": "model_catalog_unavailable"},
-            )
+                return
+            self._profile_refresh_error = "model_catalog_unavailable"
+            return
         self._profile_filter_provider = provider
         self._profile_models = models
-        if self._profile_needs_model_filter_step():
-            return await self.async_step_manage_model_filters()
-        return None
+        self._manage_models_show_filters = self._profile_needs_model_filter_step()
 
     async def _async_discovered_models_for_manage(
         self, data: Mapping[str, Any]

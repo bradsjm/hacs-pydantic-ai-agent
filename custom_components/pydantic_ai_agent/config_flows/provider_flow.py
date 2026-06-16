@@ -86,7 +86,7 @@ class ProviderSubentryFlowHandler(
     _profile_models: tuple[CatalogModelOption, ...]
     _profile_refresh_error: str | None
     _manage_models_prepared: bool
-    _manage_models_prepare_result: SubentryFlowResult | None
+    _manage_models_show_filters: bool
     _selected_profile_id: str | None
     _pending_profile_data: dict[str, Any]
     _pending_profile_error: tuple[str, dict[str, str]] | None
@@ -125,7 +125,7 @@ class ProviderSubentryFlowHandler(
         self._profile_models = ()
         self._profile_refresh_error = None
         self._manage_models_prepared = False
-        self._manage_models_prepare_result = None
+        self._manage_models_show_filters = False
         self._wizard_catalog = None
         self._wizard_catalog_error = None
         self._wizard_connection_data = {}
@@ -147,9 +147,12 @@ class ProviderSubentryFlowHandler(
         self._pending_step_id = "edit_connection"
         self._selected_profile_id = None
         self._profile_flow_data = {}
+        self._profile_filter_provider = None
+        self._profile_filters = ModelFilterOptions()
+        self._profile_models = ()
         self._profile_refresh_error = None
         self._manage_models_prepared = False
-        self._manage_models_prepare_result = None
+        self._manage_models_show_filters = False
         return await self.async_step_reconfigure_menu()
 
     def _provider_form_options(self, subentry: ConfigSubentry) -> dict[str, Any]:
