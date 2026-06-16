@@ -153,6 +153,14 @@
   <https://developers.home-assistant.io/docs/core/integration-quality-scale/>,
   and <https://github.com/home-assistant/core/tree/dev/homeassistant/components/open_router>.
 
+## Tests
+
+- Tests must only be used for meaningful behavioral verification, asserting the expected **critical path** behavior of the component, including edge cases and error conditions.
+- Tests must not be used for non-functional behavior (e.g., UI copy, translated errors, diagnostics prose, or provider-facing text).
+- Avoid overly brittle tests that depend on implementation details or specific error messages.
+- Reserve mocking for external dependencies (databases, networks, third-party APIs) that are slow, non-deterministic, or outside your control.
+- Never create tests that pass simply because the mock is configured to return expected values.
+
 ## Workflow Constraints
 
 - Treat manifests, translations, services/actions, diagnostics, and tests as
