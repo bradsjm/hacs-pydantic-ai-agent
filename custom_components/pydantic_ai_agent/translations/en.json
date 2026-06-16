@@ -149,7 +149,7 @@
               "data_description": {
                 "llm_hass_api": "Select which tools the model can use to interact with."
               },
-              "name": "Capabilities"
+              "name": "Home Assistant Capabilities"
             },
             "run_settings": {
               "data": {
@@ -261,7 +261,7 @@
               "data_description": {
                 "llm_hass_api": "Select which tools the model can use to interact with."
               },
-              "name": "Capabilities"
+              "name": "Home Assistant Capabilities"
             },
             "run_settings": {
               "data": {
