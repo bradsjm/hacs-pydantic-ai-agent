@@ -2,6 +2,7 @@
 
 from typing import cast
 
+import pytest
 import voluptuous as vol
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
     CONF_FAMILY,
@@ -24,6 +25,8 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard.schemas im
     connection_schema,
     default_selected_model_ids,
     filters_from_user_input,
+    model_options,
+    model_symbol_key_description_placeholders,
     needs_model_filter_step,
     provider_options,
 )
@@ -77,6 +80,21 @@ def test_provider_options_include_supported_providers_and_custom() -> None:
     ]
 
 
+def test_model_symbol_key_description_placeholders_returns_glyph_legend() -> None:
+    """Test model selector glyph legend description placeholders."""
+    assert model_symbol_key_description_placeholders() == {
+        "model_symbol_key": (
+            "Symbols:\n\n"
+            "- ⚙️ tools\n"
+            "- 📷 image\n"
+            "- 💭 reasoning\n"
+            "- 🎧 audio\n"
+            "- 📹 video\n"
+            "- 📄 PDF"
+        )
+    }
+
+
 def test_connection_schema_uses_password_api_key_selector() -> None:
     """Test guided setup does not expose API keys as plain text."""
     schema = connection_schema(
@@ -117,6 +135,95 @@ def test_connection_schema_shows_extra_body_for_supported_modes() -> None:
         CONF_PROVIDER_EXTRA_BODY,
         nested=True,
     )
+
+
+@pytest.mark.parametrize(
+    ("model", "expected_label"),
+    [
+        (
+            CatalogModelOption(
+                id="gpt-4.1",
+                name="GPT 4.1",
+                provider_id="provider",
+                family="gpt",
+                tool_call=True,
+                structured_output=True,
+                reasoning=False,
+                attachment=False,
+                input_modalities=(),
+                text_output=True,
+                context_limit=128_000,
+                output_limit=0,
+                status=None,
+            ),
+            "GPT 4.1 (128K ctx) ⚙️",
+        ),
+        (
+            CatalogModelOption(
+                id="reasoner",
+                name="Reasoner",
+                provider_id="provider",
+                family="gpt",
+                tool_call=True,
+                structured_output=True,
+                reasoning=True,
+                attachment=False,
+                input_modalities=(),
+                text_output=True,
+                context_limit=0,
+                output_limit=0,
+                status=None,
+                thinking_support="supported",
+            ),
+            "Reasoner ⚙️ 💭",
+        ),
+        (
+            CatalogModelOption(
+                id="text-only",
+                name="Text Only",
+                provider_id="provider",
+                family="gpt",
+                tool_call=False,
+                structured_output=None,
+                reasoning=False,
+                attachment=False,
+                input_modalities=("text",),
+                text_output=True,
+                context_limit=0,
+                output_limit=0,
+                status=None,
+                supports_tools=False,
+            ),
+            "Text Only",
+        ),
+        (
+            CatalogModelOption(
+                id="full",
+                name="Full",
+                provider_id="provider",
+                family="gpt",
+                tool_call=True,
+                structured_output=True,
+                reasoning=True,
+                attachment=False,
+                input_modalities=("pdf", "text", "video", "audio", "image"),
+                text_output=True,
+                context_limit=1_000_000,
+                output_limit=0,
+                status=None,
+                thinking_support="supported",
+                structured_output_support="json_object",
+                supports_tools=True,
+            ),
+            "Full (1M ctx) ⚙️ 📷 💭 🎧 📹 📄",
+        ),
+    ],
+)
+def test_model_options_label_uses_ordered_glyph_suffix(
+    model: CatalogModelOption, expected_label: str
+) -> None:
+    """Test model labels keep context in parentheses and capabilities as glyphs."""
+    assert model_options((model,))[0]["label"] == expected_label
 
 
 def test_connection_schema_uses_structured_row_selectors() -> None:

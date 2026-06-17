@@ -33,8 +33,12 @@ from ..const import (
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SECRET_HEADER_KEYS,
     CONF_MCP_SERVER_IDS,
+    CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     DEFAULT_MCP_CALL_CACHE_TTL,
+    MCP_TOOL_MODE_ALL,
+    MCP_TOOL_MODE_DISABLED,
+    MCP_TOOL_MODE_SPECIFIED,
     SUBENTRY_TYPE_MCP_SERVER,
 )
 from ..mcp import (
@@ -43,6 +47,7 @@ from ..mcp import (
     parse_allowed_tools,
     parse_mcp_headers,
 )
+from ..mcp.entry_helpers import effective_mcp_tool_mode
 from ..runtime.header_metadata import (
     format_header_rows,
     normalize_secret_header_keys,
@@ -51,6 +56,7 @@ from ..runtime.header_metadata import (
 from .helpers import (
     _flatten_section_data,
     _key_value_rows_selector,
+    _section_schema_key,
     _sorted_select_options,
 )
 
@@ -145,10 +151,6 @@ def _selected_mcp_server_error(
         subentry = entry.subentries.get(server_id)
         if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_MCP_SERVER:
             return "mcp_server_not_found"
-        if CONF_MCP_ALLOWED_TOOLS in subentry.data and not parse_allowed_tools(
-            subentry.data.get(CONF_MCP_ALLOWED_TOOLS)
-        ):
-            return "mcp_tools_not_allowlisted"
     return None
 
 
@@ -164,6 +166,49 @@ def _normalise_mcp_server_selection(data: dict[str, Any]) -> None:
 def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
     """Return the remote MCP server subentry schema."""
     options = _flatten_section_data(options or {}, (_SECTION_ADVANCED_MCP,))
+    advanced_schema: VolDictType = {
+        vol.Optional(
+            CONF_MCP_HEADERS,
+            default=_format_mcp_headers(
+                options.get(CONF_MCP_HEADERS),
+                options.get(CONF_MCP_SECRET_HEADER_KEYS),
+            ),
+        ): _key_value_rows_selector(
+            CONF_KEY_VALUE_VALUE,
+            {"text": None},
+            key_label="header name",
+            value_label="header value",
+            include_secret_toggle=True,
+            secret_default=False,
+            translation_key=CONF_MCP_HEADERS,
+        ),
+        vol.Optional(
+            CONF_MCP_INCLUDE_RETURN_SCHEMA,
+            default=options.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True),
+        ): BooleanSelector(),
+        vol.Optional(
+            CONF_MCP_CALL_CACHE_ENABLED,
+            default=options.get(CONF_MCP_CALL_CACHE_ENABLED, False),
+        ): BooleanSelector(),
+        vol.Optional(
+            CONF_MCP_CALL_CACHE_TTL,
+            default=options.get(
+                CONF_MCP_CALL_CACHE_TTL,
+                DEFAULT_MCP_CALL_CACHE_TTL,
+            ),
+        ): NumberSelector(
+            NumberSelectorConfig(
+                mode=NumberSelectorMode.BOX,
+                min=1,
+                max=_MAX_MCP_CALL_CACHE_TTL,
+                step=1,
+            )
+        ),
+        vol.Optional(
+            CONF_MCP_DEFERRED_LOADING,
+            default=options.get(CONF_MCP_DEFERRED_LOADING, False),
+        ): BooleanSelector(),
+    }
     return vol.Schema(
         {
             vol.Required(CONF_NAME, default=options.get(CONF_NAME, "")): TextSelector(
@@ -173,52 +218,8 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
                 CONF_MCP_URL,
                 default=options.get(CONF_MCP_URL, ""),
             ): TextSelector(TextSelectorConfig()),
-            vol.Optional(_SECTION_ADVANCED_MCP, default={}): section(
-                vol.Schema(
-                    {
-                        vol.Optional(
-                            CONF_MCP_HEADERS,
-                            default=_format_mcp_headers(
-                                options.get(CONF_MCP_HEADERS),
-                                options.get(CONF_MCP_SECRET_HEADER_KEYS),
-                            ),
-                        ): _key_value_rows_selector(
-                            CONF_KEY_VALUE_VALUE,
-                            {"text": None},
-                            key_label="header name",
-                            value_label="header value",
-                            include_secret_toggle=True,
-                            secret_default=False,
-                            translation_key=CONF_MCP_HEADERS,
-                        ),
-                        vol.Optional(
-                            CONF_MCP_INCLUDE_RETURN_SCHEMA,
-                            default=options.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True),
-                        ): BooleanSelector(),
-                        vol.Optional(
-                            CONF_MCP_CALL_CACHE_ENABLED,
-                            default=options.get(CONF_MCP_CALL_CACHE_ENABLED, False),
-                        ): BooleanSelector(),
-                        vol.Optional(
-                            CONF_MCP_CALL_CACHE_TTL,
-                            default=options.get(
-                                CONF_MCP_CALL_CACHE_TTL,
-                                DEFAULT_MCP_CALL_CACHE_TTL,
-                            ),
-                        ): NumberSelector(
-                            NumberSelectorConfig(
-                                mode=NumberSelectorMode.BOX,
-                                min=1,
-                                max=_MAX_MCP_CALL_CACHE_TTL,
-                                step=1,
-                            )
-                        ),
-                        vol.Optional(
-                            CONF_MCP_DEFERRED_LOADING,
-                            default=options.get(CONF_MCP_DEFERRED_LOADING, False),
-                        ): BooleanSelector(),
-                    }
-                ),
+            _section_schema_key(_SECTION_ADVANCED_MCP, advanced_schema): section(
+                vol.Schema(advanced_schema),
                 {"collapsed": True},
             ),
         }
@@ -264,11 +265,34 @@ def _mcp_tool_options(
 
 def _mcp_tools_schema(
     tool_options: list[SelectOptionDict],
+    default_tool_mode: str,
     default_tool_names: list[str],
 ) -> vol.Schema:
     """Return the MCP discovered tools selection schema."""
     return vol.Schema(
         {
+            vol.Required(
+                CONF_MCP_TOOL_MODE,
+                default=default_tool_mode,
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=[
+                        SelectOptionDict(
+                            label=MCP_TOOL_MODE_ALL, value=MCP_TOOL_MODE_ALL
+                        ),
+                        SelectOptionDict(
+                            label=MCP_TOOL_MODE_SPECIFIED,
+                            value=MCP_TOOL_MODE_SPECIFIED,
+                        ),
+                        SelectOptionDict(
+                            label=MCP_TOOL_MODE_DISABLED,
+                            value=MCP_TOOL_MODE_DISABLED,
+                        ),
+                    ],
+                    mode=SelectSelectorMode.DROPDOWN,
+                    translation_key=CONF_MCP_TOOL_MODE,
+                )
+            ),
             vol.Required(
                 CONF_MCP_ALLOWED_TOOLS,
                 default=default_tool_names,
@@ -281,6 +305,11 @@ def _mcp_tools_schema(
             )
         }
     )
+
+
+def _mcp_tool_mode(data: Mapping[str, Any]) -> str:
+    """Return effective MCP tool mode from raw or stored data."""
+    return effective_mcp_tool_mode(data)
 
 
 def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str, Any]:

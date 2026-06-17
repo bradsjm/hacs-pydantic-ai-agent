@@ -3,6 +3,12 @@
 from typing import Any, cast
 from unittest.mock import patch
 
+from custom_components.pydantic_ai_agent.config_flows._provider_data import (
+    _store_provider_model_cache,
+)
+from custom_components.pydantic_ai_agent.config_flows.provider_wizard import (
+    models_dev,
+)
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
     CONF_SELECTED_MODEL_IDS,
 )
@@ -78,9 +84,57 @@ async def test_provider_manage_models_preselects_enabled_profiles(hass):
     r = await _init_manage_models(hass, entry, next(iter(entry.subentries.values())))
     assert _sd(r["data_schema"], CONF_SELECTED_MODEL_IDS) == ["gpt-4.1-mini"]
     assert _sso(r["data_schema"], CONF_SELECTED_MODEL_IDS) == [
-        {"label": "GPT 4.1 (tools, 128K ctx)", "value": "gpt-4.1"},
-        {"label": "GPT 4.1 Mini (tools, 128K ctx)", "value": "gpt-4.1-mini"},
+        {"label": "GPT 4.1 (128K ctx) ⚙️", "value": "gpt-4.1"},
+        {"label": "GPT 4.1 Mini (128K ctx) ⚙️", "value": "gpt-4.1-mini"},
     ]
+
+
+async def test_provider_manage_models_form_includes_symbol_key_placeholder(hass):
+    entry = await loaded_workspace_entry(hass, (_psd(),))
+    cache_provider_catalog(hass, wizard_catalog())
+    r = await _init_manage_models(hass, entry, next(iter(entry.subentries.values())))
+    assert r["description_placeholders"]["model_symbol_key"] == (
+        "Symbols:\n\n"
+        "- ⚙️ tools\n"
+        "- 📷 image\n"
+        "- 💭 reasoning\n"
+        "- 🎧 audio\n"
+        "- 📹 video\n"
+        "- 📄 PDF"
+    )
+
+
+async def test_provider_manage_models_catalog_error_includes_symbol_key_placeholder(
+    hass,
+):
+    entry = await loaded_workspace_entry(hass, (_psd(),))
+    subentry = next(iter(entry.subentries.values()))
+
+    async def fake_fetch_catalog(_hass):
+        raise models_dev.CatalogLoadError("failed")
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flows.provider_wizard.catalog_cache.async_fetch_catalog",
+        new=fake_fetch_catalog,
+    ):
+        result = await _sir(
+            hass,
+            (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "subentry_id": subentry.subentry_id,
+            },
+        )
+        result = await _scr(hass, result["flow_id"], {"next_step_id": "manage_models"})
+        assert result["type"] is FlowResultType.SHOW_PROGRESS
+        await hass.async_block_till_done()
+        result = await _scr(hass, result["flow_id"], None)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "manage_models"
+    assert result["description_placeholders"]["model_symbol_key"].startswith(
+        "Symbols:\n\n- ⚙️ tools"
+    )
 
 
 async def test_provider_manage_models_includes_enabled_models_hidden_by_filters(hass):
@@ -159,15 +213,49 @@ async def test_provider_manage_models_discovers_manual_provider_models(hass):
             hass, entry, next(iter(entry.subentries.values()))
         )
     assert _sso(r["data_schema"], CONF_SELECTED_MODEL_IDS) == [
-        {"label": "gpt-4.1-mini (tools)", "value": "gpt-4.1-mini"},
-        {"label": "manual-model (tools)", "value": "manual-model"},
+        {"label": "gpt-4.1-mini ⚙️", "value": "gpt-4.1-mini"},
+        {"label": "manual-model ⚙️", "value": "manual-model"},
     ]
 
 
 async def test_provider_manage_models_starts_with_progress(hass):
+    pd = _psd()
+    cast(dict[str, Any], pd["data"]).pop(CONF_PROVIDER_METADATA)
+    entry = await loaded_workspace_entry(hass, (pd,))
+    subentry = next(iter(entry.subentries.values()))
+
+    async def fake_list(_h, _d):
+        return ["gpt-4.1-mini"]
+
+    with patch(
+        "custom_components.pydantic_ai_agent.models.provider_validation.async_list_provider_model_names",
+        new=fake_list,
+    ):
+        result = await _sir(
+            hass,
+            (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "subentry_id": subentry.subentry_id,
+            },
+        )
+        result = await _scr(
+            hass, result["flow_id"], {"next_step_id": "manage_models"}
+        )
+        assert result["type"] is FlowResultType.SHOW_PROGRESS
+        assert result["step_id"] == "manage_models_prepare"
+        assert result["progress_action"] == "discover_models"
+        await hass.async_block_till_done()
+        result = await _scr(hass, result["flow_id"], None)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "manage_models"
+
+
+async def test_provider_manage_models_skips_progress_with_cached_catalog(hass):
     entry = await loaded_workspace_entry(hass, (_psd(),))
     cache_provider_catalog(hass, wizard_catalog())
     subentry = next(iter(entry.subentries.values()))
+
     result = await _sir(
         hass,
         (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
@@ -177,13 +265,39 @@ async def test_provider_manage_models_starts_with_progress(hass):
         },
     )
     result = await _scr(hass, result["flow_id"], {"next_step_id": "manage_models"})
-    assert result["type"] is FlowResultType.SHOW_PROGRESS
-    assert result["step_id"] == "manage_models_prepare"
-    assert result["progress_action"] == "discover_models"
-    await hass.async_block_till_done()
-    result = await _scr(hass, result["flow_id"], None)
+
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "manage_models"
+    assert _sd(result["data_schema"], CONF_SELECTED_MODEL_IDS) == ["gpt-4.1-mini"]
+
+
+async def test_provider_manage_models_skips_progress_with_cached_discovered_models(
+    hass,
+):
+    pd = _psd()
+    pc = cast(dict[str, Any], pd["data"])
+    pc.pop(CONF_PROVIDER_METADATA)
+    _store_provider_model_cache(pc, ["gpt-4.1-mini", "manual-model"])
+
+    entry = await loaded_workspace_entry(hass, (pd,))
+    subentry = next(iter(entry.subentries.values()))
+
+    result = await _sir(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_PROVIDER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+    result = await _scr(hass, result["flow_id"], {"next_step_id": "manage_models"})
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "manage_models"
+    assert _sso(result["data_schema"], CONF_SELECTED_MODEL_IDS) == [
+        {"label": "gpt-4.1-mini ⚙️", "value": "gpt-4.1-mini"},
+        {"label": "manual-model ⚙️", "value": "manual-model"},
+    ]
 
 
 async def test_provider_manage_models_creates_selected_catalog_profile(hass):

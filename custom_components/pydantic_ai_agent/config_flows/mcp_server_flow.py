@@ -13,8 +13,11 @@ from ..const import (
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SECRET_HEADER_KEYS,
+    CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     DEFAULT_MCP_TIMEOUT,
+    MCP_TOOL_MODE_ALL,
+    MCP_TOOL_MODE_SPECIFIED,
 )
 from ..mcp import (
     MCPValidationError,
@@ -22,6 +25,7 @@ from ..mcp import (
     async_validate_mcp_url,
     parse_allowed_tools,
 )
+from ..mcp.entry_helpers import stored_mcp_tool_configuration
 from .common import (
     CONF_NAME,
     SOURCE_USER,
@@ -31,12 +35,16 @@ from .common import (
     SubentryFlowResult,
     vol,
 )
-from .helpers import _flatten_section_data
+from .helpers import (
+    _flatten_section_data_with_presence,
+    _merge_submitted_optional_fields,
+)
 from .mcp_helpers import (
     _SECTION_ADVANCED_MCP,
     _mcp_server_data_from_user_input,
     _mcp_server_form_options,
     _mcp_server_schema,
+    _mcp_tool_mode,
     _mcp_tool_options,
     _mcp_tools_schema,
     _mcp_url_already_configured,
@@ -68,6 +76,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
     _pending_mcp_form_options: dict[str, Any]
     _pending_mcp_progress_action: str
     _pending_mcp_server_step_id: str
+    _pending_mcp_server_submitted_keys: set[str]
     _pending_mcp_server_user_input: dict[str, Any]
     _pending_mcp_tool_options: list[SelectOptionDict]
     _pending_manage_tools_data: dict[str, Any]
@@ -133,7 +142,9 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 data_schema=_mcp_server_schema(self._options),
             )
 
-        flat_user_input = _flatten_section_data(user_input, (_SECTION_ADVANCED_MCP,))
+        flat_user_input, submitted_keys = _flatten_section_data_with_presence(
+            user_input, (_SECTION_ADVANCED_MCP,)
+        )
         form_options = _mcp_server_form_options(flat_user_input)
         errors: dict[str, str] = {}
         description_placeholders: dict[str, str] = {}
@@ -151,9 +162,12 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
             else:
                 errors[CONF_MCP_HEADERS] = "invalid_mcp_headers"
         else:
-            self._pending_mcp_form_options = form_options
+            self._pending_mcp_form_options = (
+                self._storage_data_with_preserved_allowlist(data, submitted_keys)
+            )
             self._pending_mcp_progress_action = "validate_mcp_server"
             self._pending_mcp_server_step_id = step_id
+            self._pending_mcp_server_submitted_keys = submitted_keys
             self._pending_mcp_server_user_input = flat_user_input
             return self.async_show_progress(
                 step_id="validate_mcp_server_progress",
@@ -194,7 +208,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
     def _storage_data_with_preserved_allowlist(
         self,
         validated_data: dict[str, Any],
-        user_input: dict[str, Any],
+        submitted_keys: set[str],
     ) -> dict[str, Any]:
         """Return validated storage data preserving values not edited in this step."""
         storage_data = dict(validated_data)
@@ -202,36 +216,41 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
             return storage_data
 
         existing_data = self._get_reconfigure_subentry().data
+        if CONF_MCP_TOOL_MODE in existing_data:
+            storage_data.setdefault(
+                CONF_MCP_TOOL_MODE, existing_data[CONF_MCP_TOOL_MODE]
+            )
         if CONF_MCP_ALLOWED_TOOLS in existing_data:
             storage_data.setdefault(
                 CONF_MCP_ALLOWED_TOOLS,
                 existing_data.get(CONF_MCP_ALLOWED_TOOLS),
             )
 
-        for key in (
-            CONF_MCP_HEADERS,
-            CONF_MCP_SECRET_HEADER_KEYS,
-            CONF_MCP_CALL_CACHE_ENABLED,
-            CONF_MCP_CALL_CACHE_TTL,
-            CONF_MCP_INCLUDE_RETURN_SCHEMA,
-            CONF_MCP_DEFERRED_LOADING,
-        ):
-            if key in user_input:
-                continue
-            if key in existing_data:
-                storage_data[key] = existing_data[key]
-            else:
-                storage_data.pop(key, None)
+        _merge_submitted_optional_fields(
+            storage_data,
+            existing_data=existing_data,
+            validated_data=validated_data,
+            submitted_keys=submitted_keys,
+            keys=(
+                CONF_MCP_HEADERS,
+                CONF_MCP_SECRET_HEADER_KEYS,
+                CONF_MCP_CALL_CACHE_ENABLED,
+                CONF_MCP_CALL_CACHE_TTL,
+                CONF_MCP_INCLUDE_RETURN_SCHEMA,
+                CONF_MCP_DEFERRED_LOADING,
+            ),
+            derived_sources={CONF_MCP_SECRET_HEADER_KEYS: CONF_MCP_HEADERS},
+        )
         return storage_data
 
     def _async_finish_server_form(
         self,
         validated_data: dict[str, Any],
-        user_input: dict[str, Any],
+        submitted_keys: set[str],
     ) -> SubentryFlowResult:
         """Create or update the MCP server after validation."""
         storage_data = self._storage_data_with_preserved_allowlist(
-            validated_data, user_input
+            validated_data, submitted_keys
         )
         if self._is_new:
             return self.async_create_entry(
@@ -273,7 +292,6 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Resume MCP server flow after validation progress."""
         del user_input
-        pending_user_input = self._pending_mcp_server_user_input
         step_id = self._pending_mcp_server_step_id
         form_options = self._pending_mcp_form_options
         validated_data = self._pending_mcp_validated_data
@@ -290,6 +308,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
             return await self.async_step_manage_tools()
 
         assert validated_data is not None
+        pending_submitted_keys = self._pending_mcp_server_submitted_keys
         if _mcp_url_already_configured(
             self._get_entry(),
             validated_data[CONF_MCP_URL],
@@ -297,7 +316,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         ):
             return self.async_abort(reason="already_configured")
 
-        return self._async_finish_server_form(validated_data, pending_user_input)
+        return self._async_finish_server_form(validated_data, pending_submitted_keys)
 
     async def _async_validate_mcp_server(
         self, data: dict[str, Any], current_subentry_id: str | None
@@ -393,7 +412,8 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         validated_data = self._pending_manage_tools_data
         tool_options = self._pending_manage_tools_tool_options
         tool_names = [option["value"] for option in tool_options]
-        if CONF_MCP_ALLOWED_TOOLS in subentry.data:
+        default_tool_mode = _mcp_tool_mode(subentry.data)
+        if default_tool_mode == MCP_TOOL_MODE_SPECIFIED:
             default_tool_names = [
                 tool_name
                 for tool_name in parse_allowed_tools(
@@ -401,29 +421,38 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 )
                 if tool_name in tool_names
             ]
-        else:
+        elif default_tool_mode == MCP_TOOL_MODE_ALL:
             default_tool_names = tool_names
+        else:
+            default_tool_names = []
 
         if user_input is None:
             return self.async_show_form(
                 step_id="manage_tools",
-                data_schema=_mcp_tools_schema(tool_options, default_tool_names),
+                data_schema=_mcp_tools_schema(
+                    tool_options, default_tool_mode, default_tool_names
+                ),
             )
 
+        tool_mode = str(user_input.get(CONF_MCP_TOOL_MODE, default_tool_mode))
         allowed_tools = [
             tool_name
             for tool_name in parse_allowed_tools(user_input.get(CONF_MCP_ALLOWED_TOOLS))
             if tool_name in tool_names
         ]
-        if not allowed_tools:
+        if tool_mode == MCP_TOOL_MODE_SPECIFIED and not allowed_tools:
             return self.async_show_form(
                 step_id="manage_tools",
-                data_schema=_mcp_tools_schema(tool_options, default_tool_names),
+                data_schema=_mcp_tools_schema(
+                    tool_options, tool_mode, allowed_tools
+                ),
                 errors={CONF_MCP_ALLOWED_TOOLS: "mcp_tools_not_allowlisted"},
             )
 
         self._manage_tools_prepared = False
-        data = {**validated_data, CONF_MCP_ALLOWED_TOOLS: allowed_tools}
+        data = {**validated_data}
+        data.pop(CONF_MCP_ALLOWED_TOOLS, None)
+        data.update(stored_mcp_tool_configuration(tool_mode, allowed_tools))
         return self.async_update_and_abort(
             self._get_entry(),
             subentry,

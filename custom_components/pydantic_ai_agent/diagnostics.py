@@ -18,6 +18,7 @@ from .const import (
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SERVER_IDS,
+    CONF_MCP_TOOL_MODE,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
@@ -35,6 +36,7 @@ from .const import (
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
+from .mcp.entry_helpers import effective_mcp_tool_mode
 from .models.model_profiles import primary_model_profile
 from .models.structured_output import resolved_structured_output_mode
 from .observability.logfire_support import (
@@ -200,6 +202,7 @@ def _configuration_summary(
         summary.update(
             {
                 "has_headers": bool(data.get(CONF_MCP_HEADERS)),
+                CONF_MCP_TOOL_MODE: effective_mcp_tool_mode(data),
                 "allowed_tool_count": len(data.get(CONF_MCP_ALLOWED_TOOLS, []))
                 if isinstance(data.get(CONF_MCP_ALLOWED_TOOLS), list)
                 else 0,

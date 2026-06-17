@@ -20,14 +20,20 @@ from ..const import (
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     DEFAULT_MCP_TIMEOUT,
+    MCP_TOOL_MODE_ALL,
 )
 from ..observability.metrics import record_mcp_tool_call
 from ..runtime.redaction import redact_data
 from ..runtime.types import MCPCallCacheEntry, WorkspaceRuntimeData
 from .client import _mcp_client
-from .entry_helpers import mcp_config_from_subentry, mcp_subentries
+from .entry_helpers import (
+    effective_mcp_tool_mode,
+    mcp_config_from_subentry,
+    mcp_subentries,
+)
 from .errors import MCPValidationError
 from .validation import async_validate_mcp_url_details
 
@@ -55,17 +61,11 @@ async def _validated_runtime_mcp_config(
 
 def _runtime_allowed_tools(
     subentry: Any, config: dict[str, Any]
-) -> tuple[bool, set[str]]:
+) -> set[str] | None:
     """Return MCP allowlist status and normalized tool names."""
-    has_allowlist = CONF_MCP_ALLOWED_TOOLS in subentry.data
-    if has_allowlist and not config[CONF_MCP_ALLOWED_TOOLS]:
-        raise MCPValidationError(
-            "mcp_tools_not_allowlisted",
-            "Select at least one allowed MCP tool before enabling this server for "
-            "runtime use.",
-            server_id=subentry.subentry_id,
-        )
-    return has_allowlist, set(config[CONF_MCP_ALLOWED_TOOLS])
+    if effective_mcp_tool_mode(subentry.data) == MCP_TOOL_MODE_ALL:
+        return None
+    return set(config[CONF_MCP_ALLOWED_TOOLS])
 
 
 def _cached_mcp_tool_result(
@@ -153,10 +153,12 @@ async def _async_runtime_mcp_toolset_for_subentry(
     entry: ConfigEntry[WorkspaceRuntimeData],
     agent_subentry_id: str,
     subentry: Any,
-) -> AbstractToolset[Any]:
+) -> AbstractToolset[Any] | None:
     """Return one runtime MCP toolset for a configured server subentry."""
     config, validated_url = await _validated_runtime_mcp_config(hass, subentry)
-    has_allowlist, allowed_tools = _runtime_allowed_tools(subentry, config)
+    allowed_tools = _runtime_allowed_tools(subentry, config)
+    if config[CONF_MCP_TOOL_MODE] != MCP_TOOL_MODE_ALL and not allowed_tools:
+        return None
     cache_enabled = config[CONF_MCP_CALL_CACHE_ENABLED]
     cache_ttl = config[CONF_MCP_CALL_CACHE_TTL]
     server_id = subentry.subentry_id
@@ -168,12 +170,11 @@ async def _async_runtime_mcp_toolset_for_subentry(
         tool_args: dict[str, Any],
         *,
         server_id: str = server_id,
-        allowed_tools: set[str] = allowed_tools,
+        allowed_tools: set[str] | None = allowed_tools,
         cache_enabled: bool = cache_enabled,
         cache_ttl: int = cache_ttl,
-        has_allowlist: bool = has_allowlist,
     ) -> Any:
-        if has_allowlist and tool_name not in allowed_tools:
+        if allowed_tools is not None and tool_name not in allowed_tools:
             raise MCPValidationError(
                 "mcp_tool_not_allowed",
                 "MCP tool is not allowlisted for this server.",
@@ -203,7 +204,7 @@ async def _async_runtime_mcp_toolset_for_subentry(
         process_tool_call=process_tool_call,
         include_return_schema=config[CONF_MCP_INCLUDE_RETURN_SCHEMA],
     )
-    if has_allowlist:
+    if allowed_tools is not None:
         toolset = toolset.filtered(
             lambda _ctx, tool_def, allowed_tools=allowed_tools: (
                 tool_def.name in allowed_tools
@@ -231,14 +232,14 @@ async def async_runtime_mcp_toolsets(
         if subentry.subentry_id not in selected_servers:
             continue
         configured_server_ids.add(subentry.subentry_id)
-        toolsets.append(
-            await _async_runtime_mcp_toolset_for_subentry(
-                hass,
-                entry,
-                agent_subentry_id,
-                subentry,
-            )
+        toolset = await _async_runtime_mcp_toolset_for_subentry(
+            hass,
+            entry,
+            agent_subentry_id,
+            subentry,
         )
+        if toolset is not None:
+            toolsets.append(toolset)
     missing_server_ids = selected_servers - configured_server_ids
     if missing_server_ids:
         missing_server_id = sorted(missing_server_ids)[0]

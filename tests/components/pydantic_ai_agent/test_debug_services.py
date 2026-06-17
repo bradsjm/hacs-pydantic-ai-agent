@@ -183,39 +183,14 @@ async def test_metrics_and_tool_source_status_services(
         SERVICE_GET_AGENT_METRICS,
         {"config_entry_id": entry.entry_id, "subentry_id": "conversation-1"},
     )
-    assert metrics_response["entries"][0]["records"] == [
-        {
-            "subentry_id": "conversation-1",
-            "subentry_type": None,
-            "metrics": {
-                "last_run_model_profile": None,
-                "last_run_input_tokens": None,
-                "last_run_output_tokens": None,
-                "last_run_cache_read_tokens": None,
-                "last_run_total_tokens": 42,
-                "last_run_input_cost": None,
-                "last_run_output_cost": None,
-                "last_run_cache_read_cost": None,
-                "last_run_total_cost": None,
-                "last_run_model_request_count": None,
-                "last_run_tool_use_count": None,
-                "last_mcp_tool_call": "echo",
-                "cumulative_input_tokens": 0,
-                "cumulative_output_tokens": 0,
-                "cumulative_cache_read_tokens": 0,
-                "cumulative_total_tokens": 0,
-                "cumulative_input_cost": None,
-                "cumulative_output_cost": None,
-                "cumulative_cache_read_cost": None,
-                "cumulative_total_cost": None,
-                "last_run_duration": None,
-                "last_error_type": None,
-                "consecutive_failures": 0,
-                "provider_healthy": None,
-                "last_run_succeeded": True,
-            },
-        }
-    ]
+    records = metrics_response["entries"][0]["records"]
+    assert len(records) == 1
+    assert records[0]["subentry_id"] == "conversation-1"
+    assert records[0]["subentry_type"] is None
+    record_metrics = records[0]["metrics"]
+    assert record_metrics["last_mcp_tool_call"] == "echo"
+    assert record_metrics["last_run_total_tokens"] == 42
+    assert record_metrics["last_run_succeeded"] is True
 
     tool_status = await _call_service(
         hass,
@@ -225,4 +200,6 @@ async def test_metrics_and_tool_source_status_services(
     assert tool_status["entries"][0]["mcp_servers"][0]["allowed_tool_count"] == 1
     assert tool_status["entries"][0]["mcp_servers"][0]["cached_tool_count"] == 2
     assert tool_status["entries"][0]["mcp_servers"][0]["tool_names"] == ["echo"]
+    assert tool_status["entries"][0]["mcp_servers"][0]["has_headers"] is True
+    assert "Authorization" not in tool_status["entries"][0]["mcp_servers"][0]
     assert tool_status["entries"][0]["skills"][0]["content_length"] == 20

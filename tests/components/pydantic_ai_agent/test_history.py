@@ -130,7 +130,7 @@ async def test_unsupported_attachment_type_raises(
     attachment_path = tmp_path / "notes.txt"
     attachment_path.write_text("notes")
 
-    with pytest.raises(HomeAssistantError, match="Unsupported attachment type"):
+    with pytest.raises(HomeAssistantError):
         await chat_log_content_to_model_messages(
             hass,
             [

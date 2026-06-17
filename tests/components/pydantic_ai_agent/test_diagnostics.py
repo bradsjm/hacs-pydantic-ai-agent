@@ -26,6 +26,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SECRET_HEADER_KEYS,
     CONF_MCP_SERVER_IDS,
+    CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
@@ -234,6 +235,7 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
     assert mcp_diagnostics["configuration_summary"] == {
         "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
         "has_headers": True,
+        CONF_MCP_TOOL_MODE: "specified",
         "allowed_tool_count": 1,
         CONF_MCP_INCLUDE_RETURN_SCHEMA: False,
         CONF_MCP_DEFERRED_LOADING: True,

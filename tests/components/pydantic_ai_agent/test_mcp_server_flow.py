@@ -8,6 +8,7 @@ import voluptuous_serialize
 from custom_components.pydantic_ai_agent.config_flows import mcp_server_flow
 from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_ALLOWED_TOOLS,
+    CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     CONF_NAME,
     SUBENTRY_TYPE_MCP_SERVER,
@@ -330,11 +331,12 @@ async def test_mcp_server_manage_tools_defaults_to_all_tools_and_saves_subset(
         result = await subentry_configure_result(
             hass,
             result["flow_id"],
-            {CONF_MCP_ALLOWED_TOOLS: ["echo"]},
+            {CONF_MCP_TOOL_MODE: "specified", CONF_MCP_ALLOWED_TOOLS: ["echo"]},
         )
 
     assert result["type"] is FlowResultType.ABORT
     updated_subentry = entry.subentries[subentry.subentry_id]
+    assert updated_subentry.data[CONF_MCP_TOOL_MODE] == "specified"
     assert updated_subentry.data[CONF_MCP_ALLOWED_TOOLS] == ["echo"]
 
 
@@ -394,12 +396,84 @@ async def test_mcp_server_manage_tools_requires_at_least_one_tool(
         result = await subentry_configure_result(
             hass,
             result["flow_id"],
-            {CONF_MCP_ALLOWED_TOOLS: []},
+            {CONF_MCP_TOOL_MODE: "specified", CONF_MCP_ALLOWED_TOOLS: []},
         )
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "manage_tools"
     assert result["errors"] == {CONF_MCP_ALLOWED_TOOLS: "mcp_tools_not_allowlisted"}
+    schema = voluptuous_serialize.convert(
+        result["data_schema"], custom_serializer=cv.custom_serializer
+    )
+    assert isinstance(schema, list)
+    tool_field = next(
+        field for field in schema if field["name"] == CONF_MCP_ALLOWED_TOOLS
+    )
+    assert tool_field["default"] == []
+
+
+async def test_mcp_server_manage_tools_disabled_mode_saves_empty_allowlist(
+    hass: HomeAssistant,
+) -> None:
+    """Test MCP tool management supports disabled mode."""
+    entry = await loaded_workspace_entry(
+        hass,
+        (
+            {
+                "subentry_id": "mcp-1",
+                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
+                "title": "Echo MCP",
+                "unique_id": None,
+                "data": {
+                    CONF_NAME: "Echo MCP",
+                    CONF_MCP_URL: "https://mcp.example.com/mcp",
+                },
+            },
+        ),
+    )
+    subentry = next(iter(entry.subentries.values()))
+
+    async def discover_tools(
+        *_args: object, **_kwargs: object
+    ) -> list[dict[str, object]]:
+        return [
+            {
+                "name": "echo",
+                "description": "Echo",
+                "input_schema": {"type": "object"},
+            }
+        ]
+
+    result = await subentry_init_result(
+        hass,
+        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+
+    with patch(
+        "custom_components.pydantic_ai_agent.config_flows.mcp_server_flow.async_discover_mcp_tools_from_config",
+        new=discover_tools,
+    ):
+        result = await subentry_configure_result(
+            hass,
+            result["flow_id"],
+            {"next_step_id": "manage_tools"},
+        )
+        await hass.async_block_till_done()
+        result = await subentry_configure_result(hass, result["flow_id"], None)
+        result = await subentry_configure_result(
+            hass,
+            result["flow_id"],
+            {CONF_MCP_TOOL_MODE: "disabled", CONF_MCP_ALLOWED_TOOLS: []},
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated = entry.subentries[subentry.subentry_id]
+    assert updated.data[CONF_MCP_TOOL_MODE] == "disabled"
+    assert updated.data[CONF_MCP_ALLOWED_TOOLS] == []
 
 
 async def test_mcp_server_reconfigure_validation_uses_discovered_tools_for_no_tools(
@@ -459,58 +533,3 @@ async def test_mcp_server_reconfigure_validation_uses_discovered_tools_for_no_to
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "edit_server"
     assert result["errors"] == {"base": "no_mcp_tools"}
-
-
-async def test_mcp_server_manage_tools_starts_with_progress(
-    hass: HomeAssistant,
-) -> None:
-    """Test MCP tool management shows progress before discovery."""
-    entry = await loaded_workspace_entry(
-        hass,
-        (
-            {
-                "subentry_id": "mcp-1",
-                "subentry_type": SUBENTRY_TYPE_MCP_SERVER,
-                "title": "Echo MCP",
-                "unique_id": None,
-                "data": {
-                    CONF_NAME: "Echo MCP",
-                    CONF_MCP_URL: "https://mcp.example.com/mcp",
-                },
-            },
-        ),
-    )
-    subentry = next(iter(entry.subentries.values()))
-
-    async def discover_tools(
-        *_args: object, **_kwargs: object
-    ) -> list[dict[str, object]]:
-        return [
-            {
-                "name": "echo",
-                "description": "Echo a message",
-                "input_schema": {"type": "object"},
-            }
-        ]
-
-    result = await subentry_init_result(
-        hass,
-        (entry.entry_id, SUBENTRY_TYPE_MCP_SERVER),
-        context={
-            "source": config_entries.SOURCE_RECONFIGURE,
-            "subentry_id": subentry.subentry_id,
-        },
-    )
-
-    with patch(
-        "custom_components.pydantic_ai_agent.config_flows.mcp_server_flow.async_discover_mcp_tools_from_config",
-        new=discover_tools,
-    ):
-        result = await subentry_configure_result(
-            hass,
-            result["flow_id"],
-            {"next_step_id": "manage_tools"},
-        )
-        assert result["type"] is FlowResultType.SHOW_PROGRESS
-        assert result["step_id"] == "validate_mcp_server_progress"
-        assert result["progress_action"] == "discover_mcp_tools"

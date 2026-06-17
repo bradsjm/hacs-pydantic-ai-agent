@@ -40,6 +40,7 @@ CONF_MCP_CALL_CACHE_TTL = "mcp_call_cache_ttl"
 CONF_MCP_DEFERRED_LOADING = "mcp_deferred_loading"
 CONF_MCP_HEADERS = "mcp_headers"
 CONF_MCP_SECRET_HEADER_KEYS = "mcp_secret_header_keys"
+CONF_MCP_TOOL_MODE = "mcp_tool_mode"
 CONF_MCP_INCLUDE_RETURN_SCHEMA = "mcp_include_return_schema"
 CONF_MCP_SERVER_IDS = "mcp_server_ids"
 CONF_MCP_URL = "mcp_url"
@@ -107,6 +108,9 @@ DEFAULT_SKILL_NAME = "Skill"
 DEFAULT_WORKSPACE_NAME = "Pydantic AI Agent"
 DEFAULT_MCP_TIMEOUT = 10.0
 DEFAULT_MCP_CALL_CACHE_TTL = 300
+MCP_TOOL_MODE_ALL = "all"
+MCP_TOOL_MODE_SPECIFIED = "specified"
+MCP_TOOL_MODE_DISABLED = "disabled"
 DEFAULT_TIMEOUT = 10.0
 DEFAULT_TOOL_RETRIES = 3
 

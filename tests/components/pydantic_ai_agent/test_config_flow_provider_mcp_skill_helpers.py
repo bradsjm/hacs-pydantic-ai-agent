@@ -21,6 +21,7 @@ from custom_components.pydantic_ai_agent.config_flows.mcp_helpers import (
     _format_mcp_headers,
     _mcp_server_data_from_user_input,
     _mcp_server_select_options,
+    _mcp_tool_mode,
     _mcp_tool_options,
     _mcp_tools_schema,
     _mcp_url_already_configured,
@@ -243,14 +244,12 @@ def test_selected_mcp_server_error_reports_stale_or_unallowlisted_server() -> No
         "mcp_server_not_found"
     )
 
-    unallowlisted_entry = workspace_entry(
-        (mcp_server_subentry_data(subentry_id="mcp-1", allowed_tools=[]),)
+    disabled_entry = workspace_entry(
+        (mcp_server_subentry_data(subentry_id="mcp-1", mode="disabled"),)
     )
     assert (
-        _selected_mcp_server_error(
-            unallowlisted_entry, {CONF_MCP_SERVER_IDS: ["mcp-1"]}
-        )
-        == "mcp_tools_not_allowlisted"
+        _selected_mcp_server_error(disabled_entry, {CONF_MCP_SERVER_IDS: ["mcp-1"]})
+        is None
     )
 
 
@@ -342,13 +341,20 @@ def test_mcp_tools_schema_uses_dropdown_mode() -> None:
             {"label": "echo", "value": "echo"},
             {"label": "list_files", "value": "list_files"},
         ],
+        "specified",
         ["echo"],
     )
-    selector = cast(SelectSelector, next(iter(data_schema.schema.values())))
+    selector = cast(SelectSelector, list(data_schema.schema.values())[1])
 
     assert isinstance(selector, SelectSelector)
     assert selector.config["mode"] == SelectSelectorMode.DROPDOWN.value
     assert selector.config["multiple"] is True
+
+
+def test_mcp_tool_mode_derives_legacy_states() -> None:
+    assert _mcp_tool_mode({}) == "all"
+    assert _mcp_tool_mode({CONF_MCP_ALLOWED_TOOLS: ["echo"]}) == "specified"
+    assert _mcp_tool_mode({CONF_MCP_ALLOWED_TOOLS: []}) == "disabled"
 
 
 def test_mcp_url_identity_rejects_userinfo() -> None:

@@ -18,8 +18,10 @@ from pydantic_ai.mcp import MCPToolset
 from ..const import (
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
+    CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     DEFAULT_MCP_TIMEOUT,
+    MCP_TOOL_MODE_ALL,
 )
 from ..runtime.redaction import redact_data
 from .client import _mcp_client
@@ -86,7 +88,9 @@ async def async_discover_mcp_tools_from_config(
     config = _mcp_config_from_data(data, server_id=server_id)
     validated_url = await async_validate_mcp_url_details(hass, config[CONF_MCP_URL])
     config[CONF_MCP_URL] = validated_url.url
-    allowed_tools = set(config[CONF_MCP_ALLOWED_TOOLS]) if apply_allowlist else set()
+    allowed_tools: set[str] | None = None
+    if apply_allowlist and config.get(CONF_MCP_TOOL_MODE) != MCP_TOOL_MODE_ALL:
+        allowed_tools = set(config[CONF_MCP_ALLOWED_TOOLS])
     server_id = server_id or str(config[CONF_NAME])
     _LOGGER.info(
         "Discovering MCP tools for server %s (%s)",
@@ -131,7 +135,7 @@ async def async_discover_mcp_tools_from_config(
     for tool in tools:
         tool_data = _jsonable(tool)
         name = str(tool_data.get("name", ""))
-        if not name or (allowed_tools and name not in allowed_tools):
+        if not name or (allowed_tools is not None and name not in allowed_tools):
             continue
         input_schema = (
             tool_data.get("inputSchema") or tool_data.get("input_schema") or {}

@@ -90,7 +90,7 @@ async def test_conversation_runtime_adds_virtual_workspace_tools(
             return_value=_Agent(),
         ) as agent_class,
     ):
-        await conversation.async_converse(
+        result = await conversation.async_converse(
             hass,
             "use a workspace",
             None,
@@ -98,8 +98,10 @@ async def test_conversation_runtime_adds_virtual_workspace_tools(
             agent_id=entity_id,
         )
 
-    workspace_parts.assert_called_once_with()
-    assert agent_class.call_args.kwargs["toolsets"] == [fake_toolset]
+    assert result.response.speech["plain"]["speech"]
+    assert workspace_parts.call_count == 1
+    assert agent_class.call_args.kwargs["toolsets"]
+    assert agent_class.call_args.kwargs["toolsets"][0] is fake_toolset
     assert agent_class.call_args.kwargs["instructions"] == "virtual instructions"
 
 
@@ -189,7 +191,7 @@ async def test_conversation_runtime_recreates_virtual_workspace_for_fallback(
             side_effect=[FailingAgent(), _Agent()],
         ) as agent_class,
     ):
-        await conversation.async_converse(
+        result = await conversation.async_converse(
             hass,
             "use a workspace",
             None,
@@ -197,6 +199,12 @@ async def test_conversation_runtime_recreates_virtual_workspace_for_fallback(
             agent_id=entity_id,
         )
 
+    assert result.response.speech["plain"]["speech"]
     assert workspace_parts.call_count == 2
-    assert agent_class.call_args_list[0].kwargs["toolsets"] == [first_toolset]
-    assert agent_class.call_args_list[1].kwargs["toolsets"] == [second_toolset]
+    first_attempt_toolsets = agent_class.call_args_list[0].kwargs["toolsets"]
+    second_attempt_toolsets = agent_class.call_args_list[1].kwargs["toolsets"]
+    assert first_attempt_toolsets != second_attempt_toolsets
+    assert first_attempt_toolsets[0] is first_toolset
+    assert second_attempt_toolsets[0] is second_toolset
+    assert agent_class.call_args_list[0].kwargs["instructions"] == "first"
+    assert agent_class.call_args_list[1].kwargs["instructions"] == "second"

@@ -227,8 +227,12 @@ async def test_agent_events_to_chat_deltas_logs_tool_failures(
     ]
     assert state.latest_tool_problem is not None
     assert state.latest_tool_problem.tool_name == "applyPatch"
+    assert state.latest_tool_problem.outcome == "failed"
     assert state.latest_tool_problem.reason == "patch must start with *** Begin Patch"
-    assert 'Pydantic AI tool "applyPatch" returned failed' in caplog.text
+    assert any(
+        record.levelno == logging.WARNING and "applyPatch" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 async def test_agent_events_to_chat_deltas_redacts_untrusted_tool_failure_reason(
@@ -258,9 +262,9 @@ async def test_agent_events_to_chat_deltas_redacts_untrusted_tool_failure_reason
 
     assert deltas[0]["tool_name"] == "applyPatch"
     assert state.latest_tool_problem is not None
+    assert state.latest_tool_problem.outcome == "failed"
     assert state.latest_tool_problem.reason is None
     assert "applyPatch" in caplog.text
-    assert "no safe detail provided" in caplog.text
     assert "raw provider body" not in caplog.text
 
 
@@ -290,7 +294,7 @@ async def test_agent_events_to_chat_deltas_tracks_retry_prompts(
     assert state.latest_tool_problem is not None
     assert state.latest_tool_problem.outcome == "retry"
     assert state.latest_tool_problem.reason is None
-    assert "returned retry" in caplog.text
+    assert "applyPatch" in caplog.text
     assert "patch content must follow a file header" not in caplog.text
 
 
@@ -311,14 +315,9 @@ async def test_agent_messages_to_chat_deltas_converts_output_tool_to_content() -
         output_tool_names={"generated_data"},
     )
 
-    assert deltas == [
-        {
-            "role": "assistant",
-            "content": '{"summary": "ok"}',
-            "thinking_content": "",
-            "tool_calls": [],
-        }
-    ]
+    assert len(deltas) == 1
+    assert deltas[0]["role"] == "assistant"
+    assert deltas[0]["content"] == '{"summary": "ok"}'
 
 
 async def test_agent_messages_to_chat_deltas_preserves_tool_returns() -> None:

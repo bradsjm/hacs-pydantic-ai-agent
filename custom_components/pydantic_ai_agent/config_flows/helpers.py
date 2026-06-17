@@ -42,6 +42,51 @@ def _flatten_section_data(
     return flattened
 
 
+def _flatten_section_data_with_presence(
+    data: Mapping[str, Any], section_keys: Iterable[str]
+) -> tuple[dict[str, Any], set[str]]:
+    """Return flattened form data and keys explicitly present in the submission."""
+    flattened = dict(data)
+    section_key_set = set(section_keys)
+    submitted_keys = set(flattened) - section_key_set
+    for key in section_key_set:
+        if key not in flattened:
+            continue
+        value = flattened.pop(key)
+        if isinstance(value, Mapping):
+            flattened.update(value)
+            submitted_keys.update(value)
+        elif value is not None:
+            flattened[key] = value
+            submitted_keys.add(key)
+    return flattened, submitted_keys
+
+
+def _merge_submitted_optional_fields(
+    storage_data: dict[str, Any],
+    *,
+    existing_data: Mapping[str, Any],
+    validated_data: Mapping[str, Any],
+    submitted_keys: set[str],
+    keys: Iterable[str],
+    derived_sources: Mapping[str, str] | None = None,
+) -> None:
+    """Merge optional fields while preserving values absent from a form submission."""
+    derived_sources = derived_sources or {}
+    for key in keys:
+        source_key = derived_sources.get(key, key)
+        if key in submitted_keys or source_key in submitted_keys:
+            if key in validated_data:
+                storage_data[key] = validated_data[key]
+            else:
+                storage_data.pop(key, None)
+            continue
+        if key in existing_data:
+            storage_data[key] = existing_data[key]
+        else:
+            storage_data.pop(key, None)
+
+
 def _section_defaults(section_schema: VolDictType) -> dict[str, Any]:
     """Return defaults for an expandable section from its nested fields."""
     defaults: dict[str, Any] = {}

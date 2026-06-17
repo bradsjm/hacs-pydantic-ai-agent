@@ -309,7 +309,7 @@
         "invalid_mcp_headers": "Enter HTTP headers one per line using 'Header-Name: value'.",
         "invalid_mcp_tools": "Enter comma-separated tool names.",
         "invalid_mcp_url": "{error_message}",
-        "mcp_tools_not_allowlisted": "Select at least one tool to enable this MCP server.",
+        "mcp_tools_not_allowlisted": "Select at least one tool when using Specified tools enabled.",
         "no_mcp_tools": "{error_message}",
         "timeout": "{error_message}",
         "unknown": "Unexpected error while validating the MCP server. Check Home Assistant logs for details."
@@ -385,12 +385,14 @@
         },
         "manage_tools": {
           "data": {
+            "mcp_tool_mode": "Tool mode",
             "mcp_allowed_tools": "Enable MCP tools"
           },
           "data_description": {
+            "mcp_tool_mode": "Choose whether all discovered tools are enabled, only selected tools are enabled, or the server is temporarily disabled.",
             "mcp_allowed_tools": "Only selected tools will be enabled for use with conversation agents or AI tasks."
           },
-          "description": "Select tools you want to make available to conversation agents or AI tasks. The first time you open this list, all discovered tools are selected by default.",
+          "description": "Choose how this server contributes tools. All tools enabled removes the allowlist, Specified tools enabled limits runtime to the selected tools, and Disabled keeps the server configured but contributes no tools.",
           "title": "Configure available MCP tools"
         },
         "reconfigure_menu": {
@@ -599,7 +601,7 @@
           "data_description": {
             "selected_model_ids": "Select known models or type custom model identifiers to add them as tags. Custom entries are managed alongside catalog and discovered models."
           },
-          "description": "Select the provider models available to conversation agents and AI tasks.",
+          "description": "Select the provider models available to conversation agents and AI tasks.\n\n{model_symbol_key}",
           "title": "Add or remove enabled models"
         },
         "model_filters": {
@@ -869,6 +871,13 @@
         }
       },
       "name": "Add HTTP Header"
+    },
+    "mcp_tool_mode": {
+      "options": {
+        "all": "All tools enabled",
+        "disabled": "Disabled",
+        "specified": "Specified tools enabled"
+      }
     },
     "provider_extra_body": {
       "fields": {

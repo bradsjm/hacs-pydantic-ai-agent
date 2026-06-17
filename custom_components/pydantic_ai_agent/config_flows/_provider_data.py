@@ -60,7 +60,11 @@ from ._settings_parsing import (
     _model_setting_error,
     _parse_key_value_json_setting,
 )
-from .helpers import _flatten_section_data, _key_value_rows_selector
+from .helpers import (
+    _flatten_section_data,
+    _key_value_rows_selector,
+    _section_schema_key,
+)
 
 
 def _format_http_headers(
@@ -117,38 +121,35 @@ def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol
             default=data.get(CONF_BASE_URL, ""),
         ): TextSelector(TextSelectorConfig()),
     }
-    schema[vol.Optional(_SECTION_ADVANCED_OPTIONS, default={})] = section(
-        vol.Schema(
-            {
-                vol.Optional(
-                    CONF_PROVIDER_HEADERS,
-                    default=_format_http_headers(
-                        data.get(CONF_PROVIDER_HEADERS),
-                        data.get(CONF_PROVIDER_SECRET_HEADER_KEYS),
-                    ),
-                ): _key_value_rows_selector(
-                    CONF_KEY_VALUE_VALUE,
-                    {"text": None},
-                    key_label="header name",
-                    value_label="header value",
-                    include_secret_toggle=True,
-                    secret_default=False,
-                    translation_key=CONF_PROVIDER_HEADERS,
-                ),
-                vol.Optional(
-                    CONF_PROVIDER_EXTRA_BODY,
-                    default=_format_key_value_json_rows(
-                        data.get(CONF_PROVIDER_EXTRA_BODY)
-                    ),
-                ): _key_value_rows_selector(
-                    CONF_KEY_VALUE_JSON_VALUE,
-                    {"template": None},
-                    key_label="parameter name",
-                    value_label="value",
-                    translation_key=CONF_PROVIDER_EXTRA_BODY,
-                ),
-            }
+    advanced_schema: VolDictType = {
+        vol.Optional(
+            CONF_PROVIDER_HEADERS,
+            default=_format_http_headers(
+                data.get(CONF_PROVIDER_HEADERS),
+                data.get(CONF_PROVIDER_SECRET_HEADER_KEYS),
+            ),
+        ): _key_value_rows_selector(
+            CONF_KEY_VALUE_VALUE,
+            {"text": None},
+            key_label="header name",
+            value_label="header value",
+            include_secret_toggle=True,
+            secret_default=False,
+            translation_key=CONF_PROVIDER_HEADERS,
         ),
+        vol.Optional(
+            CONF_PROVIDER_EXTRA_BODY,
+            default=_format_key_value_json_rows(data.get(CONF_PROVIDER_EXTRA_BODY)),
+        ): _key_value_rows_selector(
+            CONF_KEY_VALUE_JSON_VALUE,
+            {"template": None},
+            key_label="parameter name",
+            value_label="value",
+            translation_key=CONF_PROVIDER_EXTRA_BODY,
+        ),
+    }
+    schema[_section_schema_key(_SECTION_ADVANCED_OPTIONS, advanced_schema)] = section(
+        vol.Schema(advanced_schema),
         {"collapsed": True},
     )
     return vol.Schema(schema)

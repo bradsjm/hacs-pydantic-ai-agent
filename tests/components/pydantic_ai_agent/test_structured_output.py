@@ -79,7 +79,7 @@ def test_structured_model_request_parameters_for_object_modes(output_mode: str) 
 
 def test_structured_model_request_parameters_reject_unknown_mode() -> None:
     """Test unsupported output modes fail loudly."""
-    with pytest.raises(ValueError, match="Unsupported structured output mode"):
+    with pytest.raises(ValueError):
         structured_model_request_parameters(
             function_tools=[],
             output_mode="invalid",

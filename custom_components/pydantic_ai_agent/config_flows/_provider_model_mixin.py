@@ -46,6 +46,7 @@ from .provider_wizard.models_dev import CatalogLoadError
 from .provider_wizard.schemas import (
     filters_from_user_input,
     model_filter_schema,
+    model_symbol_key_description_placeholders,
     needs_model_filter_step,
 )
 from .provider_wizard.types import (
@@ -102,6 +103,15 @@ class ProviderModelManagementMixin:
     _manage_models_prepared: bool
     _manage_models_show_filters: bool
 
+    def _has_cached_manage_models_data(self) -> bool:
+        """Return if manage-models preparation can use existing cache."""
+        data = self._current_profile_flow_data()
+        if CONF_PROVIDER_METADATA not in data:
+            return _cached_provider_model_names(data) is not None
+        from .provider_wizard.catalog_cache import catalog_manager
+
+        return catalog_manager(self.hass).cached_catalog() is not None
+
     def _start_manage_models_prepare(self) -> SubentryFlowResult:
         """Start progress for provider model-management preparation."""
         return self.async_show_progress(
@@ -141,6 +151,7 @@ class ProviderModelManagementMixin:
                 step_id="manage_models",
                 data_schema=vol.Schema({}),
                 errors={"base": self._profile_refresh_error},
+                description_placeholders=model_symbol_key_description_placeholders(),
             )
         if self._manage_models_show_filters:
             return await self.async_step_manage_model_filters()
@@ -149,8 +160,10 @@ class ProviderModelManagementMixin:
     async def _async_prepare_manage_models_entry(self) -> SubentryFlowResult | None:
         """Prepare manage-models state before rendering or saving."""
         if not self._manage_models_prepared:
-            return self._start_manage_models_prepare()
-        if not getattr(self, "_profile_flow_data", None):
+            if not self._has_cached_manage_models_data():
+                return self._start_manage_models_prepare()
+            await self._async_prepare_manage_models_flow()
+        elif not getattr(self, "_profile_flow_data", None):
             await self._async_prepare_manage_models_flow()
         self._manage_models_prepared = True
         if self._profile_refresh_error is not None:
@@ -158,6 +171,7 @@ class ProviderModelManagementMixin:
                 step_id="manage_models",
                 data_schema=vol.Schema({}),
                 errors={"base": self._profile_refresh_error},
+                description_placeholders=model_symbol_key_description_placeholders(),
             )
         if self._manage_models_show_filters:
             return await self.async_step_manage_model_filters()

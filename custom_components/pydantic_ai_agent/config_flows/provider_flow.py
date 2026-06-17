@@ -32,6 +32,7 @@ from ..const import (
     CONF_PROVIDER_SECRET_HEADER_KEYS,
 )
 from ..models.provider_validation import ProviderValidationError
+from ._constants import _SECTION_ADVANCED_OPTIONS, _SECTION_CUSTOMIZE_MODEL_LIST
 from ._key_value_rows import _format_key_value_json_rows
 from ._profile_helpers import (
     _provider_validation_placeholders,
@@ -55,9 +56,16 @@ from ._provider_model_mixin import ProviderModelManagementMixin
 from ._provider_profile_mixin import ProviderProfileMixin
 from ._provider_wizard_mixin import ProviderWizardMixin
 from .generated_titles import DEFAULT_SERVICE_TITLE_SUFFIX, generated_default_title
+from .helpers import (
+    _flatten_section_data_with_presence,
+    _merge_submitted_optional_fields,
+)
 from .provider_wizard.const import CONF_SELECTED_MODEL_IDS
 from .provider_wizard.filters import ModelFilterOptions
-from .provider_wizard.schemas import model_selection_schema
+from .provider_wizard.schemas import (
+    model_selection_schema,
+    model_symbol_key_description_placeholders,
+)
 from .provider_wizard.types import (
     CatalogModelOption,
     CatalogProviderOption,
@@ -79,6 +87,7 @@ class ProviderSubentryFlowHandler(
     _pending_data: dict[str, Any]
     _pending_error: tuple[str, str, dict[str, str]] | None
     _pending_storage_data: dict[str, Any]
+    _pending_submitted_keys: set[str]
     _pending_step_id: str
     _profile_flow_data: dict[str, Any]
     _profile_filter_provider: CatalogProviderOption | None
@@ -289,8 +298,11 @@ class ProviderSubentryFlowHandler(
             return self.async_abort(reason="entry_not_loaded")
 
         if user_input is not None:
+            flat_user_input, submitted_keys = _flatten_section_data_with_presence(
+                user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_CUSTOMIZE_MODEL_LIST)
+            )
             try:
-                data = _normalise_provider_data(user_input)
+                data = _normalise_provider_data(flat_user_input)
                 _validate_provider_data(self.hass, data)
             except ProviderValidationError as err:
                 return await self._async_show_provider_form(
@@ -299,21 +311,22 @@ class ProviderSubentryFlowHandler(
                     errors={"base": err.reason},
                     description_placeholders=_provider_validation_placeholders(err),
                 )
-            if self._provider_already_configured(data):
-                return self.async_abort(reason="already_configured")
             self._options = dict(data)
             self._pending_data = dict(data)
             self._pending_storage_data = {}
+            self._pending_submitted_keys = submitted_keys
             self._pending_step_id = step_id
             self._pending_error = await self._async_validate_provider_form(data)
             if self._pending_error is not None:
                 field, reason, placeholders = self._pending_error
                 return await self._async_show_provider_form(
                     step_id,
-                    options=self._pending_data,
+                    options=self._pending_storage_data,
                     errors={field: reason},
                     description_placeholders=placeholders,
                 )
+            if self._provider_already_configured(self._pending_storage_data):
+                return self.async_abort(reason="already_configured")
             return self._finish_provider_form()
 
         if not self._options and not self._is_new:
@@ -342,7 +355,13 @@ class ProviderSubentryFlowHandler(
         custom_model_names = _provider_custom_model_names(existing_data)
         if not self._is_new and custom_model_names:
             storage_data[CONF_CUSTOM_MODEL_NAMES] = custom_model_names
-        self._add_pending_provider_connection_settings(storage_data)
+        if base_url := self._pending_data.get(CONF_BASE_URL):
+            storage_data[CONF_BASE_URL] = base_url
+        self._add_pending_provider_connection_settings(storage_data, existing_data)
+        try:
+            _validate_provider_data(self.hass, storage_data)
+        except ProviderValidationError as err:
+            return ("base", err.reason, _provider_validation_placeholders(err))
         if isinstance(
             provider_metadata := existing_data.get(CONF_PROVIDER_METADATA), Mapping
         ) and _catalog_provider_metadata_still_valid(existing_data, storage_data):
@@ -360,21 +379,21 @@ class ProviderSubentryFlowHandler(
         return None
 
     def _add_pending_provider_connection_settings(
-        self, storage_data: dict[str, Any]
+        self, storage_data: dict[str, Any], existing_data: Mapping[str, Any]
     ) -> None:
         """Copy pending provider connection settings into storage data."""
-        if base_url := self._pending_data.get(CONF_BASE_URL):
-            storage_data[CONF_BASE_URL] = base_url
-        if provider_headers := self._pending_data.get(CONF_PROVIDER_HEADERS):
-            storage_data[CONF_PROVIDER_HEADERS] = provider_headers
-        if provider_secret_header_keys := self._pending_data.get(
-            CONF_PROVIDER_SECRET_HEADER_KEYS
-        ):
-            storage_data[CONF_PROVIDER_SECRET_HEADER_KEYS] = list(
-                provider_secret_header_keys
-            )
-        if provider_extra_body := self._pending_data.get(CONF_PROVIDER_EXTRA_BODY):
-            storage_data[CONF_PROVIDER_EXTRA_BODY] = dict(provider_extra_body)
+        _merge_submitted_optional_fields(
+            storage_data,
+            existing_data=existing_data,
+            validated_data=self._pending_data,
+            submitted_keys=self._pending_submitted_keys,
+            keys=(
+                CONF_PROVIDER_HEADERS,
+                CONF_PROVIDER_SECRET_HEADER_KEYS,
+                CONF_PROVIDER_EXTRA_BODY,
+            ),
+            derived_sources={CONF_PROVIDER_SECRET_HEADER_KEYS: CONF_PROVIDER_HEADERS},
+        )
 
     def _finish_provider_form(self) -> SubentryFlowResult:
         """Create or update the provider subentry after validation."""
@@ -408,11 +427,6 @@ class ProviderSubentryFlowHandler(
         """Manage which provider-owned model profiles are available."""
         if result := await self._async_prepare_manage_models_entry():
             return result
-        if not self._profile_flow_data:
-            result = await self._async_prepare_manage_models_flow()
-            if result is not None:
-                return result
-        self._manage_models_prepared = True
         if user_input is None:
             models = self._managed_models_for_selection()
             return self.async_show_form(
@@ -423,6 +437,7 @@ class ProviderSubentryFlowHandler(
                     allow_custom_value=True,
                 ),
                 errors={"base": "no_models_available"} if not models else None,
+                description_placeholders=model_symbol_key_description_placeholders(),
             )
         models = self._managed_models_for_selection()
         raw_selected_model_ids = user_input.get(CONF_SELECTED_MODEL_IDS)
@@ -437,6 +452,7 @@ class ProviderSubentryFlowHandler(
                     allow_custom_value=True,
                 ),
                 errors={CONF_SELECTED_MODEL_IDS: "model_required"},
+                description_placeholders=model_symbol_key_description_placeholders(),
             )
         data = self._current_profile_flow_data()
         previous_custom_model_names = _provider_custom_model_names(data)
@@ -488,6 +504,7 @@ class ProviderSubentryFlowHandler(
                     allow_custom_value=True,
                 ),
                 errors={"base": error},
+                description_placeholders=model_symbol_key_description_placeholders(),
             )
         return self.async_update_and_abort(
             self._get_entry(),

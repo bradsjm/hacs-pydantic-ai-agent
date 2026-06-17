@@ -21,6 +21,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SERVER_IDS,
+    CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
@@ -252,6 +253,7 @@ def mcp_server_subentry_data(
     url: str = "https://mcp.example.com/mcp",
     headers: Mapping[str, str] | None = None,
     allowed_tools: Sequence[str] | None = None,
+    mode: str | None = None,
     include_return_schema: bool | None = None,
     deferred_loading: bool | None = None,
 ) -> dict[str, object]:
@@ -262,6 +264,8 @@ def mcp_server_subentry_data(
     }
     if headers is not None:
         data[CONF_MCP_HEADERS] = dict(headers)
+    if mode is not None:
+        data[CONF_MCP_TOOL_MODE] = mode
     if allowed_tools is not None:
         data[CONF_MCP_ALLOWED_TOOLS] = list(allowed_tools)
     if include_return_schema is not None:

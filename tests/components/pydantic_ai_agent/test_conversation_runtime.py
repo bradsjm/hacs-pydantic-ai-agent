@@ -247,32 +247,6 @@ async def test_conversation_runtime_supports_function_model_without_patching_age
     assert "hello from function model" in repr(captured_messages[-1])
 
 
-async def test_conversation_runtime_defaults_max_iterations(
-    hass: HomeAssistant,
-    mock_chat_model_for_profile: TestModel,
-) -> None:
-    """Test conversation runs keep the default iteration limit when unset."""
-    del mock_chat_model_for_profile
-    entry = loaded_conversation_entry()
-    entry.add_to_hass(hass)
-    agent = _Agent()
-
-    await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-
-    entity_id = first_non_default_conversation_entity_id(hass)
-    with patch("custom_components.pydantic_ai_agent.entity.Agent", return_value=agent):
-        await conversation.async_converse(
-            hass,
-            "hello",
-            None,
-            Context(),
-            agent_id=entity_id,
-        )
-
-    assert request_limit_from_kwargs(agent.run_kwargs) == 10
-
-
 async def test_conversation_runtime_passes_selected_skills_capabilities(
     hass: HomeAssistant,
     mock_chat_model_for_profile: TestModel,

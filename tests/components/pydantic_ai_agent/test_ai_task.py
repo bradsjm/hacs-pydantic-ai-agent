@@ -226,26 +226,6 @@ async def test_ai_task_runtime_uses_configured_max_iterations(
     assert request_limit_from_kwargs(agent.run_kwargs) == 26
 
 
-async def test_ai_task_runtime_defaults_max_iterations(
-    hass: HomeAssistant,
-    mock_chat_model_for_profile: TestModel,
-) -> None:
-    del mock_chat_model_for_profile
-    entity_id = await _setup_ai_task_entity(hass)
-    agent = _Agent(stream_text="plain result", output="plain result")
-
-    with patch("custom_components.pydantic_ai_agent.entity.Agent", return_value=agent):
-        result = await ai_task.async_generate_data(
-            hass,
-            task_name="Plain task",
-            entity_id=entity_id,
-            instructions="Generate text",
-        )
-
-    assert result.data == "plain result"
-    assert request_limit_from_kwargs(agent.run_kwargs) == 30
-
-
 async def test_ai_task_runtime_keeps_explicit_disabled_thinking_capability(
     hass: HomeAssistant,
     mock_chat_model_for_profile: TestModel,

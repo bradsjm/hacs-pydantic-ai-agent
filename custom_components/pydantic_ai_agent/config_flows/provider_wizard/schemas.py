@@ -207,6 +207,19 @@ def model_selection_schema(
     return vol.Schema(schema)
 
 
+def model_symbol_key_description_placeholders() -> dict[str, str]:
+    """Return description placeholders for model selector glyph meanings."""
+    return {
+        "model_symbol_key": "Symbols:\n\n"
+        "- ⚙️ tools\n"
+        "- 📷 image\n"
+        "- 💭 reasoning\n"
+        "- 🎧 audio\n"
+        "- 📹 video\n"
+        "- 📄 PDF"
+    }
+
+
 def provider_options(
     catalog: CompactCatalog, *, include_retry: bool = False
 ) -> list[SelectOptionDict]:
@@ -285,16 +298,12 @@ def default_selected_model_ids(
 
 def _model_label(model: CatalogModelOption) -> str:
     """Return a compact model label with useful capability hints."""
-    badges: list[str] = []
-    if model.reasoning:
-        badges.append("reasoning")
-    if model.supports_tools:
-        badges.append("tools")
     if model.context_limit:
-        badges.append(f"{_format_context_limit(model.context_limit)} ctx")
-    label = f"{model.name} ({', '.join(badges)})" if badges else model.name
-    modality_glyphs = " ".join(_modality_glyphs(model.input_modalities))
-    return f"{label} {modality_glyphs}" if modality_glyphs else label
+        label = f"{model.name} ({_format_context_limit(model.context_limit)} ctx)"
+    else:
+        label = model.name
+    glyphs = " ".join(_model_glyphs(model))
+    return f"{label} {glyphs}" if glyphs else label
 
 
 def _format_context_limit(context_limit: int) -> str:
@@ -306,16 +315,23 @@ def _format_context_limit(context_limit: int) -> str:
     return f"{round(context_limit / 1000):,}K"
 
 
-def _modality_glyphs(modalities: tuple[str, ...]) -> tuple[str, ...]:
-    """Return display glyphs for normalized input modalities."""
-    glyphs = {
-        "text": "⊤",  # noqa: RUF001
-        "image": "▣",
-        "video": "▶",
-        "audio": "♪",
-        "pdf": "▤",
-    }
-    return tuple(glyphs[modality] for modality in modalities if modality in glyphs)
+def _model_glyphs(model: CatalogModelOption) -> tuple[str, ...]:
+    """Return display glyphs for model capabilities in a stable order."""
+    modalities = set(model.input_modalities)
+    glyphs: list[str] = []
+    if model.supports_tools:
+        glyphs.append("⚙️")
+    if "image" in modalities:
+        glyphs.append("📷")
+    if model.reasoning:
+        glyphs.append("💭")
+    if "audio" in modalities:
+        glyphs.append("🎧")
+    if "video" in modalities:
+        glyphs.append("📹")
+    if "pdf" in modalities:
+        glyphs.append("📄")
+    return tuple(glyphs)
 
 
 def _flatten_section_data(

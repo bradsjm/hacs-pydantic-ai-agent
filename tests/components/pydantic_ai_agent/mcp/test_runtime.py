@@ -13,6 +13,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     DOMAIN,
     SUBENTRY_TYPE_MCP_SERVER,
@@ -62,6 +63,7 @@ def _mcp_subentry_data(
     *,
     subentry_id: str = "mcp_server_1",
     allowed_tools: list[str] | None = None,
+    mode: str | None = None,
     store_allowed_tools: bool = False,
     call_cache_enabled: bool | None = None,
     call_cache_ttl: int | None = None,
@@ -76,6 +78,8 @@ def _mcp_subentry_data(
     }
     if allowed_tools is not None or store_allowed_tools:
         data[CONF_MCP_ALLOWED_TOOLS] = allowed_tools or []
+    if mode is not None:
+        data[CONF_MCP_TOOL_MODE] = mode
     if call_cache_enabled is not None:
         data[CONF_MCP_CALL_CACHE_ENABLED] = call_cache_enabled
     if call_cache_ttl is not None:
@@ -97,6 +101,7 @@ def _mcp_entry(
     *,
     subentry_id: str = "mcp_server_1",
     allowed_tools: list[str] | None = None,
+    mode: str | None = None,
     store_allowed_tools: bool = False,
     call_cache_enabled: bool | None = None,
     call_cache_ttl: int | None = None,
@@ -113,6 +118,7 @@ def _mcp_entry(
             _mcp_subentry_data(
                 subentry_id=subentry_id,
                 allowed_tools=allowed_tools,
+                mode=mode,
                 store_allowed_tools=store_allowed_tools,
                 call_cache_enabled=call_cache_enabled,
                 call_cache_ttl=call_cache_ttl,
@@ -166,20 +172,16 @@ async def test_runtime_mcp_toolsets_require_selected_servers(
     assert err.value.reason == "mcp_server_not_found"
 
 
-async def test_runtime_mcp_toolsets_reject_explicit_empty_allowlist(
+async def test_runtime_mcp_toolsets_disabled_mode_contributes_no_tools(
     hass: HomeAssistant,
 ) -> None:
-    entry = _mcp_entry(store_allowed_tools=True)
-    entry.runtime_data = WorkspaceRuntimeData(workspace_name="Workspace")
+    toolsets = await _async_runtime_toolsets(
+        hass,
+        _mcp_entry(mode="disabled", store_allowed_tools=True),
+        ["mcp_server_1"],
+    )
 
-    with pytest.raises(MCPValidationError) as err:
-        await async_runtime_mcp_toolsets(
-            hass,
-            entry,
-            "conversation-1",
-            ["mcp_server_1"],
-        )
-    assert err.value.reason == "mcp_tools_not_allowlisted"
+    assert toolsets == []
 
 
 async def test_runtime_mcp_toolsets_enforce_allowlist_and_deferred_loading(
@@ -187,6 +189,7 @@ async def test_runtime_mcp_toolsets_enforce_allowlist_and_deferred_loading(
 ) -> None:
     entry = _mcp_entry(
         allowed_tools=["echo"],
+        mode="specified",
         include_return_schema=False,
         deferred_loading=True,
     )

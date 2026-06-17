@@ -18,6 +18,7 @@ from ..const import (
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
     CONF_MCP_SERVER_IDS,
+    CONF_MCP_TOOL_MODE,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_PRIMARY_MODEL_REF,
@@ -34,6 +35,7 @@ from ..const import (
     SUBENTRY_TYPE_SKILL,
 )
 from ..mcp import cached_mcp_tools
+from ..mcp.entry_helpers import effective_mcp_tool_mode
 from ..models.model_profiles import (
     model_profile_ref,
     primary_model_profile,
@@ -256,6 +258,7 @@ def _mcp_server_status(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str
         "subentry_id": subentry.subentry_id,
         "title": subentry.title,
         "has_headers": bool(subentry.data.get(CONF_MCP_HEADERS)),
+        CONF_MCP_TOOL_MODE: effective_mcp_tool_mode(subentry.data),
         "allowed_tool_count": _list_count(allowed_tools),
         "cached_tool_count": len(cached_tools) if cached_tools is not None else 0,
         "runtime_loaded": subentry.subentry_id in runtime_servers,

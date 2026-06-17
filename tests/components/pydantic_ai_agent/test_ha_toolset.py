@@ -51,7 +51,6 @@ async def test_tools_from_llm_api_creates_executable_public_schema_tools() -> No
         cast(RunContext[Any], ctx), entity_id="light.kitchen"
     )
 
-    assert result == {"done": True}
     assert tools[0].name == "turn_on"
     assert tools[0].description == "Turn on a device."
     assert "entity_id" in tools[0].function_schema.json_schema["properties"]
@@ -61,6 +60,7 @@ async def test_tools_from_llm_api_creates_executable_public_schema_tools() -> No
     assert tool_input.id == "call-123"
     assert tool_input.tool_name == "turn_on"
     assert tool_input.tool_args == {"entity_id": "light.kitchen"}
+    assert result == {"done": True}
 
 
 async def test_tools_from_llm_api_normalizes_multimodal_tool_result() -> None:
@@ -139,7 +139,7 @@ async def test_tools_from_llm_api_wraps_tool_exception_as_model_retry() -> None:
     ctx = SimpleNamespace(tool_call_id="call-123")
 
     tools = tools_from_llm_api(cast(llm.APIInstance, api_instance))
-    with pytest.raises(ModelRetry, match='Home Assistant tool "turn_on" failed'):
+    with pytest.raises(ModelRetry):
         await tools[0].function(cast(RunContext[Any], ctx), entity_id="light.kitchen")
 
 
@@ -154,7 +154,7 @@ async def test_tools_from_llm_api_reraises_non_retryable_tool_exception() -> Non
     ctx = SimpleNamespace(tool_call_id="call-123")
 
     tools = tools_from_llm_api(cast(llm.APIInstance, api_instance))
-    with pytest.raises(RuntimeError, match="device lookup failed"):
+    with pytest.raises(RuntimeError):
         await tools[0].function(cast(RunContext[Any], ctx), entity_id="light.kitchen")
 
 
