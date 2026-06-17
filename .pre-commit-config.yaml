@@ -34,6 +34,11 @@ repos:
         entry: scripts/format
         language: system
         pass_filenames: false
+      - id: test-smoke
+        name: test-smoke
+        entry: scripts/test-smoke
+        language: system
+        pass_filenames: false
       - id: check
         name: check
         entry: scripts/check

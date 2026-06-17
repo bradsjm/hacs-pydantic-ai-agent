@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+uv run pytest \
+  --timeout=10 \
+  -n 0 \
+  -q \
+  -m "not provider_integration" \
+  tests/components/pydantic_ai_agent/test_context_management.py::test_sliding_window_trims_old_messages_and_preserves_head \
+  tests/components/pydantic_ai_agent/test_context_management.py::test_sliding_window_does_not_split_tool_call_result_pairs \
+  tests/components/pydantic_ai_agent/test_structured_output.py::test_structured_model_request_parameters_for_tool_mode \
+  tests/components/pydantic_ai_agent/test_templated_extra_body.py::test_model_settings_with_templated_extra_body_renders_without_mutation \
+  tests/components/pydantic_ai_agent/test_templated_extra_body.py::test_model_settings_with_templated_extra_body_rejects_shape_conflicts \
+  tests/components/pydantic_ai_agent/test_model_profiles.py::test_resolve_model_profile_reads_provider_owned_profile \
+  tests/components/pydantic_ai_agent/test_model_profiles.py::test_run_settings_override_legacy_profile_run_settings \
+  tests/components/pydantic_ai_agent/test_model_profiles.py::test_openai_profile_mapping_uses_persisted_capabilities_not_model_name \
+  tests/components/pydantic_ai_agent/test_setup.py::test_setup_entry_stores_workspace_runtime_data \
+  tests/components/pydantic_ai_agent/test_conversation.py::test_conversation_entity_controls_home_assistant_with_llm_api \
+  tests/components/pydantic_ai_agent/test_skills.py::test_async_skills_capabilities_exposes_selected_native_skills \
+  tests/components/pydantic_ai_agent/test_history.py::test_chat_log_content_converts_to_model_messages \
+  "$@"
