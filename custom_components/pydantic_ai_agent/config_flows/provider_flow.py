@@ -302,7 +302,10 @@ class ProviderSubentryFlowHandler(
                 user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_CUSTOMIZE_MODEL_LIST)
             )
             try:
-                data = _normalise_provider_data(flat_user_input)
+                previous_data = (
+                    None if self._is_new else self._get_reconfigure_subentry().data
+                )
+                data = _normalise_provider_data(flat_user_input, previous_data)
                 _validate_provider_data(self.hass, data)
             except ProviderValidationError as err:
                 return await self._async_show_provider_form(

@@ -16,6 +16,9 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_PROVIDER,
 )
+from custom_components.pydantic_ai_agent.runtime.header_metadata import (
+    HEADER_VALUE_REDACTED,
+)
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -104,7 +107,7 @@ async def test_provider_edit_connection_structured_fields_round_trip(
     assert section_default[CONF_PROVIDER_HEADERS] == [
         {
             CONF_KEY_VALUE_KEY: "Authorization",
-            CONF_KEY_VALUE_VALUE: "Bearer old",
+            CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
             CONF_KEY_VALUE_IS_SECRET: True,
         }
     ]
@@ -116,7 +119,7 @@ async def test_provider_edit_connection_structured_fields_round_trip(
     ) == [
         {
             CONF_KEY_VALUE_KEY: "Authorization",
-            CONF_KEY_VALUE_VALUE: "Bearer old",
+            CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
             CONF_KEY_VALUE_IS_SECRET: True,
         }
     ]
@@ -180,7 +183,7 @@ async def test_provider_edit_connection_structured_fields_round_trip(
     ) == [
         {
             CONF_KEY_VALUE_KEY: "Authorization",
-            CONF_KEY_VALUE_VALUE: "Bearer new",
+            CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
             CONF_KEY_VALUE_IS_SECRET: True,
         },
         {
@@ -218,6 +221,42 @@ async def test_provider_edit_connection_preserves_structured_fields_when_omitted
     assert updated_subentry.data[CONF_PROVIDER_EXTRA_BODY] == {
         "service_tier": "default"
     }
+
+
+async def test_provider_edit_connection_redacted_secret_keeps_stored_value(
+    hass: HomeAssistant,
+) -> None:
+    """Test unchanged redacted secret header values keep stored secrets."""
+    entry = await _loaded_workspace_entry(
+        hass, (_provider_subentry_data_with_structured_fields(),)
+    )
+    provider_subentry = next(iter(entry.subentries.values()))
+    result = await _start_provider_edit_connection(
+        hass, entry.entry_id, provider_subentry.subentry_id
+    )
+
+    result = await _subentry_configure_result(
+        hass,
+        result["flow_id"],
+        _provider_edit_payload(
+            {
+                CONF_PROVIDER_HEADERS: [
+                    {
+                        CONF_KEY_VALUE_KEY: "Authorization",
+                        CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
+                        CONF_KEY_VALUE_IS_SECRET: True,
+                    }
+                ]
+            }
+        ),
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated_subentry = entry.subentries[provider_subentry.subentry_id]
+    assert updated_subentry.data[CONF_PROVIDER_HEADERS] == {
+        "Authorization": "Bearer old"
+    }
+    assert updated_subentry.data[CONF_PROVIDER_SECRET_HEADER_KEYS] == ["Authorization"]
 
 
 async def test_provider_edit_connection_empty_advanced_preserves_structured_fields(

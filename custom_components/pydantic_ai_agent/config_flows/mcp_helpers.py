@@ -24,6 +24,7 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.typing import VolDictType
 
 from ..const import (
+    CONF_KEY_VALUE_KEY,
     CONF_KEY_VALUE_VALUE,
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_CALL_CACHE_ENABLED,
@@ -175,11 +176,13 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
             ),
         ): _key_value_rows_selector(
             CONF_KEY_VALUE_VALUE,
-            {"text": None},
+            {"text": {"type": "password"}},
             key_label="header name",
             value_label="header value",
             include_secret_toggle=True,
             secret_default=False,
+            label_field=CONF_KEY_VALUE_KEY,
+            description_field=CONF_KEY_VALUE_VALUE,
             translation_key=CONF_MCP_HEADERS,
         ),
         vol.Optional(
@@ -312,7 +315,9 @@ def _mcp_tool_mode(data: Mapping[str, Any]) -> str:
     return effective_mcp_tool_mode(data)
 
 
-def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
+def _mcp_server_data_from_user_input(
+    user_input: Mapping[str, Any], previous_data: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
     """Return normalized remote MCP server subentry data."""
     user_input = _flatten_section_data(user_input, (_SECTION_ADVANCED_MCP,))
     data: dict[str, Any] = {
@@ -332,7 +337,7 @@ def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str,
         ),
     }
     headers, secret_header_keys = _parse_mcp_headers_with_secrets(
-        user_input.get(CONF_MCP_HEADERS)
+        user_input.get(CONF_MCP_HEADERS), previous_data
     )
     if headers:
         data[CONF_MCP_HEADERS] = headers
@@ -343,10 +348,17 @@ def _mcp_server_data_from_user_input(user_input: Mapping[str, Any]) -> dict[str,
     return data
 
 
-def _parse_mcp_headers_with_secrets(value: object) -> tuple[dict[str, str], list[str]]:
+def _parse_mcp_headers_with_secrets(
+    value: object, previous_data: Mapping[str, Any] | None = None
+) -> tuple[dict[str, str], list[str]]:
     """Parse optional HTTP headers and secret metadata from selector rows."""
+    previous_data = previous_data or {}
     try:
-        headers, secret_header_keys = parse_header_rows(value)
+        headers, secret_header_keys = parse_header_rows(
+            value,
+            previous_data.get(CONF_MCP_HEADERS),
+            previous_data.get(CONF_MCP_SECRET_HEADER_KEYS),
+        )
     except ValueError as err:
         raise vol.Invalid(str(err)) from err
     validated_headers = parse_mcp_headers(headers)

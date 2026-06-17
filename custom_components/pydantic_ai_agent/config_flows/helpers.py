@@ -114,6 +114,8 @@ def _key_value_rows_selector(
     value_label: str | None = None,
     include_secret_toggle: bool = False,
     secret_default: bool = False,
+    label_field: str | None = None,
+    description_field: str | None = None,
     translation_key: str | None = None,
 ) -> ObjectSelector:
     """Return a repeated key/value row selector."""
@@ -136,6 +138,10 @@ def _key_value_rows_selector(
             selector={"boolean": {}}, required=False
         )
     config = ObjectSelectorConfig(multiple=True, fields=fields)
+    if label_field is not None:
+        config["label_field"] = label_field
+    if description_field is not None:
+        config["description_field"] = description_field
     if translation_key is not None:
         config["translation_key"] = translation_key
     return ObjectSelector(config)

@@ -30,6 +30,7 @@ from ..const import (
     CONF_DISCOVERED_MODELS_AT,
     CONF_DISCOVERED_MODELS_CACHE_KEY,
     CONF_KEY_VALUE_JSON_VALUE,
+    CONF_KEY_VALUE_KEY,
     CONF_KEY_VALUE_VALUE,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
@@ -74,10 +75,12 @@ def _format_http_headers(
     return format_header_rows(headers, secret_header_keys)
 
 
-def _parse_provider_headers(value: object) -> tuple[dict[str, str], list[str]]:
+def _parse_provider_headers(
+    value: object, previous_data: Mapping[str, Any] | None = None
+) -> tuple[dict[str, str], list[str]]:
     """Return provider HTTP headers from form input."""
     try:
-        return _parse_http_headers(value)
+        return _parse_http_headers(value, previous_data)
     except vol.Invalid as err:
         raise ProviderValidationError(
             "invalid_provider_headers",
@@ -85,10 +88,17 @@ def _parse_provider_headers(value: object) -> tuple[dict[str, str], list[str]]:
         ) from err
 
 
-def _parse_http_headers(value: object) -> tuple[dict[str, str], list[str]]:
+def _parse_http_headers(
+    value: object, previous_data: Mapping[str, Any] | None = None
+) -> tuple[dict[str, str], list[str]]:
     """Return HTTP headers from selector rows or an existing mapping."""
+    previous_data = previous_data or {}
     try:
-        headers, secret_header_keys = parse_header_rows(value)
+        headers, secret_header_keys = parse_header_rows(
+            value,
+            previous_data.get(CONF_PROVIDER_HEADERS),
+            previous_data.get(CONF_PROVIDER_SECRET_HEADER_KEYS),
+        )
     except ValueError as err:
         raise vol.Invalid(str(err)) from err
     if not all(_HTTP_HEADER_NAME_PATTERN.fullmatch(key) for key in headers):
@@ -130,11 +140,13 @@ def _provider_connection_schema(options: Mapping[str, Any] | None = None) -> vol
             ),
         ): _key_value_rows_selector(
             CONF_KEY_VALUE_VALUE,
-            {"text": None},
+            {"text": {"type": "password"}},
             key_label="header name",
             value_label="header value",
             include_secret_toggle=True,
             secret_default=False,
+            label_field=CONF_KEY_VALUE_KEY,
+            description_field=CONF_KEY_VALUE_VALUE,
             translation_key=CONF_PROVIDER_HEADERS,
         ),
         vol.Optional(
@@ -311,7 +323,9 @@ def _clear_provider_model_cache(data: dict[str, Any]) -> None:
     data.pop(CONF_DISCOVERED_MODELS_CACHE_KEY, None)
 
 
-def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
+def _normalise_provider_data(
+    user_input: Mapping[str, Any], previous_data: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
     """Return normalized provider data for storage and validation."""
     data = _flatten_section_data(
         user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_CUSTOMIZE_MODEL_LIST)
@@ -319,7 +333,7 @@ def _normalise_provider_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
     data[CONF_NAME] = str(data[CONF_NAME]).strip() or DEFAULT_SERVICE_NAME
     data[CONF_BASE_URL] = _normalise_base_url(data.get(CONF_BASE_URL))
     headers, secret_header_keys = _parse_provider_headers(
-        data.get(CONF_PROVIDER_HEADERS)
+        data.get(CONF_PROVIDER_HEADERS), previous_data
     )
     if headers:
         data[CONF_PROVIDER_HEADERS] = headers

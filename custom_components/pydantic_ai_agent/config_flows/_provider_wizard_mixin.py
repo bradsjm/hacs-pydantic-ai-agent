@@ -270,7 +270,7 @@ class ProviderWizardMixin:
         data_input = dict(user_input)
         data_input[CONF_PROVIDER_MODE] = driver
         try:
-            data = _normalise_provider_data(data_input)
+            data = _normalise_provider_data(data_input, self._wizard_connection_options)
             _validate_provider_data(self.hass, data)
         except ProviderValidationError as err:
             self._wizard_connection_options = data_input

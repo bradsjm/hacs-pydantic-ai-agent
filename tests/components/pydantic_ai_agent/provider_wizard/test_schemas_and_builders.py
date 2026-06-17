@@ -59,6 +59,9 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
+from custom_components.pydantic_ai_agent.runtime.header_metadata import (
+    HEADER_VALUE_REDACTED,
+)
 from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.helpers.selector import ObjectSelector, TextSelector
 
@@ -246,33 +249,25 @@ def test_connection_schema_uses_structured_row_selectors() -> None:
     assert isinstance(extra_body_selector, ObjectSelector)
     header_selector = cast(ObjectSelector, header_selector)
     extra_body_selector = cast(ObjectSelector, extra_body_selector)
+    header_fields = header_selector.config["fields"]
+    extra_body_fields = extra_body_selector.config["fields"]
     assert header_selector.config["translation_key"] == CONF_PROVIDER_HEADERS
-    assert (
-        header_selector.config["fields"][CONF_KEY_VALUE_KEY]["label"] == "header name"
-    )
-    assert (
-        header_selector.config["fields"][CONF_KEY_VALUE_VALUE]["label"]
-        == "header value"
-    )
-    assert header_selector.config["fields"][CONF_KEY_VALUE_IS_SECRET]["selector"] == {
-        "boolean": {}
-    }
+    assert header_fields[CONF_KEY_VALUE_KEY]["label"] == "header name"
+    assert header_fields[CONF_KEY_VALUE_VALUE]["label"] == "header value"
+    assert header_fields[CONF_KEY_VALUE_IS_SECRET]["selector"] == {"boolean": {}}
+    assert header_fields[CONF_KEY_VALUE_VALUE]["selector"]["text"]["type"] == "password"
+    assert header_selector.config["label_field"] == CONF_KEY_VALUE_KEY
+    assert header_selector.config["description_field"] == CONF_KEY_VALUE_VALUE
     assert extra_body_selector.config["translation_key"] == CONF_PROVIDER_EXTRA_BODY
-    assert (
-        extra_body_selector.config["fields"][CONF_KEY_VALUE_KEY]["label"]
-        == "parameter name"
-    )
-    assert (
-        extra_body_selector.config["fields"][CONF_KEY_VALUE_JSON_VALUE]["label"]
-        == "value"
-    )
-    assert extra_body_selector.config["fields"][CONF_KEY_VALUE_JSON_VALUE][
-        "selector"
-    ] == {"template": {}}
+    assert extra_body_fields[CONF_KEY_VALUE_KEY]["label"] == "parameter name"
+    assert extra_body_fields[CONF_KEY_VALUE_JSON_VALUE]["label"] == "value"
+    assert extra_body_fields[CONF_KEY_VALUE_JSON_VALUE]["selector"] == {"template": {}}
+    assert "label_field" not in extra_body_selector.config
+    assert "description_field" not in extra_body_selector.config
     assert _nested_default_for_schema_key(schema, CONF_PROVIDER_HEADERS) == [
         {
             CONF_KEY_VALUE_KEY: "Authorization",
-            CONF_KEY_VALUE_VALUE: "Bearer token",
+            CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
             CONF_KEY_VALUE_IS_SECRET: True,
         }
     ]

@@ -149,7 +149,10 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         errors: dict[str, str] = {}
         description_placeholders: dict[str, str] = {}
         try:
-            data = _mcp_server_data_from_user_input(flat_user_input)
+            previous_data = (
+                None if self._is_new else self._get_reconfigure_subentry().data
+            )
+            data = _mcp_server_data_from_user_input(flat_user_input, previous_data)
         except MCPValidationError as err:
             errors[CONF_MCP_URL] = err.reason
             description_placeholders = _mcp_validation_placeholders(err)
@@ -421,8 +424,6 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 )
                 if tool_name in tool_names
             ]
-        elif default_tool_mode == MCP_TOOL_MODE_ALL:
-            default_tool_names = tool_names
         else:
             default_tool_names = []
 
@@ -443,9 +444,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         if tool_mode == MCP_TOOL_MODE_SPECIFIED and not allowed_tools:
             return self.async_show_form(
                 step_id="manage_tools",
-                data_schema=_mcp_tools_schema(
-                    tool_options, tool_mode, allowed_tools
-                ),
+                data_schema=_mcp_tools_schema(tool_options, tool_mode, allowed_tools),
                 errors={CONF_MCP_ALLOWED_TOOLS: "mcp_tools_not_allowlisted"},
             )
 

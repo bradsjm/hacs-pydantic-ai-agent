@@ -60,6 +60,10 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_SKILL,
 )
 from custom_components.pydantic_ai_agent.mcp import MCPValidationError
+from custom_components.pydantic_ai_agent.runtime.header_metadata import (
+    HEADER_VALUE_REDACTED,
+    parse_header_rows,
+)
 from homeassistant import config_entries
 from homeassistant.helpers.selector import (
     ObjectSelector,
@@ -178,6 +182,11 @@ def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> 
     assert provider_headers_selector.config["fields"][CONF_KEY_VALUE_IS_SECRET][
         "selector"
     ] == {"boolean": {}}
+    assert provider_headers_selector.config["fields"][CONF_KEY_VALUE_VALUE][
+        "selector"
+    ]["text"]["type"] == "password"
+    assert provider_headers_selector.config["label_field"] == CONF_KEY_VALUE_KEY
+    assert provider_headers_selector.config["description_field"] == CONF_KEY_VALUE_VALUE
     assert (
         provider_extra_body_selector.config["translation_key"]
         == CONF_PROVIDER_EXTRA_BODY
@@ -196,10 +205,17 @@ def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> 
         "selector"
     ] == {"template": {}}
     assert CONF_KEY_VALUE_IS_SECRET not in provider_extra_body_selector.config["fields"]
+    assert "label_field" not in provider_extra_body_selector.config
+    assert "description_field" not in provider_extra_body_selector.config
     mcp_headers_selector = cast(ObjectSelector, mcp_headers_selector)
     assert mcp_headers_selector.config["fields"][CONF_KEY_VALUE_IS_SECRET][
         "selector"
     ] == {"boolean": {}}
+    assert mcp_headers_selector.config["fields"][CONF_KEY_VALUE_VALUE][
+        "selector"
+    ]["text"]["type"] == "password"
+    assert mcp_headers_selector.config["label_field"] == CONF_KEY_VALUE_KEY
+    assert mcp_headers_selector.config["description_field"] == CONF_KEY_VALUE_VALUE
 
 
 def test_mcp_server_selector_options_are_sorted() -> None:
@@ -272,7 +288,7 @@ def test_format_mcp_headers_returns_selector_rows_with_secret_flags() -> None:
     ) == [
         {
             CONF_KEY_VALUE_KEY: "Authorization",
-            CONF_KEY_VALUE_VALUE: "Bearer token",
+            CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
             CONF_KEY_VALUE_IS_SECRET: True,
         },
         {
@@ -282,6 +298,69 @@ def test_format_mcp_headers_returns_selector_rows_with_secret_flags() -> None:
         },
     ]
     assert _format_mcp_headers(None) == []
+
+
+def test_header_row_parsing_accepts_rows_without_display_field() -> None:
+    assert parse_header_rows(
+        [
+            {
+                CONF_KEY_VALUE_KEY: "Authorization",
+                CONF_KEY_VALUE_VALUE: "Bearer token",
+                CONF_KEY_VALUE_IS_SECRET: True,
+            }
+        ]
+    ) == ({"Authorization": "Bearer token"}, ["Authorization"])
+
+
+def test_header_row_parsing_restores_unchanged_redacted_secret() -> None:
+    assert parse_header_rows(
+        [
+            {
+                CONF_KEY_VALUE_KEY: "Authorization",
+                CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
+                CONF_KEY_VALUE_IS_SECRET: True,
+            }
+        ],
+        {"Authorization": "Bearer token"},
+        ["Authorization"],
+    ) == ({"Authorization": "Bearer token"}, ["Authorization"])
+
+    assert parse_header_rows(
+        [
+            {
+                CONF_KEY_VALUE_KEY: "Authorization",
+                CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
+                CONF_KEY_VALUE_IS_SECRET: False,
+            }
+        ],
+        {"Authorization": "Bearer token"},
+        ["Authorization"],
+    ) == ({"Authorization": "Bearer token"}, [])
+
+    with pytest.raises(ValueError, match="invalid_key_value"):
+        parse_header_rows(
+            [
+                {
+                    CONF_KEY_VALUE_KEY: "X-Authorization",
+                    CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
+                    CONF_KEY_VALUE_IS_SECRET: True,
+                }
+            ],
+            {"Authorization": "Bearer token"},
+            ["Authorization"],
+        )
+
+    assert parse_header_rows(
+        [
+            {
+                CONF_KEY_VALUE_KEY: "X-Literal",
+                CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
+                CONF_KEY_VALUE_IS_SECRET: False,
+            }
+        ],
+        {"Authorization": "Bearer token"},
+        ["Authorization"],
+    ) == ({"X-Literal": HEADER_VALUE_REDACTED}, [])
 
 
 def test_mcp_server_data_from_user_input_defaults_and_normalizes_cache_fields() -> None:

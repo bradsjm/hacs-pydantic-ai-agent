@@ -20,6 +20,9 @@ from custom_components.pydantic_ai_agent.const import (
     DEFAULT_MCP_CALL_CACHE_TTL,
     SUBENTRY_TYPE_MCP_SERVER,
 )
+from custom_components.pydantic_ai_agent.runtime.header_metadata import (
+    HEADER_VALUE_REDACTED,
+)
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -112,7 +115,7 @@ async def test_mcp_server_edit_round_trips_headers_as_structured_rows(
     assert section_default[CONF_MCP_HEADERS] == [
         {
             CONF_KEY_VALUE_KEY: "Authorization",
-            CONF_KEY_VALUE_VALUE: "Bearer old",
+            CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
             CONF_KEY_VALUE_IS_SECRET: True,
         }
     ]
@@ -125,7 +128,7 @@ async def test_mcp_server_edit_round_trips_headers_as_structured_rows(
     ) == [
         {
             CONF_KEY_VALUE_KEY: "Authorization",
-            CONF_KEY_VALUE_VALUE: "Bearer old",
+            CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
             CONF_KEY_VALUE_IS_SECRET: True,
         }
     ]
@@ -174,7 +177,7 @@ async def test_mcp_server_edit_round_trips_headers_as_structured_rows(
     ) == [
         {
             CONF_KEY_VALUE_KEY: "Authorization",
-            CONF_KEY_VALUE_VALUE: "Bearer new",
+            CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
             CONF_KEY_VALUE_IS_SECRET: True,
         },
         {
@@ -259,6 +262,47 @@ async def test_mcp_server_edit_non_secret_header_clears_secret_keys(
     updated_subentry = entry.subentries[subentry.subentry_id]
     assert updated_subentry.data[CONF_MCP_HEADERS] == {"X-Custom": "non-secret-value"}
     assert updated_subentry.data[CONF_MCP_SECRET_HEADER_KEYS] == []
+
+
+async def test_mcp_server_edit_redacted_secret_keeps_stored_value(
+    hass: HomeAssistant,
+) -> None:
+    """Test unchanged redacted secret header values keep stored secrets."""
+    subentry_data = mcp_server_subentry_data(headers={"Authorization": "Bearer old"})
+    subentry_config = subentry_data["data"]
+    assert isinstance(subentry_config, dict)
+    subentry_config[CONF_MCP_SECRET_HEADER_KEYS] = ["Authorization"]
+    entry = await loaded_workspace_entry(hass, (subentry_data,))
+    subentry = next(iter(entry.subentries.values()))
+    result = await _start_edit_server_flow(hass, entry.entry_id, subentry.subentry_id)
+
+    with patch.object(
+        mcp_server_flow.MCPServerSubentryFlowHandler,
+        "_async_validate_mcp_server",
+        new=_validate_mcp_server_success,
+    ):
+        result = await _submit_edit_server_and_finish(
+            hass,
+            result["flow_id"],
+            {
+                CONF_NAME: "Echo MCP",
+                CONF_MCP_URL: "https://mcp.example.com/mcp",
+                "advanced_mcp": {
+                    CONF_MCP_HEADERS: [
+                        {
+                            CONF_KEY_VALUE_KEY: "Authorization",
+                            CONF_KEY_VALUE_VALUE: HEADER_VALUE_REDACTED,
+                            CONF_KEY_VALUE_IS_SECRET: True,
+                        }
+                    ]
+                },
+            },
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    updated_subentry = entry.subentries[subentry.subentry_id]
+    assert updated_subentry.data[CONF_MCP_HEADERS] == {"Authorization": "Bearer old"}
+    assert updated_subentry.data[CONF_MCP_SECRET_HEADER_KEYS] == ["Authorization"]
 
 
 async def test_mcp_server_edit_preserves_existing_tool_allowlist(

@@ -20,6 +20,7 @@ from homeassistant.helpers.typing import VolDictType
 from ...const import (
     CONF_BASE_URL,
     CONF_KEY_VALUE_JSON_VALUE,
+    CONF_KEY_VALUE_KEY,
     CONF_KEY_VALUE_VALUE,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
@@ -115,11 +116,13 @@ def connection_schema(
             ),
         ): _key_value_rows_selector(
             CONF_KEY_VALUE_VALUE,
-            {"text": None},
+            {"text": {"type": "password"}},
             key_label="header name",
             value_label="header value",
             include_secret_toggle=True,
             secret_default=False,
+            label_field=CONF_KEY_VALUE_KEY,
+            description_field=CONF_KEY_VALUE_VALUE,
             translation_key=CONF_PROVIDER_HEADERS,
         ),
     }
