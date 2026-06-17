@@ -192,7 +192,7 @@ async def test_streaming_tool_retry_exhaustion_reports_tool_context(
         )
         await hass.async_block_till_done()
 
-    assert agent_class.call_args.kwargs["tool_retries"] == 2
+    assert agent_class.call_args.kwargs["retries"] == {"tools": 2, "output": 2}
     speech = result.response.speech["plain"]["speech"]
     assert "turn_on" in speech
     assert "unexpected response" not in speech.lower()

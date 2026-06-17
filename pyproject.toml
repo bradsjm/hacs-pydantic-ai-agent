@@ -1,6 +1,6 @@
 [project]
 name = "hacs-pydantic-ai-agent"
-version = "0.3.0"
+version = "0.4.0"
 description = "Home Assistant custom integration for Pydantic AI Agent"
 readme = "README.md"
 topics = ["home-assistant", "custom-integration", "ai", "pydantic"]
@@ -8,7 +8,7 @@ requires-python = ">=3.14.2"
 license = "Apache-2.0"
 dependencies = [
   "logfire==4.33.0",
-  "pydantic-ai-slim==1.97.0",
+  "pydantic-ai-slim==1.98.0",
   "summarization-pydantic-ai==0.1.7",
   "fastmcp>=3.3.0",
   "anthropic>=0.97.0",

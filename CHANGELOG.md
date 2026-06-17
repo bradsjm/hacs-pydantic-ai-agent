@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- Add model-aware context management for conversation and task runs.
+- Add web search support with a DuckDuckGo fallback provider.
+- Add MCP tool mode configuration and update all-mode defaults.
+- Improve MCP and model discovery flows with progress reporting and simplified setup validation.
+- Persist OpenAI-compatible model capability profiles and restore saved model pricing in edit forms.
+- Redact secret HTTP headers during provider reconfiguration.
+
 ## 0.3.0
 
 - Add MCP call-result caching plus a last-MCP-tool sensor for workspace runtime visibility.

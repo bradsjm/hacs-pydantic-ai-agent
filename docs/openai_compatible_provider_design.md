@@ -74,7 +74,7 @@ Runtime dependencies are declared in both `pyproject.toml` and
 
 Relevant dependency decisions:
 
-- `pydantic-ai-slim==1.97.0` supplies Pydantic AI core APIs without provider SDK
+- `pydantic-ai-slim==1.98.0` supplies Pydantic AI core APIs without provider SDK
   extras.
 - `anthropic>=0.97.0` and `google-genai>=1.70.0` are declared explicitly for
   native Anthropic and Google Gemini provider modes.
