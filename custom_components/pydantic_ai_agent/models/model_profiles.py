@@ -18,6 +18,8 @@ from pydantic_ai.settings import (
 from pydantic_ai.settings import ThinkingLevel
 
 from ..const import (
+    CONF_CONTEXT_WINDOW_SOURCE,
+    CONF_CONTEXT_WINDOW_TOKENS,
     CONF_ENABLED,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MAX_ITERATIONS,
@@ -33,6 +35,9 @@ from ..const import (
     CONF_THINKING,
     CONF_THINKING_SUPPORT,
     CONF_TIMEOUT,
+    CONTEXT_WINDOW_SOURCE_DEFAULT,
+    CONTEXT_WINDOW_SOURCES,
+    DEFAULT_CONTEXT_WINDOW_TOKENS,
     DEFAULT_TIMEOUT,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
@@ -76,6 +81,8 @@ class ResolvedModelProfile:
     model_name: str
     model_settings: dict[str, Any]
     model_pricing: dict[str, float] = field(default_factory=dict)
+    context_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS
+    context_window_source: str = CONTEXT_WINDOW_SOURCE_DEFAULT
     thinking_support: str | None = None
     structured_output_support: str | None = None
     supports_tools: bool | None = None
@@ -199,6 +206,8 @@ def resolve_model_profile(
     )
     raw_pricing = profile.get(CONF_MODEL_PRICING)
     model_pricing = _profile_pricing(raw_pricing)
+    context_window_tokens = _profile_context_window_tokens(profile)
+    context_window_source = _profile_context_window_source(profile)
     openai_profile = _resolved_openai_compatible_profile(provider_mode, profile)
     return ResolvedModelProfile(
         ref=raw_ref,
@@ -210,6 +219,8 @@ def resolve_model_profile(
         model_name=model_name,
         model_pricing=model_pricing,
         model_settings=model_settings,
+        context_window_tokens=context_window_tokens,
+        context_window_source=context_window_source,
         thinking_support=(
             openai_profile.thinking_support if openai_profile is not None else None
         ),
@@ -282,6 +293,26 @@ def _profile_pricing(raw_pricing: object) -> dict[str, float]:
         if price >= 0:
             pricing[key] = price
     return pricing
+
+
+def _profile_context_window_tokens(profile: Mapping[str, Any]) -> int:
+    """Return a valid context window token budget for one profile."""
+    value = profile.get(CONF_CONTEXT_WINDOW_TOKENS)
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return DEFAULT_CONTEXT_WINDOW_TOKENS
+    try:
+        parsed = int(value)
+    except ValueError:
+        return DEFAULT_CONTEXT_WINDOW_TOKENS
+    return parsed if parsed > 0 else DEFAULT_CONTEXT_WINDOW_TOKENS
+
+
+def _profile_context_window_source(profile: Mapping[str, Any]) -> str:
+    """Return a valid context window source for one profile."""
+    source = profile.get(CONF_CONTEXT_WINDOW_SOURCE)
+    if isinstance(source, str) and source in CONTEXT_WINDOW_SOURCES:
+        return source
+    return CONTEXT_WINDOW_SOURCE_DEFAULT
 
 
 def provider_extra_body(

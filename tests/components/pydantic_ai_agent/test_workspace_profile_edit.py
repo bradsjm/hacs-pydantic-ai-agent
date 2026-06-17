@@ -16,6 +16,7 @@ from custom_components.pydantic_ai_agent.config_flows._constants import (
 from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_CONTEXT_WINDOW_TOKENS,
     CONF_DISCOVERED,
     CONF_ENABLED,
     CONF_MODEL,
@@ -30,6 +31,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_SUPPORTS_TOOLS,
     CONF_TEMPLATED_EXTRA_BODY,
     CONF_THINKING_SUPPORT,
+    DEFAULT_CONTEXT_WINDOW_TOKENS,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_AI_TASK,
@@ -334,7 +336,10 @@ async def test_provider_edit_model_profile_templated_extra_body_round_trip(
     assert result["type"] is FlowResultType.FORM
     assert _serialized_section_default(
         result["data_schema"], _SECTION_ADVANCED_MODEL_SETTINGS
-    ) == {CONF_TEMPLATED_EXTRA_BODY: templated_extra_body}
+    ) == {
+        CONF_CONTEXT_WINDOW_TOKENS: DEFAULT_CONTEXT_WINDOW_TOKENS,
+        CONF_TEMPLATED_EXTRA_BODY: templated_extra_body,
+    }
 
 
 @pytest.mark.parametrize(

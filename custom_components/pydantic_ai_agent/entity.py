@@ -27,7 +27,7 @@ from .agent._entity_runner import run_model_profile
 from .agent.chat_deltas import (
     _agent_events_to_chat_deltas as _agent_events_to_chat_deltas,
 )
-from .agent.context_management import SlidingWindowContextCapability
+from .agent.context_management import context_management_capability
 from .agent.ha_toolset import tool_definitions_from_llm_api
 from .agent.history import chat_log_content_to_model_messages, split_last_user_prompt
 from .agent.run_state import AgentRunOutcome
@@ -37,8 +37,11 @@ from .const import (
     CONF_TOOL_RETRIES,
     CONF_WEB_FETCH_ENABLED,
     CONF_WEB_SEARCH_ENABLED,
+    CONTEXT_MANAGEMENT_CONTEXT_MANAGER,
+    CONTEXT_MANAGEMENT_SLIDING_WINDOW,
     DEFAULT_TOOL_RETRIES,
     DOMAIN,
+    SUBENTRY_TYPE_AI_TASK,
 )
 from .models.model_profiles import (
     chat_model_for_profile,
@@ -156,7 +159,7 @@ class PydanticAIBaseLLMEntity:
             },
         )
 
-        capabilities: list[AbstractCapability] = [
+        base_capabilities: list[AbstractCapability] = [
             *await async_skills_capabilities(
                 self.hass,
                 self.entry,
@@ -164,10 +167,9 @@ class PydanticAIBaseLLMEntity:
             )
         ]
         if self.subentry.data.get(CONF_WEB_FETCH_ENABLED):
-            capabilities.append(WebFetch(local=True))
+            base_capabilities.append(WebFetch(local=True))
         if self.subentry.data.get(CONF_WEB_SEARCH_ENABLED):
-            capabilities.append(WebSearch(local="duckduckgo"))
-        capabilities.append(SlidingWindowContextCapability())
+            base_capabilities.append(WebSearch(local="duckduckgo"))
 
         errors: list[BaseException] = []
         for index, profile in enumerate(profiles):
@@ -188,6 +190,21 @@ class PydanticAIBaseLLMEntity:
             usage_limits = UsageLimits(
                 request_limit=run_max_iterations(self.subentry.data, max_iterations),
             )
+            capabilities = list(base_capabilities)
+            default_context_mode = (
+                CONTEXT_MANAGEMENT_SLIDING_WINDOW
+                if self.subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
+                else CONTEXT_MANAGEMENT_CONTEXT_MANAGER
+            )
+            if context_capability := context_management_capability(
+                self.hass,
+                self.entry,
+                self.subentry.data,
+                profile,
+                default_mode=default_context_mode,
+                model_factory=chat_model_for_profile,
+            ):
+                capabilities.append(context_capability)
             try:
                 outcome = await run_model_profile(
                     self.hass,

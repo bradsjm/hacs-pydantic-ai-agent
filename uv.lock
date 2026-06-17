@@ -1452,6 +1452,7 @@ dependencies = [
     { name = "markdownify" },
     { name = "names-generator" },
     { name = "pydantic-ai-slim" },
+    { name = "summarization-pydantic-ai" },
     { name = "tiktoken" },
 ]
 
@@ -1484,6 +1485,7 @@ requires-dist = [
     { name = "markdownify", specifier = ">=1.2" },
     { name = "names-generator", specifier = "==0.2.0" },
     { name = "pydantic-ai-slim", specifier = "==1.97.0" },
+    { name = "summarization-pydantic-ai", specifier = "==0.1.7" },
     { name = "tiktoken", specifier = ">=0.12.0" },
 ]
 
@@ -3758,6 +3760,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c1/37/cc24e33974e1439cf5ca62b0735b63026eabb768f472d8775f52d5851ed9/starlette-1.3.0.tar.gz", hash = "sha256:bb58cbb7a699da4ee4be9ed4cdfe4bc5b0390aa6dac1d1ac714ebebe8dc3c8df", size = 2702493, upload-time = "2026-06-11T06:27:41.869Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/16/42/56d31c5ee52dab0ad893d67d4f9c00f5ba2b4c5d87f392eca2c3fdce01cf/starlette-1.3.0-py3-none-any.whl", hash = "sha256:ff4ca1bc23de6a45cdfbbeb9b3caaea524c9221cdd8a6684ad7a4f651a83890b", size = 73492, upload-time = "2026-06-11T06:27:40.444Z" },
+]
+
+[[package]]
+name = "summarization-pydantic-ai"
+version = "0.1.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic-ai-slim" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5a/e0/c22814beeff7b76ceaffab25d0f8728f0c7a60714ef4edcfe522e50ebc9e/summarization_pydantic_ai-0.1.7.tar.gz", hash = "sha256:86d31d62c90940271c2ab756eb94be9f2255ed6b4e0db24bbfd37e7c41116d6b", size = 164249, upload-time = "2026-06-03T23:34:46.11Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/67/38edaa9a551707b5849e929d1041704bbc38da2b2313b40ede76462fe157/summarization_pydantic_ai-0.1.7-py3-none-any.whl", hash = "sha256:de44974ef3e41e3d0afb1479834b1cae7b94fda364da9947b20beb3fe81c1ddc", size = 27075, upload-time = "2026-06-03T23:34:44.747Z" },
 ]
 
 [[package]]

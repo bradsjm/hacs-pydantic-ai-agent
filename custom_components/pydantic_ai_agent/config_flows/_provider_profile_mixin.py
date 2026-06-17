@@ -11,6 +11,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from ..const import (
+    CONF_CONTEXT_WINDOW_SOURCE,
+    CONF_CONTEXT_WINDOW_TOKENS,
     CONF_MODEL,
     CONF_MODEL_PRICING,
     CONF_MODEL_PROFILES,
@@ -20,6 +22,7 @@ from ..const import (
     CONF_PROVIDER_METADATA,
     CONF_PROVIDER_MODE,
     CONF_TEMPLATED_EXTRA_BODY,
+    CONTEXT_WINDOW_SOURCE_USER,
 )
 from ..models.openai_compatible_profile import (
     PersistedOpenAICompatibleProfile,
@@ -180,6 +183,7 @@ class ProviderProfileMixin:
             )
             errors.update(pricing_errors)
             data = _model_profile_data_from_user_input(flat_user_input)
+            _normalise_context_window_profile_data(data, profile, errors)
             existing_settings = _model_settings_from_options(
                 {CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {})}
             )
@@ -344,3 +348,29 @@ class ProviderProfileMixin:
         if provider is None:
             return ()
         return catalog.models_for_provider(provider.id)
+
+
+def _normalise_context_window_profile_data(
+    data: dict[str, Any], profile: Mapping[str, Any], errors: dict[str, str]
+) -> None:
+    """Normalize edited profile context-window fields."""
+    if CONF_CONTEXT_WINDOW_TOKENS not in data:
+        return
+    value = data[CONF_CONTEXT_WINDOW_TOKENS]
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        errors[CONF_CONTEXT_WINDOW_TOKENS] = "invalid_integer"
+        data.pop(CONF_CONTEXT_WINDOW_TOKENS, None)
+        return
+    try:
+        parsed = int(value)
+    except ValueError:
+        errors[CONF_CONTEXT_WINDOW_TOKENS] = "invalid_integer"
+        data.pop(CONF_CONTEXT_WINDOW_TOKENS, None)
+        return
+    if parsed <= 0:
+        errors[CONF_CONTEXT_WINDOW_TOKENS] = "positive_number"
+        data.pop(CONF_CONTEXT_WINDOW_TOKENS, None)
+        return
+    data[CONF_CONTEXT_WINDOW_TOKENS] = parsed
+    if parsed != profile.get(CONF_CONTEXT_WINDOW_TOKENS):
+        data[CONF_CONTEXT_WINDOW_SOURCE] = CONTEXT_WINDOW_SOURCE_USER

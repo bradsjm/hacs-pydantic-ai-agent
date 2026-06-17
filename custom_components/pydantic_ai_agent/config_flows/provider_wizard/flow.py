@@ -7,6 +7,8 @@ from homeassistant.const import CONF_API_KEY, CONF_NAME
 
 from ...const import (
     CONF_BASE_URL,
+    CONF_CONTEXT_WINDOW_SOURCE,
+    CONF_CONTEXT_WINDOW_TOKENS,
     CONF_DISCOVERED,
     CONF_ENABLED,
     CONF_MODEL,
@@ -20,6 +22,9 @@ from ...const import (
     CONF_STRUCTURED_OUTPUT_SUPPORT,
     CONF_SUPPORTS_TOOLS,
     CONF_THINKING_SUPPORT,
+    CONTEXT_WINDOW_SOURCE_DEFAULT,
+    CONTEXT_WINDOW_SOURCE_MODELS_DEV,
+    DEFAULT_CONTEXT_WINDOW_TOKENS,
 )
 from .const import CONF_CATALOG_PROVIDER_ID
 from .types import CatalogModelOption, CatalogProviderOption
@@ -76,12 +81,17 @@ def build_model_profiles(
     profiles: dict[str, dict[str, object]] = {}
     for model in selected_models:
         profile_id = profile_id_factory()
+        context_window_tokens = model.context_limit or DEFAULT_CONTEXT_WINDOW_TOKENS
         profiles[profile_id] = {
             "id": profile_id,
             CONF_NAME: model.name,
             CONF_MODEL: model.id,
             CONF_ENABLED: True,
             CONF_DISCOVERED: True,
+            CONF_CONTEXT_WINDOW_TOKENS: context_window_tokens,
+            CONF_CONTEXT_WINDOW_SOURCE: CONTEXT_WINDOW_SOURCE_MODELS_DEV
+            if model.context_limit
+            else CONTEXT_WINDOW_SOURCE_DEFAULT,
             CONF_THINKING_SUPPORT: model.thinking_support,
             CONF_STRUCTURED_OUTPUT_SUPPORT: model.structured_output_support,
             CONF_SUPPORTS_TOOLS: model.supports_tools,

@@ -6,8 +6,8 @@ uv run pytest \
   -n 0 \
   -q \
   -m "not provider_integration" \
-  tests/components/pydantic_ai_agent/test_context_management.py::test_sliding_window_trims_old_messages_and_preserves_head \
-  tests/components/pydantic_ai_agent/test_context_management.py::test_sliding_window_does_not_split_tool_call_result_pairs \
+  tests/components/pydantic_ai_agent/test_context_management.py::test_default_conversation_mode_builds_context_manager \
+  tests/components/pydantic_ai_agent/test_context_management.py::test_default_ai_task_mode_builds_sliding_window \
   tests/components/pydantic_ai_agent/test_structured_output.py::test_structured_model_request_parameters_for_tool_mode \
   tests/components/pydantic_ai_agent/test_templated_extra_body.py::test_model_settings_with_templated_extra_body_renders_without_mutation \
   tests/components/pydantic_ai_agent/test_templated_extra_body.py::test_model_settings_with_templated_extra_body_rejects_shape_conflicts \

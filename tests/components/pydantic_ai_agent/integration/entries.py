@@ -147,7 +147,7 @@ def entry(
     """Return a config entry for provider integration subentries."""
     return MockConfigEntry(
         version=2,
-        minor_version=3,
+        minor_version=4,
         domain=DOMAIN,
         title="Integration Workspace",
         data={CONF_NAME: "Integration Workspace"},

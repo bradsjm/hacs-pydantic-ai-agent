@@ -1,122 +1,94 @@
 """Pydantic AI context management helpers."""
 
-from typing import Final
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING, Any
 
-from pydantic_ai import RunContext
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai.capabilities import AbstractCapability
-from pydantic_ai.messages import (
-    ModelMessage,
-    ModelRequest,
-    ModelResponse,
-    ToolCallPart,
-    ToolReturnPart,
+from pydantic_ai_summarization import ContextManagerCapability, SlidingWindowCapability
+
+from ..const import (
+    CONF_CONTEXT_MANAGEMENT_MODE,
+    CONF_CONTEXT_SUMMARIZATION_MODEL_REF,
+    CONTEXT_MANAGEMENT_CONTEXT_MANAGER,
+    CONTEXT_MANAGEMENT_MODES,
+    CONTEXT_MANAGEMENT_OFF,
 )
-from pydantic_ai.models import ModelRequestContext
+from ..models.model_profiles import ResolvedModelProfile, resolve_model_profile
 
-DEFAULT_CONTEXT_TRIGGER_MESSAGE_COUNT: Final = 100
-DEFAULT_CONTEXT_KEEP_MESSAGE_COUNT: Final = 50
-DEFAULT_CONTEXT_KEEP_HEAD_MESSAGE_COUNT: Final = 1
+if TYPE_CHECKING:
+    from pydantic_ai.models import Model
+
+    from ..runtime.types import PydanticAIAgentConfigEntry
+
+type ModelFactory = Callable[
+    [HomeAssistant, PydanticAIAgentConfigEntry, ResolvedModelProfile], Model
+]
+
+_CONTEXT_MANAGER_COMPRESS_THRESHOLD = 0.9
+_SLIDING_WINDOW_TRIGGER_RATIO = 0.9
+_SLIDING_WINDOW_KEEP_RATIO = 0.5
 
 
-class SlidingWindowContextCapability(AbstractCapability[object]):
-    """Trim model-request history with a zero-cost sliding message window."""
-
-    def __init__(
-        self,
-        *,
-        trigger_message_count: int = DEFAULT_CONTEXT_TRIGGER_MESSAGE_COUNT,
-        keep_message_count: int = DEFAULT_CONTEXT_KEEP_MESSAGE_COUNT,
-        keep_head_message_count: int = DEFAULT_CONTEXT_KEEP_HEAD_MESSAGE_COUNT,
-    ) -> None:
-        """Initialize the fixed-size sliding window."""
-        self._trigger_message_count = trigger_message_count
-        self._keep_message_count = keep_message_count
-        self._keep_head_message_count = keep_head_message_count
-
-    @classmethod
-    def get_serialization_name(cls) -> str | None:
-        """Keep this integration-internal capability out of agent specs."""
+def context_management_capability(
+    hass: HomeAssistant,
+    entry: PydanticAIAgentConfigEntry,
+    data: Mapping[str, Any],
+    active_profile: ResolvedModelProfile,
+    *,
+    default_mode: str,
+    model_factory: ModelFactory,
+) -> AbstractCapability | None:
+    """Return the context-management capability for one active profile."""
+    mode = data.get(CONF_CONTEXT_MANAGEMENT_MODE, default_mode)
+    if mode not in CONTEXT_MANAGEMENT_MODES:
+        mode = default_mode
+    if mode == CONTEXT_MANAGEMENT_OFF:
         return None
-
-    async def before_model_request(
-        self,
-        ctx: RunContext[object],
-        request_context: ModelRequestContext,
-    ) -> ModelRequestContext:
-        """Trim messages immediately before the provider request."""
-        request_context.messages = await self.process_messages(
-            request_context.messages, preserve_run_id=ctx.run_id
+    if mode == CONTEXT_MANAGEMENT_CONTEXT_MANAGER:
+        return ContextManagerCapability(
+            max_tokens=active_profile.context_window_tokens,
+            compress_threshold=_CONTEXT_MANAGER_COMPRESS_THRESHOLD,
+            keep=("messages", 10),
+            summarization_model=model_factory(
+                hass,
+                entry,
+                _summarization_profile(entry, data, active_profile),
+            ),
+            include_compact_tool=False,
         )
-        return request_context
-
-    async def process_messages(
-        self, messages: list[ModelMessage], *, preserve_run_id: str | None = None
-    ) -> list[ModelMessage]:
-        """Return a safely trimmed copy of messages when the trigger is exceeded."""
-        history, current_run_messages = _split_current_run_messages(
-            messages, preserve_run_id
-        )
-        if len(history) <= self._trigger_message_count:
-            return messages
-
-        head_count = min(self._keep_head_message_count, len(history))
-        cutoff_index = len(history) - self._keep_message_count
-        if cutoff_index <= head_count:
-            return messages
-
-        while cutoff_index > head_count:
-            kept_messages = history[:head_count] + history[cutoff_index:]
-            dropped_messages = history[head_count:cutoff_index]
-            if not _splits_tool_call_return_pair(kept_messages, dropped_messages):
-                return kept_messages + current_run_messages
-            cutoff_index -= 1
-
-        return messages
-
-
-def _split_current_run_messages(
-    messages: list[ModelMessage], run_id: str | None
-) -> tuple[list[ModelMessage], list[ModelMessage]]:
-    """Split prior history from messages created during the active Agent run."""
-    if run_id is None:
-        return messages, []
-
-    for index, message in enumerate(messages):
-        if message.run_id == run_id:
-            return messages[:index], messages[index:]
-    return messages, []
-
-
-def _splits_tool_call_return_pair(
-    kept_messages: list[ModelMessage], dropped_messages: list[ModelMessage]
-) -> bool:
-    """Return whether dropping messages would separate a tool call and result."""
-    kept_call_ids = _tool_call_ids(kept_messages)
-    kept_return_ids = _tool_return_ids(kept_messages)
-    dropped_call_ids = _tool_call_ids(dropped_messages)
-    dropped_return_ids = _tool_return_ids(dropped_messages)
-    return bool(
-        kept_call_ids & dropped_return_ids or dropped_call_ids & kept_return_ids
+    return SlidingWindowCapability(
+        trigger=(
+            "tokens",
+            max(
+                1,
+                int(
+                    active_profile.context_window_tokens * _SLIDING_WINDOW_TRIGGER_RATIO
+                ),
+            ),
+        ),
+        keep=(
+            "tokens",
+            max(
+                1,
+                int(active_profile.context_window_tokens * _SLIDING_WINDOW_KEEP_RATIO),
+            ),
+        ),
+        keep_head=("messages", 1),
     )
 
 
-def _tool_call_ids(messages: list[ModelMessage]) -> set[str]:
-    """Return tool call ids contained in assistant response history."""
-    return {
-        part.tool_call_id
-        for message in messages
-        if isinstance(message, ModelResponse)
-        for part in message.parts
-        if isinstance(part, ToolCallPart)
-    }
-
-
-def _tool_return_ids(messages: list[ModelMessage]) -> set[str]:
-    """Return tool call ids referenced by tool return history."""
-    return {
-        part.tool_call_id
-        for message in messages
-        if isinstance(message, ModelRequest)
-        for part in message.parts
-        if isinstance(part, ToolReturnPart)
-    }
+def _summarization_profile(
+    entry: PydanticAIAgentConfigEntry,
+    data: Mapping[str, Any],
+    active_profile: ResolvedModelProfile,
+) -> ResolvedModelProfile:
+    """Return the configured summarization profile or the active profile."""
+    raw_ref = data.get(CONF_CONTEXT_SUMMARIZATION_MODEL_REF)
+    if not isinstance(raw_ref, str) or not raw_ref:
+        return active_profile
+    try:
+        return resolve_model_profile(entry, raw_ref)
+    except HomeAssistantError:
+        return active_profile

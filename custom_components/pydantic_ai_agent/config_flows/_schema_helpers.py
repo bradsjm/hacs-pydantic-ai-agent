@@ -41,6 +41,7 @@ from ..const import (
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
     CONF_WEB_SEARCH_ENABLED,
+    CONTEXT_MANAGEMENT_CONTEXT_MANAGER,
     DEFAULT_AGENT_NAME,
     DEFAULT_TIMEOUT,
     DEFAULT_TOOL_RETRIES,
@@ -61,6 +62,7 @@ from ._constants import (
     _MODEL_SETTING_TOP_P,
     _RUN_SETTING_KEYS,
     _SECTION_ADVANCED_MODEL_SETTINGS,
+    _SECTION_CONTEXT_MANAGEMENT,
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
@@ -79,6 +81,10 @@ from ._settings_parsing import (
     _format_templated_extra_body,
     _format_thinking_value,
     _normalise_run_settings,
+)
+from .context_schema_helpers import (
+    _context_management_schema,
+    _normalise_context_management_settings,
 )
 from .helpers import (
     _flatten_section_data,
@@ -181,6 +187,14 @@ def _conversation_schema(
         schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = (
             section(vol.Schema(fallback_schema), {"collapsed": True})
         )
+    context_schema = _context_management_schema(
+        options,
+        entry,
+        default_mode=CONTEXT_MANAGEMENT_CONTEXT_MANAGER,
+    )
+    schema[_section_schema_key(_SECTION_CONTEXT_MANAGEMENT, context_schema.schema)] = (
+        section(context_schema, {"collapsed": True})
+    )
     run_settings_schema = _run_settings_schema(
         options,
         default_max_iterations=10,
@@ -452,6 +466,7 @@ def _conversation_data_from_user_input(
     user_input = _flatten_section_data(
         user_input,
         (
+            _SECTION_CONTEXT_MANAGEMENT,
             _SECTION_EXTERNAL_TOOLS,
             _SECTION_FALLBACK_MODELS,
             _SECTION_HASS_CONTROL,
@@ -462,6 +477,9 @@ def _conversation_data_from_user_input(
     data = {key: value for key, value in user_input.items()}
     data[CONF_FALLBACK_MODEL_REFS] = _normalise_fallback_model_refs(
         data.get(CONF_FALLBACK_MODEL_REFS, [])
+    )
+    _normalise_context_management_settings(
+        data, entry, default_mode=CONTEXT_MANAGEMENT_CONTEXT_MANAGER
     )
     if not data.get(CONF_LLM_HASS_API):
         data.pop(CONF_LLM_HASS_API, None)

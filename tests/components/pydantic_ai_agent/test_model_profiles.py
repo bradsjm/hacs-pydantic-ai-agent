@@ -11,6 +11,8 @@ from custom_components.pydantic_ai_agent import (
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
+    CONF_CONTEXT_WINDOW_SOURCE,
+    CONF_CONTEXT_WINDOW_TOKENS,
     CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_DISCOVERED,
     CONF_ENABLED,
@@ -28,6 +30,9 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_THINKING,
     CONF_THINKING_SUPPORT,
     CONF_TIMEOUT,
+    CONTEXT_WINDOW_SOURCE_DEFAULT,
+    CONTEXT_WINDOW_SOURCE_MODELS_DEV,
+    DEFAULT_CONTEXT_WINDOW_TOKENS,
     DOMAIN,
     PROVIDER_ANTHROPIC,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
@@ -189,6 +194,66 @@ def test_resolve_model_profile_reads_provider_owned_profile() -> None:
     assert profile.structured_output_support == "json_schema"
     assert profile.supports_tools is True
     assert model_profile_exists(entry, profile.ref) is True
+
+
+def test_resolve_model_profile_reads_context_window() -> None:
+    """Test resolving a model profile reads persisted context-window metadata."""
+    entry = _workspace_entry()
+    profiles = entry.subentries["provider-1"].data[CONF_MODEL_PROFILES]
+    profiles["primary-profile"][CONF_CONTEXT_WINDOW_TOKENS] = 128000
+    profiles["primary-profile"][CONF_CONTEXT_WINDOW_SOURCE] = (
+        CONTEXT_WINDOW_SOURCE_MODELS_DEV
+    )
+
+    profile = resolve_model_profile(entry, "provider-1:primary-profile")
+
+    assert profile.context_window_tokens == 128000
+    assert profile.context_window_source == CONTEXT_WINDOW_SOURCE_MODELS_DEV
+
+
+def test_resolve_model_profile_defaults_context_window_when_absent() -> None:
+    """Test resolving a model profile backfills missing context-window metadata."""
+    entry = _workspace_entry()
+
+    profile = resolve_model_profile(entry, "provider-1:primary-profile")
+
+    assert profile.context_window_tokens == DEFAULT_CONTEXT_WINDOW_TOKENS
+    assert profile.context_window_source == CONTEXT_WINDOW_SOURCE_DEFAULT
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        (True, DEFAULT_CONTEXT_WINDOW_TOKENS),
+        ("abc", DEFAULT_CONTEXT_WINDOW_TOKENS),
+        (0, DEFAULT_CONTEXT_WINDOW_TOKENS),
+        (-5, DEFAULT_CONTEXT_WINDOW_TOKENS),
+        (None, DEFAULT_CONTEXT_WINDOW_TOKENS),
+        ("100", 100),
+    ],
+)
+def test_resolve_model_profile_sanitizes_invalid_context_window(
+    raw_value: object, expected: int
+) -> None:
+    """Test profile context window tokens are normalized to a positive integer."""
+    entry = _workspace_entry()
+    profiles = entry.subentries["provider-1"].data[CONF_MODEL_PROFILES]
+    profiles["primary-profile"][CONF_CONTEXT_WINDOW_TOKENS] = raw_value
+
+    profile = resolve_model_profile(entry, "provider-1:primary-profile")
+
+    assert profile.context_window_tokens == expected
+
+
+def test_resolve_model_profile_rejects_unknown_context_window_source() -> None:
+    """Test unknown context-window source values fall back to default."""
+    entry = _workspace_entry()
+    profiles = entry.subentries["provider-1"].data[CONF_MODEL_PROFILES]
+    profiles["primary-profile"][CONF_CONTEXT_WINDOW_SOURCE] = "bogus"
+
+    profile = resolve_model_profile(entry, "provider-1:primary-profile")
+
+    assert profile.context_window_source == CONTEXT_WINDOW_SOURCE_DEFAULT
 
 
 def test_configured_model_profile_exists_ignores_runtime_provider() -> None:

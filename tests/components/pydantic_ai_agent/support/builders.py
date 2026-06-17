@@ -12,6 +12,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
     CONF_BASE_URL,
+    CONF_CONTEXT_WINDOW_SOURCE,
+    CONF_CONTEXT_WINDOW_TOKENS,
     CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_DESCRIPTION,
     CONF_DISCOVERED,
@@ -63,6 +65,8 @@ def model_profile_data(
     enabled: bool = True,
     discovered: bool | None = None,
     model_settings: Mapping[str, object] | None = None,
+    context_window_tokens: int | None = None,
+    context_window_source: str | None = None,
     extra_data: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Return a model profile data mapping."""
@@ -77,6 +81,10 @@ def model_profile_data(
         data[CONF_DISCOVERED] = discovered
     if model_settings is not None:
         data[CONF_MODEL_SETTINGS] = dict(model_settings)
+    if context_window_tokens is not None:
+        data[CONF_CONTEXT_WINDOW_TOKENS] = context_window_tokens
+    if context_window_source is not None:
+        data[CONF_CONTEXT_WINDOW_SOURCE] = context_window_source
     if extra_data is not None:
         data.update(extra_data)
     return data
@@ -309,7 +317,7 @@ def workspace_entry(
         options={} if options is None else dict(options),
         unique_id=None,
         version=2,
-        minor_version=3,
+        minor_version=4,
     )
 
 

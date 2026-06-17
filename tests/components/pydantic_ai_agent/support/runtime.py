@@ -4,9 +4,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from custom_components.pydantic_ai_agent import ProviderRuntimeData
-from custom_components.pydantic_ai_agent.agent.context_management import (
-    SlidingWindowContextCapability,
-)
 from custom_components.pydantic_ai_agent.const import (
     CONF_DEFAULT_MODEL_PROFILE_ID,
     DOMAIN,
@@ -17,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import slugify
 from pydantic_ai.capabilities import Thinking
+from pydantic_ai_summarization import ContextManagerCapability, SlidingWindowCapability
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .builders import (
@@ -162,7 +160,7 @@ def enable_diagnostic_entities(
 def assert_has_context_management_capability(capabilities: Sequence[object]) -> None:
     """Assert a capabilities collection contains context management."""
     assert any(
-        isinstance(capability, SlidingWindowContextCapability)
+        isinstance(capability, ContextManagerCapability | SlidingWindowCapability)
         for capability in capabilities
     )
 

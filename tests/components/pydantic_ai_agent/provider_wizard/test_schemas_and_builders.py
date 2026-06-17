@@ -37,6 +37,8 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types impo
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
+    CONF_CONTEXT_WINDOW_SOURCE,
+    CONF_CONTEXT_WINDOW_TOKENS,
     CONF_DISCOVERED,
     CONF_ENABLED,
     CONF_KEY_VALUE_IS_SECRET,
@@ -54,6 +56,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_STRUCTURED_OUTPUT_SUPPORT,
     CONF_SUPPORTS_TOOLS,
     CONF_THINKING_SUPPORT,
+    CONTEXT_WINDOW_SOURCE_MODELS_DEV,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
@@ -319,7 +322,7 @@ def test_default_selected_model_ids_only_auto_selects_single_model() -> None:
 def test_build_model_profiles_enables_selected_models() -> None:
     """Test guided selected models create enabled profiles."""
     profiles = build_model_profiles(
-        (_model("gpt-4.1-mini", name="GPT 4.1 Mini"),),
+        (_model("gpt-4.1-mini", name="GPT 4.1 Mini", context_limit=200000),),
         profile_id_factory=lambda: "p1",
     )
 
@@ -330,6 +333,8 @@ def test_build_model_profiles_enables_selected_models() -> None:
             CONF_MODEL: "gpt-4.1-mini",
             CONF_ENABLED: True,
             CONF_DISCOVERED: True,
+            CONF_CONTEXT_WINDOW_TOKENS: 200000,
+            CONF_CONTEXT_WINDOW_SOURCE: CONTEXT_WINDOW_SOURCE_MODELS_DEV,
             CONF_THINKING_SUPPORT: "none",
             CONF_STRUCTURED_OUTPUT_SUPPORT: "json_object",
             CONF_SUPPORTS_TOOLS: True,

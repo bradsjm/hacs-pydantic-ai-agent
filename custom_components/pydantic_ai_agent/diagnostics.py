@@ -11,6 +11,8 @@ from homeassistant.helpers import device_registry as dr
 from .const import (
     CONF_AGENT_NAME,
     CONF_AI_TASK_NAME,
+    CONF_CONTEXT_MANAGEMENT_MODE,
+    CONF_CONTEXT_SUMMARIZATION_MODEL_REF,
     CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_FALLBACK_MODEL_REFS,
     CONF_MCP_ALLOWED_TOOLS,
@@ -175,8 +177,16 @@ def _configuration_summary(
                 CONF_VIRTUAL_WORKSPACE_ENABLED: bool(
                     data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)
                 ),
+                CONF_CONTEXT_MANAGEMENT_MODE: data.get(CONF_CONTEXT_MANAGEMENT_MODE),
+                "context_summarization_uses_active_model": not bool(
+                    data.get(CONF_CONTEXT_SUMMARIZATION_MODEL_REF)
+                ),
             }
         )
+        if data.get(CONF_CONTEXT_SUMMARIZATION_MODEL_REF):
+            summary[CONF_CONTEXT_SUMMARIZATION_MODEL_REF] = data.get(
+                CONF_CONTEXT_SUMMARIZATION_MODEL_REF
+            )
         if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK:
             if output_mode := _structured_output_mode_summary(entry, subentry):
                 summary["structured_output_mode"] = output_mode

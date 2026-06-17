@@ -36,9 +36,11 @@ from ..const import (
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
     CONF_WEB_SEARCH_ENABLED,
+    CONTEXT_MANAGEMENT_SLIDING_WINDOW,
     DEFAULT_AI_TASK_NAME,
 )
 from ._constants import (
+    _SECTION_CONTEXT_MANAGEMENT,
     _SECTION_EXTERNAL_TOOLS,
     _SECTION_FALLBACK_MODELS,
     _SECTION_HASS_CONTROL,
@@ -52,8 +54,14 @@ from ._profile_selection import (
     _model_profile_select_options,
     _normalise_fallback_model_refs,
 )
-from ._schema_helpers import _run_settings_schema
+from ._schema_helpers import (
+    _run_settings_schema,
+)
 from ._settings_parsing import _normalise_run_settings
+from .context_schema_helpers import (
+    _context_management_schema,
+    _normalise_context_management_settings,
+)
 from .helpers import (
     _flatten_section_data,
     _section_schema_key,
@@ -129,6 +137,14 @@ def _ai_task_data_schema(
         schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = (
             section(vol.Schema(fallback_schema), {"collapsed": True})
         )
+    context_schema = _context_management_schema(
+        options,
+        entry,
+        default_mode=CONTEXT_MANAGEMENT_SLIDING_WINDOW,
+    )
+    schema[_section_schema_key(_SECTION_CONTEXT_MANAGEMENT, context_schema.schema)] = (
+        section(context_schema, {"collapsed": True})
+    )
     run_settings_schema = _run_settings_schema(
         options,
         default_max_iterations=30,
@@ -209,6 +225,7 @@ def _ai_task_data_from_user_input(
     user_input = _flatten_section_data(
         user_input,
         (
+            _SECTION_CONTEXT_MANAGEMENT,
             _SECTION_EXTERNAL_TOOLS,
             _SECTION_FALLBACK_MODELS,
             _SECTION_HASS_CONTROL,
@@ -219,6 +236,9 @@ def _ai_task_data_from_user_input(
     data = dict(user_input)
     data[CONF_FALLBACK_MODEL_REFS] = _normalise_fallback_model_refs(
         data.get(CONF_FALLBACK_MODEL_REFS, [])
+    )
+    _normalise_context_management_settings(
+        data, entry, default_mode=CONTEXT_MANAGEMENT_SLIDING_WINDOW
     )
     _drop_disabled_external_tool_flags(data)
     if data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is not True:

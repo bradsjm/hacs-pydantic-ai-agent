@@ -37,7 +37,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Pydantic AI Agent."""
 
     VERSION = 2
-    MINOR_VERSION = 2
+    MINOR_VERSION = 4
     _default_workspace_name: str | None = None
 
     def _async_update_workspace_and_abort(

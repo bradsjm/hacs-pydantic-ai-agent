@@ -13,9 +13,19 @@ from homeassistant.helpers.storage import Store
 from ..const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_CONTEXT_MANAGEMENT_MODE,
+    CONF_CONTEXT_SUMMARIZATION_MODEL_REF,
+    CONF_CONTEXT_WINDOW_SOURCE,
+    CONF_CONTEXT_WINDOW_TOKENS,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_TEMPLATED_EXTRA_BODY,
+    CONTEXT_MANAGEMENT_CONTEXT_MANAGER,
+    CONTEXT_MANAGEMENT_MODES,
+    CONTEXT_MANAGEMENT_SLIDING_WINDOW,
+    CONTEXT_WINDOW_SOURCE_DEFAULT,
+    CONTEXT_WINDOW_SOURCES,
+    DEFAULT_CONTEXT_WINDOW_TOKENS,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -197,6 +207,78 @@ def _remove_ai_task_legacy_output_mode(
         data = dict(subentry.data)
         data.pop("output_mode", None)
         hass.config_entries.async_update_subentry(entry, subentry, data=data)
+
+
+def _migrate_context_management_defaults(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
+) -> None:
+    """Backfill context-management settings added in schema 2.4."""
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER:
+            data, changed = _migrated_provider_context_windows(subentry.data)
+            if changed:
+                hass.config_entries.async_update_subentry(entry, subentry, data=data)
+            continue
+        if subentry.subentry_type not in {
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        }:
+            continue
+        default_mode = (
+            CONTEXT_MANAGEMENT_SLIDING_WINDOW
+            if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK
+            else CONTEXT_MANAGEMENT_CONTEXT_MANAGER
+        )
+        data = dict(subentry.data)
+        changed = False
+        if data.get(CONF_CONTEXT_MANAGEMENT_MODE) not in CONTEXT_MANAGEMENT_MODES:
+            data[CONF_CONTEXT_MANAGEMENT_MODE] = default_mode
+            changed = True
+        if not data.get(CONF_CONTEXT_SUMMARIZATION_MODEL_REF):
+            changed = changed or CONF_CONTEXT_SUMMARIZATION_MODEL_REF in data
+            data.pop(CONF_CONTEXT_SUMMARIZATION_MODEL_REF, None)
+        if changed:
+            hass.config_entries.async_update_subentry(entry, subentry, data=data)
+
+
+def _migrated_provider_context_windows(
+    provider_data: Mapping[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    """Return provider data with context-window fields on every profile."""
+    profiles = provider_data.get(CONF_MODEL_PROFILES)
+    if not isinstance(profiles, Mapping):
+        return dict(provider_data), False
+    updated_profiles: dict[str, object] = {}
+    changed = False
+    for profile_id, profile in profiles.items():
+        if not isinstance(profile, Mapping):
+            updated_profiles[str(profile_id)] = profile
+            continue
+        updated_profile = dict(profile)
+        tokens = updated_profile.get(CONF_CONTEXT_WINDOW_TOKENS)
+        if isinstance(tokens, bool) or not isinstance(tokens, int | float | str):
+            updated_profile[CONF_CONTEXT_WINDOW_TOKENS] = DEFAULT_CONTEXT_WINDOW_TOKENS
+            changed = True
+        else:
+            try:
+                parsed_tokens = int(tokens)
+            except ValueError:
+                parsed_tokens = DEFAULT_CONTEXT_WINDOW_TOKENS
+            if parsed_tokens <= 0:
+                parsed_tokens = DEFAULT_CONTEXT_WINDOW_TOKENS
+            if parsed_tokens != tokens:
+                changed = True
+            updated_profile[CONF_CONTEXT_WINDOW_TOKENS] = parsed_tokens
+        source = updated_profile.get(CONF_CONTEXT_WINDOW_SOURCE)
+        if not isinstance(source, str) or source not in CONTEXT_WINDOW_SOURCES:
+            updated_profile[CONF_CONTEXT_WINDOW_SOURCE] = CONTEXT_WINDOW_SOURCE_DEFAULT
+            changed = True
+        updated_profiles[str(profile_id)] = updated_profile
+    if not changed:
+        return dict(provider_data), False
+    data = dict(provider_data)
+    data[CONF_MODEL_PROFILES] = updated_profiles
+    return data, True
 
 
 def _migrated_profiles(

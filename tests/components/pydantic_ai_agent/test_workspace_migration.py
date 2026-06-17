@@ -11,11 +11,19 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AI_TASK_NAME,
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_CONTEXT_MANAGEMENT_MODE,
+    CONF_CONTEXT_SUMMARIZATION_MODEL_REF,
+    CONF_CONTEXT_WINDOW_SOURCE,
+    CONF_CONTEXT_WINDOW_TOKENS,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_PRIMARY_MODEL_REF,
     CONF_TEMPLATED_EXTRA_BODY,
+    CONTEXT_MANAGEMENT_CONTEXT_MANAGER,
+    CONTEXT_MANAGEMENT_SLIDING_WINDOW,
+    CONTEXT_WINDOW_SOURCE_DEFAULT,
+    DEFAULT_CONTEXT_WINDOW_TOKENS,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -76,7 +84,7 @@ async def test_migration_removes_removed_in_repo_llm_api_refs(
 
     assert await async_migrate_entry(hass, cast(Any, entry))
 
-    assert entry.minor_version == 3
+    assert entry.minor_version == 4
     assert entry.subentries["conversation-1"].data[CONF_LLM_HASS_API] == [
         "external_llm_api"
     ]
@@ -183,7 +191,7 @@ async def test_migration_moves_chat_template_kwargs_to_templated_extra_body(
     migrated_profile = entry.subentries["provider-1"].data[CONF_MODEL_PROFILES][
         "profile-1"
     ]
-    assert entry.minor_version == 3
+    assert entry.minor_version == 4
     assert "chat_template_kwargs" not in migrated_profile[CONF_MODEL_SETTINGS]
     assert migrated_profile[CONF_MODEL_SETTINGS][CONF_TEMPLATED_EXTRA_BODY] == [
         {
@@ -244,7 +252,7 @@ async def test_migration_strips_legacy_ai_task_output_mode(
 
     assert await async_migrate_entry(hass, cast(Any, entry))
 
-    assert entry.minor_version == 3
+    assert entry.minor_version == 4
 
     legacy_data = entry.subentries["task-legacy"].data
     assert "output_mode" not in legacy_data
@@ -254,6 +262,97 @@ async def test_migration_strips_legacy_ai_task_output_mode(
     clean_data = entry.subentries["task-clean"].data
     assert "output_mode" not in clean_data
     assert clean_data[CONF_AI_TASK_NAME] == "Clean Task"
+
+
+async def test_migration_backfills_context_management_defaults(
+    hass: HomeAssistant,
+) -> None:
+    """Test v2.4 migration adds context settings to existing subentries."""
+    entry = MockConfigEntry(
+        version=2,
+        minor_version=3,
+        domain=DOMAIN,
+        title="Workspace",
+        data={CONF_NAME: "Workspace"},
+        subentries_data=(
+            {
+                "subentry_id": "provider-1",
+                "subentry_type": SUBENTRY_TYPE_PROVIDER,
+                "title": "Provider",
+                "unique_id": None,
+                "data": {
+                    CONF_MODEL_PROFILES: {
+                        "missing": {"id": "missing", CONF_MODEL: "missing"},
+                        "string": {
+                            "id": "string",
+                            CONF_MODEL: "string",
+                            CONF_CONTEXT_WINDOW_TOKENS: "200",
+                        },
+                        "negative": {
+                            "id": "negative",
+                            CONF_MODEL: "negative",
+                            CONF_CONTEXT_WINDOW_TOKENS: -1,
+                        },
+                    }
+                },
+            },
+            {
+                "subentry_id": "conversation-1",
+                "subentry_type": SUBENTRY_TYPE_CONVERSATION,
+                "title": "Agent",
+                "unique_id": None,
+                "data": {
+                    CONF_AGENT_NAME: "Agent",
+                    CONF_PRIMARY_MODEL_REF: "provider-1:missing",
+                    CONF_CONTEXT_SUMMARIZATION_MODEL_REF: "",
+                },
+            },
+            {
+                "subentry_id": "task-1",
+                "subentry_type": SUBENTRY_TYPE_AI_TASK,
+                "title": "Task",
+                "unique_id": None,
+                "data": {
+                    CONF_AI_TASK_NAME: "Task",
+                    CONF_PRIMARY_MODEL_REF: "provider-1:missing",
+                },
+            },
+        ),
+        source=config_entries.SOURCE_USER,
+        unique_id=None,
+    )
+    entry.add_to_hass(hass)
+
+    assert await async_migrate_entry(hass, cast(Any, entry))
+
+    assert entry.minor_version == 4
+    profiles = entry.subentries["provider-1"].data[CONF_MODEL_PROFILES]
+    assert profiles["missing"][CONF_CONTEXT_WINDOW_TOKENS] == (
+        DEFAULT_CONTEXT_WINDOW_TOKENS
+    )
+    assert profiles["string"][CONF_CONTEXT_WINDOW_TOKENS] == 200
+    assert profiles["negative"][CONF_CONTEXT_WINDOW_TOKENS] == (
+        DEFAULT_CONTEXT_WINDOW_TOKENS
+    )
+    assert profiles["missing"][CONF_CONTEXT_WINDOW_SOURCE] == (
+        CONTEXT_WINDOW_SOURCE_DEFAULT
+    )
+    assert entry.subentries["conversation-1"].data[CONF_CONTEXT_MANAGEMENT_MODE] == (
+        CONTEXT_MANAGEMENT_CONTEXT_MANAGER
+    )
+    assert (
+        CONF_CONTEXT_SUMMARIZATION_MODEL_REF
+        not in entry.subentries["conversation-1"].data
+    )
+    assert entry.subentries["task-1"].data[CONF_CONTEXT_MANAGEMENT_MODE] == (
+        CONTEXT_MANAGEMENT_SLIDING_WINDOW
+    )
+
+    subentry_data = {key: dict(value.data) for key, value in entry.subentries.items()}
+    assert await async_migrate_entry(hass, cast(Any, entry))
+    assert {key: dict(value.data) for key, value in entry.subentries.items()} == (
+        subentry_data
+    )
 
 
 async def test_remove_entry_removes_removed_memory_store(

@@ -131,6 +131,7 @@ _SECTION_FALLBACK_MODELS = "fallback_models"
 _SECTION_HASS_CONTROL = "hass_control"
 _SECTION_MODEL_PRICING = "model_pricing"
 _SECTION_CUSTOMIZE_MODEL_LIST = "customize_model_list"
+_SECTION_CONTEXT_MANAGEMENT = "context_management"
 _SECTION_RUN_SETTINGS = "run_settings"
 _SECTION_SKILLS = "skill_settings"
 

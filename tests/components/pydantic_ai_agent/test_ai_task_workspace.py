@@ -3,12 +3,10 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from custom_components.pydantic_ai_agent.agent.context_management import (
-    SlidingWindowContextCapability,
-)
 from homeassistant.components import ai_task
 from homeassistant.core import HomeAssistant
 from pydantic_ai.capabilities import WebFetch, WebSearch
+from pydantic_ai_summarization import ContextManagerCapability, SlidingWindowCapability
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     ai_task_subentry_data,
@@ -97,7 +95,7 @@ async def _setup_ai_task_entity(
 def _assert_context_management_capability(capabilities: list[object]) -> None:
     """Assert the automatic context management capability is attached."""
     assert any(
-        isinstance(capability, SlidingWindowContextCapability)
+        isinstance(capability, ContextManagerCapability | SlidingWindowCapability)
         for capability in capabilities
     )
 

@@ -27,6 +27,8 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.typing import VolDictType
 
 from ..const import (
+    CONF_CONTEXT_WINDOW_SOURCE,
+    CONF_CONTEXT_WINDOW_TOKENS,
     CONF_DISCOVERED,
     CONF_ENABLED,
     CONF_MODEL,
@@ -37,6 +39,9 @@ from ..const import (
     CONF_STRUCTURED_OUTPUT_SUPPORT,
     CONF_SUPPORTS_TOOLS,
     CONF_THINKING_SUPPORT,
+    CONTEXT_WINDOW_SOURCE_DEFAULT,
+    CONTEXT_WINDOW_SOURCES,
+    DEFAULT_CONTEXT_WINDOW_TOKENS,
 )
 from ..models.model_profiles import (
     enabled_model_profile_refs,
@@ -215,6 +220,13 @@ def _normalised_provider_profile(
     normalized_profile[CONF_MODEL] = model_name
     normalized_profile[CONF_ENABLED] = bool(normalized_profile.get(CONF_ENABLED, False))
     normalized_profile[CONF_DISCOVERED] = discovered
+    normalized_profile[CONF_CONTEXT_WINDOW_TOKENS] = _context_window_tokens(profile)
+    source = profile.get(CONF_CONTEXT_WINDOW_SOURCE)
+    normalized_profile[CONF_CONTEXT_WINDOW_SOURCE] = (
+        source
+        if isinstance(source, str) and source in CONTEXT_WINDOW_SOURCES
+        else CONTEXT_WINDOW_SOURCE_DEFAULT
+    )
     model_settings = normalized_profile.get(CONF_MODEL_SETTINGS)
     if isinstance(model_settings, Mapping):
         normalized_profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(
@@ -223,6 +235,18 @@ def _normalised_provider_profile(
     else:
         normalized_profile.pop(CONF_MODEL_SETTINGS, None)
     return normalized_profile
+
+
+def _context_window_tokens(profile: Mapping[str, Any]) -> int:
+    """Return a valid context-window token count from profile data."""
+    value = profile.get(CONF_CONTEXT_WINDOW_TOKENS)
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return DEFAULT_CONTEXT_WINDOW_TOKENS
+    try:
+        parsed = int(value)
+    except ValueError:
+        return DEFAULT_CONTEXT_WINDOW_TOKENS
+    return parsed if parsed > 0 else DEFAULT_CONTEXT_WINDOW_TOKENS
 
 
 def _provider_model_profiles_for_discovery_mode(
@@ -313,6 +337,7 @@ def _model_profile_edit_schema(
 
     options: dict[str, Any] = {
         CONF_NAME: model_profile_display_name(profile),
+        CONF_CONTEXT_WINDOW_TOKENS: _context_window_tokens(profile),
         CONF_MODEL_PRICING: profile.get(CONF_MODEL_PRICING, {}),
         CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {}),
     }
@@ -338,6 +363,14 @@ def _model_profile_edit_schema(
         )
     ] = NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1))
     advanced_model_settings_schema = _model_settings_schema(options)
+    advanced_model_settings_fields = dict(advanced_model_settings_schema.schema)
+    advanced_model_settings_fields[
+        vol.Required(
+            CONF_CONTEXT_WINDOW_TOKENS,
+            default=options[CONF_CONTEXT_WINDOW_TOKENS],
+        )
+    ] = NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, min=1, step=1))
+    advanced_model_settings_schema = vol.Schema(advanced_model_settings_fields)
     schema[
         _section_schema_key(
             _SECTION_ADVANCED_MODEL_SETTINGS, advanced_model_settings_schema.schema

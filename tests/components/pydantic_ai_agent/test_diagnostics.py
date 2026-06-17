@@ -16,6 +16,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
+    CONF_CONTEXT_MANAGEMENT_MODE,
     CONF_DEFAULT_MODEL_PROFILE_ID,
     CONF_ENABLED,
     CONF_LOGFIRE_INCLUDE_CONTENT,
@@ -205,6 +206,8 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
         "web_fetch_enabled": False,
         "web_search_enabled": True,
         "virtual_workspace_enabled": False,
+        CONF_CONTEXT_MANAGEMENT_MODE: None,
+        "context_summarization_uses_active_model": True,
     }
     provider_data = diagnostics_subentry(
         diagnostics, subentry_type=SUBENTRY_TYPE_PROVIDER

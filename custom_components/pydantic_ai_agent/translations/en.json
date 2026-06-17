@@ -117,6 +117,17 @@
           },
           "description": "Name this AI task and choose its language model profile for Home Assistant data generation.",
           "sections": {
+            "context_management": {
+              "data": {
+                "context_management_mode": "Context management mode",
+                "context_summarization_model_ref": "Summarization model"
+              },
+              "data_description": {
+                "context_management_mode": "Choose how this AI task keeps model context within the active model profile's context window.",
+                "context_summarization_model_ref": "Optional model profile used to summarize context. Leave as Current active model to use whichever primary or fallback profile is running."
+              },
+              "name": "Context management"
+            },
             "external_tools": {
               "data": {
                 "mcp_server_ids": "MCP servers",
@@ -233,6 +244,17 @@
           },
           "description": "Choose the language model profile and Home Assistant tool access for this conversation agent.",
           "sections": {
+            "context_management": {
+              "data": {
+                "context_management_mode": "Context management mode",
+                "context_summarization_model_ref": "Summarization model"
+              },
+              "data_description": {
+                "context_management_mode": "Choose how this conversation keeps model context within the active model profile's context window.",
+                "context_summarization_model_ref": "Optional model profile used to summarize context. Leave as Current active model to use whichever primary or fallback profile is running."
+              },
+              "name": "Context management"
+            },
             "external_tools": {
               "data": {
                 "mcp_server_ids": "MCP servers",
@@ -499,6 +521,7 @@
           "sections": {
             "advanced_model_settings": {
               "data": {
+                "context_window_tokens": "Context window tokens",
                 "frequency_penalty": "Frequency penalty",
                 "presence_penalty": "Presence penalty",
                 "seed": "Seed",
@@ -506,6 +529,7 @@
                 "top_p": "Top P"
               },
               "data_description": {
+                "context_window_tokens": "Maximum input context window for this model profile. Seeded from models.dev when available and used by context management; this is separate from generated max tokens.",
                 "frequency_penalty": "Penalty based on token frequency in the conversation. Provider support and ranges vary.",
                 "presence_penalty": "Penalty for introducing tokens already present in the conversation. Provider support and ranges vary.",
                 "seed": "Optional non-negative integer seed for providers that support deterministic sampling.",

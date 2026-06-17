@@ -41,6 +41,7 @@ from .repair_issues import (
 )
 from .runtime.migration import (
     _async_remove_removed_memory_store,
+    _migrate_context_management_defaults,
     _migrate_profile_templated_extra_body,
     _remove_ai_task_legacy_output_mode,
     _remove_removed_device_registry_entry,
@@ -199,6 +200,9 @@ async def async_migrate_entry(
         _remove_ai_task_legacy_output_mode(hass, entry)
         hass.config_entries.async_update_entry(entry, minor_version=3)
     if entry.minor_version == 3:
+        _migrate_context_management_defaults(hass, entry)
+        hass.config_entries.async_update_entry(entry, minor_version=4)
+    if entry.minor_version == 4:
         return True
 
     _LOGGER.error(
