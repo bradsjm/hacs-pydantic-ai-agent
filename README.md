@@ -3,7 +3,7 @@
 [![Pydantic AI Agent Logo](custom_components/pydantic_ai_agent/brand/logo@2x.png)](https://github.com/bradsjm/hacs-pydantic-ai-agent)
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Coding Harness](https://img.shields.io/badge/coding_agents-opencode/gpt--5.5-orange)](https://opencode.ai/)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/bradsjm/hacs-pydantic-ai-agent)
 
@@ -16,13 +16,15 @@ generation backed by the [Pydantic AI library](https://pydantic.dev/pydantic-ai)
 - Supports custom model providers in addition to models.dev
 - Support for multiple workspaces each with its own provider configuration
 - Built-in observability via Logfire
-- Built-in support for MCP servers (streaming http only to avoid running untrusted code)
-  - Parallel execution of MCP requests (disabled by default) for performance
-  - Optional deferred tool disclosure (model discovers tools on-demand) to reduce context size
+- Built-in support for remote MCP servers over Streamable HTTP only
+  - Optional per-server tool allowlists and disabled/specified/all tool modes
+  - Optional tool-result caching with TTL
+  - Optional deferred tool disclosure so the model discovers tools on demand
 - Support for simple skills (reusable capabilities) library
 - Optional enablement of provider web search capability with local duckduckgo fallback
 - Optional web fetch tool with SSRF protection to prevent server-side request forgery attacks
 - Support for Home Assistant assist tools for controlling Home Assistant entities
+- Optional per-run virtual workspace tools for temporary shell and file work
 
 ## Installation
 
@@ -52,14 +54,16 @@ This integration requires Home Assistant 2026.5.1 or newer.
 4. Enter a custom base URL when needed. OpenAI-compatible providers default to
    `https://api.openai.com/v1`; Anthropic and Google Gemini use their hosted API
    endpoints when no custom base URL is configured.
-5. Add provider, conversation, AI task, and Skill subentries as needed.
-6. To expose shared external tools, configure MCP servers in Home Assistant
-   Core, expose them through the Home Assistant LLM API you want this
-   integration to use, then select that API via `Capabilities`.
+5. Add provider, conversation, AI task, MCP server, and Skill subentries as
+   needed.
+6. To expose Home Assistant control tools, select a Home Assistant LLM API via
+   the conversation agent or AI task `Capabilities` section.
+7. To expose remote MCP tools, add MCP server subentries and select them on the
+   conversation agent or AI task external tools section.
 
 Workspace entries own shared Logfire settings. Provider credentials live on
-`provider` subentries, while conversation, AI task, and Skill settings remain
-on their own subentries. Each provider subentry owns a stable
+`provider` subentries, while conversation, AI task, MCP server, and Skill
+settings remain on their own subentries. Each provider subentry owns a stable
 `model_profiles` map, and conversation/AI task subentries reference profiles
 with workspace-local refs shaped like
 `<provider_subentry_id>:<model_profile_id>`. Anthropic entries also accept
@@ -87,28 +91,30 @@ Conversation agents support:
 - Optional Home Assistant LLM API selection. Selecting an API enables Home
   Assistant control tools and makes the entity advertise conversation control
   support.
+- Optional remote MCP server selection. MCP tool names are prefixed per server,
+  and servers can expose all tools, a selected allowlist, or no tools.
 - Optional Web fetch URL content fetching and Web search. Both are disabled by
   default and can be enabled independently of Home Assistant control tools.
 - Optional workspace Skill selection. Selected Skills are exposed through
   `list_skills` and `load_skill` tools and are not auto-loaded into every
   request.
+- Optional per-run virtual workspace tools for temporary file and shell work.
 - Optional model settings including temperature, capability-backed thinking, max
   tokens, max iterations, top P, timeout, parallel tool calls, seed, penalties,
   and extra body fields.
 - Optional provider HTTP headers configured on the provider entry and used for
   model discovery and model requests.
-- Automatic hidden context trimming for very long conversations. Stored Assist
-  history is not pruned; only the model request is windowed.
-  When prior model history exceeds 100 messages, the request preserves the first
-  message and the latest 50 prior-history messages. Messages from the active
-  agent run are always preserved.
+- Automatic hidden context management for very long conversations. Stored Assist
+  history is not pruned; only the model request is windowed. Conversation
+  agents default to context-manager mode and AI tasks default to sliding-window
+  mode, with an off switch available for either.
 - Tool-call follow-up requests preserve provider reasoning metadata such as
   `reasoning` and `reasoning_content` for OpenAI-compatible endpoints that
   require it.
 - Plain conversation entities stream Assist responses. Conversations that can
-  call tools, including HA LLM APIs, Web fetch, Web search, or skills, return
-  non-streamed responses so provider tool-result follow-up requests stay on the
-  compatibility path.
+  call tools, including HA LLM APIs, MCP servers, Web fetch, Web search,
+  skills, or the virtual workspace, return non-streamed responses so provider
+  tool-result follow-up requests stay on the compatibility path.
 
 ### AI Tasks
 
@@ -123,24 +129,37 @@ data, runtime chooses the highest supported strategy in the order `tool`,
 task can also enable Web fetch or Web search independently of Home Assistant
 control tool selection. Web search uses provider-native search when available or
 local DuckDuckGo search through Pydantic AI.
-AI task requests use the same automatic model-request context trimming as
-conversation agents, including active-run preservation.
+AI task requests use the same automatic model-request context management as
+conversation agents.
 AI tasks default to 30 agent request iterations unless the selected language model
 profile sets a max iterations override.
+AI tasks can also select MCP servers, Skills, Home Assistant LLM APIs, a
+virtual workspace, and an optional Home Assistant todo entity for locked
+per-run todo tool access.
 
-### Home Assistant LLM APIs and shared tools
+### MCP Servers and Home Assistant LLM APIs
 
-This integration no longer manages its own MCP servers. Shared external tools
-must be configured in Home Assistant Core and exposed through a Home Assistant
-LLM API.
+Remote MCP servers are configured as workspace subentries. Only Streamable HTTP
+transport is supported. The integration validates MCP URLs, headers, and tool
+allowlists, rejects redirects outside the validated origin, and supports
+per-server call caching and deferred loading.
 
 Recommended setup:
 
-1. Configure any MCP servers in Home Assistant Core `mcp`.
-2. Expose those servers through the Home Assistant LLM API you want the model
-   to use.
-3. In this integration, select that API in the conversation agent or AI task
-   `Capabilities` section.
+1. Add the MCP server subentry in this integration.
+2. Select the MCP server on the conversation agent or AI task external tools
+   section.
+3. Select a Home Assistant LLM API only when you want HA control tools.
+
+Registered MCP and debug services:
+
+- `list_mcp_tools`
+- `refresh_mcp_tools`
+- `get_agent_run_diagnostics`
+- `get_workspace_status`
+- `list_model_profiles`
+- `get_agent_metrics`
+- `get_tool_source_status`
 
 ### Skills
 
@@ -156,8 +175,15 @@ raw content for a selected Skill ID. Skill content is user-managed guidance only
 it cannot override system, Home Assistant, developer, or safety instructions.
 
 Skills do not run scripts, clone repositories, auto-update, or read filesystem
-folders. Reference attachments are reserved for a later phase and are redacted in
-diagnostics.
+folders. Skill references are supported and surfaced in diagnostics.
+
+### Virtual Workspace
+
+Conversation agents and AI tasks can enable a per-run virtual workspace. The
+workspace provides Bash, virtual file, directory, patch, copy, move, remove, and
+metadata tools in an in-memory Bashkit filesystem rooted at `/workspace` with
+no host mounts and no network access. Destructive actions require explicit
+`confirm=true`, and overwrites also require `overwrite=true`.
 
 ### Logfire Tracing
 
@@ -171,6 +197,11 @@ default. Enable it only if you want Logfire to capture prompt, completion, and
 tool payload content. Logfire is configured process-wide in Home Assistant: the
 first loaded workspace entry with a token wins, later entries with a different
 token are left loaded but get a repair warning and do not emit Logfire traces.
+
+### Diagnostics
+
+The integration also exposes redacted diagnostics, system health data, metrics,
+and repair handling through the runtime services listed above.
 
 ## Development
 

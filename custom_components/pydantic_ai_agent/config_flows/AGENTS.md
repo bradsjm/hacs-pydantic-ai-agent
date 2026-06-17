@@ -13,8 +13,10 @@ and its `provider_wizard` subpackage.
   runtime consumers when stored data changes.
 - Prefer changing shared schema and normalization helpers in `common.py` only
   when more than one flow genuinely uses the behavior.
-- Never add live model probes in config flows. Keep network validation limited to
-  the existing HA-managed provider connection and model-list steps.
+- Never add live provider model probes in config flows. Keep provider network
+  validation limited to the existing HA-managed provider connection and
+  model-list steps. MCP server flows may validate remote MCP URLs and discover
+  tool catalogs through the existing MCP helpers.
 
 ## Read First
 
@@ -27,6 +29,9 @@ and its `provider_wizard` subpackage.
   setting parsing.
 - `conversation_flow.py` - conversation subentry setup and validation.
 - `ai_task_flow.py` - AI task subentry setup and local validation.
+- `mcp_server_flow.py` and `mcp_helpers.py` - remote MCP server forms,
+  Streamable HTTP URL/header validation, tool discovery, allowlists, deferred
+  loading, and call-cache settings.
 - `skill_flow.py` and `skill_helpers.py` - native Skill subentry forms and
   selection helpers.
 - `provider_wizard/` - models.dev catalog loading, filtering, schemas, and
@@ -41,11 +46,16 @@ and its `provider_wizard` subpackage.
   refs with raw model names.
 - Provider subentries own credentials, mode, base URL, headers, extra body,
   model profiles, model settings, and pricing.
+- MCP server subentries own remote Streamable HTTP URL, headers, secret header
+  metadata, return-schema disclosure, call-cache options, deferred loading, tool
+  exposure mode, and allowlisted tools.
 - Provider validation uses `async_list_provider_model_names()` for model
   discovery only; runtime model/tool/structured-output failures are handled at
   run time.
 - AI task subentries validate selected model refs locally and save without live
   preflight requests.
+- Conversation and AI task subentries can reference MCP server subentries by
+  ID; keep this independent from Home Assistant LLM API selection.
 - Use `_flatten_section_data()` when processing Home Assistant `section()` form
   input. Do not read nested form sections directly in new flow code.
 - Keep selector options deterministic with `_sorted_select_options()` or sorted
@@ -68,11 +78,16 @@ and its `provider_wizard` subpackage.
   validation in the normalization path.
 - Catalog metadata and pricing are seeded from models.dev data but must remain
   editable and stable after reconfigure.
+- MCP URL validation rejects unsafe schemes and duplicate normalized URL
+  identities, and runtime MCP redirects must remain on the validated origin.
 
 ## Validation
 
 - Run `scripts/test -k config_flow` for flow-level changes.
 - Run `scripts/test -k config_flow_helpers` for shared helper changes.
 - Run `scripts/test -k provider_wizard` for guided provider setup changes.
+- Run `scripts/test -k mcp_server_flow` for MCP server form changes.
+- Run `scripts/test -k mcp_server_manage_tools_flow` for MCP tool exposure
+  changes.
 - Run `scripts/test -k "workspace_config_flow_smoke or config_flow_helpers or provider_wizard"` before finishing broad config-flow edits.
 - Run `scripts/lint-check` when changing imports, schemas, or helper names.

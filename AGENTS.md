@@ -17,6 +17,8 @@
   `manifest.json`.
 - Supported provider modes are `openai_compatible_completions`,
   `openai_compatible_responses`, `anthropic`, and `google_gemini`.
+- Workspace subentry types are provider, conversation, AI task, MCP server, and
+  Skill.
 - For OpenAI-compatible modes, use the in-repo
   `OpenAICompatibleChatModel`, `OpenAICompatibleResponsesModel`, and
   `OpenAICompatibleProvider` unless explicitly told otherwise.
@@ -79,27 +81,38 @@
   migration, runtime data, repair coordination, platform forwarding, and shared
   response services.
 - `custom_components/pydantic_ai_agent/config_flow.py` and
-  `custom_components/pydantic_ai_agent/config_flows/` own provider,
-  conversation, AI task, and skill subentry flows.
-- `custom_components/pydantic_ai_agent/provider.py`,
-  `custom_components/pydantic_ai_agent/model_profiles.py`,
-  `custom_components/pydantic_ai_agent/provider_validation.py`, and
-  `custom_components/pydantic_ai_agent/structured_output.py` own provider model
-  construction, settings, probing, and structured output.
+  `custom_components/pydantic_ai_agent/config_flows/` own workspace, provider,
+  conversation, AI task, MCP server, and Skill subentry flows.
+- `custom_components/pydantic_ai_agent/models/provider.py`,
+  `custom_components/pydantic_ai_agent/models/model_profiles.py`,
+  `custom_components/pydantic_ai_agent/models/provider_validation.py`,
+  `custom_components/pydantic_ai_agent/models/model_settings.py`,
+  `custom_components/pydantic_ai_agent/models/model_request_settings.py`, and
+  `custom_components/pydantic_ai_agent/models/structured_output.py` own provider
+  model construction, settings, probing, and structured output.
 - `custom_components/pydantic_ai_agent/entity.py`,
-  `custom_components/pydantic_ai_agent/history.py`,
-  `custom_components/pydantic_ai_agent/context_management.py`,
-  `custom_components/pydantic_ai_agent/ha_toolset.py`,
-  `custom_components/pydantic_ai_agent/ha_todo_tools.py`, and
-  `custom_components/pydantic_ai_agent/skills.py` own the shared agent runtime,
-  history conversion, context trimming, HA tools, todo tools, and native skills.
+  `custom_components/pydantic_ai_agent/agent/history.py`,
+  `custom_components/pydantic_ai_agent/agent/context_management.py`,
+  `custom_components/pydantic_ai_agent/agent/ha_toolset.py`,
+  `custom_components/pydantic_ai_agent/agent/ha_todo_tools.py`,
+  `custom_components/pydantic_ai_agent/agent/skills.py`, and
+  `custom_components/pydantic_ai_agent/agent/_entity_runner.py` own the shared
+  agent runtime, history conversion, context management, HA tools, todo tools,
+  native skills, and model-profile fallback execution.
+- `custom_components/pydantic_ai_agent/mcp/` owns remote Streamable HTTP MCP
+  validation, discovery, client construction, runtime toolsets, allowlists,
+  deferred loading, and call-result caching.
+- `custom_components/pydantic_ai_agent/virtual_workspace/` owns optional per-run
+  in-memory workspace tools backed by Bashkit.
 - `custom_components/pydantic_ai_agent/conversation.py` and
   `custom_components/pydantic_ai_agent/ai_task.py` expose the user-facing entity
   platforms.
-- `custom_components/pydantic_ai_agent/metrics.py`, `sensor.py`,
-  `binary_sensor.py`, `diagnostics.py`, `system_health.py`,
-  `repair_issues.py`, and `logfire_support.py` own observability,
-  diagnostics, repairs, and Logfire support.
+- `custom_components/pydantic_ai_agent/observability/metrics.py`,
+  `observability/debug_services.py`, `observability/run_diagnostics.py`,
+  `observability/run_failures.py`, `observability/logfire_support.py`,
+  `sensor.py`, `binary_sensor.py`, `diagnostics.py`, `system_health.py`, and
+  `repair_issues.py` own observability, diagnostics, repairs, and Logfire
+  support.
 - `custom_components/pydantic_ai_agent/openai_compatible_client/` and
   `custom_components/pydantic_ai_agent/openai_compatible_adapter/` own the
   lightweight OpenAI-compatible HTTP client and Pydantic AI adapter layers.
@@ -114,8 +127,8 @@
 - Live provider tests are opt-in, networked, and live in
   `tests/components/pydantic_ai_agent/integration/`; run them with
   `scripts/test-provider-integration`.
-- Root `conftest.py` loads `pytest_homeassistant_custom_component`, and shared
-  helpers live under `tests/components/pydantic_ai_agent/support/`.
+- Root `conftest.py` uses the `pytest_homeassistant_custom_component` plugin,
+  and shared helpers live under `tests/components/pydantic_ai_agent/support/`.
 - Mock provider model-list responses only when the test explicitly covers
   provider discovery behavior.
 - Annotate test function parameters with concrete types where practical; avoid
@@ -165,7 +178,9 @@
 
 - Use `HomeAssistant` and `MockConfigEntry` types where applicable.
 - Prefer testing Home Assistant behavior: setup/unload, config flow, subentry flow, service responses, diagnostics, and cleanup.
-- Prefer shared fixtures and helpers from `tests/components/semantic_home/conftest.py` and `tests/components/semantic_home/helpers.py` over ad-hoc stubs when they reduce coupling to internals.
+- Prefer shared fixtures and helpers from `tests/components/pydantic_ai_agent/conftest.py`
+  and `tests/components/pydantic_ai_agent/support/` over ad-hoc stubs when they
+  reduce coupling to internals.
 - Avoid branching in tests. Split cases or use `pytest.mark.parametrize`; merge duplicated test bodies with parametrization.
 - Prefer assertions on user-visible behavior, persisted data, emitted events, stable error keys, and runtime side effects over assertions on constructor kwargs, mock call choreography, private helpers, import paths, or other implementation details that can change during harmless refactors.
 - When changing config flows, assert flow result types, translated error keys, placeholders, created subentry data, and reconfigure behavior. Do not over-specify serialized selector structure, field ordering, or exact UI text unless that exact presentation is itself the contract being protected.

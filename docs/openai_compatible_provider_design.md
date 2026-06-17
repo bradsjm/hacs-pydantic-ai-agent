@@ -18,8 +18,8 @@ Implemented source areas:
 | ---------------------------------- | ---------------------------------------------------------------- |
 | Low-level HTTP client              | `custom_components/pydantic_ai_agent/openai_compatible_client/`  |
 | Pydantic AI model/provider adapter | `custom_components/pydantic_ai_agent/openai_compatible_adapter/` |
-| Home Assistant model factory       | `custom_components/pydantic_ai_agent/provider.py`                |
-| Config-flow provider validation    | `custom_components/pydantic_ai_agent/config_flow.py`             |
+| Home Assistant model factory       | `custom_components/pydantic_ai_agent/models/provider.py`         |
+| Config-flow provider validation    | `custom_components/pydantic_ai_agent/config_flows/provider_flow.py` |
 | Runtime agent construction         | `custom_components/pydantic_ai_agent/entity.py`                  |
 | Provider integration tests         | `tests/components/pydantic_ai_agent/integration/`                |
 
@@ -66,6 +66,8 @@ The in-repo adapter exists to:
   OpenAI-compatible adapter.
 - Do not simulate streaming by chunking completed non-streamed responses.
 - Do not add stdio, SSE, or local process MCP support as part of provider work.
+  Runtime MCP support is separate and currently uses remote Streamable HTTP
+  server subentries.
 
 ## Dependency Contract
 
@@ -92,11 +94,17 @@ Relevant dependency decisions:
 - bearer `Authorization` header generation;
 - `url_for()` path joining;
 - a `chat.completions.create()` resource compatible with the subset the adapter
-  needs.
+  needs;
+- a `responses.create()` resource compatible with the subset the adapter needs;
+- a `models.list()` resource for provider model discovery.
 
 `ChatCompletionsResource.create()` builds a JSON request body, omits sentinel
 values, merges `extra_body`, applies `extra_headers`, and calls
 `/chat/completions` using the provided `httpx.AsyncClient`.
+
+`ResponsesResource.create()` applies the same omitted-value handling and calls
+`/responses`. `ModelsResource.list()` calls `/models` and returns sorted model
+ids from the OpenAI-compatible model-list shape.
 
 Non-streamed responses are validated into Pydantic models in `_types.py`.
 Streamed responses return `ChatCompletionStream`, which parses SSE `data:` lines
@@ -121,16 +129,18 @@ connection-pooling behavior.
 ### Pydantic AI Model
 
 `OpenAICompatibleChatModel` implements Pydantic AI's `Model` contract.
+`OpenAICompatibleResponsesModel` implements the same contract for the Responses
+API.
 
 It provides:
 
 - `model_name`, `system`, and `base_url` properties;
-- `request()` for non-streamed Chat Completions;
-- `request_stream()` for streamed Chat Completions;
+- `request()` for non-streamed requests;
+- `request_stream()` for streamed requests;
 - request preparation through Pydantic AI `prepare_request()`;
 - error mapping from lightweight client exceptions to `ModelHTTPError` and
   `ModelAPIError`;
-- conversion from Pydantic AI model settings to Chat Completions fields.
+- conversion from Pydantic AI model settings to provider request fields.
 
 ## Request Mapping
 
@@ -243,5 +253,5 @@ The Pydantic AI model maps those to:
 - `ModelAPIError` for connection, timeout, invalid JSON, and invalid response
   errors.
 
-`config_flow.py` then maps Pydantic AI errors to provider validation errors and
-Home Assistant form/repair behavior.
+`config_flows/provider_flow.py` and `models/provider_validation.py` map Pydantic
+AI errors to provider validation errors and Home Assistant form/repair behavior.
