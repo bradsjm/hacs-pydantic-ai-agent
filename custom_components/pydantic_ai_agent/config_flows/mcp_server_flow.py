@@ -16,7 +16,6 @@ from ..const import (
     CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     DEFAULT_MCP_TIMEOUT,
-    MCP_TOOL_MODE_ALL,
     MCP_TOOL_MODE_SPECIFIED,
 )
 from ..mcp import (
