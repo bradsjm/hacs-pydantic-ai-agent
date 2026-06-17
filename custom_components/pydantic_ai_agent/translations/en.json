@@ -123,7 +123,7 @@
                 "context_summarization_model_ref": "Summarization model"
               },
               "data_description": {
-                "context_management_mode": "Choose how this AI task keeps model context within the active model profile's context window.",
+                "context_management_mode": "Choose how this AI task handles conversation history before each model request. Sliding window trims older messages to stay within the active model profile's context window. Context manager summarizes older history with the selected summarization model when context is near the limit. Off sends the full available history without integration-managed trimming or summarization.",
                 "context_summarization_model_ref": "Optional model profile used to summarize context. Leave as Current active model to use whichever primary or fallback profile is running."
               },
               "name": "Context management"
@@ -141,7 +141,7 @@
                 "todo_list_entity_id": "Optional dedicated todo list for model planning. When set, this list is cleared before every AI task run and the model can only manage items in this list.",
                 "virtual_workspace_enabled": "Allow this AI task to use a temporary in-memory bash and file workspace during each AI task run. The workspace is discarded after the response.",
                 "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP.",
-                "web_search_enabled": "Allow this AI task to search the web using provider-native search when available or local DuckDuckGo search. Web search is disabled by default."
+                "web_search_enabled": "Allow this AI task to search the web using provider-native search when available or local DuckDuckGo search."
               },
               "name": "External tools and data"
             },
@@ -250,7 +250,7 @@
                 "context_summarization_model_ref": "Summarization model"
               },
               "data_description": {
-                "context_management_mode": "Choose how this conversation keeps model context within the active model profile's context window.",
+                "context_management_mode": "Choose how this conversation handles chat history before each model request. Context manager summarizes older history with the selected summarization model when context is near the active model profile's context window. Sliding window trims older messages without summarizing. Off sends the full available history without integration-managed trimming or summarization.",
                 "context_summarization_model_ref": "Optional model profile used to summarize context. Leave as Current active model to use whichever primary or fallback profile is running."
               },
               "name": "Context management"
@@ -266,7 +266,7 @@
                 "mcp_server_ids": "Optional MCP servers this conversation agent may use.",
                 "virtual_workspace_enabled": "Allow this conversation agent to use a temporary in-memory bash and file workspace during each model run. The workspace is discarded after the response.",
                 "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP.",
-                "web_search_enabled": "Allow this conversation agent to search the web using provider-native search when available or local DuckDuckGo search. Web search is disabled by default."
+                "web_search_enabled": "Allow this conversation agent to search the web using provider-native search when available or local DuckDuckGo search."
               },
               "name": "External tools and data"
             },
