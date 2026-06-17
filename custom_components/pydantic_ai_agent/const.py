@@ -74,6 +74,7 @@ CONF_TOOL_RETRIES = "tool_retries"
 CONF_TODO_LIST_ENTITY_ID = "todo_list_entity_id"
 CONF_VIRTUAL_WORKSPACE_ENABLED = "virtual_workspace_enabled"
 CONF_WEB_FETCH_ENABLED = "web_fetch_enabled"
+CONF_WEB_SEARCH_ENABLED = "web_search_enabled"
 
 PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS = "openai_compatible_completions"
 PROVIDER_OPENAI_COMPATIBLE_RESPONSES = "openai_compatible_responses"

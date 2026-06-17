@@ -79,6 +79,7 @@ Relevant dependency decisions:
 - `anthropic>=0.97.0` and `google-genai>=1.70.0` are declared explicitly for
   native Anthropic and Google Gemini provider modes.
 - `markdownify>=1.2` supports WebFetch content conversion.
+- `ddgs>=9.0.0` supports Pydantic AI WebSearch local DuckDuckGo fallback.
 - The OpenAI SDK is intentionally absent.
 
 ## Architecture
@@ -220,7 +221,7 @@ Streaming implementation details:
 - Home Assistant plain-conversation runtime consumes Pydantic AI
   `run_stream_events(...)` so visible assistant deltas are emitted live while the
   final `AgentRunResultEvent` is used only for usage and health metrics;
-- conversations that can call HA LLM tools, Web fetch, or skills use
+- conversations that can call HA LLM tools, Web fetch, Web search, or skills use
   non-streamed requests for provider-compatible tool-result follow-up handling;
 - streamed conversation handling does not append final `new_messages()` after
   live deltas, preventing duplicate final assistant text;

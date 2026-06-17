@@ -38,7 +38,7 @@ provider, conversation, AI task, and Skill config subentry flows.
   discovered model cache data, model profiles, model settings, and pricing.
 - Conversation and AI task data store primary and fallback model profile refs,
   prompts, run settings, external tool choices, Skill refs, and virtual
-  workspace or web-fetch flags.
+  workspace, web-fetch, or web-search flags.
 - Skill data stores a name, description, and content template.
 
 ## Provider Wizard

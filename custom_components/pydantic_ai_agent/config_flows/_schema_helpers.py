@@ -40,6 +40,7 @@ from ..const import (
     CONF_TOOL_RETRIES,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     DEFAULT_AGENT_NAME,
     DEFAULT_TIMEOUT,
     DEFAULT_TOOL_RETRIES,
@@ -223,6 +224,12 @@ def _conversation_schema(
         vol.Optional(
             CONF_WEB_FETCH_ENABLED,
             default=bool(options.get(CONF_WEB_FETCH_ENABLED, False)),
+        )
+    ] = BooleanSelector()
+    external_tools_schema[
+        vol.Optional(
+            CONF_WEB_SEARCH_ENABLED,
+            default=bool(options.get(CONF_WEB_SEARCH_ENABLED, False)),
         )
     ] = BooleanSelector()
     external_tools_schema[
@@ -460,8 +467,7 @@ def _conversation_data_from_user_input(
         data.pop(CONF_LLM_HASS_API, None)
     if data.get(CONF_STREAMING_ENABLED, True) is not False:
         data.pop(CONF_STREAMING_ENABLED, None)
-    if not data.get(CONF_WEB_FETCH_ENABLED):
-        data.pop(CONF_WEB_FETCH_ENABLED, None)
+    _drop_disabled_external_tool_flags(data)
     if data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is not True:
         data.pop(CONF_VIRTUAL_WORKSPACE_ENABLED, None)
     if not data.get(CONF_FALLBACK_MODEL_REFS):
@@ -485,3 +491,10 @@ def _conversation_data_from_user_input(
     _normalise_mcp_server_selection(data)
     _normalise_skill_selection(data)
     return data
+
+
+def _drop_disabled_external_tool_flags(data: dict[str, Any]) -> None:
+    """Remove absent or disabled external tool flags from subentry data."""
+    for key in (CONF_WEB_FETCH_ENABLED, CONF_WEB_SEARCH_ENABLED):
+        if not data.get(key):
+            data.pop(key, None)

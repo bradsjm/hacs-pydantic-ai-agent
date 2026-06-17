@@ -239,9 +239,7 @@ async def test_provider_manage_models_starts_with_progress(hass):
                 "subentry_id": subentry.subentry_id,
             },
         )
-        result = await _scr(
-            hass, result["flow_id"], {"next_step_id": "manage_models"}
-        )
+        result = await _scr(hass, result["flow_id"], {"next_step_id": "manage_models"})
         assert result["type"] is FlowResultType.SHOW_PROGRESS
         assert result["step_id"] == "manage_models_prepare"
         assert result["progress_action"] == "discover_models"

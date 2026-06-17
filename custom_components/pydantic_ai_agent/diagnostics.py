@@ -29,6 +29,7 @@ from .const import (
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -170,6 +171,7 @@ def _configuration_summary(
                 "skill_count": len(skill_ids) if isinstance(skill_ids, list) else 0,
                 CONF_LLM_HASS_API: data.get(CONF_LLM_HASS_API),
                 CONF_WEB_FETCH_ENABLED: bool(data.get(CONF_WEB_FETCH_ENABLED, False)),
+                CONF_WEB_SEARCH_ENABLED: bool(data.get(CONF_WEB_SEARCH_ENABLED, False)),
                 CONF_VIRTUAL_WORKSPACE_ENABLED: bool(
                     data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)
                 ),

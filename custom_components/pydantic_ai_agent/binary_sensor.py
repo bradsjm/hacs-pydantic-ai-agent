@@ -22,6 +22,7 @@ from .const import (
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     DOMAIN,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
@@ -88,6 +89,15 @@ CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
         entity_registry_enabled_default=True,
         value_fn=lambda subentry: bool(
             subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
+        ),
+    ),
+    PydanticAIConfigBinarySensorDescription(
+        key="web_search_enabled",
+        translation_key="web_search_enabled",
+        icon="mdi:web",
+        entity_registry_enabled_default=True,
+        value_fn=lambda subentry: bool(
+            subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)
         ),
     ),
     PydanticAIConfigBinarySensorDescription(

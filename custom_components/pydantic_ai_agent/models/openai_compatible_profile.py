@@ -94,6 +94,7 @@ class PersistedOpenAICompatibleProfile:
             supports_tools=self.supports_tools,
             supports_json_schema_output=self.structured_output_support == "json_schema",
             supports_json_object_output=supports_json_object_output,
+            supported_native_tools=frozenset(),
             openai_supports_strict_tool_definition=True,
             openai_system_prompt_role="system",
         )

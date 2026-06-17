@@ -38,6 +38,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_AI_TASK,
@@ -151,6 +152,7 @@ def conversation_subentry_data(
     streaming_enabled: bool = True,
     virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
+    web_search_enabled: bool = False,
     extra_data: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Return a conversation config subentry payload."""
@@ -165,10 +167,13 @@ def conversation_subentry_data(
         data[CONF_SKILLS] = list(skills)
     if not streaming_enabled:
         data[CONF_STREAMING_ENABLED] = False
-    if web_fetch_enabled:
-        data[CONF_WEB_FETCH_ENABLED] = True
-    if virtual_workspace_enabled:
-        data[CONF_VIRTUAL_WORKSPACE_ENABLED] = True
+    for enabled, key in (
+        (web_fetch_enabled, CONF_WEB_FETCH_ENABLED),
+        (web_search_enabled, CONF_WEB_SEARCH_ENABLED),
+        (virtual_workspace_enabled, CONF_VIRTUAL_WORKSPACE_ENABLED),
+    ):
+        if enabled:
+            data[key] = True
     if extra_data is not None:
         data.update(extra_data)
     payload: dict[str, object] = {
@@ -192,6 +197,7 @@ def ai_task_subentry_data(
     skills: Sequence[str] | None = None,
     virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
+    web_search_enabled: bool = False,
     todo_workspace_entity_id: str | None = None,
     extra_data: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
@@ -205,6 +211,8 @@ def ai_task_subentry_data(
         data[CONF_SKILLS] = list(skills)
     if web_fetch_enabled:
         data[CONF_WEB_FETCH_ENABLED] = True
+    if web_search_enabled:
+        data[CONF_WEB_SEARCH_ENABLED] = True
     if virtual_workspace_enabled:
         data[CONF_VIRTUAL_WORKSPACE_ENABLED] = True
     if todo_workspace_entity_id is not None:

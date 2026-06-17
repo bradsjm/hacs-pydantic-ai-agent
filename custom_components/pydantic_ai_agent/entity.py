@@ -12,7 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import llm
 from pydantic_ai import Agent
-from pydantic_ai.capabilities import AbstractCapability, WebFetch
+from pydantic_ai.capabilities import AbstractCapability, WebFetch, WebSearch
 from pydantic_ai.toolsets import AbstractToolset
 from pydantic_ai.usage import UsageLimits
 
@@ -36,6 +36,7 @@ from .const import (
     CONF_SKILLS,
     CONF_TOOL_RETRIES,
     CONF_WEB_FETCH_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     DEFAULT_TOOL_RETRIES,
     DOMAIN,
 )
@@ -164,6 +165,8 @@ class PydanticAIBaseLLMEntity:
         ]
         if self.subentry.data.get(CONF_WEB_FETCH_ENABLED):
             capabilities.append(WebFetch(local=True))
+        if self.subentry.data.get(CONF_WEB_SEARCH_ENABLED):
+            capabilities.append(WebSearch(local="duckduckgo"))
         capabilities.append(SlidingWindowContextCapability())
 
         errors: list[BaseException] = []

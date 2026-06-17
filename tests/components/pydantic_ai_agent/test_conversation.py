@@ -7,6 +7,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_LOGFIRE_TOKEN,
     CONF_STREAMING_ENABLED,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     DOMAIN,
 )
 from custom_components.pydantic_ai_agent.conversation import (
@@ -40,6 +41,7 @@ def _entry(
     streaming_enabled=True,
     virtual_workspace_enabled=False,
     web_fetch_enabled=False,
+    web_search_enabled=False,
     model_settings=None,
     extra_data=None,
 ):
@@ -52,6 +54,7 @@ def _entry(
                 streaming_enabled=streaming_enabled,
                 virtual_workspace_enabled=virtual_workspace_enabled,
                 web_fetch_enabled=web_fetch_enabled,
+                web_search_enabled=web_search_enabled,
                 extra_data=extra_data,
             ),
             provider_subentry_data(
@@ -167,22 +170,24 @@ def test_conversation_entity_disables_streaming_when_configured():
 
 
 @pytest.mark.parametrize(
-    ("llm_hass_api", "vw", "wf", "skills", "features"),
+    ("llm_hass_api", "vw", "wf", "ws", "skills", "features"),
     [
         (
             [llm.LLM_API_ASSIST],
             False,
             False,
+            False,
             None,
             conversation.ConversationEntityFeature.CONTROL,
         ),
-        (None, True, False, None, 0),
-        (None, False, True, None, 0),
-        (None, False, False, ["kitchen-skill"], 0),
+        (None, True, False, False, None, 0),
+        (None, False, True, False, None, 0),
+        (None, False, False, True, None, 0),
+        (None, False, False, False, ["kitchen-skill"], 0),
     ],
 )
 def test_conversation_entity_advertises_streaming_for_tool_sources(
-    llm_hass_api, vw, wf, skills, features
+    llm_hass_api, vw, wf, ws, skills, features
 ):
     entity = PydanticAIConversationEntity(
         _entry(
@@ -190,6 +195,7 @@ def test_conversation_entity_advertises_streaming_for_tool_sources(
             skills=skills,
             virtual_workspace_enabled=vw,
             web_fetch_enabled=wf,
+            web_search_enabled=ws,
         ),
         next(
             iter(
@@ -198,6 +204,7 @@ def test_conversation_entity_advertises_streaming_for_tool_sources(
                     skills=skills,
                     virtual_workspace_enabled=vw,
                     web_fetch_enabled=wf,
+                    web_search_enabled=ws,
                 ).subentries.values()
             )
         ),
@@ -226,6 +233,14 @@ def test_conversation_entity_requires_literal_virtual_workspace_true():
     assert attributes["virtual_workspace_enabled"] is False
 
 
+def test_conversation_entity_exposes_web_search_attribute():
+    entry = _entry(None, web_search_enabled=True)
+    entity = PydanticAIConversationEntity(entry, next(iter(entry.subentries.values())))
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    assert attributes[CONF_WEB_SEARCH_ENABLED] is True
+
+
 async def test_conversation_subentries_add_separate_entity_agents(hass):
     entry = _entry_with_conversation_subentries()
     added = []
@@ -244,7 +259,12 @@ async def test_conversation_subentries_add_separate_entity_agents(hass):
 
 
 async def test_diagnostic_entity_defaults_are_respected(hass):
-    entry = _entry(None, skills=["skill-1", "skill-2"], virtual_workspace_enabled=True)
+    entry = _entry(
+        None,
+        skills=["skill-1", "skill-2"],
+        virtual_workspace_enabled=True,
+        web_search_enabled=True,
+    )
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -260,8 +280,10 @@ async def test_diagnostic_entity_defaults_are_respected(hass):
     for eid in (
         "binary_sensor.kitchen_agent_provider_healthy",
         "binary_sensor.kitchen_agent_assist_enabled",
+        "binary_sensor.kitchen_agent_web_search_enabled",
     ):
         entry = ereg.async_get(eid)
         assert entry is not None
         assert entry.disabled_by is None
     assert _state(hass, "sensor.kitchen_agent_skills_enabled") == "2"
+    assert _state(hass, "binary_sensor.kitchen_agent_web_search_enabled") == "on"

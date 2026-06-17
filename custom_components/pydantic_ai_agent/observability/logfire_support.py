@@ -23,6 +23,7 @@ from ..const import (
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     DOMAIN,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
@@ -354,6 +355,9 @@ def _span_attributes(
         "ha.llm_api_ids": llm_api_ids,
         "ha.logfire_include_content": logfire_include_content(hass, entry),
         "ha.web_fetch_enabled": bool(subentry.data.get(CONF_WEB_FETCH_ENABLED, False)),
+        "ha.web_search_enabled": bool(
+            subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)
+        ),
         "ha.virtual_workspace_enabled": bool(
             subentry.data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)
         ),

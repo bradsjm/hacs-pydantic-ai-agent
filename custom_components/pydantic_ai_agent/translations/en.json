@@ -122,13 +122,15 @@
                 "mcp_server_ids": "MCP servers",
                 "todo_list_entity_id": "Todo workspace list",
                 "virtual_workspace_enabled": "Virtual workspace tools",
-                "web_fetch_enabled": "Web fetch"
+                "web_fetch_enabled": "Web fetch",
+                "web_search_enabled": "Web search"
               },
               "data_description": {
                 "mcp_server_ids": "Optional MCP servers this AI task may use. Only enabled tools will be made available.",
                 "todo_list_entity_id": "Optional dedicated todo list for model planning. When set, this list is cleared before every AI task run and the model can only manage items in this list.",
                 "virtual_workspace_enabled": "Allow this AI task to use a temporary in-memory bash and file workspace during each AI task run. The workspace is discarded after the response.",
-                "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
+                "web_fetch_enabled": "Allow this AI task to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP.",
+                "web_search_enabled": "Allow this AI task to search the web using provider-native search when available or local DuckDuckGo search. Web search is disabled by default."
               },
               "name": "External tools and data"
             },
@@ -235,12 +237,14 @@
               "data": {
                 "mcp_server_ids": "MCP servers",
                 "virtual_workspace_enabled": "Virtual workspace tools",
-                "web_fetch_enabled": "Web fetch"
+                "web_fetch_enabled": "Web fetch",
+                "web_search_enabled": "Web search"
               },
               "data_description": {
                 "mcp_server_ids": "Optional MCP servers this conversation agent may use.",
                 "virtual_workspace_enabled": "Allow this conversation agent to use a temporary in-memory bash and file workspace during each model run. The workspace is discarded after the response.",
-                "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP."
+                "web_fetch_enabled": "Allow this conversation agent to fetch web page content from URLs. Web fetch is disabled by default and does not require MCP.",
+                "web_search_enabled": "Allow this conversation agent to search the web using provider-native search when available or local DuckDuckGo search. Web search is disabled by default."
               },
               "name": "External tools and data"
             },
@@ -385,12 +389,12 @@
         },
         "manage_tools": {
           "data": {
-            "mcp_tool_mode": "Tool mode",
-            "mcp_allowed_tools": "Enable MCP tools"
+            "mcp_allowed_tools": "Enable MCP tools",
+            "mcp_tool_mode": "Tool mode"
           },
           "data_description": {
-            "mcp_tool_mode": "Choose whether all discovered tools are enabled, only selected tools are enabled, or the server is temporarily disabled.",
-            "mcp_allowed_tools": "Only selected tools will be enabled for use with conversation agents or AI tasks."
+            "mcp_allowed_tools": "Only selected tools will be enabled for use with conversation agents or AI tasks.",
+            "mcp_tool_mode": "Choose whether all discovered tools are enabled, only selected tools are enabled, or the server is temporarily disabled."
           },
           "description": "Choose how this server contributes tools. All tools enabled removes the allowlist, Specified tools enabled limits runtime to the selected tools, and Disabled keeps the server configured but contributes no tools.",
           "title": "Configure available MCP tools"
@@ -746,6 +750,9 @@
       },
       "web_fetch_enabled": {
         "name": "Web fetch enabled"
+      },
+      "web_search_enabled": {
+        "name": "Web search enabled"
       }
     },
     "sensor": {

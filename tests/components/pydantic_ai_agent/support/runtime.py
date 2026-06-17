@@ -35,6 +35,7 @@ def loaded_conversation_entry(
     streaming_enabled: bool = True,
     virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
+    web_search_enabled: bool = False,
     extra_data: Mapping[str, object] | None = None,
     workspace_data: Mapping[str, object] | None = None,
     provider_subentry: dict[str, object] | None = None,
@@ -55,6 +56,7 @@ def loaded_conversation_entry(
             streaming_enabled=streaming_enabled,
             virtual_workspace_enabled=virtual_workspace_enabled,
             web_fetch_enabled=web_fetch_enabled,
+            web_search_enabled=web_search_enabled,
             extra_data=extra_data,
         ),
     )
@@ -75,6 +77,7 @@ def loaded_ai_task_entry(
     *,
     include_task_name: bool = True,
     subentry_title: str = "AI task subentry title",
+    web_search_enabled: bool = False,
     extra_data: Mapping[str, object] | None = None,
     workspace_data: Mapping[str, object] | None = None,
     provider_subentry: dict[str, object] | None = None,
@@ -92,6 +95,7 @@ def loaded_ai_task_entry(
             profile_ref,
             title=subentry_title,
             task_name="Report task" if include_task_name else None,
+            web_search_enabled=web_search_enabled,
             extra_data=extra_data,
         ),
     )

@@ -8,7 +8,7 @@ from custom_components.pydantic_ai_agent.agent.context_management import (
 )
 from homeassistant.components import ai_task
 from homeassistant.core import HomeAssistant
-from pydantic_ai.capabilities import WebFetch
+from pydantic_ai.capabilities import WebFetch, WebSearch
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     ai_task_subentry_data,
@@ -31,6 +31,7 @@ def _entry(
     skills: list[str] | None = None,
     virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
+    web_search_enabled: bool = False,
     todo_workspace_entity_id: str | None = None,
     extra_data: dict[str, object] | None = None,
 ) -> MockConfigEntry:
@@ -43,6 +44,7 @@ def _entry(
                 skills=skills,
                 virtual_workspace_enabled=virtual_workspace_enabled,
                 web_fetch_enabled=web_fetch_enabled,
+                web_search_enabled=web_search_enabled,
                 todo_workspace_entity_id=todo_workspace_entity_id,
                 extra_data=extra_data,
             ),
@@ -71,6 +73,7 @@ async def _setup_ai_task_entity(
     skills: list[str] | None = None,
     virtual_workspace_enabled: bool = False,
     web_fetch_enabled: bool = False,
+    web_search_enabled: bool = False,
     todo_workspace_entity_id: str | None = None,
 ) -> str:
     """Set up an AI task config entry and return its entity ID."""
@@ -78,6 +81,7 @@ async def _setup_ai_task_entity(
         skills=skills,
         virtual_workspace_enabled=virtual_workspace_enabled,
         web_fetch_enabled=web_fetch_enabled,
+        web_search_enabled=web_search_enabled,
         todo_workspace_entity_id=todo_workspace_entity_id,
     )
     entry.add_to_hass(hass)
@@ -283,4 +287,37 @@ async def test_ai_task_runtime_adds_web_fetch_capability(
     assert agent_class.call_args is not None
     capabilities = agent_class.call_args.kwargs["capabilities"]
     assert any(isinstance(capability, WebFetch) for capability in capabilities)
+    _assert_context_management_capability(capabilities)
+
+
+async def test_ai_task_runtime_adds_web_search_capability(
+    hass: HomeAssistant,
+) -> None:
+    """Test WebSearch-enabled AI tasks get the WebSearch capability."""
+    entity_id = await _setup_ai_task_entity(hass, web_search_enabled=True)
+
+    with (
+        patch(
+            "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+            return_value=object(),
+        ),
+        patch(
+            "custom_components.pydantic_ai_agent.entity.Agent",
+            side_effect=_agent_factory(stream_text="plain result"),
+        ) as agent_class,
+    ):
+        result = await ai_task.async_generate_data(
+            hass,
+            task_name="Search task",
+            entity_id=entity_id,
+            instructions="Search for Home Assistant release notes",
+        )
+
+    assert result.data == "plain result"
+    assert agent_class.call_args is not None
+    capabilities = agent_class.call_args.kwargs["capabilities"]
+    web_search = next(
+        capability for capability in capabilities if isinstance(capability, WebSearch)
+    )
+    assert getattr(web_search.local, "name", None) == "duckduckgo_search"
     _assert_context_management_capability(capabilities)

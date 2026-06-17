@@ -26,6 +26,7 @@ from .const import (
     CONF_AI_TASK_NAME,
     CONF_TODO_LIST_ENTITY_ID,
     CONF_WEB_FETCH_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     SUBENTRY_TYPE_AI_TASK,
 )
 from .entity import PydanticAIBaseLLMEntity
@@ -82,6 +83,9 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
             "structured_output_mode": resolved_structured_output_mode(profiles[0]),
             "web_fetch_enabled": bool(
                 self.subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
+            ),
+            "web_search_enabled": bool(
+                self.subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)
             ),
             "virtual_workspace_enabled": virtual_workspace_enabled(self.subentry.data),
             "todo_workspace_enabled": bool(

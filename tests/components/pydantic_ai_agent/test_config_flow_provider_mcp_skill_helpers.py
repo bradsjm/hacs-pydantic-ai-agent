@@ -182,9 +182,12 @@ def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> 
     assert provider_headers_selector.config["fields"][CONF_KEY_VALUE_IS_SECRET][
         "selector"
     ] == {"boolean": {}}
-    assert provider_headers_selector.config["fields"][CONF_KEY_VALUE_VALUE][
-        "selector"
-    ]["text"]["type"] == "password"
+    assert (
+        provider_headers_selector.config["fields"][CONF_KEY_VALUE_VALUE]["selector"][
+            "text"
+        ]["type"]
+        == "password"
+    )
     assert provider_headers_selector.config["label_field"] == CONF_KEY_VALUE_KEY
     assert provider_headers_selector.config["description_field"] == CONF_KEY_VALUE_VALUE
     assert (
@@ -211,9 +214,12 @@ def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> 
     assert mcp_headers_selector.config["fields"][CONF_KEY_VALUE_IS_SECRET][
         "selector"
     ] == {"boolean": {}}
-    assert mcp_headers_selector.config["fields"][CONF_KEY_VALUE_VALUE][
-        "selector"
-    ]["text"]["type"] == "password"
+    assert (
+        mcp_headers_selector.config["fields"][CONF_KEY_VALUE_VALUE]["selector"]["text"][
+            "type"
+        ]
+        == "password"
+    )
     assert mcp_headers_selector.config["label_field"] == CONF_KEY_VALUE_KEY
     assert mcp_headers_selector.config["description_field"] == CONF_KEY_VALUE_VALUE
 

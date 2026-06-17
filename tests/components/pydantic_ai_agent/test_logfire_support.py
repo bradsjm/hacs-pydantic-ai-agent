@@ -333,6 +333,7 @@ async def test_agent_run_span_adds_ai_task_specific_metadata(
                 title="Report {task}",
                 task_name="Morning Report",
                 web_fetch_enabled=True,
+                web_search_enabled=True,
                 todo_workspace_entity_id="todo.demo",
             ),
             provider_subentry_data(subentry_id="provider-1", title="Hosted OpenAI"),
@@ -365,6 +366,7 @@ async def test_agent_run_span_adds_ai_task_specific_metadata(
     assert span.call_args.kwargs["ha.ai_task_name"] == "Morning Report"
     assert span.call_args.kwargs["ha.todo_workspace_enabled"] is True
     assert span.call_args.kwargs["ha.web_fetch_enabled"] is True
+    assert span.call_args.kwargs["ha.web_search_enabled"] is True
     assert span.call_args.kwargs["ha.is_fallback_attempt"] is True
     assert span.call_args.kwargs["ha.attempt_index"] == 1
     assert span.call_args.kwargs["ha.attempt_count"] == 2

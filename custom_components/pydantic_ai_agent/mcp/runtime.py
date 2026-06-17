@@ -59,9 +59,7 @@ async def _validated_runtime_mcp_config(
     return config, validated_url
 
 
-def _runtime_allowed_tools(
-    subentry: Any, config: dict[str, Any]
-) -> set[str] | None:
+def _runtime_allowed_tools(subentry: Any, config: dict[str, Any]) -> set[str] | None:
     """Return MCP allowlist status and normalized tool names."""
     if effective_mcp_tool_mode(subentry.data) == MCP_TOOL_MODE_ALL:
         return None

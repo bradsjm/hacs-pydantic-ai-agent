@@ -22,6 +22,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
@@ -251,9 +252,11 @@ def test_conversation_and_ai_task_schemas_hide_private_mcp_selection(
     assert conversation_fields == {
         CONF_VIRTUAL_WORKSPACE_ENABLED,
         CONF_WEB_FETCH_ENABLED,
+        CONF_WEB_SEARCH_ENABLED,
     }
     assert ai_task_fields == {
         CONF_TODO_LIST_ENTITY_ID,
         CONF_VIRTUAL_WORKSPACE_ENABLED,
         CONF_WEB_FETCH_ENABLED,
+        CONF_WEB_SEARCH_ENABLED,
     }

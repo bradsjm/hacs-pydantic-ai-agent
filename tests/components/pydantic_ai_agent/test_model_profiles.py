@@ -157,6 +157,20 @@ def test_parse_model_profile_ref_uses_workspace_local_format() -> None:
     )
 
 
+def test_openai_compatible_model_profile_disables_native_tools() -> None:
+    """Test OpenAI-compatible profiles never advertise native tool support."""
+    profile = openai_compatible_model_profile(
+        {
+            CONF_THINKING_SUPPORT: "supported",
+            CONF_STRUCTURED_OUTPUT_SUPPORT: "json_schema",
+            CONF_SUPPORTS_TOOLS: True,
+        }
+    )
+
+    assert profile.supports_tools is True
+    assert profile.supported_native_tools == frozenset()
+
+
 def test_resolve_model_profile_reads_provider_owned_profile() -> None:
     """Test resolving a workspace-local ref reads provider-owned profile data."""
     entry = _workspace_entry()

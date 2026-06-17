@@ -29,6 +29,7 @@ from ..const import (
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     SUBENTRY_TYPE_AI_TASK,
     SUBENTRY_TYPE_CONVERSATION,
     SUBENTRY_TYPE_MCP_SERVER,
@@ -232,6 +233,7 @@ def _agent_subentry_status(
         "skill_count": _list_count(data.get(CONF_SKILLS)),
         "ha_llm_api_count": _list_count(data.get(CONF_LLM_HASS_API)),
         "web_fetch_enabled": bool(data.get(CONF_WEB_FETCH_ENABLED, False)),
+        "web_search_enabled": bool(data.get(CONF_WEB_SEARCH_ENABLED, False)),
         "virtual_workspace_enabled": bool(
             data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)
         ),

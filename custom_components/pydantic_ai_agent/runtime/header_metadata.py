@@ -139,9 +139,7 @@ def _previous_secret_values(
     return {
         key.casefold(): value
         for key, value in headers.items()
-        if isinstance(key, str)
-        and isinstance(value, str)
-        and key.casefold() in secrets
+        if isinstance(key, str) and isinstance(value, str) and key.casefold() in secrets
     }
 
 

@@ -17,6 +17,7 @@ from .const import (
     CONF_PROMPT,
     CONF_STREAMING_ENABLED,
     CONF_WEB_FETCH_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     DOMAIN,
     SUBENTRY_TYPE_CONVERSATION,
 )
@@ -81,6 +82,9 @@ class PydanticAIConversationEntity(
             "streaming_enabled": self._streaming_enabled,
             "web_fetch_enabled": bool(
                 self.subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
+            ),
+            "web_search_enabled": bool(
+                self.subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)
             ),
             "virtual_workspace_enabled": virtual_workspace_enabled(self.subentry.data),
         }

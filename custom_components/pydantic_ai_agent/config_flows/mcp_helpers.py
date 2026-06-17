@@ -305,7 +305,7 @@ def _mcp_tools_schema(
                     mode=SelectSelectorMode.DROPDOWN,
                     multiple=True,
                 )
-            )
+            ),
         }
     )
 

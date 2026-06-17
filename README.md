@@ -20,6 +20,7 @@ generation backed by the [Pydantic AI library](https://pydantic.dev/pydantic-ai)
   - Parallel execution of MCP requests (disabled by default) for performance
   - Optional deferred tool disclosure (model discovers tools on-demand) to reduce context size
 - Support for simple skills (reusable capabilities) library
+- Optional enablement of provider web search capability with local duckduckgo fallback
 - Optional web fetch tool with SSRF protection to prevent server-side request forgery attacks
 - Support for Home Assistant assist tools for controlling Home Assistant entities
 
@@ -86,8 +87,8 @@ Conversation agents support:
 - Optional Home Assistant LLM API selection. Selecting an API enables Home
   Assistant control tools and makes the entity advertise conversation control
   support.
-- Optional Web fetch URL content fetching. Web fetch is disabled by default and
-  can be enabled independently of Home Assistant control tools.
+- Optional Web fetch URL content fetching and Web search. Both are disabled by
+  default and can be enabled independently of Home Assistant control tools.
 - Optional workspace Skill selection. Selected Skills are exposed through
   `list_skills` and `load_skill` tools and are not auto-loaded into every
   request.
@@ -105,7 +106,7 @@ Conversation agents support:
   `reasoning` and `reasoning_content` for OpenAI-compatible endpoints that
   require it.
 - Plain conversation entities stream Assist responses. Conversations that can
-  call tools, including HA LLM APIs, Web fetch, or skills, return
+  call tools, including HA LLM APIs, Web fetch, Web search, or skills, return
   non-streamed responses so provider tool-result follow-up requests stay on the
   compatibility path.
 
@@ -119,8 +120,9 @@ AI task entities can return plain text or validate structured results against
 the schema requested by Home Assistant. When Home Assistant requests structured
 data, runtime chooses the highest supported strategy in the order `tool`,
 `native`, then `prompted` from the resolved model profile capabilities. Each AI
-task can also enable Web fetch independently of Home Assistant control tool
-selection.
+task can also enable Web fetch or Web search independently of Home Assistant
+control tool selection. Web search uses provider-native search when available or
+local DuckDuckGo search through Pydantic AI.
 AI task requests use the same automatic model-request context trimming as
 conversation agents, including active-run preservation.
 AI tasks default to 30 agent request iterations unless the selected language model

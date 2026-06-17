@@ -40,6 +40,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_SKILL_CONTENT,
     CONF_SKILL_REFERENCES,
     CONF_TEMPLATED_EXTRA_BODY,
+    CONF_WEB_SEARCH_ENABLED,
     DOMAIN,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_CONVERSATION,
@@ -97,6 +98,7 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
                     CONF_PROMPT: "Private system prompt",
                     CONF_LLM_HASS_API: ["assist"],
                     CONF_MCP_SERVER_IDS: ["mcp-1"],
+                    CONF_WEB_SEARCH_ENABLED: True,
                 },
                 "subentry_type": SUBENTRY_TYPE_CONVERSATION,
                 "title": "Kitchen Agent",
@@ -201,6 +203,7 @@ async def test_diagnostics_returns_redacted_bounded_config_entry_data(
         "skill_count": 0,
         CONF_LLM_HASS_API: ["assist"],
         "web_fetch_enabled": False,
+        "web_search_enabled": True,
         "virtual_workspace_enabled": False,
     }
     provider_data = diagnostics_subentry(

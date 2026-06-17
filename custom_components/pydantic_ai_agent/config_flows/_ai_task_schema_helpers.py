@@ -35,6 +35,7 @@ from ..const import (
     CONF_TODO_LIST_ENTITY_ID,
     CONF_VIRTUAL_WORKSPACE_ENABLED,
     CONF_WEB_FETCH_ENABLED,
+    CONF_WEB_SEARCH_ENABLED,
     DEFAULT_AI_TASK_NAME,
 )
 from ._constants import (
@@ -177,6 +178,12 @@ def _ai_task_data_schema(
     ] = BooleanSelector()
     external_tools_schema[
         vol.Optional(
+            CONF_WEB_SEARCH_ENABLED,
+            default=bool(options.get(CONF_WEB_SEARCH_ENABLED, False)),
+        )
+    ] = BooleanSelector()
+    external_tools_schema[
+        vol.Optional(
             CONF_VIRTUAL_WORKSPACE_ENABLED,
             default=options.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is True,
         )
@@ -213,8 +220,7 @@ def _ai_task_data_from_user_input(
     data[CONF_FALLBACK_MODEL_REFS] = _normalise_fallback_model_refs(
         data.get(CONF_FALLBACK_MODEL_REFS, [])
     )
-    if not data.get(CONF_WEB_FETCH_ENABLED):
-        data.pop(CONF_WEB_FETCH_ENABLED, None)
+    _drop_disabled_external_tool_flags(data)
     if data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is not True:
         data.pop(CONF_VIRTUAL_WORKSPACE_ENABLED, None)
     if not data.get(CONF_FALLBACK_MODEL_REFS):
@@ -242,3 +248,10 @@ def _ai_task_data_from_user_input(
     _normalise_mcp_server_selection(data)
     _normalise_skill_selection(data)
     return data
+
+
+def _drop_disabled_external_tool_flags(data: dict[str, Any]) -> None:
+    """Remove absent or disabled external tool flags from subentry data."""
+    for key in (CONF_WEB_FETCH_ENABLED, CONF_WEB_SEARCH_ENABLED):
+        if not data.get(key):
+            data.pop(key, None)

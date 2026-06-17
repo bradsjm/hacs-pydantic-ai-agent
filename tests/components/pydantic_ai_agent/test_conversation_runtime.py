@@ -16,9 +16,10 @@ from pydantic_ai import (
     ModelResponse,
     TextPart,
 )
-from pydantic_ai.capabilities import WebFetch
+from pydantic_ai.capabilities import WebFetch, WebSearch
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
+from pydantic_ai.profiles import ModelProfile
 from tests.components.pydantic_ai_agent.support.builders import (
     provider_runtime_data,
     provider_subentry_data,
@@ -247,6 +248,54 @@ async def test_conversation_runtime_supports_function_model_without_patching_age
     assert "hello from function model" in repr(captured_messages[-1])
 
 
+async def test_conversation_web_search_reaches_real_agent_offline(
+    hass: HomeAssistant,
+) -> None:
+    """Test WebSearch reaches the real Agent as DuckDuckGo local fallback."""
+    entry = loaded_conversation_entry(web_search_enabled=True)
+    entry.add_to_hass(hass)
+    captured_function_tool_names: list[str] = []
+
+    async def model_function(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> ModelResponse:
+        del messages
+        assert info.model_request_parameters.native_tools == []
+        captured_function_tool_names.extend(tool.name for tool in info.function_tools)
+        return ModelResponse(parts=[TextPart(content="web search summary")])
+
+    async def stream_function(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str]:
+        del messages
+        assert info.model_request_parameters.native_tools == []
+        captured_function_tool_names.extend(tool.name for tool in info.function_tools)
+        yield "web search summary"
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = first_non_default_conversation_entity_id(hass)
+    with patch(
+        "custom_components.pydantic_ai_agent.entity.chat_model_for_profile",
+        return_value=FunctionModel(
+            model_function,
+            stream_function=stream_function,
+            profile=ModelProfile(supported_native_tools=frozenset()),
+        ),
+    ):
+        result = await conversation.async_converse(
+            hass,
+            "search for Home Assistant release notes",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert result.response.speech["plain"]["speech"] == "web search summary"
+    assert "duckduckgo_search" in captured_function_tool_names
+
+
 async def test_conversation_runtime_passes_selected_skills_capabilities(
     hass: HomeAssistant,
     mock_chat_model_for_profile: TestModel,
@@ -318,4 +367,37 @@ async def test_conversation_runtime_adds_web_fetch_capability(
     assert agent_class.call_args is not None
     capabilities = agent_class.call_args.kwargs["capabilities"]
     assert any(isinstance(capability, WebFetch) for capability in capabilities)
+    assert_has_context_management_capability(capabilities)
+
+
+async def test_conversation_runtime_adds_web_search_capability(
+    hass: HomeAssistant,
+    mock_chat_model_for_profile: TestModel,
+) -> None:
+    """Test WebSearch-enabled conversation agents get the WebSearch capability."""
+    del mock_chat_model_for_profile
+    entry = loaded_conversation_entry(web_search_enabled=True)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = first_non_default_conversation_entity_id(hass)
+    with patch(
+        "custom_components.pydantic_ai_agent.entity.Agent",
+        return_value=_Agent(),
+    ) as agent_class:
+        await conversation.async_converse(
+            hass,
+            "search for Home Assistant release notes",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+
+    assert agent_class.call_args is not None
+    capabilities = agent_class.call_args.kwargs["capabilities"]
+    web_search = next(
+        capability for capability in capabilities if isinstance(capability, WebSearch)
+    )
+    assert getattr(web_search.local, "name", None) == "duckduckgo_search"
     assert_has_context_management_capability(capabilities)

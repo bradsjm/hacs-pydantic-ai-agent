@@ -150,8 +150,7 @@ async def test_streaming_records_safe_trace_payload(
     assert payload["final_new_messages"]
     assert payload["backfill"]["changed"] is True
     assert (
-        "Hello. How can I help you?"
-        in payload["final_chat_content"]["content_preview"]
+        "Hello. How can I help you?" in payload["final_chat_content"]["content_preview"]
     )
 
     subentry_id = next(iter(entry.subentries))

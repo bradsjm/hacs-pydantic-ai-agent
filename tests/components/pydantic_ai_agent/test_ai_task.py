@@ -11,6 +11,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_AI_TASK_NAME,
     CONF_MAX_ITERATIONS,
     CONF_THINKING,
+    CONF_WEB_SEARCH_ENABLED,
     DOMAIN,
     OUTPUT_MODE_NATIVE,
     PROVIDER_ANTHROPIC,
@@ -132,6 +133,15 @@ def test_ai_task_entity_falls_back_to_subentry_title() -> None:
     entity = PydanticAIAgentAITaskEntity(entry, subentry)
     assert entity.device_info is not None
     assert entity.device_info.get("name") == "Title-only task"
+
+
+def test_ai_task_entity_exposes_web_search_attribute() -> None:
+    entry = loaded_ai_task_entry(web_search_enabled=True)
+    subentry = next(iter(entry.subentries.values()))
+    entity = PydanticAIAgentAITaskEntity(entry, subentry)
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    assert attributes[CONF_WEB_SEARCH_ENABLED] is True
     assert entity._attr_name is None
 
 
