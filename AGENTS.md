@@ -161,6 +161,19 @@
 - Reserve mocking for external dependencies (databases, networks, third-party APIs) that are slow, non-deterministic, or outside your control.
 - Never create tests that pass simply because the mock is configured to return expected values.
 
+## Testing Guidance
+
+- Use `HomeAssistant` and `MockConfigEntry` types where applicable.
+- Prefer testing Home Assistant behavior: setup/unload, config flow, subentry flow, service responses, diagnostics, and cleanup.
+- Prefer shared fixtures and helpers from `tests/components/semantic_home/conftest.py` and `tests/components/semantic_home/helpers.py` over ad-hoc stubs when they reduce coupling to internals.
+- Avoid branching in tests. Split cases or use `pytest.mark.parametrize`; merge duplicated test bodies with parametrization.
+- Prefer assertions on user-visible behavior, persisted data, emitted events, stable error keys, and runtime side effects over assertions on constructor kwargs, mock call choreography, private helpers, import paths, or other implementation details that can change during harmless refactors.
+- When changing config flows, assert flow result types, translated error keys, placeholders, created subentry data, and reconfigure behavior. Do not over-specify serialized selector structure, field ordering, or exact UI text unless that exact presentation is itself the contract being protected.
+- When changing runtime behavior, cover metrics, repairs, diagnostics redaction, system health counts, entity state attributes, and cleanup/unload when relevant.
+- For diagnostics, tracing, and observability tests, assert stable metadata, redaction, classification, and presence of key attributes rather than exact human-readable formatting such as span titles, warning prose, or incidental ordering.
+- Avoid exact English string assertions for UI copy, translated errors, diagnostics prose, and provider-facing text when a stable reason key, placeholder, classification, or behavioral outcome can be asserted instead.
+- When removing behavior, delete obsolete tests and docs that only validate the removed path. Do not preserve compatibility shims without a concrete need.
+
 ## Workflow Constraints
 
 - Treat manifests, translations, services/actions, diagnostics, and tests as
