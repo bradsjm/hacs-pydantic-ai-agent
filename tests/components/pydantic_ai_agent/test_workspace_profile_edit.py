@@ -52,6 +52,9 @@ from tests.components.pydantic_ai_agent.support.schemas import (
     schema_select_options as _schema_select_options,
 )
 from tests.components.pydantic_ai_agent.support.schemas import (
+    section_key_names as _section_key_names,
+)
+from tests.components.pydantic_ai_agent.support.schemas import (
     serialized_section_default as _serialized_section_default,
 )
 from tests.components.pydantic_ai_agent.support.wizard import (
@@ -334,6 +337,12 @@ async def test_provider_edit_model_profile_templated_extra_body_round_trip(
     )
 
     assert result["type"] is FlowResultType.FORM
+    advanced_fields = _section_key_names(
+        result["data_schema"], _SECTION_ADVANCED_MODEL_SETTINGS
+    )
+    assert advanced_fields.index(CONF_CONTEXT_WINDOW_TOKENS) < advanced_fields.index(
+        CONF_TEMPLATED_EXTRA_BODY
+    )
     assert _serialized_section_default(
         result["data_schema"], _SECTION_ADVANCED_MODEL_SETTINGS
     ) == {

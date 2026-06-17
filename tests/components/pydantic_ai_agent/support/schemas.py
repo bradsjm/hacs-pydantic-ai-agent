@@ -40,6 +40,15 @@ def schema_key_names(data_schema: vol.Schema | None) -> set[str]:
     return {key.schema for key in data_schema.schema}
 
 
+def section_key_names(data_schema: vol.Schema | None, section_name: str) -> list[str]:
+    """Return section field names from a flow schema in display order."""
+    assert data_schema is not None
+    for section_key, section_value in data_schema.schema.items():
+        if section_key.schema == section_name:
+            return [field_key.schema for field_key in section_value.schema.schema]
+    raise AssertionError(f"Section {section_name} not found")
+
+
 def section_field_suggested_value(
     data_schema: vol.Schema | None, section_name: str, field: str
 ) -> Any:

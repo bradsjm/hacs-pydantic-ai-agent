@@ -363,13 +363,14 @@ def _model_profile_edit_schema(
         )
     ] = NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1))
     advanced_model_settings_schema = _model_settings_schema(options)
-    advanced_model_settings_fields = dict(advanced_model_settings_schema.schema)
-    advanced_model_settings_fields[
+    advanced_model_settings_fields: VolDictType = {
         vol.Required(
             CONF_CONTEXT_WINDOW_TOKENS,
             default=options[CONF_CONTEXT_WINDOW_TOKENS],
+        ): NumberSelector(
+            NumberSelectorConfig(mode=NumberSelectorMode.BOX, min=1, step=1)
         )
-    ] = NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, min=1, step=1))
+    } | dict(advanced_model_settings_schema.schema)
     advanced_model_settings_schema = vol.Schema(advanced_model_settings_fields)
     schema[
         _section_schema_key(
