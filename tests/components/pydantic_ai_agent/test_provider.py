@@ -5,6 +5,7 @@ import pytest
 from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
     CONF_PROVIDER_HEADERS,
+    DEFAULT_TIMEOUT,
 )
 from custom_components.pydantic_ai_agent.models.provider import (
     list_anthropic_model_names,
@@ -200,3 +201,8 @@ async def test_list_google_gemini_model_names_filters_generate_content_models(
     )
     assert requests[0].headers["x-goog-api-key"] == "google-test"
     assert requests[0].headers["x-proxy"] == "on"
+
+
+def test_default_timeout_is_sixty_seconds() -> None:
+    """Test DEFAULT_TIMEOUT is 60.0 seconds as used by all provider request timeouts."""
+    assert DEFAULT_TIMEOUT == 60.0

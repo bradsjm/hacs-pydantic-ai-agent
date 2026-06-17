@@ -18,6 +18,7 @@ from pydantic_ai.settings import ThinkingLevel
 from ..const import (
     CONF_BASE_URL,
     CONF_PROVIDER_HEADERS,
+    DEFAULT_TIMEOUT,
     PROVIDER_ANTHROPIC,
     PROVIDER_GOOGLE_GEMINI,
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
@@ -213,7 +214,7 @@ def google_gemini_model(
     from pydantic_ai.providers.google import GoogleProvider
 
     http_client = get_async_client(hass)
-    timeout_seconds = http_client.timeout.read or 10.0
+    timeout_seconds = http_client.timeout.read or DEFAULT_TIMEOUT
     client = Client(
         vertexai=False,
         api_key=api_key,

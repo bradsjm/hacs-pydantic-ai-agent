@@ -8,6 +8,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_ITERATIONS,
     CONF_TOOL_RETRIES,
     DOMAIN,
+    SUBENTRY_TYPE_CONVERSATION,
 )
 from custom_components.pydantic_ai_agent.observability.metrics import (
     EVENT_AGENT_RUN_FAILED,
@@ -276,3 +277,95 @@ async def test_streaming_does_not_duplicate_already_streamed_final_text(
         if isinstance(content, AssistantContent)
     ]
     assert len(assistant_messages) == 1
+
+
+async def test_streaming_timeout_before_first_delta_returns_friendly_speech(
+    hass: HomeAssistant,
+    mock_chat_model_for_profile: object,
+) -> None:
+    """Test TimeoutError before first delta returns friendly speech and fires event."""
+    del mock_chat_model_for_profile
+    entry = loaded_conversation_entry()
+    entry.add_to_hass(hass)
+
+    async def stream() -> AsyncIterator[object]:
+        raise TimeoutError("provider timed out")
+        yield  # yield makes this an async generator; raise above fires first
+
+    agent = CallbackStreamAgent(stream_factory=stream)
+    events: list[dict[str, object]] = []
+    hass.bus.async_listen(
+        f"{DOMAIN}_{EVENT_AGENT_RUN_FAILED}",
+        lambda event: events.append(dict(event.data)),
+    )
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = first_non_default_conversation_entity_id(hass)
+    with patch("custom_components.pydantic_ai_agent.entity.Agent", return_value=agent):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+        await hass.async_block_till_done()
+
+    speech = result.response.speech["plain"]["speech"]
+    assert "language model" in speech
+    assert "timed out" in speech
+    assert events
+    assert events[-1]["error_type"] == "TimeoutError"
+    assert events[-1]["partial_response"] is False
+
+
+async def test_no_assistant_response_after_successful_stream_returns_friendly_speech(
+    hass: HomeAssistant,
+    mock_chat_model_for_profile: object,
+) -> None:
+    """Test a stream with no assistant text returns friendly failure speech."""
+    del mock_chat_model_for_profile
+    entry = loaded_conversation_entry()
+    entry.add_to_hass(hass)
+
+    empty_result = RunResultWithMessages("", [ModelResponse(parts=[])])
+
+    async def stream() -> AsyncIterator[object]:
+        yield AgentRunResultEvent(cast(Any, empty_result))
+
+    agent = CallbackStreamAgent(stream_factory=stream)
+    failure_events: list[dict[str, object]] = []
+    hass.bus.async_listen(
+        f"{DOMAIN}_{EVENT_AGENT_RUN_FAILED}",
+        lambda event: failure_events.append(dict(event.data)),
+    )
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = first_non_default_conversation_entity_id(hass)
+    with patch("custom_components.pydantic_ai_agent.entity.Agent", return_value=agent):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+        await hass.async_block_till_done()
+
+    speech = result.response.speech["plain"]["speech"]
+    assert "language model" in speech
+    assert failure_events  # _record_agent_run_failure was called
+    assert failure_events[-1]["entity_id"] == entity_id
+
+    conv_subentry_id = next(
+        sub.subentry_id
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_CONVERSATION
+    )
+    diag = entry.runtime_data.latest_run_diagnostics.get(conv_subentry_id)
+    assert diag is not None
+    assert diag["status"] == "failed"

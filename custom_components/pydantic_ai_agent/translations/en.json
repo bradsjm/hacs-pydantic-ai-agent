@@ -123,7 +123,7 @@
                 "context_summarization_model_ref": "Summarization model"
               },
               "data_description": {
-                "context_management_mode": "Choose how this AI task handles conversation history before each model request. Sliding window trims older messages to stay within the active model profile's context window. Context manager summarizes older history with the selected summarization model when context is near the limit. Off sends the full available history without integration-managed trimming or summarization.",
+                "context_management_mode": "Select how to handle chat history that exceeds the maximum context window for the model. Summarization will use the selected model below, Sliding Window will trim older messages.",
                 "context_summarization_model_ref": "Optional model profile used to summarize context. Leave as Current active model to use whichever primary or fallback profile is running."
               },
               "name": "Context management"
@@ -175,7 +175,7 @@
                 "max_iterations": "Maximum Pydantic AI agent request iterations for one AI task run. Default: 30.",
                 "max_tokens": "Maximum tokens the model may generate per response. Leave empty to use the provider/model default.",
                 "thinking": "Optional reasoning effort for this AI task if supported by the model. Leave empty to use the provider/model default.",
-                "timeout": "Provider request timeout in seconds. Default: 10.0.",
+                "timeout": "Provider request timeout in seconds. Default: 60.0.",
                 "tool_retries": "Maximum number of times the model may retry a failed tool call during one AI task run. This applies to all tools available during the run. Set to 0 to disable tool retries. Default: 3."
               },
               "name": "Run settings"
@@ -250,7 +250,7 @@
                 "context_summarization_model_ref": "Summarization model"
               },
               "data_description": {
-                "context_management_mode": "Choose how this conversation handles chat history before each model request. Context manager summarizes older history with the selected summarization model when context is near the active model profile's context window. Sliding window trims older messages without summarizing. Off sends the full available history without integration-managed trimming or summarization.",
+                "context_management_mode": "Select how to handle chat history that exceeds the maximum context window for the model. Summarization will use the selected model below, Sliding Window will trim older messages.",
                 "context_summarization_model_ref": "Optional model profile used to summarize context. Leave as Current active model to use whichever primary or fallback profile is running."
               },
               "name": "Context management"
@@ -302,7 +302,7 @@
                 "max_tokens": "Maximum tokens the model may generate per response. Leave empty to use the provider/model default.",
                 "streaming_enabled": "Stream partial assistant responses live as they are generated. Disable to wait for the full response before Home Assistant receives it. Enabled by default.",
                 "thinking": "Optional reasoning effort for this conversation agent if supported by the model. Leave empty to use the provider/model default.",
-                "timeout": "Provider request timeout in seconds. Default: 10.0.",
+                "timeout": "Provider request timeout in seconds. Default: 60.0.",
                 "tool_retries": "Maximum number of times the model may retry a failed tool call during one conversation turn. This applies to all tools available during the run. Set to 0 to disable tool retries. Default: 3."
               },
               "name": "Run settings"
@@ -886,6 +886,13 @@
     }
   },
   "selector": {
+    "context_management_mode": {
+      "options": {
+        "context_manager": "Summarization",
+        "off": "Disabled",
+        "sliding_window": "Sliding Window"
+      }
+    },
     "fallback_model_refs": {
       "name": "Add Fallback Model"
     },

@@ -11,7 +11,9 @@ from homeassistant.helpers import intent, llm
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import PydanticAIAgentConfigEntry
+from .agent._entity_auth import _clear_runtime_auth_failure_for_ref
 from .agent.agent_subentries import iter_valid_agent_subentries
+from .agent.run_state import AgentRunOutcome
 from .const import (
     CONF_AGENT_NAME,
     CONF_PROMPT,
@@ -23,9 +25,17 @@ from .const import (
 )
 from .entity import PydanticAIBaseLLMEntity
 from .models.model_profiles import model_display_names, model_profile_chain
+from .observability.run_failures import _AgentRunFailed
 from .virtual_workspace import virtual_workspace_enabled
 
 _TOOL_RESUME_SEPARATOR = "\n\n"
+_CONVERSATION_FAILURE_PREFIX = (
+    "Sorry, I couldn't get a response from the language model."
+)
+
+
+class _NoAssistantResponseError(HomeAssistantError):
+    """Raised when a completed conversation run produced no assistant response."""
 
 
 async def async_setup_entry(
@@ -110,11 +120,62 @@ class PydanticAIConversationEntity(
         except conversation.ConverseError as err:
             return err.as_conversation_result()
 
-        await self._async_handle_chat_log(
-            chat_log,
-            stream=self._streaming_enabled,
-        )
-        return _async_get_result_from_chat_log(user_input, chat_log)
+        outcome: object | None = None
+        try:
+            outcome = await self._async_handle_chat_log(
+                chat_log,
+                record_success=False,
+                stream=self._streaming_enabled,
+            )
+            result = _async_get_result_from_chat_log(user_input, chat_log)
+            if not isinstance(outcome, AgentRunOutcome):
+                raise _NoAssistantResponseError(
+                    "the provider did not return run metadata."
+                )
+            _clear_runtime_auth_failure_for_ref(
+                self.hass,
+                self.entry,
+                outcome.provider_subentry_id,
+                outcome.model_profile_ref,
+            )
+            self._record_agent_run_success(outcome, self.entity_id)
+            if outcome.run_recorder is not None:
+                self._store_run_diagnostics(
+                    outcome.run_recorder,
+                    status="success",
+                    summary={
+                        "output": outcome.output,
+                        "usage": outcome.usage,
+                        "model_profile": outcome.model_profile,
+                        "duration": outcome.duration,
+                    },
+                )
+            return result
+        except _AgentRunFailed as err:
+            return _failure_result_from_chat_log(
+                user_input, chat_log, err.failure.user_message
+            )
+        except _NoAssistantResponseError as err:
+            self._record_agent_run_failure(err, self.entity_id)
+            if (
+                isinstance(outcome, AgentRunOutcome)
+                and outcome.run_recorder is not None
+            ):
+                outcome.run_recorder.record(
+                    phase="failure",
+                    event="no_assistant_response",
+                    data={"error": err, "model_profile": outcome.model_profile},
+                )
+                self._store_run_diagnostics(
+                    outcome.run_recorder,
+                    status="failed",
+                    summary={
+                        "error": err,
+                        "model_profile": outcome.model_profile,
+                        "output": outcome.output,
+                    },
+                )
+            return _failure_result_from_chat_log(user_input, chat_log, str(err))
 
 
 def _async_get_result_from_chat_log(
@@ -140,7 +201,7 @@ def _async_get_result_from_chat_log(
         if isinstance(content, conversation.AssistantContent)
     ]
     if not assistant_messages:
-        raise HomeAssistantError("Unable to get response")
+        raise _NoAssistantResponseError("the provider did not return a response.")
 
     intent_response.async_set_speech(_merged_assistant_speech(assistant_messages))
 
@@ -148,6 +209,21 @@ def _async_get_result_from_chat_log(
         response=intent_response,
         conversation_id=chat_log.conversation_id,
         continue_conversation=chat_log.continue_conversation,
+    )
+
+
+def _failure_result_from_chat_log(
+    user_input: conversation.ConversationInput,
+    chat_log: conversation.ChatLog,
+    reason: str,
+) -> conversation.ConversationResult:
+    """Build a user-facing result for a failed provider request."""
+    intent_response = intent.IntentResponse(language=user_input.language)
+    intent_response.async_set_speech(f"{_CONVERSATION_FAILURE_PREFIX} {reason}")
+    return conversation.ConversationResult(
+        response=intent_response,
+        conversation_id=chat_log.conversation_id,
+        continue_conversation=False,
     )
 
 
