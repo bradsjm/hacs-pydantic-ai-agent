@@ -11,6 +11,8 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     CONF_NAME,
+    MCP_TOOL_MODE_ALL,
+    MCP_TOOL_MODE_SPECIFIED,
     SUBENTRY_TYPE_MCP_SERVER,
 )
 from custom_components.pydantic_ai_agent.mcp import MCPValidationError
@@ -256,10 +258,10 @@ async def test_mcp_server_reconfigure_menu_exposes_tool_management(
     assert result["menu_options"] == ["edit_server", "manage_tools"]
 
 
-async def test_mcp_server_manage_tools_defaults_to_all_tools_and_saves_subset(
+async def test_mcp_server_manage_tools_defaults_to_all_mode_and_saves_subset(
     hass: HomeAssistant,
 ) -> None:
-    """Test MCP tool management defaults to all discovered tools and saves subset."""
+    """Test MCP tool management defaults to all-tool mode and saves subset."""
     entry = await loaded_workspace_entry(
         hass,
         (
@@ -326,17 +328,24 @@ async def test_mcp_server_manage_tools_defaults_to_all_tools_and_saves_subset(
         tool_field = next(
             field for field in schema if field["name"] == CONF_MCP_ALLOWED_TOOLS
         )
-        assert tool_field["default"] == ["echo", "fetch"]
+        mode_field = next(
+            field for field in schema if field["name"] == CONF_MCP_TOOL_MODE
+        )
+        assert mode_field["default"] == MCP_TOOL_MODE_ALL
+        assert tool_field["default"] == []
 
         result = await subentry_configure_result(
             hass,
             result["flow_id"],
-            {CONF_MCP_TOOL_MODE: "specified", CONF_MCP_ALLOWED_TOOLS: ["echo"]},
+            {
+                CONF_MCP_TOOL_MODE: MCP_TOOL_MODE_SPECIFIED,
+                CONF_MCP_ALLOWED_TOOLS: ["echo"],
+            },
         )
 
     assert result["type"] is FlowResultType.ABORT
     updated_subentry = entry.subentries[subentry.subentry_id]
-    assert updated_subentry.data[CONF_MCP_TOOL_MODE] == "specified"
+    assert updated_subentry.data[CONF_MCP_TOOL_MODE] == MCP_TOOL_MODE_SPECIFIED
     assert updated_subentry.data[CONF_MCP_ALLOWED_TOOLS] == ["echo"]
 
 

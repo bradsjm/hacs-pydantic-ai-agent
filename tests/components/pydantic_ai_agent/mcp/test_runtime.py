@@ -16,6 +16,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     DOMAIN,
+    MCP_TOOL_MODE_ALL,
     SUBENTRY_TYPE_MCP_SERVER,
 )
 from custom_components.pydantic_ai_agent.mcp import (
@@ -241,6 +242,25 @@ async def test_runtime_mcp_toolsets_without_allowlist_enable_all_tools(
     assert await toolset.toolset.process_tool_call(
         None, call_tool, "any_tool", {"message": "hi"}
     ) == {"tool": "any_tool", "args": {"message": "hi"}}
+
+
+async def test_runtime_mcp_toolsets_all_mode_ignores_stored_allowlist(
+    hass: HomeAssistant,
+) -> None:
+    entry = _mcp_entry(allowed_tools=["echo"], mode=MCP_TOOL_MODE_ALL)
+    toolsets = await _async_runtime_toolsets(hass, entry, ["mcp_server_1"])
+
+    toolset = toolsets[0]
+    assert toolset.toolset.filter_func is None
+
+    async def call_tool(
+        tool_name: str, tool_args: dict[str, object]
+    ) -> dict[str, object]:
+        return {"tool": tool_name, "args": tool_args}
+
+    assert await toolset.toolset.process_tool_call(
+        None, call_tool, "hidden", {"message": "hi"}
+    ) == {"tool": "hidden", "args": {"message": "hi"}}
 
 
 async def test_runtime_mcp_tool_calls_skip_cache_when_disabled(
