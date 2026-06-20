@@ -10,6 +10,7 @@ from voluptuous_openapi import convert
 
 from ..observability.run_diagnostics import RunDiagnosticsRecorder
 from .multimodal_tool_result import normalize_multimodal_tool_result
+from .tool_errors import HAToolRetryExhausted
 
 _RETRYABLE_HA_TOOL_ERRORS = (
     InvalidSlotInfo,
@@ -94,6 +95,12 @@ def _tool_from_ha_tool(
                     data={"tool_name": tool.name, "error": err},
                 )
             if isinstance(err, _RETRYABLE_HA_TOOL_ERRORS):
+                if ctx.retry >= ctx.max_retries:
+                    raise HAToolRetryExhausted(
+                        tool_name=tool.name,
+                        attempts=ctx.retry + 1,
+                        reason=str(err),
+                    ) from err
                 raise ModelRetry(
                     f'Home Assistant tool "{tool.name}" failed: {err}'
                 ) from None

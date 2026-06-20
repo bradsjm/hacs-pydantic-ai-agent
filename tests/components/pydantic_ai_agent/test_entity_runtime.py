@@ -14,6 +14,7 @@ from custom_components.pydantic_ai_agent.agent._entity_auth import (
     _has_provider_auth_failure,
     _record_runtime_auth_failure,
 )
+from custom_components.pydantic_ai_agent.agent.tool_errors import HAToolRetryExhausted
 from custom_components.pydantic_ai_agent.ai_task import PydanticAIAgentAITaskEntity
 from custom_components.pydantic_ai_agent.binary_sensor import (
     BINARY_SENSOR_DESCRIPTIONS,
@@ -303,6 +304,12 @@ def test_has_connection_failure_stops_on_cycles() -> None:
             "configured usage limit",
         ),
         (
+            HAToolRetryExhausted(
+                tool_name="turn_on", attempts=2, reason="invalid target"
+            ),
+            "turn_on",
+        ),
+        (
             NotImplementedError("missing config"),
             "Invalid provider configuration",
         ),
@@ -331,19 +338,29 @@ def test_classify_run_failure_uses_configured_iteration_limit() -> None:
     assert failure.partial_response is True
 
 
-def test_classify_run_failure_marks_exhausted_tool_retries_actionable() -> None:
+def test_classify_run_failure_marks_exhausted_ha_tool_retries_actionable() -> None:
+    err = HAToolRetryExhausted(tool_name="turn_on", attempts=2, reason="invalid target")
+    problem = _ToolProblem(tool_name="turn_on", tool_call_id="tool-1", outcome="retry")
+    failure = _classify_run_failure(err, tool_problem=problem)
+
+    assert failure.error_type == "HAToolRetryExhausted"
+    assert "unexpected response" not in failure.user_message.lower()
+    assert "turn_on" in failure.user_message
+    assert failure.tool_problem == problem
+
+
+def test_classify_run_failure_does_not_scan_unexpected_model_behavior_chain() -> None:
     err = UnexpectedModelBehavior("tool retries exhausted")
     err.__cause__ = ModelRetry(
         'Home Assistant tool "turn_on" failed after retries were exhausted.'
     )
 
-    problem = _ToolProblem(tool_name="turn_on", tool_call_id="tool-1", outcome="retry")
-    failure = _classify_run_failure(err, tool_problem=problem)
+    failure = _classify_run_failure(err)
 
     assert failure.error_type == "UnexpectedModelBehavior"
-    assert "unexpected response" not in failure.user_message.lower()
-    assert "turn_on" in failure.user_message
-    assert failure.tool_problem == problem
+    assert "unexpected response" in failure.user_message.lower()
+    assert "turn_on" not in failure.user_message
+    assert failure.tool_problem is None
 
 
 def test_record_agent_run_failure_logs_safe_message(

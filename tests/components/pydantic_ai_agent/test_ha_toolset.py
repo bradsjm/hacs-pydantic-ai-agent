@@ -11,6 +11,7 @@ from custom_components.pydantic_ai_agent.agent.ha_toolset import (
     tool_definitions_from_llm_api,
     tools_from_llm_api,
 )
+from custom_components.pydantic_ai_agent.agent.tool_errors import HAToolRetryExhausted
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import llm
 from pydantic_ai import BinaryContent, ModelRetry, RunContext
@@ -128,19 +129,40 @@ async def test_tools_from_llm_api_degrades_invalid_multimodal_tool_result_to_tex
     assert result == "Snapshot"
 
 
-async def test_tools_from_llm_api_wraps_tool_exception_as_model_retry() -> None:
-    """Test HA tool exceptions become model-visible retry prompts."""
+async def test_tools_from_llm_api_wraps_retryable_tool_exception_as_model_retry() -> (
+    None
+):
+    """Test retryable HA tool exceptions become model-visible retry prompts."""
     async_call_tool = AsyncMock(side_effect=ServiceValidationError("invalid target"))
     api_instance = SimpleNamespace(
         async_call_tool=async_call_tool,
         custom_serializer=None,
         tools=[_TestTool()],
     )
-    ctx = SimpleNamespace(tool_call_id="call-123")
+    ctx = SimpleNamespace(tool_call_id="call-123", retry=0, max_retries=1)
 
     tools = tools_from_llm_api(cast(llm.APIInstance, api_instance))
     with pytest.raises(ModelRetry):
         await tools[0].function(cast(RunContext[Any], ctx), entity_id="light.kitchen")
+
+
+async def test_tools_from_llm_api_raises_owned_error_when_retries_exhausted() -> None:
+    """Test final retryable HA tool exceptions use an integration-owned error."""
+    async_call_tool = AsyncMock(side_effect=ServiceValidationError("invalid target"))
+    api_instance = SimpleNamespace(
+        async_call_tool=async_call_tool,
+        custom_serializer=None,
+        tools=[_TestTool()],
+    )
+    ctx = SimpleNamespace(tool_call_id="call-123", retry=1, max_retries=1)
+
+    tools = tools_from_llm_api(cast(llm.APIInstance, api_instance))
+    with pytest.raises(HAToolRetryExhausted) as exc_info:
+        await tools[0].function(cast(RunContext[Any], ctx), entity_id="light.kitchen")
+
+    assert exc_info.value.tool_name == "turn_on"
+    assert exc_info.value.attempts == 2
+    assert "turn_on" in str(exc_info.value)
 
 
 async def test_tools_from_llm_api_reraises_non_retryable_tool_exception() -> None:

@@ -8,13 +8,13 @@ from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
-    ModelRetry,
     UnexpectedModelBehavior,
     UsageLimitExceeded,
     UserError,
 )
 from pydantic_ai.usage import UsageLimits
 
+from ..agent.tool_errors import HAToolRetryExhausted
 from ..runtime.error_classification import has_connection_failure
 
 
@@ -154,9 +154,9 @@ def _build_failure_message(
                 "availability."
             )
         return _format_api_error(api_error)
+    if isinstance(cause, HAToolRetryExhausted):
+        return str(cause)
     if isinstance(cause, UnexpectedModelBehavior):
-        if model_retry := _model_retry_in_chain(cause):
-            return _tool_retry_exhausted_message(model_retry.message, prefix)
         return (
             f"{prefix}the provider returned an unexpected response. Check "
             "model/provider compatibility or try a different model profile."
@@ -204,28 +204,6 @@ def _tool_problem_context(tool_problem: _ToolProblem | None) -> str:
     if tool_problem.reason:
         return f" Last tool failure: {name} reported {tool_problem.reason}."
     return f" Last tool failure: {name} returned {tool_problem.outcome}."
-
-
-def _model_retry_in_chain(err: BaseException) -> ModelRetry | None:
-    """Return the first ModelRetry found in an exception chain."""
-    pending: list[BaseException] = [err]
-    seen: set[int] = set()
-    while pending:
-        current = pending.pop()
-        if id(current) in seen:
-            continue
-        seen.add(id(current))
-        if isinstance(current, ModelRetry):
-            return current
-        for linked in (current.__cause__, current.__context__):
-            if linked is not None:
-                pending.append(linked)
-    return None
-
-
-def _tool_retry_exhausted_message(message: str, prefix: str) -> str:
-    """Return a user-facing failure message for exhausted tool retries."""
-    return f"{prefix}{message}"
 
 
 def _home_assistant_error(err: Exception) -> HomeAssistantError:

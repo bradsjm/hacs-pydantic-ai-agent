@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from typing import Any, cast
 from unittest.mock import patch
 
+from custom_components.pydantic_ai_agent.agent.tool_errors import HAToolRetryExhausted
 from custom_components.pydantic_ai_agent.const import (
     CONF_MAX_ITERATIONS,
     CONF_TOOL_RETRIES,
@@ -29,8 +30,6 @@ from pydantic_ai import (
     ThinkingPart,
 )
 from pydantic_ai.exceptions import (
-    ModelRetry,
-    UnexpectedModelBehavior,
     UsageLimitExceeded,
 )
 from tests.components.pydantic_ai_agent.support.pydantic_ai import (
@@ -163,11 +162,9 @@ async def test_streaming_tool_retry_exhaustion_reports_tool_context(
                 content='Home Assistant tool "turn_on" failed: device lookup failed',
             )
         )
-        failure = UnexpectedModelBehavior("tool retries exhausted")
-        failure.__cause__ = ModelRetry(
-            'Home Assistant tool "turn_on" failed after retries were exhausted.'
+        raise HAToolRetryExhausted(
+            tool_name="turn_on", attempts=3, reason="device lookup failed"
         )
-        raise failure
 
     agent = CallbackStreamAgent(stream_factory=stream)
     events: list[dict[str, object]] = []
@@ -197,7 +194,7 @@ async def test_streaming_tool_retry_exhaustion_reports_tool_context(
     speech = result.response.speech["plain"]["speech"]
     assert "turn_on" in speech
     assert "unexpected response" not in speech.lower()
-    assert events[-1]["error_type"] == "UnexpectedModelBehavior"
+    assert events[-1]["error_type"] == "HAToolRetryExhausted"
     assert events[-1]["partial_response"] is True
     assert events[-1]["tool_name"] == "turn_on"
     assert events[-1]["tool_call_id"] == "tool-1"
