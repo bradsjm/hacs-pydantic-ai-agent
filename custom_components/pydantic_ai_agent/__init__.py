@@ -8,6 +8,7 @@ import voluptuous as vol
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 
 from .const import CONF_NAME, DOMAIN
 from .mcp import (
@@ -68,6 +69,8 @@ from .runtime.types import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 SERVICE_LIST_MCP_TOOLS = "list_mcp_tools"
 SERVICE_REFRESH_MCP_TOOLS = "refresh_mcp_tools"

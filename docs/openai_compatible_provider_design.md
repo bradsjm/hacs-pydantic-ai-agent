@@ -14,14 +14,14 @@ credentials.
 
 Implemented source areas:
 
-| Area                               | Source                                                           |
-| ---------------------------------- | ---------------------------------------------------------------- |
-| Low-level HTTP client              | `custom_components/pydantic_ai_agent/openai_compatible_client/`  |
-| Pydantic AI model/provider adapter | `custom_components/pydantic_ai_agent/openai_compatible_adapter/` |
-| Home Assistant model factory       | `custom_components/pydantic_ai_agent/models/provider.py`         |
+| Area                               | Source                                                              |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| Low-level HTTP client              | `custom_components/pydantic_ai_agent/openai_compatible_client/`     |
+| Pydantic AI model/provider adapter | `custom_components/pydantic_ai_agent/openai_compatible_adapter/`    |
+| Home Assistant model factory       | `custom_components/pydantic_ai_agent/models/provider.py`            |
 | Config-flow provider validation    | `custom_components/pydantic_ai_agent/config_flows/provider_flow.py` |
-| Runtime agent construction         | `custom_components/pydantic_ai_agent/entity.py`                  |
-| Provider integration tests         | `tests/components/pydantic_ai_agent/integration/`                |
+| Runtime agent construction         | `custom_components/pydantic_ai_agent/entity.py`                     |
+| Provider integration tests         | `tests/components/pydantic_ai_agent/integration/`                   |
 
 ## Rationale
 

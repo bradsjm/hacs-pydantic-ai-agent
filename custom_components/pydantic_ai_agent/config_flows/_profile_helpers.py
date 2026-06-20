@@ -370,7 +370,8 @@ def _model_profile_edit_schema(
         ): NumberSelector(
             NumberSelectorConfig(mode=NumberSelectorMode.BOX, min=1, step=1)
         )
-    } | dict(advanced_model_settings_schema.schema)
+    }
+    advanced_model_settings_fields.update(advanced_model_settings_schema.schema)
     advanced_model_settings_schema = vol.Schema(advanced_model_settings_fields)
     schema[
         _section_schema_key(

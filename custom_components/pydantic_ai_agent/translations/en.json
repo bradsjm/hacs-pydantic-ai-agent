@@ -42,7 +42,7 @@
             },
             "data_description": {
               "logfire_include_content": "When enabled, Logfire may capture prompts, completions, and tool call payloads. Leave disabled for metadata-only traces.",
-              "logfire_token": "Optional Logfire (https://pydantic.dev/logfire) write token for Pydantic AI traces. Leave blank to disable Logfire for this workspace."
+              "logfire_token": "Optional Logfire write token for Pydantic AI traces. Leave blank to disable Logfire for this workspace."
             },
             "name": "Logfire tracing"
           }
@@ -560,7 +560,7 @@
               },
               "data_description": {
                 "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
-                "structured_output_support": "Choose the strongest structured-output mode this OpenAI-compatible model supports. ",
+                "structured_output_support": "Choose the strongest structured-output mode this OpenAI-compatible model supports.",
                 "supports_tools": "Enable when this OpenAI-compatible model supports tool calling.",
                 "thinking_support": "Choose whether this OpenAI-compatible model does not support thinking, supports optional thinking, or always keeps thinking enabled."
               },
@@ -684,7 +684,7 @@
           "data": {
             "provider_id": "Provider"
           },
-          "description": "Choose a provider (from https://models.dev/), or choose custom provider for manual setup.",
+          "description": "Choose a provider from the model catalog, or choose custom provider for manual setup.",
           "title": "Choose provider"
         },
         "reconfigure_menu": {
@@ -893,9 +893,7 @@
         "sliding_window": "Sliding Window"
       }
     },
-    "fallback_model_refs": {
-      "name": "Add Fallback Model"
-    },
+    "fallback_model_refs": {},
     "mcp_headers": {
       "fields": {
         "is_secret": {
@@ -907,8 +905,7 @@
         "value": {
           "name": "Header value"
         }
-      },
-      "name": "Add HTTP Header"
+      }
     },
     "mcp_tool_mode": {
       "options": {
@@ -925,8 +922,7 @@
         "key": {
           "name": "parameter name"
         }
-      },
-      "name": "Add HTTP Body"
+      }
     },
     "provider_headers": {
       "fields": {
@@ -939,8 +935,7 @@
         "value": {
           "name": "Header value"
         }
-      },
-      "name": "Add HTTP Header"
+      }
     },
     "provider_mode": {
       "options": {
@@ -952,7 +947,6 @@
     },
     "thinking": {
       "options": {
-        "": "Provider default",
         "false": "Disabled",
         "high": "High",
         "low": "Low",
