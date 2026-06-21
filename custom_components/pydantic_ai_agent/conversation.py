@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import PydanticAIAgentConfigEntry
 from .agent._entity_auth import _clear_runtime_auth_failure_for_ref
 from .agent.agent_subentries import iter_valid_agent_subentries
+from .agent.chat_deltas import _append_text
 from .agent.run_state import AgentRunOutcome
 from .const import (
     CONF_AGENT_NAME,
@@ -152,8 +153,12 @@ class PydanticAIConversationEntity(
                 )
             return result
         except _AgentRunFailed as err:
-            return _failure_result_from_chat_log(
-                user_input, chat_log, err.failure.user_message
+            return await _failure_result_from_chat_log(
+                user_input,
+                chat_log,
+                self.entity_id,
+                err.failure.user_message,
+                partial_response=err.failure.partial_response,
             )
         except _NoAssistantResponseError as err:
             self._record_agent_run_failure(err, self.entity_id)
@@ -175,7 +180,9 @@ class PydanticAIConversationEntity(
                         "output": outcome.output,
                     },
                 )
-            return _failure_result_from_chat_log(user_input, chat_log, str(err))
+            return await _failure_result_from_chat_log(
+                user_input, chat_log, self.entity_id, str(err)
+            )
 
 
 def _async_get_result_from_chat_log(
@@ -212,17 +219,26 @@ def _async_get_result_from_chat_log(
     )
 
 
-def _failure_result_from_chat_log(
+async def _failure_result_from_chat_log(
     user_input: conversation.ConversationInput,
     chat_log: conversation.ChatLog,
+    agent_id: str,
     reason: str,
+    *,
+    partial_response: bool = False,
 ) -> conversation.ConversationResult:
     """Build a user-facing result for a failed provider request."""
-    intent_response = intent.IntentResponse(language=user_input.language)
-    intent_response.async_set_speech(f"{_CONVERSATION_FAILURE_PREFIX} {reason}")
+    failure_text = f"{_CONVERSATION_FAILURE_PREFIX} {reason}"
+    if partial_response:
+        failure_text = (
+            f"{_TOOL_RESUME_SEPARATOR}Sorry, I couldn't finish the response. {reason}"
+        )
+
+    await _append_text(chat_log, agent_id, failure_text)
+    result = _async_get_result_from_chat_log(user_input, chat_log)
     return conversation.ConversationResult(
-        response=intent_response,
-        conversation_id=chat_log.conversation_id,
+        response=result.response,
+        conversation_id=result.conversation_id,
         continue_conversation=False,
     )
 

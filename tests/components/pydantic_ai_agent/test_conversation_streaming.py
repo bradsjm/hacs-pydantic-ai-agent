@@ -37,6 +37,7 @@ from tests.components.pydantic_ai_agent.support.pydantic_ai import (
 )
 from tests.components.pydantic_ai_agent.support.pydantic_ai import (
     CallbackStreamAgent,
+    RunResult,
     RunResultWithMessages,
 )
 from tests.components.pydantic_ai_agent.support.runtime import (
@@ -47,6 +48,21 @@ from tests.components.pydantic_ai_agent.support.runtime import (
 _PROVIDER_SUBENTRY_ID = "provider-1"
 _MODEL_PROFILE_ID = "model-profile-1"
 _MODEL_PROFILE_REF = f"{_PROVIDER_SUBENTRY_ID}:{_MODEL_PROFILE_ID}"
+
+
+def _assistant_text_from_chat_log(
+    hass: HomeAssistant,
+    result: conversation.ConversationResult,
+) -> str:
+    """Return assistant-visible text persisted for this conversation."""
+    assert result.conversation_id is not None
+    assistant_messages = [
+        content
+        for content in hass.data[DATA_CHAT_LOGS][result.conversation_id].content
+        if isinstance(content, AssistantContent)
+    ]
+    assert assistant_messages
+    return "".join(message.content or "" for message in assistant_messages)
 
 
 async def test_streaming_iteration_failure_updates_chat_and_sensors(
@@ -86,7 +102,11 @@ async def test_streaming_iteration_failure_updates_chat_and_sensors(
         await hass.async_block_till_done()
 
     speech = result.response.speech["plain"]["speech"]
+    assert "partial" in speech
     assert "configured maximum of 24 iterations" in speech
+    assistant_text = _assistant_text_from_chat_log(hass, result)
+    assert "partial" in assistant_text
+    assert "configured maximum of 24 iterations" in assistant_text
     assert events[-1]["error_type"] == "UsageLimitExceeded"
     assert events[-1]["partial_response"] is True
 
@@ -313,6 +333,9 @@ async def test_streaming_timeout_before_first_delta_returns_friendly_speech(
     speech = result.response.speech["plain"]["speech"]
     assert "language model" in speech
     assert "timed out" in speech
+    assistant_text = _assistant_text_from_chat_log(hass, result)
+    assert "language model" in assistant_text
+    assert "timed out" in assistant_text
     assert events
     assert events[-1]["error_type"] == "TimeoutError"
     assert events[-1]["partial_response"] is False
@@ -355,6 +378,9 @@ async def test_no_assistant_response_after_successful_stream_returns_friendly_sp
 
     speech = result.response.speech["plain"]["speech"]
     assert "language model" in speech
+    assistant_text = _assistant_text_from_chat_log(hass, result)
+    assert "language model" in assistant_text
+    assert "did not return a response" in assistant_text
     assert failure_events  # _record_agent_run_failure was called
     assert failure_events[-1]["entity_id"] == entity_id
 
@@ -366,3 +392,43 @@ async def test_no_assistant_response_after_successful_stream_returns_friendly_sp
     diag = entry.runtime_data.latest_run_diagnostics.get(conv_subentry_id)
     assert diag is not None
     assert diag["status"] == "failed"
+
+
+async def test_non_streaming_failure_updates_chat_log_with_failure_speech(
+    hass: HomeAssistant,
+    mock_chat_model_for_profile: object,
+) -> None:
+    """Test non-streamed provider failures are visible in the active chat log."""
+    del mock_chat_model_for_profile
+    entry = loaded_conversation_entry(streaming_enabled=False)
+    entry.add_to_hass(hass)
+
+    class FailingRunAgent(_Agent):
+        async def run(self, *_args: object, **kwargs: object) -> RunResult:
+            self.run_calls += 1
+            self.run_kwargs = kwargs
+            raise TimeoutError("provider timed out")
+
+    agent = FailingRunAgent()
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = first_non_default_conversation_entity_id(hass)
+    with patch("custom_components.pydantic_ai_agent.entity.Agent", return_value=agent):
+        result = await conversation.async_converse(
+            hass,
+            "hello",
+            None,
+            Context(),
+            agent_id=entity_id,
+        )
+        await hass.async_block_till_done()
+
+    speech = result.response.speech["plain"]["speech"]
+    assert "language model" in speech
+    assert "timed out" in speech
+
+    assistant_text = _assistant_text_from_chat_log(hass, result)
+    assert "language model" in assistant_text
+    assert "timed out" in assistant_text
