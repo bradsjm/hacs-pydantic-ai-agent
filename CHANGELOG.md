@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+- Upgrade runtime and development dependencies, including Pydantic AI 2.0, Home Assistant 2026.6.4, Logfire 4.37.0, and related provider SDKs.
+- Update the OpenAI-compatible adapter for Pydantic AI 2.0 model profile APIs.
+- Rebuild the strategic unit test suite across models, agent runtime, MCP, virtual workspace, config-flow helpers, and observability logic.
+- Refresh the smoke-test hook for the new logical test layout.
+
 ## 0.4.0
 
 - Add model-aware context management for conversation and task runs.
