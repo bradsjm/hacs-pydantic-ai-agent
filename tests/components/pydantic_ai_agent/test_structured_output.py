@@ -1,6 +1,5 @@
 """Test structured output helper behavior."""
 
-import pytest
 from custom_components.pydantic_ai_agent.const import (
     OUTPUT_MODE_NATIVE,
     OUTPUT_MODE_PROMPTED,
@@ -12,6 +11,7 @@ from custom_components.pydantic_ai_agent.models.structured_output import (
     structured_output_name,
 )
 from pydantic_ai import ToolDefinition
+import pytest
 
 
 def test_structured_output_name_is_prefixed_bounded_and_collision_safe() -> None:
@@ -79,7 +79,7 @@ def test_structured_model_request_parameters_for_object_modes(output_mode: str) 
 
 def test_structured_model_request_parameters_reject_unknown_mode() -> None:
     """Test unsupported output modes fail loudly."""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="invalid"):
         structured_model_request_parameters(
             function_tools=[],
             output_mode="invalid",

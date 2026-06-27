@@ -1,7 +1,5 @@
 """Tests for MCP validation helpers."""
 
-import pytest
-import voluptuous as vol
 from custom_components.pydantic_ai_agent.const import (
     CONF_KEY_VALUE_KEY,
     CONF_KEY_VALUE_VALUE,
@@ -14,6 +12,8 @@ from custom_components.pydantic_ai_agent.mcp import (
     schema_hash,
 )
 from custom_components.pydantic_ai_agent.runtime.redaction import redact_data
+import pytest
+import voluptuous as vol
 
 
 def test_mcp_log_redaction_uses_shared_sensitive_key_handling() -> None:

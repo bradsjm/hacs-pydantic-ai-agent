@@ -1,8 +1,8 @@
 """Test Pydantic AI Agent conversation trace recording and diagnostics."""
 
-import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import json
 from typing import Any, cast
 from unittest.mock import patch
 

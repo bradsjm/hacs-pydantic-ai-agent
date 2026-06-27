@@ -3,10 +3,10 @@
 from collections.abc import Iterator
 from unittest.mock import patch
 
-import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 from pydantic_ai.models.test import TestModel
+import pytest
 from tests.components.pydantic_ai_agent.support.pydantic_ai import Agent
 
 

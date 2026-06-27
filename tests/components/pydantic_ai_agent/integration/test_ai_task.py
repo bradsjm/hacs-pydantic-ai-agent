@@ -1,9 +1,9 @@
 """AI task provider integration tests."""
 
-import pytest
-import voluptuous as vol
 from homeassistant.components import ai_task
 from homeassistant.core import HomeAssistant
+import pytest
+import voluptuous as vol
 
 from .config import (
     AI_TASK_SENTINEL,

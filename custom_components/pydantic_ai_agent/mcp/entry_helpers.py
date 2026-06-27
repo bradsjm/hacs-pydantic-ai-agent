@@ -102,7 +102,7 @@ def effective_mcp_tool_mode(data: Mapping[str, Any]) -> str:
         MCP_TOOL_MODE_SPECIFIED,
         MCP_TOOL_MODE_DISABLED,
     }:
-        return stored_mode
+        return str(stored_mode)
 
     if CONF_MCP_ALLOWED_TOOLS not in data:
         return MCP_TOOL_MODE_ALL

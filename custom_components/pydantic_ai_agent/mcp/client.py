@@ -5,7 +5,6 @@
 from types import TracebackType
 from typing import Any
 
-import httpx
 from fastmcp.client import Client as FastMCPClient
 from fastmcp.client.transports import StreamableHttpTransport
 from homeassistant.helpers.httpx_client import (
@@ -15,6 +14,7 @@ from homeassistant.helpers.httpx_client import (
     HassHttpXAsyncClient,
 )
 from homeassistant.util.ssl import SSL_ALPN_HTTP11, client_context
+import httpx
 
 from .models import ValidatedMCPURL
 from .validation import _default_port

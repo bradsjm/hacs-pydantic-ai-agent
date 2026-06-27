@@ -2,7 +2,6 @@
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from custom_components.pydantic_ai_agent import (
     async_setup,
     async_setup_entry,
@@ -16,6 +15,7 @@ from custom_components.pydantic_ai_agent.repair_issues import (
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import issue_registry as ir
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     conversation_subentry_data,

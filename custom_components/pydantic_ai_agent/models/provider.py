@@ -4,10 +4,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.httpx_client import get_async_client
+import httpx
 from pydantic_ai.models import Model
 from pydantic_ai.profiles import ModelProfile
 from pydantic_ai.profiles.anthropic import anthropic_model_profile
@@ -292,7 +292,7 @@ async def list_anthropic_model_names(
     hass: HomeAssistant,
     data: Mapping[str, Any],
     *,
-    timeout: float | httpx.Timeout | None,
+    request_timeout: float | httpx.Timeout | None,
 ) -> list[str]:
     """Return model IDs from Anthropic's model listing endpoint."""
     base_url = _anthropic_base_url_for_sdk(data.get(CONF_BASE_URL)) or (
@@ -313,7 +313,7 @@ async def list_anthropic_model_names(
                 "x-api-key": data[CONF_API_KEY],
             },
             params=params,
-            timeout=timeout,
+            timeout=request_timeout,
         )
         response.raise_for_status()
         payload = response.json()
@@ -349,7 +349,7 @@ async def list_google_gemini_model_names(
     hass: HomeAssistant,
     data: Mapping[str, Any],
     *,
-    timeout: float | httpx.Timeout | None,
+    request_timeout: float | httpx.Timeout | None,
 ) -> list[str]:
     """Return text-generation model IDs from the Gemini model listing endpoint."""
     base_url = _google_base_url_for_sdk(data.get(CONF_BASE_URL)) or (
@@ -369,7 +369,7 @@ async def list_google_gemini_model_names(
                 "x-goog-api-key": data[CONF_API_KEY],
             },
             params=params,
-            timeout=timeout,
+            timeout=request_timeout,
         )
         response.raise_for_status()
         payload = response.json()

@@ -1,12 +1,11 @@
 """Focused tests for Logfire support state management."""
 
 import sys
-import warnings
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock, patch
+import warnings
 
-import pytest
 from custom_components.pydantic_ai_agent.agent._entity_run_results import (
     set_span_usage_attributes,
 )
@@ -35,6 +34,7 @@ from custom_components.pydantic_ai_agent.observability.logfire_support import (
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+import pytest
 from tests.components.pydantic_ai_agent.support.builders import (
     ai_task_subentry_data,
     conversation_subentry_data,

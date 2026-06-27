@@ -2,7 +2,6 @@
 
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.selector import (
     SelectOptionDict,
@@ -10,6 +9,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
     SelectSelectorMode,
 )
+import voluptuous as vol
 
 from ..const import (
     CONF_CONTEXT_MANAGEMENT_MODE,

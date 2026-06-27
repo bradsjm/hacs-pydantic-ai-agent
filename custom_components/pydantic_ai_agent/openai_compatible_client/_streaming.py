@@ -1,8 +1,8 @@
 """SSE streaming support for OpenAI-compatible APIs."""
 
-import json
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import AbstractAsyncContextManager
+import json
 from typing import Self, TypeVar, cast
 
 import httpx
@@ -16,7 +16,7 @@ async def response_body(response: httpx.Response) -> Mapping[str, object] | str:
     """Return JSON response body when possible, otherwise text."""
     await response.aread()
     try:
-        return response.json()
+        return cast(Mapping[str, object] | str, response.json())
     except json.JSONDecodeError:
         return response.text
 

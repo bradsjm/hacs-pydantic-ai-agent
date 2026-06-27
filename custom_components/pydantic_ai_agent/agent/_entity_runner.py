@@ -408,4 +408,4 @@ async def run_agent_stream(
     )
     chat_log.async_trace({"pydantic_ai_stream": trace_payload})
     entry.runtime_data.latest_stream_traces[subentry.subentry_id] = trace_payload
-    return state.result
+    return cast(AgentRunResult[Any], state.result)

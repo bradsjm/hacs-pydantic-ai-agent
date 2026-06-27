@@ -119,7 +119,7 @@ async def test_streaming_backfills_final_text_after_thinking_only_events(
     del mock_chat_model_for_profile
     entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
-    result = RunResultWithMessages(
+    run_result = RunResultWithMessages(
         "Hello. How can I help you?",
         [
             ModelResponse(
@@ -135,7 +135,7 @@ async def test_streaming_backfills_final_text_after_thinking_only_events(
         yield PartStartEvent(
             index=0, part=ThinkingPart(content='"Hello! How can I help')
         )
-        yield AgentRunResultEvent(cast(Any, result))
+        yield AgentRunResultEvent(cast(Any, run_result))
 
     agent = CallbackStreamAgent(stream_factory=stream)
 
@@ -228,14 +228,14 @@ async def test_streaming_backfills_missing_final_text_suffix(
     del mock_chat_model_for_profile
     entry = loaded_conversation_entry()
     entry.add_to_hass(hass)
-    result = RunResultWithMessages(
+    run_result = RunResultWithMessages(
         "Hello. How can I help you?",
         [ModelResponse(parts=[TextPart(content="Hello. How can I help you?")])],
     )
 
     async def stream() -> AsyncIterator[object]:
         yield PartStartEvent(index=0, part=TextPart(content="Hello. How can I help"))
-        yield AgentRunResultEvent(cast(Any, result))
+        yield AgentRunResultEvent(cast(Any, run_result))
 
     agent = CallbackStreamAgent(stream_factory=stream)
 

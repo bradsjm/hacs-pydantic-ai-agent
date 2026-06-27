@@ -3,7 +3,6 @@
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
@@ -23,6 +22,7 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
 )
 from homeassistant.helpers.typing import VolDictType
+import voluptuous as vol
 
 from ..const import (
     CONF_AGENT_NAME,
@@ -284,7 +284,7 @@ def _model_profile_schema(
             model_options.insert(0, existing_model)
         default_model = options.get(CONF_MODEL, model_options[0])
         model_schema_key = vol.Required(CONF_MODEL, default=default_model)
-        model_selector = SelectSelector(
+        model_selector: SelectSelector | TextSelector = SelectSelector(
             SelectSelectorConfig(
                 options=model_options,
                 mode=SelectSelectorMode.DROPDOWN,
@@ -474,7 +474,7 @@ def _conversation_data_from_user_input(
             _SECTION_SKILLS,
         ),
     )
-    data = {key: value for key, value in user_input.items()}
+    data = dict(user_input)
     data[CONF_FALLBACK_MODEL_REFS] = _normalise_fallback_model_refs(
         data.get(CONF_FALLBACK_MODEL_REFS, [])
     )

@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
-import pytest
 from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_CALL_CACHE_ENABLED,
@@ -30,6 +29,7 @@ from custom_components.pydantic_ai_agent.runtime.types import (
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 

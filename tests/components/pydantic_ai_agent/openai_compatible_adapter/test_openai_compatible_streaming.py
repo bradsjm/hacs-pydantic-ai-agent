@@ -3,12 +3,11 @@
 import json
 from typing import cast
 
-import httpx
-import pytest
 from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
     OpenAICompatibleChatModel,
     OpenAICompatibleProvider,
 )
+import httpx
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.messages import (
     ModelRequest,
@@ -23,6 +22,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.tools import ToolDefinition
+import pytest
 
 
 def _model_with_transport(

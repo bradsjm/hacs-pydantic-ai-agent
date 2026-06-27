@@ -62,6 +62,20 @@ def _profile(
     return entry, resolve_model_profile(entry, "provider-1:profile-1")
 
 
+def _recording_model_factory(resolved_refs: list[str]):
+    """Return a model factory that records the resolved model profile refs."""
+
+    def model_factory(
+        _hass: HomeAssistant,
+        _entry: PydanticAIAgentConfigEntry,
+        model_profile: ResolvedModelProfile,
+    ) -> Any:
+        resolved_refs.append(model_profile.ref)
+        return object()
+
+    return model_factory
+
+
 def test_off_mode_returns_no_capability(hass: HomeAssistant) -> None:
     """Test off mode disables context management."""
     entry, profile = _profile(hass)
@@ -95,7 +109,6 @@ def test_default_conversation_mode_builds_context_manager(
     )
 
     assert isinstance(capability, ContextManagerCapability)
-    capability = cast(ContextManagerCapability, capability)
     assert capability.max_tokens == 1000
     assert capability.compress_threshold == 0.9
     assert capability.keep == ("messages", 10)
@@ -117,7 +130,6 @@ def test_default_ai_task_mode_builds_sliding_window(hass: HomeAssistant) -> None
     )
 
     assert isinstance(capability, SlidingWindowCapability)
-    capability = cast(SlidingWindowCapability, capability)
     assert capability.trigger == ("tokens", 900)
     assert capability.keep == ("tokens", 500)
     assert capability.keep_head == ("messages", 1)
@@ -154,7 +166,6 @@ def test_sliding_window_ratios_floor_at_one(hass: HomeAssistant) -> None:
     )
 
     assert isinstance(capability, SlidingWindowCapability)
-    capability = cast(SlidingWindowCapability, capability)
     assert capability.trigger == ("tokens", 1)
     assert capability.keep == ("tokens", 1)
 
@@ -172,9 +183,7 @@ def test_summarization_model_uses_active_profile_when_ref_unset(
         {CONF_CONTEXT_MANAGEMENT_MODE: CONTEXT_MANAGEMENT_CONTEXT_MANAGER},
         profile,
         default_mode=CONTEXT_MANAGEMENT_SLIDING_WINDOW,
-        model_factory=lambda _hass, _entry, model_profile: (
-            resolved_refs.append(model_profile.ref) or cast(Any, object())
-        ),
+        model_factory=_recording_model_factory(resolved_refs),
     )
 
     assert resolved_refs == [profile.ref]
@@ -195,9 +204,7 @@ def test_summarization_model_uses_configured_ref(hass: HomeAssistant) -> None:
         },
         profile,
         default_mode=CONTEXT_MANAGEMENT_CONTEXT_MANAGER,
-        model_factory=lambda _hass, _entry, model_profile: (
-            resolved_refs.append(model_profile.ref) or cast(Any, object())
-        ),
+        model_factory=_recording_model_factory(resolved_refs),
     )
 
     assert resolved_refs == ["provider-1:summary-profile"]
@@ -219,9 +226,7 @@ def test_invalid_summarization_ref_falls_back_to_active_profile(
         },
         profile,
         default_mode=CONTEXT_MANAGEMENT_CONTEXT_MANAGER,
-        model_factory=lambda _hass, _entry, model_profile: (
-            resolved_refs.append(model_profile.ref) or cast(Any, object())
-        ),
+        model_factory=_recording_model_factory(resolved_refs),
     )
 
     assert resolved_refs == [profile.ref]

@@ -2,10 +2,10 @@
 
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
+import voluptuous as vol
 
 from ..const import DOMAIN
 from ..models.model_profiles import provider_subentries
@@ -186,4 +186,4 @@ def _entries_for_service(
                 translation_placeholders={"config_entry_id": entry_id},
             )
         return [entry]
-    return [entry for entry in hass.config_entries.async_entries(DOMAIN)]
+    return list(hass.config_entries.async_entries(DOMAIN))

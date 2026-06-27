@@ -1,6 +1,5 @@
 """Test config-flow provider validation behavior."""
 
-import pytest
 from custom_components.pydantic_ai_agent.config_flows.common import (
     _SECTION_EXTERNAL_TOOLS,
     _ai_task_data_schema,
@@ -31,6 +30,7 @@ from custom_components.pydantic_ai_agent.models.provider_validation import (
     ProviderValidationError,
 )
 from homeassistant.core import HomeAssistant
+import pytest
 from tests.components.pydantic_ai_agent.support.builders import (
     provider_subentry_data,
     skill_subentry_data,

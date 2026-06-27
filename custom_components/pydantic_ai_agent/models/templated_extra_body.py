@@ -1,7 +1,7 @@
 """Templated request extra-body helpers."""
 
-import json
 from collections.abc import Mapping
+import json
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, TemplateError

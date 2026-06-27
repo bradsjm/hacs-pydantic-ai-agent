@@ -2,7 +2,6 @@
 
 import json
 
-import voluptuous as vol
 from homeassistant.components import ai_task, conversation
 from homeassistant.components.ai_task.const import (
     DEFAULT_SYSTEM_PROMPT,
@@ -16,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import llm
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+import voluptuous as vol
 
 from . import PydanticAIAgentConfigEntry
 from .agent._entity_auth import _clear_runtime_auth_failure_for_ref
@@ -40,7 +40,7 @@ from .virtual_workspace import virtual_workspace_enabled
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    _hass: HomeAssistant,
     config_entry: PydanticAIAgentConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:

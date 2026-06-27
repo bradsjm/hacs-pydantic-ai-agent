@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Mapping
+import logging
 from typing import Any
 
 from homeassistant.config_entries import (
@@ -147,7 +147,7 @@ class ProviderSubentryFlowHandler(
         return await self.async_step_pick_provider(user_input)
 
     async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
+        self, _user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Reconfigure a provider subentry."""
         self._options = self._provider_form_options(self._get_reconfigure_subentry())
@@ -339,7 +339,7 @@ class ProviderSubentryFlowHandler(
         return await self._async_show_provider_form(step_id, options=self._options)
 
     async def _async_validate_provider_form(
-        self, data: dict[str, Any]
+        self, _data: dict[str, Any]
     ) -> tuple[str, str, dict[str, str]] | None:
         """Validate one provider form submission."""
         existing_data: Mapping[str, Any] = {}

@@ -1,8 +1,8 @@
 """Workspace-local provider-owned model profile helpers."""
 
-import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.config_entries import ConfigSubentry
@@ -277,7 +277,7 @@ def model_settings(
     """Return Pydantic AI model settings for one profile."""
     settings = runtime_model_settings_data(profile.model_settings, run_settings)
     settings.setdefault(CONF_TIMEOUT, DEFAULT_TIMEOUT)
-    return PydanticAIModelSettings(**settings)
+    return cast(PydanticAIModelSettings, settings)
 
 
 def _profile_pricing(raw_pricing: object) -> dict[str, float]:
@@ -385,29 +385,41 @@ def chat_model_for_profile(
     provider_runtime = entry.runtime_data.providers.get(profile.provider_subentry_id)
     if provider_runtime is None:
         raise HomeAssistantError("Configured model profile provider was not found")
-    kwargs = {
-        "api_key": provider_runtime.api_key,
-        "base_url": provider_runtime.base_url,
-        "headers": provider_runtime.provider_headers,
-        "model_name": profile.model_name,
-    }
     try:
         if provider_runtime.provider_mode == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS:
             return openai_compatible_completions_model(
                 hass,
-                **kwargs,
+                api_key=provider_runtime.api_key,
+                base_url=provider_runtime.base_url,
+                headers=provider_runtime.provider_headers,
+                model_name=profile.model_name,
                 profile=_resolved_openai_model_profile(profile),
             )
         if provider_runtime.provider_mode == PROVIDER_OPENAI_COMPATIBLE_RESPONSES:
             return openai_compatible_responses_model(
                 hass,
-                **kwargs,
+                api_key=provider_runtime.api_key,
+                base_url=provider_runtime.base_url,
+                headers=provider_runtime.provider_headers,
+                model_name=profile.model_name,
                 profile=_resolved_openai_model_profile(profile),
             )
         if provider_runtime.provider_mode == PROVIDER_ANTHROPIC:
-            return anthropic_model(hass, **kwargs)
+            return anthropic_model(
+                hass,
+                api_key=provider_runtime.api_key,
+                base_url=provider_runtime.base_url,
+                headers=provider_runtime.provider_headers,
+                model_name=profile.model_name,
+            )
         if provider_runtime.provider_mode == PROVIDER_GOOGLE_GEMINI:
-            return google_gemini_model(hass, **kwargs)
+            return google_gemini_model(
+                hass,
+                api_key=provider_runtime.api_key,
+                base_url=provider_runtime.base_url,
+                headers=provider_runtime.provider_headers,
+                model_name=profile.model_name,
+            )
     except ValueError as err:
         raise HomeAssistantError(str(err)) from err
     raise HomeAssistantError(

@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-import voluptuous as vol
 from custom_components.pydantic_ai_agent.ai_task import (
     PydanticAIAgentAITaskEntity,
     async_setup_entry,
@@ -41,6 +40,7 @@ from tests.components.pydantic_ai_agent.support.runtime import (
     only_entity_id,
     thinking_capabilities,
 )
+import voluptuous as vol
 
 _PROVIDER_SUBENTRY_ID = "provider-1"
 _MODEL_PROFILE_ID = "task-profile"

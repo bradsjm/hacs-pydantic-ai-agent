@@ -94,7 +94,7 @@ class VirtualWorkspace:
                 result = await self._tool.execute(
                     f"cd {_shell_quote(cwd)}\n{command}",
                 )
-            except Exception as err:
+            except Exception as err:  # noqa: BLE001 - Bashkit command failures are returned as tool errors.
                 self.restore_snapshot(snapshot)
                 await self._restore_cwd_safely(original_cwd)
                 return _bash_error(str(err))
@@ -118,7 +118,7 @@ class VirtualWorkspace:
             return bash_result
         except VirtualWorkspaceError as err:
             return _bash_error(str(err))
-        except Exception as err:  # Bashkit surfaces expected failures as exceptions.
+        except Exception as err:  # noqa: BLE001 - Bashkit surfaces expected command/VFS failures as exceptions.
             if snapshot is not None:
                 self.restore_snapshot(snapshot)
                 await self._restore_cwd_safely(original_cwd)
@@ -137,7 +137,7 @@ class VirtualWorkspace:
                 "bytesRead": len(content.encode()),
                 "truncated": truncated,
             }
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - virtual file tool returns structured errors for any VFS failure.
             return {
                 "ok": False,
                 "path": _safe_normalized_path(path),
@@ -172,7 +172,7 @@ class VirtualWorkspace:
             )
             self._tool.write_file(normalized, content)
             return {"ok": True, "path": normalized, "bytesWritten": content_bytes}
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - virtual file tool returns structured errors for any VFS failure.
             return {
                 "ok": False,
                 "path": _safe_normalized_path(path),
@@ -192,7 +192,7 @@ class VirtualWorkspace:
             existed = self.exists(normalized)
             self._tool.mkdir(normalized, recursive=parents)
             return {"ok": True, "path": normalized, "created": not existed}
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - virtual directory tool returns structured errors for any VFS failure.
             return {
                 "ok": False,
                 "path": _safe_normalized_path(path),
@@ -212,7 +212,7 @@ class VirtualWorkspace:
                     **_metadata(self._tool.stat(normalized)),
                 },
             )
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - metadata tool returns structured errors for any VFS failure.
             return {
                 "ok": False,
                 "path": _safe_normalized_path(path),
@@ -266,7 +266,7 @@ class VirtualWorkspace:
             if next_offset < len(raw_entries):
                 result["nextCursor"] = str(next_offset)
             return result
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - directory listing tool returns structured errors for any VFS failure.
             return {
                 "ok": False,
                 "path": _safe_normalized_path(path),
@@ -290,7 +290,7 @@ class VirtualWorkspace:
                 raise PathValidationError("protected workspace paths cannot be removed")
             self._tool.remove(normalized, recursive=recursive)
             return {"ok": True, "path": normalized, "removed": True}
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - destructive tool returns structured errors for any VFS failure.
             return {
                 "ok": False,
                 "path": _safe_normalized_path(path),
@@ -329,7 +329,7 @@ class VirtualWorkspace:
                 self.restore_snapshot(snapshot)
                 raise
             return {"ok": True, "source": src, "destination": dest}
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - copy tool returns structured errors for any VFS failure.
             return {
                 "ok": False,
                 "source": _safe_normalized_path(source),
@@ -371,7 +371,7 @@ class VirtualWorkspace:
                 self.restore_snapshot(snapshot)
                 raise
             return {"ok": True, "source": src, "destination": dest}
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - move tool returns structured errors for any VFS failure.
             return {
                 "ok": False,
                 "source": _safe_normalized_path(source),
@@ -420,7 +420,7 @@ class VirtualWorkspace:
     async def _restore_cwd_safely(self, path: str) -> None:
         try:
             await self._restore_cwd(path)
-        except Exception:
+        except Exception:  # noqa: BLE001 - cwd restoration is best-effort cleanup after arbitrary Bashkit failures.
             _LOGGER.warning("Failed to restore virtual workspace cwd", exc_info=True)
 
     def _require_directory(self, path: str) -> None:
@@ -433,7 +433,7 @@ class VirtualWorkspace:
                 self.exists(path)
                 and self._tool.stat(path).get("file_type") == "directory"
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - Bashkit stat failures mean the path is not a usable directory.
             return False
 
     def _ensure_workspace(self) -> None:
@@ -465,7 +465,7 @@ class VirtualWorkspace:
             return 0
         try:
             stat = self._tool.stat(path)
-        except Exception:
+        except Exception:  # noqa: BLE001 - size accounting treats unreadable virtual paths as absent.
             return 0
         if stat.get("file_type") != "directory":
             return int(stat.get("size", 0))

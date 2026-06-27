@@ -1,7 +1,7 @@
 """Result and failure helpers for entity-backed agent runs."""
 
-import logging
 from collections.abc import Mapping
+import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigSubentry
@@ -42,7 +42,6 @@ def handle_profile_error(
     subentry: ConfigSubentry,
     *,
     err: Exception,
-    index: int,
     is_last_attempt: bool,
     profile: Any,  # noqa: ANN401
     usage_limits: UsageLimits,

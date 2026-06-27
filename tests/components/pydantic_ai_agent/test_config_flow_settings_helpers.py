@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
 from custom_components.pydantic_ai_agent.config_flows._ai_task_schema_helpers import (
     _ai_task_data_from_user_input,
 )
@@ -53,6 +52,7 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
 )
 from homeassistant.core import HomeAssistant
+import pytest
 from tests.components.pydantic_ai_agent.support.builders import (
     provider_subentry_data,
     skill_subentry_data,
@@ -189,7 +189,7 @@ def test_parse_thinking_setting_parses_bool_and_effort_values() -> None:
 
 
 def test_parse_thinking_setting_rejects_invalid_values() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="invalid thinking setting"):
         _parse_thinking_setting("invalid")
 
 

@@ -1,7 +1,7 @@
 """Model setting normalization helpers."""
 
-import json
 from collections.abc import Mapping, Set
+import json
 from typing import Any, Final
 
 from ..const import (

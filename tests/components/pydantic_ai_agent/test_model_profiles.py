@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import patch
 
-import pytest
 from custom_components.pydantic_ai_agent import (
     ProviderRuntimeData,
     WorkspaceRuntimeData,
@@ -62,6 +61,7 @@ from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 

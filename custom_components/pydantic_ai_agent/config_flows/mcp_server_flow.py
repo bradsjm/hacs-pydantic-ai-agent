@@ -370,10 +370,11 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         except MCPValidationError as err:
             target = CONF_MCP_URL if err.reason == "invalid_mcp_url" else "base"
             log_message, log_args = _validation_failure_log_details(err)
+            log_detail = log_message % log_args if log_args else log_message
             _LOGGER.warning(
-                "MCP server validation failed for %s: " + log_message,
+                "MCP server validation failed for %s: %s",
                 server_id,
-                *log_args,
+                log_detail,
             )
             return None, [], (target, err.reason, _mcp_validation_placeholders(err))
         except Exception:

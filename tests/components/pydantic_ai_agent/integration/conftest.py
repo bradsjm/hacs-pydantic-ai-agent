@@ -4,8 +4,8 @@ import socket
 from urllib.parse import urlparse
 
 import pytest
-import pytest_socket
 from pytest_homeassistant_custom_component import plugins as ha_pytest_plugins
+import pytest_socket
 
 from .config import (
     ModelParam,

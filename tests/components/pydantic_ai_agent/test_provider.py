@@ -1,7 +1,5 @@
 """Test provider construction helpers."""
 
-import httpx
-import pytest
 from custom_components.pydantic_ai_agent.const import (
     CONF_BASE_URL,
     CONF_PROVIDER_HEADERS,
@@ -21,6 +19,8 @@ from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
 )
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
+import httpx
+import pytest
 
 
 def test_normalise_base_url_strips_trailing_slash_and_preserves_empty() -> None:
@@ -134,7 +134,7 @@ async def test_list_anthropic_model_names_parses_paginated_response(
                 CONF_BASE_URL: "https://api.anthropic.com/v1",
                 CONF_PROVIDER_HEADERS: {"X-Proxy": "on"},
             },
-            timeout=10.0,
+            request_timeout=10.0,
         )
     finally:
         await http_client.aclose()
@@ -190,7 +190,7 @@ async def test_list_google_gemini_model_names_filters_generate_content_models(
                 CONF_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
                 CONF_PROVIDER_HEADERS: {"X-Proxy": "on"},
             },
-            timeout=10.0,
+            request_timeout=10.0,
         )
     finally:
         await http_client.aclose()

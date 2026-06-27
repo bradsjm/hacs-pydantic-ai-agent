@@ -1,11 +1,11 @@
 """models.dev catalog client for the provider setup wizard."""
 
-import json
 from collections.abc import Mapping
+import json
 
-import httpx
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.httpx_client import get_async_client
+import httpx
 
 from .const import CATALOG_SOURCE_URL, MODEL_CATALOG_TIMEOUT
 from .normalize import normalize_catalog

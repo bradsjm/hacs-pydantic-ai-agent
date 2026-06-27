@@ -4,12 +4,12 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import pytest
 from custom_components.pydantic_ai_agent.const import (
     CONF_MODEL_PRICING,
 )
 from homeassistant.components import conversation
 from homeassistant.core import Context, HomeAssistant
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     conversation_subentry_data,

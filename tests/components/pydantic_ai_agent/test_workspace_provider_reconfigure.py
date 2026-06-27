@@ -1,7 +1,7 @@
 """Tests for provider reconfigure forms and provider edit flows."""
 
-import json
 from hashlib import sha256
+import json
 from typing import Any, cast
 from unittest.mock import patch
 

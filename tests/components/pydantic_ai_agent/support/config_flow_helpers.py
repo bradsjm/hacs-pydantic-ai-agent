@@ -3,13 +3,13 @@
 from collections.abc import Callable, Mapping
 from typing import Any
 
-import voluptuous as vol
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     model_profile_data,
     provider_subentry_data,
     workspace_entry,
 )
+import voluptuous as vol
 
 
 def section_key_names(data_schema: vol.Schema, section_name: str) -> set[str]:

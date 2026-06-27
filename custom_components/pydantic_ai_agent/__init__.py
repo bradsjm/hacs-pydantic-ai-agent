@@ -1,14 +1,14 @@
 """Pydantic AI Agent integration."""
 
-import logging
 from dataclasses import replace
+import logging
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+import voluptuous as vol
 
 from .const import CONF_NAME, DOMAIN
 from .mcp import (
@@ -92,7 +92,7 @@ PLATFORMS: tuple[Platform, ...] = (
 )
 
 
-async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+async def async_setup(hass: HomeAssistant, _config: dict[str, Any]) -> bool:
     """Set up integration-wide services."""
 
     async def async_list_mcp_tools(call: ServiceCall) -> dict[str, Any]:

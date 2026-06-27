@@ -2,15 +2,16 @@
 
 # ruff: noqa: ANN401
 
+from collections.abc import Sequence
 import json
 import logging
-from collections.abc import Sequence
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.util import slugify
 from pydantic_ai.mcp import MCPToolset
+from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets import AbstractToolset
 
 from ..const import (
@@ -203,11 +204,11 @@ async def _async_runtime_mcp_toolset_for_subentry(
         include_return_schema=config[CONF_MCP_INCLUDE_RETURN_SCHEMA],
     )
     if allowed_tools is not None:
-        toolset = toolset.filtered(
-            lambda _ctx, tool_def, allowed_tools=allowed_tools: (
-                tool_def.name in allowed_tools
-            )
-        )
+
+        def allowed_tool_filter(_ctx: Any, tool_def: ToolDefinition) -> bool:
+            return tool_def.name in allowed_tools
+
+        toolset = toolset.filtered(allowed_tool_filter)
     toolset = toolset.prefixed(f"mcp_{slugify(server_id)}")
     if config[CONF_MCP_DEFERRED_LOADING]:
         toolset = toolset.defer_loading()

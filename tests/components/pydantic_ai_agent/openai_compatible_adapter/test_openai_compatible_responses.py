@@ -3,8 +3,6 @@
 import json
 from typing import cast
 
-import httpx
-import pytest
 from custom_components.pydantic_ai_agent.models.provider import (
     openai_compatible_model_profile,
 )
@@ -15,6 +13,7 @@ from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
 from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
     _responses_message_mapping as responses_message_mapping,
 )
+import httpx
 from pydantic_ai.messages import (
     BinaryContent,
     ModelRequest,
@@ -30,6 +29,7 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.output import OutputObjectDefinition
 from pydantic_ai.settings import ModelSettings, ThinkingLevel
 from pydantic_ai.tools import ToolDefinition
+import pytest
 
 
 def _responses_model_with_transport(

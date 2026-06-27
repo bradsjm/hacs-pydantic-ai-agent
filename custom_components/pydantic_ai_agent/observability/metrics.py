@@ -3,7 +3,7 @@
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -168,7 +168,7 @@ def fire_integration_event(
 
 def metric_value(record: AgentRunMetrics, key: str) -> int | float | str | None:
     """Return a metrics value by key."""
-    return getattr(record, key)
+    return cast(int | float | str | None, getattr(record, key))
 
 
 def metric_bool(record: AgentRunMetrics, key: str) -> bool | None:

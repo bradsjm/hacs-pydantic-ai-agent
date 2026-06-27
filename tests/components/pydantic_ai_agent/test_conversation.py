@@ -1,6 +1,5 @@
 """Test Pydantic AI Agent conversation entities."""
 
-import pytest
 from custom_components.pydantic_ai_agent.const import (
     CONF_AGENT_NAME,
     CONF_LOGFIRE_INCLUDE_CONTENT,
@@ -20,6 +19,7 @@ from homeassistant.const import CONF_NAME
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import llm
 from homeassistant.util import slugify
+import pytest
 from tests.components.pydantic_ai_agent.support.builders import (
     conversation_subentry_data,
     model_profile_data,

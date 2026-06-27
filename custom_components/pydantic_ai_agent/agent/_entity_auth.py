@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.core import HomeAssistant
 from pydantic_ai.exceptions import ModelHTTPError
@@ -107,6 +107,6 @@ def _auth_status_code(err: BaseException) -> int | None:
         if isinstance(current, ModelHTTPError):
             status_code = getattr(current, "status_code", None)
             if status_code in {401, 403}:
-                return status_code
+                return cast(int, status_code)
         current = current.__cause__ or current.__context__
     return None

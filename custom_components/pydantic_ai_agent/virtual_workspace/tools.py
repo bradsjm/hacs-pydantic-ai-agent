@@ -225,10 +225,10 @@ def _bool_arg(tool_args: dict[str, object], key: str) -> bool:
 
 def _int_arg(tool_args: dict[str, object], key: str, default: int) -> int:
     value = tool_args.get(key, default)
-    if isinstance(value, bool):
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
         raise ValueError(f"{key} must be an integer")
     try:
-        return int(value)  # type: ignore[arg-type]
+        return int(value)
     except (TypeError, ValueError) as err:
         raise ValueError(f"{key} must be an integer") from err
 

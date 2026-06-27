@@ -28,7 +28,7 @@ class ResponsesResource:
         stream: bool = False,
         extra_headers: dict[str, str] | None = None,
         extra_body: dict[str, Any] | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,  # noqa: ASYNC109
         **kwargs: object,
     ) -> Response | ResponseStream:
         """Create a response."""

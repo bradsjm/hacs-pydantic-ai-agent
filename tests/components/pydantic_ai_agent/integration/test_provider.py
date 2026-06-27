@@ -1,10 +1,10 @@
 """Provider integration tests for live discovery APIs."""
 
-import pytest
 from custom_components.pydantic_ai_agent.models.provider_validation import (
     async_list_provider_model_names,
 )
 from homeassistant.core import HomeAssistant
+import pytest
 
 from .config import (
     ProviderIntegrationConfig,

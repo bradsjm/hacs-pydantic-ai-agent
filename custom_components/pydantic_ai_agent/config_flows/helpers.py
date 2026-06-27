@@ -3,7 +3,6 @@
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.helpers.selector import (
     ObjectSelector,
     ObjectSelectorConfig,
@@ -11,6 +10,7 @@ from homeassistant.helpers.selector import (
     SelectOptionDict,
 )
 from homeassistant.helpers.typing import VolDictType
+import voluptuous as vol
 
 from ..const import CONF_KEY_VALUE_IS_SECRET, CONF_KEY_VALUE_KEY
 

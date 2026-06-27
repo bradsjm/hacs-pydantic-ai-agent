@@ -1,7 +1,7 @@
 """Runtime-oriented test helpers for Pydantic AI Agent tests."""
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from custom_components.pydantic_ai_agent import ProviderRuntimeData
 from custom_components.pydantic_ai_agent.const import (
@@ -188,5 +188,5 @@ def diagnostics_subentry(
             continue
         if title is not None and subentry.get("title") != title:
             continue
-        return subentry
+        return cast(Mapping[str, Any], subentry)
     raise AssertionError("No matching diagnostics subentry found")

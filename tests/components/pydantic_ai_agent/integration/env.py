@@ -1,9 +1,9 @@
 """Environment loading and model selection for provider integration tests."""
 
-import os
-import re
 from collections.abc import Mapping
+import os
 from pathlib import Path
+import re
 from urllib.parse import urlparse
 
 import httpx

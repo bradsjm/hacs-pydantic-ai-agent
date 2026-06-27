@@ -5,8 +5,8 @@ This module must not import from any other config_flows module.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Mapping
+import json
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -161,8 +161,7 @@ def _parse_non_negative_int_setting(value: object) -> int:
 def _parse_key_value_json_setting(value: object) -> dict[str, Any]:
     """Return a key/value JSON model setting from user input."""
     if isinstance(value, list):
-        parsed = _parse_key_value_json_rows(value)
-        return parsed
+        return _parse_key_value_json_rows(value)
     if not isinstance(value, str):
         raise ValueError("invalid_key_value")
     parsed: dict[str, Any] = {}
@@ -242,14 +241,14 @@ def _parse_templated_extra_body_row(
 def _parse_thinking_setting(value: object) -> bool | str:
     """Return a Pydantic AI thinking setting."""
     if not isinstance(value, str):
-        raise ValueError
+        raise ValueError("invalid thinking setting")
     parsed = value.strip()
     if parsed == "true":
         return True
     if parsed == "false":
         return False
     if parsed not in _THINKING_OPTIONS:
-        raise ValueError
+        raise ValueError("invalid thinking setting")
     return parsed
 
 

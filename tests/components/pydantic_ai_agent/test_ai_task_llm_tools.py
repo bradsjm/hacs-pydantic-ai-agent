@@ -2,7 +2,6 @@
 
 from typing import Any, cast
 
-import pytest
 from custom_components.pydantic_ai_agent.ai_task import PydanticAIAgentAITaskEntity
 from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_AI_TASK,
@@ -16,6 +15,7 @@ from homeassistant.components.ai_task.const import (
 )
 from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.helpers import llm
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     ai_task_subentry_data,

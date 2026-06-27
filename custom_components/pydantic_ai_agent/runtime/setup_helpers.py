@@ -1,12 +1,13 @@
 """Entry setup helper functions."""
 
-import logging
 from collections.abc import Mapping
+import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_API_KEY
 from homeassistant.exceptions import HomeAssistantError
+import voluptuous as vol
 
 from ..const import (
     CONF_BASE_URL,
@@ -95,7 +96,12 @@ def _mcp_server_runtimes(
     entry: PydanticAIAgentConfigEntry,
 ) -> dict[str, MCPServerRuntimeData]:
     """Return runtime MCP server data for structurally valid MCP subentries."""
-    from ..mcp import normalise_mcp_url, parse_allowed_tools, parse_mcp_headers
+    from ..mcp import (
+        MCPValidationError,
+        normalise_mcp_url,
+        parse_allowed_tools,
+        parse_mcp_headers,
+    )
 
     runtimes: dict[str, MCPServerRuntimeData] = {}
     for subentry in _mcp_server_subentries(entry):
@@ -105,7 +111,7 @@ def _mcp_server_runtimes(
             allowed_tools = parse_allowed_tools(
                 subentry.data.get(CONF_MCP_ALLOWED_TOOLS)
             )
-        except Exception:
+        except MCPValidationError, TypeError, ValueError, vol.Invalid:
             _LOGGER.warning(
                 "Skipping MCP server subentry %s with invalid stored data",
                 subentry.subentry_id,

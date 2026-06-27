@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from hashlib import sha256
+import json
 from typing import Any
 from urllib.parse import urlparse
 
-import voluptuous as vol
 from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import section
@@ -22,6 +21,7 @@ from homeassistant.helpers.selector import (
 )
 from homeassistant.helpers.typing import VolDictType
 from homeassistant.util import dt as dt_util
+import voluptuous as vol
 
 from ..const import (
     CONF_BASE_URL,

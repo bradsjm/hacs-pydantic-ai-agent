@@ -118,6 +118,7 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
         run_context: AgentDepsT | None = None,
     ) -> AsyncIterator[StreamedResponse]:
         """Make a streamed model request."""
+        _ = run_context
         check_allow_model_requests()
         model_settings, model_request_parameters = self.prepare_request(
             model_settings,
@@ -189,7 +190,7 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
         extra_headers = {}
         if not any(key.lower() == "user-agent" for key in self.client.auth_headers):
             extra_headers["User-Agent"] = get_user_agent()
-        response = await self.client.responses.create(
+        return await self.client.responses.create(
             model=self.model_name,
             input=input_items,
             instructions=instructions,
@@ -209,7 +210,6 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
             extra_headers=extra_headers,
             extra_body=cast(dict[str, Any] | None, model_settings.get("extra_body")),
         )
-        return response
 
     def _get_tools_and_tool_choice(
         self,

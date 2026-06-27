@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from functools import cached_property
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant
@@ -15,6 +14,7 @@ from pydantic_ai import Agent
 from pydantic_ai.capabilities import AbstractCapability, WebFetch, WebSearch
 from pydantic_ai.toolsets import AbstractToolset
 from pydantic_ai.usage import UsageLimits
+import voluptuous as vol
 
 from .agent._entity_auth import _clear_runtime_auth_failure
 from .agent._entity_run_results import (
@@ -72,6 +72,8 @@ class PydanticAIBaseLLMEntity:
     entry: PydanticAIAgentConfigEntry
     hass: HomeAssistant
     subentry: ConfigSubentry
+    _attr_device_info: dr.DeviceInfo | None
+    _attr_unique_id: str | None
 
     def __init__(
         self,
@@ -250,13 +252,12 @@ class PydanticAIBaseLLMEntity:
                     )
                     return outcome.output
                 return outcome
-            except Exception as err:
+            except Exception as err:  # noqa: BLE001
                 handle_profile_error(
                     self.hass,
                     self.entry,
                     self.subentry,
                     err=err,
-                    index=index,
                     is_last_attempt=index == len(profiles) - 1,
                     profile=profile,
                     usage_limits=usage_limits,

@@ -3,7 +3,6 @@
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers.selector import (
@@ -16,6 +15,7 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
 )
 from homeassistant.helpers.typing import VolDictType
+import voluptuous as vol
 
 from ..const import (
     CONF_DESCRIPTION,

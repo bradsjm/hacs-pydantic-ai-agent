@@ -1,9 +1,9 @@
 """Home Assistant todo workspace tools for AI tasks."""
 
 import asyncio
-import weakref
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
+import weakref
 
 from homeassistant.components.todo.const import (
     ATTR_DESCRIPTION,
@@ -329,8 +329,9 @@ def todo_workspace_locks(
     domain_data = hass.data.setdefault(DOMAIN, {})
     locks = domain_data.get("todo_workspace_locks")
     if not isinstance(locks, weakref.WeakValueDictionary):
-        locks = domain_data["todo_workspace_locks"] = weakref.WeakValueDictionary()
-    return locks
+        locks = weakref.WeakValueDictionary[str, asyncio.Lock]()
+        domain_data["todo_workspace_locks"] = locks
+    return cast(weakref.WeakValueDictionary[str, asyncio.Lock], locks)
 
 
 def todo_workspace_lock(hass: HomeAssistant, entity_id: str) -> asyncio.Lock:

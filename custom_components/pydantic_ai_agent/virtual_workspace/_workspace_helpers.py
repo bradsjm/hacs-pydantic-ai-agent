@@ -46,7 +46,7 @@ def timestamp(value: object) -> str | None:
 
 def parse_cursor(cursor: str | None) -> int:
     """Parse a directory cursor into a non-negative offset."""
-    if cursor in (None, ""):
+    if cursor is None or cursor == "":
         return 0
     try:
         offset = int(cursor)
@@ -69,7 +69,7 @@ def safe_normalized_path(path: object) -> str:
     """Return a normalized path or an empty string on failure."""
     try:
         return normalize_vfs_path(path if isinstance(path, str) else "")
-    except Exception:
+    except PathValidationError:
         return ""
 
 

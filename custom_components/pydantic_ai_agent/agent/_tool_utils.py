@@ -1,7 +1,7 @@
 """Tool result problem extraction and logging utilities."""
 
-import logging
 from collections.abc import Mapping, Sequence
+import logging
 
 from pydantic_ai.messages import RetryPromptPart, ToolReturnPart
 

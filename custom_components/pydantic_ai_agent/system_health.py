@@ -23,7 +23,7 @@ from .observability.logfire_support import logfire_enabled
 
 @callback
 def async_register(
-    hass: HomeAssistant, register: system_health.SystemHealthRegistration
+    _hass: HomeAssistant, register: system_health.SystemHealthRegistration
 ) -> None:
     """Register system health callbacks."""
     register.async_register_info(system_health_info)

@@ -3,8 +3,6 @@
 import asyncio
 from unittest.mock import patch
 
-import pytest
-import voluptuous_serialize
 from custom_components.pydantic_ai_agent.config_flows import mcp_server_flow
 from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_ALLOWED_TOOLS,
@@ -20,11 +18,13 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_validation as cv
+import pytest
 from tests.components.pydantic_ai_agent.support.wizard import (
     loaded_workspace_entry,
     subentry_configure_result,
     subentry_init_result,
 )
+import voluptuous_serialize
 
 
 async def test_mcp_server_validation_success_creates_entry(

@@ -3,7 +3,6 @@
 from typing import Any, cast
 from unittest.mock import patch
 
-import pytest
 from custom_components.pydantic_ai_agent.config_flows._constants import (
     _MODEL_PRICING_CACHE_READ,
     _MODEL_PRICING_INPUT,
@@ -43,6 +42,7 @@ from homeassistant.config_entries import SubentryFlowContext
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import model_profile_data
 from tests.components.pydantic_ai_agent.support.schemas import (

@@ -2,7 +2,6 @@
 
 from types import SimpleNamespace
 
-import pytest
 from custom_components.pydantic_ai_agent.observability.metrics import (
     MetricsStore,
     record_mcp_tool_call,
@@ -11,6 +10,7 @@ from custom_components.pydantic_ai_agent.observability.metrics import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+import pytest
 
 
 def test_record_run_failure_updates_health_metrics(hass: HomeAssistant) -> None:
@@ -41,7 +41,7 @@ def test_metrics_store_records_is_read_only_view() -> None:
 
     assert store.records["subentry-1"] is record
     with pytest.raises(TypeError):
-        store.records["subentry-2"] = record  # type: ignore[index]
+        store.records["subentry-2"] = record
     assert list(store.records) == ["subentry-1"]
 
 

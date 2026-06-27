@@ -1,6 +1,5 @@
 """Test virtual workspace path handling."""
 
-import pytest
 from custom_components.pydantic_ai_agent.virtual_workspace.const import (
     DEFAULT_WORKING_DIRECTORY,
     VFS_ROOT,
@@ -12,6 +11,7 @@ from custom_components.pydantic_ai_agent.virtual_workspace.paths import (
     normalize_vfs_path,
     protected_replacement_path,
 )
+import pytest
 
 
 @pytest.mark.parametrize(

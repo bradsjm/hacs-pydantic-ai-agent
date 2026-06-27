@@ -1,9 +1,9 @@
 """Convert Pydantic AI messages and events to Home Assistant ChatLog deltas."""
 
-import json
-import logging
 from collections.abc import AsyncIterable, AsyncIterator
 from dataclasses import replace
+import json
+import logging
 from typing import Any, cast
 
 from homeassistant.components import conversation
@@ -316,8 +316,6 @@ async def _handle_events_tool_result(
     flags: dict[str, bool],
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield a tool result delta and update stream state."""
-    if event.part is None:
-        return
     tool_problem = _tool_problem_from_part(event.part)
     if tool_problem is not None:
         state.latest_tool_problem = tool_problem

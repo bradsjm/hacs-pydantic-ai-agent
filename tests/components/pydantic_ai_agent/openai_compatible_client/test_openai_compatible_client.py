@@ -3,8 +3,6 @@
 import json
 from typing import cast
 
-import httpx
-import pytest
 from custom_components.pydantic_ai_agent.openai_compatible_client import (
     NOT_GIVEN,
     APIConnectionError,
@@ -21,6 +19,8 @@ from custom_components.pydantic_ai_agent.openai_compatible_client._types import 
     ChatCompletion,
     Response,
 )
+import httpx
+import pytest
 
 
 async def test_chat_completion_serializes_payload_and_headers() -> None:

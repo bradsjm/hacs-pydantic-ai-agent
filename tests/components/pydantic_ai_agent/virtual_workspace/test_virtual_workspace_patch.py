@@ -75,7 +75,8 @@ def test_apply_patch_requires_confirmation_for_destructive_changes() -> None:
     assert result["success"] is False
     assert result["changedFiles"] == []
     errors = result.get("errors", [])
-    assert errors and "confirm=true" in errors[0]
+    assert errors
+    assert "confirm=true" in errors[0]
     assert workspace.read_file("notes.txt")["content"] == "hello\n"
 
 

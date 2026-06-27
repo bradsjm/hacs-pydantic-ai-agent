@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import cast
 
-import httpx
 from homeassistant.exceptions import HomeAssistantError
+import httpx
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
@@ -107,7 +107,7 @@ def _classify_run_failure(
 
 
 def _build_usage_limit_failure(
-    cause: UsageLimitExceeded,
+    _cause: UsageLimitExceeded,
     error_type: str,
     prefix: str,
     context: str,
@@ -146,14 +146,13 @@ def _build_failure_message(
     if isinstance(cause, ModelHTTPError):
         return _http_failure_message(cause, prefix)
     if isinstance(cause, ModelAPIError):
-        api_error = cast(ModelAPIError, cause)
         if _has_connection_failure(cause):
             return (
                 f"{prefix}the provider connection failed for model "
-                f'"{api_error.model_name}". Check network connectivity and provider '
+                f'"{cause.model_name}". Check network connectivity and provider '
                 "availability."
             )
-        return _format_api_error(api_error)
+        return _format_api_error(cause)
     if isinstance(cause, HAToolRetryExhausted):
         return str(cause)
     if isinstance(cause, UnexpectedModelBehavior):
@@ -222,15 +221,14 @@ def _should_fallback(err: Exception) -> bool:
             cast(Exception, _run_failure_cause(err))
         )
     if isinstance(err, ModelHTTPError):
-        http_error = cast(ModelHTTPError, err)
         return (
-            http_error.status_code
+            err.status_code
             in {
                 408,
                 409,
                 429,
             }
-            or 500 <= http_error.status_code <= 599
+            or 500 <= err.status_code <= 599
         )
     if isinstance(err, TimeoutError | httpx.TimeoutException | UsageLimitExceeded):
         return True

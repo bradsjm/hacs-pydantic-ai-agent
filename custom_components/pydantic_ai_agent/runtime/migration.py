@@ -1,7 +1,7 @@
 """Config entry migration and cleanup helpers."""
 
-import logging
 from collections.abc import Mapping
+import logging
 from typing import Any
 
 from homeassistant.const import CONF_LLM_HASS_API, Platform

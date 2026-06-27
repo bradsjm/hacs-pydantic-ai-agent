@@ -43,7 +43,7 @@ def apply_patch(
                 _apply_operation(workspace, operation, confirm=confirm)
             )
         return {"success": True, "changedFiles": changed_files}
-    except Exception as err:
+    except Exception as err:  # noqa: BLE001 - tool-result boundary must report any patch/VFS failure.
         workspace.restore_snapshot(snapshot)
         return {"success": False, "changedFiles": [], "errors": [str(err)]}
 

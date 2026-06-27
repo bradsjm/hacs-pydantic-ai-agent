@@ -4,13 +4,13 @@ import errno
 import socket
 import ssl
 
-import httpx
-import pytest
 from custom_components.pydantic_ai_agent.models.provider_validation import (
     _format_api_error,
     _map_http_error,
 )
+import httpx
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
+import pytest
 
 
 def test_http_error_formats_redacted_compact_metadata() -> None:

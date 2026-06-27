@@ -1,8 +1,8 @@
 """Reusable Pydantic AI test doubles."""
 
-import json
 from collections.abc import AsyncIterator, Callable, Iterable
 from contextlib import asynccontextmanager
+import json
 from typing import Any, cast
 
 from pydantic_ai.messages import (

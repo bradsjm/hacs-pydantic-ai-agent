@@ -1,7 +1,7 @@
 """Shared key/value row helpers for config-flow object selectors."""
 
-import json
 from collections.abc import Mapping
+import json
 from typing import Any
 
 from ..const import (
@@ -79,13 +79,13 @@ def _parse_key_value_text_rows(value: object) -> dict[str, str]:
     if value in (None, ""):
         return {}
     if isinstance(value, Mapping):
-        parsed = dict(value)
+        parsed_mapping = dict(value)
         if not all(
             isinstance(key, str) and isinstance(item, str)
-            for key, item in parsed.items()
+            for key, item in parsed_mapping.items()
         ):
             raise ValueError("invalid_key_value")
-        return parsed
+        return parsed_mapping
     if not isinstance(value, list):
         raise ValueError("invalid_key_value")
     parsed: dict[str, str] = {}

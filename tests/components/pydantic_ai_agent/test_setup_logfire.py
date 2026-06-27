@@ -3,7 +3,6 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from custom_components.pydantic_ai_agent import (
     PLATFORMS,
     async_setup_entry,
@@ -22,6 +21,7 @@ from custom_components.pydantic_ai_agent.observability.logfire_support import (
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import workspace_entry
 

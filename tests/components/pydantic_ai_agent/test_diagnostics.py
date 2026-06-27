@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock
 
-import pytest
 from custom_components.pydantic_ai_agent import (
     MCPServerRuntimeData,
     WorkspaceRuntimeData,
@@ -62,6 +61,7 @@ from homeassistant.components.diagnostics import REDACTED
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.runtime import diagnostics_subentry
 

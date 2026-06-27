@@ -7,11 +7,10 @@ Re-export shim for all helpers extracted into leaf modules.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncIterable, Callable, Iterable, Mapping
+import logging
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.config_entries import (
     SOURCE_USER,
     ConfigEntry,
@@ -33,6 +32,7 @@ from pydantic_ai import (
 from pydantic_ai.messages import ModelResponseStreamEvent
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.settings import ModelSettings
+import voluptuous as vol
 
 from ..const import (
     CONF_AGENT_NAME,

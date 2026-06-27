@@ -5,16 +5,17 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
-import pytest
-import voluptuous as vol
 from custom_components.pydantic_ai_agent.agent.ha_toolset import (
     tool_definitions_from_llm_api,
     tools_from_llm_api,
 )
 from custom_components.pydantic_ai_agent.agent.tool_errors import HAToolRetryExhausted
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import llm
 from pydantic_ai import BinaryContent, ModelRetry, RunContext
+import pytest
+import voluptuous as vol
 
 
 class _TestTool(llm.Tool):
@@ -23,6 +24,15 @@ class _TestTool(llm.Tool):
     name = "turn_on"
     description = "Turn on a device."
     parameters = vol.Schema({vol.Required("entity_id"): str})
+
+    async def async_call(
+        self,
+        hass: HomeAssistant,
+        tool_input: llm.ToolInput,
+        llm_context: llm.LLMContext,
+    ) -> dict[str, Any]:
+        """Return a minimal successful tool response."""
+        return {"done": True}
 
 
 def test_tool_definitions_from_llm_api_converts_ha_tools() -> None:

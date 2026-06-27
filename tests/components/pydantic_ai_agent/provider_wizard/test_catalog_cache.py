@@ -2,7 +2,6 @@
 
 import asyncio
 
-import pytest
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard import (
     catalog_cache,
     const,
@@ -12,6 +11,7 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard import (
 from custom_components.pydantic_ai_agent.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+import pytest
 
 
 async def test_catalog_manager_reuses_single_inflight_fetch(

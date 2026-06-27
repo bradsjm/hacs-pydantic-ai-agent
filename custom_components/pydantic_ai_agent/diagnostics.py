@@ -6,6 +6,7 @@ from typing import Any, cast
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
@@ -81,7 +82,7 @@ async def async_get_config_entry_diagnostics(
 
 
 async def async_get_device_diagnostics(
-    hass: HomeAssistant, entry: ConfigEntry, device: dr.DeviceEntry
+    _hass: HomeAssistant, entry: ConfigEntry, device: dr.DeviceEntry
 ) -> dict[str, Any]:
     """Return diagnostics for one subentry device."""
     subentry_id = _device_subentry_id(device)
@@ -237,7 +238,7 @@ def _structured_output_mode_summary(
         return None
     try:
         return resolved_structured_output_mode(primary_model_profile(entry, subentry))
-    except Exception:
+    except HomeAssistantError:
         return None
 
 
@@ -248,6 +249,5 @@ def _device_subentry_id(device: dr.DeviceEntry) -> str | None:
             parts = identifier.split(":", 2)
             if len(parts) != 3:
                 return None
-            subentry_id = parts[2]
-            return subentry_id
+            return parts[2]
     return None

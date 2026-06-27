@@ -1,14 +1,14 @@
 """Logfire support for Pydantic AI Agent."""
 
 import asyncio
-import json
-import logging
-import warnings
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+import json
+import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+import warnings
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigSubentry
 from homeassistant.const import CONF_LLM_HASS_API, __version__
@@ -51,7 +51,7 @@ def _load_integration_version() -> str | None:
                 encoding="utf-8"
             )
         )
-    except Exception:
+    except OSError, json.JSONDecodeError:
         return None
     version = manifest.get("version")
     if not isinstance(version, str):
@@ -79,7 +79,7 @@ def _logfire_state(hass: HomeAssistant) -> LogfireState:
     state = domain_data.get(_LOGFIRE_STATE_KEY)
     if state is None:
         state = domain_data[_LOGFIRE_STATE_KEY] = LogfireState()
-    return state
+    return cast(LogfireState, state)
 
 
 async def async_configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bool:

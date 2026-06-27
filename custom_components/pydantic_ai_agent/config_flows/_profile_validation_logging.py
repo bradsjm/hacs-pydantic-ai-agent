@@ -1,7 +1,7 @@
 """Validation and logging helpers for config-flow profile forms."""
 
-import logging
 from collections.abc import Mapping
+import logging
 from typing import Any
 
 from homeassistant.components.todo.const import DOMAIN as TODO_DOMAIN

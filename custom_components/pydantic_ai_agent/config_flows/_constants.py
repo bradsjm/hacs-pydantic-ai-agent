@@ -5,8 +5,8 @@ This module must not import from any other config_flows module.
 
 from __future__ import annotations
 
-import re
 from datetime import timedelta
+import re
 
 from homeassistant.components.todo.const import TodoListEntityFeature
 

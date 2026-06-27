@@ -1,11 +1,10 @@
 """Test entity chat delta streaming/mapping."""
 
 import base64
-import logging
 from collections.abc import AsyncIterator
+import logging
 from typing import Any, cast
 
-import pytest
 from custom_components.pydantic_ai_agent.agent.chat_deltas import (
     _agent_events_to_chat_deltas,
     _agent_messages_to_chat_deltas,
@@ -30,6 +29,7 @@ from pydantic_ai import (
     ToolCallPart,
     ToolReturnPart,
 )
+import pytest
 
 
 async def _collect_deltas(

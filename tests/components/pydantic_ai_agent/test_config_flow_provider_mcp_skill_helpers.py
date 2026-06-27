@@ -2,8 +2,6 @@
 
 from typing import cast
 
-import pytest
-import voluptuous as vol
 from custom_components.pydantic_ai_agent.config_flows._key_value_rows import (
     _format_key_value_json_rows,
     _format_key_value_text_rows,
@@ -70,6 +68,7 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorMode,
 )
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     mcp_server_subentry_data,
@@ -78,6 +77,7 @@ from tests.components.pydantic_ai_agent.support.builders import (
 from tests.components.pydantic_ai_agent.support.config_flow_helpers import (
     section_selector,
 )
+import voluptuous as vol
 
 
 def test_format_key_value_rows_return_selector_defaults() -> None:
@@ -133,11 +133,13 @@ def test_parse_key_value_row_helpers_accept_object_selector_rows() -> None:
     ],
 )
 def test_key_value_row_helpers_reject_invalid_rows(value: object, error: str) -> None:
-    with pytest.raises(ValueError, match=error):
-        if error == "duplicate_key":
+    if error == "duplicate_key":
+        with pytest.raises(ValueError, match=error):
             _parse_key_value_text_rows(value)
-        else:
-            _parse_key_value_json_setting(value)
+        return
+
+    with pytest.raises(ValueError, match=error):
+        _parse_key_value_json_setting(value)
 
 
 def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> None:
@@ -168,8 +170,6 @@ def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> 
     assert isinstance(provider_headers_selector, ObjectSelector)
     assert isinstance(provider_extra_body_selector, ObjectSelector)
     assert isinstance(mcp_headers_selector, ObjectSelector)
-    provider_headers_selector = cast(ObjectSelector, provider_headers_selector)
-    provider_extra_body_selector = cast(ObjectSelector, provider_extra_body_selector)
     assert provider_headers_selector.config["translation_key"] == CONF_PROVIDER_HEADERS
     assert (
         provider_headers_selector.config["fields"][CONF_KEY_VALUE_KEY]["label"]
@@ -210,7 +210,6 @@ def test_provider_and_mcp_schemas_use_object_selectors_for_structured_rows() -> 
     assert CONF_KEY_VALUE_IS_SECRET not in provider_extra_body_selector.config["fields"]
     assert "label_field" not in provider_extra_body_selector.config
     assert "description_field" not in provider_extra_body_selector.config
-    mcp_headers_selector = cast(ObjectSelector, mcp_headers_selector)
     assert mcp_headers_selector.config["fields"][CONF_KEY_VALUE_IS_SECRET][
         "selector"
     ] == {"boolean": {}}

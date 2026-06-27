@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable, Mapping
 import logging
-from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry, SubentryFlowResult
 from homeassistant.core import HomeAssistant
+import voluptuous as vol
 
 from ..const import (
     CONF_DISCOVERED,
@@ -69,30 +69,49 @@ class ProviderModelManagementMixin:
     hass: HomeAssistant
 
     def _get_entry(self) -> ConfigEntry:
-        return super()._get_entry()  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[[], ConfigEntry], parent._get_entry)
+        return method()
 
     def _get_reconfigure_subentry(self) -> ConfigSubentry:
-        return super()._get_reconfigure_subentry()  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[[], ConfigSubentry], parent._get_reconfigure_subentry)
+        return method()
 
     def async_show_form(self, *args: object, **kwargs: object) -> SubentryFlowResult:
-        return super().async_show_form(*args, **kwargs)  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[..., SubentryFlowResult], parent.async_show_form)
+        return method(*args, **kwargs)
 
     def async_show_progress(
         self, *args: object, **kwargs: object
     ) -> SubentryFlowResult:
-        return super().async_show_progress(*args, **kwargs)  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[..., SubentryFlowResult], parent.async_show_progress)
+        return method(*args, **kwargs)
 
     def async_show_progress_done(
         self, *args: object, **kwargs: object
     ) -> SubentryFlowResult:
-        return super().async_show_progress_done(*args, **kwargs)  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(
+            Callable[..., SubentryFlowResult],
+            parent.async_show_progress_done,
+        )
+        return method(*args, **kwargs)
 
     def async_get_progress_task(self) -> asyncio.Task[Any] | None:
-        return super().async_get_progress_task()  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(
+            Callable[[], asyncio.Task[Any] | None],
+            parent.async_get_progress_task,
+        )
+        return method()
 
     async def async_step_manage_models(
         self, user_input: dict[str, object] | None = None
-    ) -> SubentryFlowResult: ...
+    ) -> SubentryFlowResult:
+        raise NotImplementedError
 
     # ---- mixin attributes ----
     _profile_flow_data: dict[str, Any]
@@ -216,7 +235,7 @@ class ProviderModelManagementMixin:
 
             try:
                 model_names = await async_list_provider_model_names(self.hass, data)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 _LOGGER.warning("Unable to list provider models for model management")
                 return ()
             _store_provider_model_cache(self._profile_flow_data, model_names)
@@ -232,7 +251,7 @@ class ProviderModelManagementMixin:
             catalog = await catalog_manager(self.hass).async_get_catalog()
         except CatalogLoadError:
             return None, ()
-        except Exception:
+        except Exception:  # noqa: BLE001
             _LOGGER.warning("Unable to load model catalog for model management")
             return None, ()
         metadata = data.get(CONF_PROVIDER_METADATA)
@@ -467,5 +486,5 @@ class ProviderModelManagementMixin:
     def _current_profile_flow_data(self) -> dict[str, Any]:
         """Return transient provider data for the active profile edit flow."""
         if profile_flow_data := getattr(self, "_profile_flow_data", None):
-            return profile_flow_data
+            return cast(dict[str, Any], profile_flow_data)
         return dict(self._get_reconfigure_subentry().data)

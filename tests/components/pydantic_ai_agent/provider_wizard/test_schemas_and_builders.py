@@ -2,8 +2,6 @@
 
 from typing import cast
 
-import pytest
-import voluptuous as vol
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.const import (
     CONF_FAMILY,
     CONF_HIDE_DEPRECATED,
@@ -67,6 +65,8 @@ from custom_components.pydantic_ai_agent.runtime.header_metadata import (
 )
 from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.helpers.selector import ObjectSelector, TextSelector
+import pytest
+import voluptuous as vol
 
 
 def test_provider_options_include_supported_providers_and_custom() -> None:
@@ -250,8 +250,6 @@ def test_connection_schema_uses_structured_row_selectors() -> None:
 
     assert isinstance(header_selector, ObjectSelector)
     assert isinstance(extra_body_selector, ObjectSelector)
-    header_selector = cast(ObjectSelector, header_selector)
-    extra_body_selector = cast(ObjectSelector, extra_body_selector)
     header_fields = header_selector.config["fields"]
     extra_body_fields = extra_body_selector.config["fields"]
     assert header_selector.config["translation_key"] == CONF_PROVIDER_HEADERS

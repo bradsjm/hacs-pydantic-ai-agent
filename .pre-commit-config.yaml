@@ -6,6 +6,8 @@ repos:
         args:
           - --fix
         files: ^(custom_components|tests)/.+\.(py|pyi)$
+      - id: ruff-format
+        files: ^(custom_components|tests)/.+\.(py|pyi)$
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -22,6 +24,12 @@ repos:
         exclude: ^\.agents/
       - id: trailing-whitespace
         exclude: ^\.agents/
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        additional_dependencies: ["tomli"]
+        args: ["--toml", "pyproject.toml"]
   - repo: https://github.com/adrienverge/yamllint.git
     rev: v1.38.0
     hooks:

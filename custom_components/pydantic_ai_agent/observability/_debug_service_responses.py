@@ -6,6 +6,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_NAME
+from homeassistant.exceptions import HomeAssistantError
 
 from ..const import (
     CONF_AGENT_NAME,
@@ -244,7 +245,7 @@ def _agent_subentry_status(
             status["structured_output_mode"] = resolved_structured_output_mode(
                 primary_model_profile(entry, subentry)
             )
-        except Exception:
+        except HomeAssistantError, KeyError, TypeError, ValueError:
             status["structured_output_mode"] = None
     return status
 

@@ -3,7 +3,6 @@
 from types import SimpleNamespace
 from typing import cast
 
-import voluptuous_serialize
 from custom_components.pydantic_ai_agent import (
     ProviderRuntimeData,
     WorkspaceRuntimeData,
@@ -42,6 +41,7 @@ from tests.components.pydantic_ai_agent.support.wizard import (
     subentry_configure_result,
     subentry_init_result,
 )
+import voluptuous_serialize
 
 
 async def test_conversation_entity_streaming_supports_model_profile_ref(

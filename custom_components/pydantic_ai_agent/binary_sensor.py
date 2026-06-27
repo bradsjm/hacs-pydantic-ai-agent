@@ -121,7 +121,7 @@ CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    _hass: HomeAssistant,
     config_entry: PydanticAIAgentConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:

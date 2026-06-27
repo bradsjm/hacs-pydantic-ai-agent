@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable, Mapping
 import logging
-from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.config_entries import (
     ConfigEntry,
@@ -73,36 +73,59 @@ class ProviderWizardMixin:
     hass: HomeAssistant
 
     def _get_entry(self) -> ConfigEntry:
-        return super()._get_entry()  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[[], ConfigEntry], parent._get_entry)
+        return method()
 
     def async_show_form(self, *args: object, **kwargs: object) -> SubentryFlowResult:
-        return super().async_show_form(*args, **kwargs)  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[..., SubentryFlowResult], parent.async_show_form)
+        return method(*args, **kwargs)
 
     def async_abort(self, *args: object, **kwargs: object) -> SubentryFlowResult:
-        return super().async_abort(*args, **kwargs)  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[..., SubentryFlowResult], parent.async_abort)
+        return method(*args, **kwargs)
 
     def async_create_entry(self, *args: object, **kwargs: object) -> SubentryFlowResult:
-        return super().async_create_entry(*args, **kwargs)  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[..., SubentryFlowResult], parent.async_create_entry)
+        return method(*args, **kwargs)
 
     def async_show_progress(
         self, *args: object, **kwargs: object
     ) -> SubentryFlowResult:
-        return super().async_show_progress(*args, **kwargs)  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[..., SubentryFlowResult], parent.async_show_progress)
+        return method(*args, **kwargs)
 
     def async_show_progress_done(
         self, *args: object, **kwargs: object
     ) -> SubentryFlowResult:
-        return super().async_show_progress_done(*args, **kwargs)  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(
+            Callable[..., SubentryFlowResult],
+            parent.async_show_progress_done,
+        )
+        return method(*args, **kwargs)
 
     def async_get_progress_task(
         self,
     ) -> asyncio.Task[Any] | None:
-        return super().async_get_progress_task()  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(
+            Callable[[], asyncio.Task[Any] | None],
+            parent.async_get_progress_task,
+        )
+        return method()
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult: ...
-    def _provider_already_configured(self, data: Mapping[str, Any]) -> bool: ...
+    ) -> SubentryFlowResult:
+        raise NotImplementedError
+
+    def _provider_already_configured(self, data: Mapping[str, Any]) -> bool:
+        raise NotImplementedError
 
     # ---- mixin attributes ----
     _wizard_catalog: CompactCatalog | None

@@ -3,14 +3,14 @@
 import ssl
 from unittest.mock import patch
 
-import httpx
-import pytest
 from custom_components.pydantic_ai_agent.mcp.client import (
     _mcp_http_client_factory,
     _origin_guard_hook,
 )
 from custom_components.pydantic_ai_agent.mcp.models import ValidatedMCPURL
 from homeassistant.util.ssl import SSL_ALPN_HTTP11, client_context
+import httpx
+import pytest
 
 
 def _validated_url(url: str = "https://mcp.example.com/mcp") -> ValidatedMCPURL:

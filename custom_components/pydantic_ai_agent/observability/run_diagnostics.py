@@ -137,7 +137,7 @@ def bound_diagnostics_data(value: object, *, _depth: int = 0) -> object:
     if callable(model_dump):
         try:
             return bound_diagnostics_data(model_dump(mode="json"), _depth=_depth + 1)
-        except Exception:
+        except TypeError, ValueError:
             pass
     if isinstance(value, Mapping):
         return _bound_mapping(value, _depth=_depth)

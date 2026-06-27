@@ -1,6 +1,5 @@
 """Low-level streaming provider integration tests."""
 
-import pytest
 from custom_components.pydantic_ai_agent.models.provider import (
     openai_compatible_completions_model_from_config,
 )
@@ -8,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from pydantic_ai import ModelRequest
 from pydantic_ai.direct import model_request_stream
 from pydantic_ai.settings import ModelSettings
+import pytest
 
 from .capture import append_text_event
 from .config import (

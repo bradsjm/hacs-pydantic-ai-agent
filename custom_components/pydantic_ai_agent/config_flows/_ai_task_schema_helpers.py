@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.components.todo.const import DOMAIN as TODO_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_LLM_HASS_API
@@ -24,6 +23,7 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
 )
 from homeassistant.helpers.typing import VolDictType
+import voluptuous as vol
 
 from ..const import (
     CONF_AI_TASK_NAME,

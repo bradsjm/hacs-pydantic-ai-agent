@@ -40,7 +40,7 @@ class _NoAssistantResponseError(HomeAssistantError):
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    _hass: HomeAssistant,
     config_entry: PydanticAIAgentConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:

@@ -2,7 +2,6 @@
 
 from typing import Any, cast
 
-import pytest
 from custom_components.pydantic_ai_agent import WorkspaceRuntimeData, async_setup
 from custom_components.pydantic_ai_agent.const import (
     CONF_ENABLED,
@@ -19,6 +18,7 @@ from custom_components.pydantic_ai_agent.observability.debug_services import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
+import pytest
 from tests.components.pydantic_ai_agent.support.builders import (
     ai_task_subentry_data,
     conversation_subentry_data,

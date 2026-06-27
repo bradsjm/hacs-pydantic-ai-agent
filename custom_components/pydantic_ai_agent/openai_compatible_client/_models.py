@@ -23,7 +23,7 @@ class ModelsResource:
     async def list(
         self,
         *,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,  # noqa: ASYNC109
     ) -> list[str]:
         """Return available model IDs."""
         request_timeout = (

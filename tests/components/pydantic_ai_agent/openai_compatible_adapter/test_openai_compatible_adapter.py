@@ -1,11 +1,9 @@
 """Test the Pydantic AI OpenAI-compatible Chat Completions adapter."""
 
 import json
-import re
 from pathlib import Path
+import re
 
-import httpx
-import pytest
 from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
     OpenAICompatibleChatModel,
     OpenAICompatibleProvider,
@@ -13,6 +11,7 @@ from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
 from custom_components.pydantic_ai_agent.openai_compatible_adapter import (
     _message_mapping as chat_message_mapping,
 )
+import httpx
 from pydantic_ai.messages import (
     BinaryContent,
     ModelRequest,
@@ -25,6 +24,7 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.settings import ThinkingLevel
 from pydantic_ai.tools import ToolDefinition
+import pytest
 
 _REPO_ROOT = Path(__file__).parents[3]
 

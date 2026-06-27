@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-npx --no-install markdownlint-cli2 "*.md"
+pnpm exec markdownlint-cli2 "**/*.md"

@@ -140,6 +140,7 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
         run_context: AgentDepsT | None = None,
     ) -> AsyncIterator[StreamedResponse]:
         """Make a streamed model request."""
+        _ = run_context
         check_allow_model_requests()
         model_settings, model_request_parameters = self.prepare_request(
             model_settings,

@@ -4,8 +4,6 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import httpx
-import pytest
 from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_URL,
@@ -25,6 +23,8 @@ from custom_components.pydantic_ai_agent.mcp.discovery import (
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
+import httpx
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
@@ -220,7 +220,7 @@ async def test_discover_mcp_tools_from_config_times_out_cleanly(
         await async_discover_mcp_tools_from_config(
             hass,
             {CONF_NAME: "Echo MCP", CONF_MCP_URL: "https://mcp.example.com/mcp"},
-            timeout=0.01,
+            request_timeout=0.01,
         )
 
     assert err.value.reason == "timeout"

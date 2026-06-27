@@ -1,9 +1,9 @@
 """Home Assistant LLM echo API for provider integration tests."""
 
-import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import llm
 from homeassistant.util.json import JsonObjectType
+import voluptuous as vol
 
 from .config import TEST_LLM_API_ID
 

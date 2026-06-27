@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Callable, Iterable
+import hashlib
 from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.helpers import llm
@@ -90,7 +90,7 @@ def structured_output_json_schema(
     custom_serializer: Callable[..., Any] | None,
 ) -> dict[str, Any]:
     """Return a JSON schema for a Home Assistant AI task structure."""
-    return convert(structure, custom_serializer=custom_serializer)
+    return cast(dict[str, Any], convert(structure, custom_serializer=custom_serializer))
 
 
 def structured_model_request_parameters(

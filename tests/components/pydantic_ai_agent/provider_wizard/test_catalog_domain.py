@@ -1,6 +1,5 @@
 """Tests for provider wizard catalog mapping, filtering, and normalization."""
 
-import pytest
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.filters import (
     ModelFilterOptions,
     filtered_models,
@@ -20,6 +19,7 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
+import pytest
 
 
 @pytest.mark.parametrize(

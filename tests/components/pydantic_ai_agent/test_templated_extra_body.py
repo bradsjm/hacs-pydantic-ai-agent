@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
 from custom_components.pydantic_ai_agent.const import (
     CONF_CHAT_TEMPLATE_KWARG_KEY,
     CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE,
@@ -15,6 +14,7 @@ from custom_components.pydantic_ai_agent.models.model_request_settings import (
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pydantic_ai.settings import ModelSettings
+import pytest
 
 
 def test_model_settings_with_templated_extra_body_renders_without_mutation(

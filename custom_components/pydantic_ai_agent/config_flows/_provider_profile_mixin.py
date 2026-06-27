@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import Any, cast
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry, SubentryFlowResult
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+import voluptuous as vol
 
 from ..const import (
     CONF_CONTEXT_WINDOW_SOURCE,
@@ -78,21 +78,34 @@ class ProviderProfileMixin:
     hass: HomeAssistant
 
     def _get_entry(self) -> ConfigEntry:
-        return super()._get_entry()  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[[], ConfigEntry], parent._get_entry)
+        return method()
 
     def _get_reconfigure_subentry(self) -> ConfigSubentry:
-        return super()._get_reconfigure_subentry()  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[[], ConfigSubentry], parent._get_reconfigure_subentry)
+        return method()
 
     def async_show_form(self, *args: object, **kwargs: object) -> SubentryFlowResult:
-        return super().async_show_form(*args, **kwargs)  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[..., SubentryFlowResult], parent.async_show_form)
+        return method(*args, **kwargs)
 
     def async_abort(self, *args: object, **kwargs: object) -> SubentryFlowResult:
-        return super().async_abort(*args, **kwargs)  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(Callable[..., SubentryFlowResult], parent.async_abort)
+        return method(*args, **kwargs)
 
     def async_update_and_abort(
         self, *args: object, **kwargs: object
     ) -> SubentryFlowResult:
-        return super().async_update_and_abort(*args, **kwargs)  # type: ignore[misc]
+        parent = cast(Any, super())
+        method = cast(
+            Callable[..., SubentryFlowResult],
+            parent.async_update_and_abort,
+        )
+        return method(*args, **kwargs)
 
     # ---- mixin attributes ----
     _profile_flow_data: dict[str, Any]
@@ -308,7 +321,7 @@ class ProviderProfileMixin:
     def _current_profile_flow_data(self) -> dict[str, Any]:
         """Return transient provider data for the active profile edit flow."""
         if profile_flow_data := getattr(self, "_profile_flow_data", None):
-            return profile_flow_data
+            return cast(dict[str, Any], profile_flow_data)
         return dict(self._get_reconfigure_subentry().data)
 
     def _model_profile_description_placeholders(

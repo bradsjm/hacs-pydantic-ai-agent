@@ -3,9 +3,9 @@
 from collections.abc import Mapping
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
+import voluptuous as vol
 
 from ..const import DOMAIN
 from ..runtime.types import PydanticAIAgentConfigEntry

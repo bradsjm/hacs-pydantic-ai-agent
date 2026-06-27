@@ -7,8 +7,6 @@ import ssl
 from types import SimpleNamespace
 from typing import Any, cast
 
-import httpx
-import pytest
 from custom_components.pydantic_ai_agent.agent._entity_auth import (
     _clear_runtime_auth_failure,
     _has_provider_auth_failure,
@@ -52,6 +50,7 @@ from custom_components.pydantic_ai_agent.sensor import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+import httpx
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
@@ -63,6 +62,7 @@ from pydantic_ai.exceptions import (
 from pydantic_ai.output import ToolOutput
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import UsageLimits
+import pytest
 from tests.components.pydantic_ai_agent.support.builders import (
     ai_task_subentry_data,
     conversation_subentry_data,

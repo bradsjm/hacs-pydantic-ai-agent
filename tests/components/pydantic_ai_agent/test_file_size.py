@@ -5,7 +5,7 @@ from pathlib import Path
 _ALLOWED_OVERSIZED_FILES = {}
 
 
-def test_python_files_max_550_lines():
+def test_python_files_max_550_lines() -> None:
     """
     Ensure all Python files in frontend, domain, and tests are at most 550 lines long.
     Files exceeding 550 lines indicate:
@@ -35,7 +35,7 @@ def test_python_files_max_550_lines():
                 continue
             # Count lines in the file
             try:
-                with open(py_file, encoding="utf-8") as f:
+                with py_file.open(encoding="utf-8") as f:
                     line_count = sum(1 for _ in f)
                 if line_count > max_lines:
                     relative_path = py_file.relative_to(project_root)
@@ -45,7 +45,7 @@ def test_python_files_max_550_lines():
                     violations.append(
                         f"{relative_path}: {line_count} lines (exceeds {max_lines})"
                     )
-            except Exception:
+            except OSError, UnicodeDecodeError:
                 # Skip files that can't be read
                 continue
     if violations:

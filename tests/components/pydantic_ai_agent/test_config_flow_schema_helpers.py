@@ -3,8 +3,6 @@
 from collections.abc import Callable, Mapping
 from typing import Any, cast
 
-import pytest
-import voluptuous as vol
 from custom_components.pydantic_ai_agent.config_flows._ai_task_schema_helpers import (
     _ai_task_data_from_user_input,
     _ai_task_data_schema,
@@ -52,6 +50,7 @@ from custom_components.pydantic_ai_agent.const import (
 from homeassistant.const import CONF_LLM_HASS_API
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import SelectSelector, SelectSelectorMode
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from tests.components.pydantic_ai_agent.support.builders import (
     mcp_server_subentry_data,
@@ -70,6 +69,7 @@ from tests.components.pydantic_ai_agent.support.config_flow_helpers import (
 from tests.components.pydantic_ai_agent.support.schemas import (
     serialized_section_default,
 )
+import voluptuous as vol
 
 
 def test_model_settings_schema_omits_parallel_tool_calls() -> None:

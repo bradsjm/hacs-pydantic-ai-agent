@@ -80,6 +80,8 @@ class ModelParam:
 class Secret(str):
     """String value with a redacted repr for pytest failure output."""
 
+    __slots__ = ()
+
     def __repr__(self) -> str:
         """Return a redacted representation."""
         return "'<redacted>'"
