@@ -6,16 +6,16 @@ uv run pytest \
   -n 0 \
   -q \
   -m "not provider_integration" \
-  tests/components/pydantic_ai_agent/test_context_management.py::test_default_conversation_mode_builds_context_manager \
-  tests/components/pydantic_ai_agent/test_context_management.py::test_default_ai_task_mode_builds_sliding_window \
-  tests/components/pydantic_ai_agent/test_structured_output.py::test_structured_model_request_parameters_for_tool_mode \
-  tests/components/pydantic_ai_agent/test_templated_extra_body.py::test_model_settings_with_templated_extra_body_renders_without_mutation \
-  tests/components/pydantic_ai_agent/test_templated_extra_body.py::test_model_settings_with_templated_extra_body_rejects_shape_conflicts \
-  tests/components/pydantic_ai_agent/test_model_profiles.py::test_resolve_model_profile_reads_provider_owned_profile \
-  tests/components/pydantic_ai_agent/test_model_profiles.py::test_run_settings_override_legacy_profile_run_settings \
-  tests/components/pydantic_ai_agent/test_model_profiles.py::test_openai_profile_mapping_uses_persisted_capabilities_not_model_name \
-  tests/components/pydantic_ai_agent/test_setup.py::test_setup_entry_stores_workspace_runtime_data \
-  tests/components/pydantic_ai_agent/test_conversation.py::test_conversation_entity_controls_home_assistant_with_llm_api \
-  tests/components/pydantic_ai_agent/test_skills.py::test_async_skills_capabilities_exposes_selected_native_skills \
-  tests/components/pydantic_ai_agent/test_history.py::test_chat_log_content_converts_to_model_messages \
+  tests/components/pydantic_ai_agent/agent/test_context_management.py::test_context_manager_uses_active_profile_without_summarization_ref \
+  tests/components/pydantic_ai_agent/agent/test_context_management.py::test_invalid_mode_falls_back_to_default_sliding_window \
+  tests/components/pydantic_ai_agent/models/test_structured_output.py::test_structured_model_request_parameters_for_tool_mode \
+  tests/components/pydantic_ai_agent/models/test_templated_extra_body.py::test_render_templated_extra_body_renders_nested_values \
+  tests/components/pydantic_ai_agent/models/test_templated_extra_body.py::test_merge_extra_body_rejects_mapping_scalar_conflicts \
+  tests/components/pydantic_ai_agent/models/test_model_profiles.py::test_resolve_model_profile_reads_provider_owned_profile \
+  tests/components/pydantic_ai_agent/models/test_model_settings.py::test_runtime_model_settings_data_applies_only_run_overrides \
+  tests/components/pydantic_ai_agent/models/test_openai_compatible_profile.py::test_as_model_profile_reflects_structured_output_flags \
+  tests/components/pydantic_ai_agent/observability/test_metrics.py::test_usage_costs_prices_supported_token_buckets \
+  tests/components/pydantic_ai_agent/observability/test_run_failures.py::test_classify_api_connection_failure_is_actionable \
+  tests/components/pydantic_ai_agent/agent/test_skills.py::test_async_skills_capabilities_filters_selected_skill_subentries \
+  tests/components/pydantic_ai_agent/agent/test_history.py::test_chat_log_content_to_model_messages_converts_core_content \
   "$@"

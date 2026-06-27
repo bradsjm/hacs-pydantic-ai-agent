@@ -1,3 +1,5 @@
+# Pydantic AI Agent Test Instructions
+
 ## Test Strategy
 
 - Prefer tests that verify Home Assistant-visible behavior: service responses, config entry lifecycle, diagnostics payloads, system health data, emitted graph facts, source coverage, and stable reason or warning keys.
