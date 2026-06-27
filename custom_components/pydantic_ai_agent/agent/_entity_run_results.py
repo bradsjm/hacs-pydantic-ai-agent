@@ -204,7 +204,7 @@ def set_span_usage_attributes(
 ) -> None:
     """Copy aggregate Pydantic AI usage to the wrapper span without blocking runs."""
     try:
-        usage_attributes = dict(result.usage.opentelemetry_attributes())
+        usage_attributes: dict[str, Any] = dict(result.usage.opentelemetry_attributes())
         if total_tokens := _int_usage_value(result.usage, "total_tokens"):
             usage_attributes["gen_ai.usage.total_tokens"] = total_tokens
         usage_attributes["gen_ai.response.model"] = (

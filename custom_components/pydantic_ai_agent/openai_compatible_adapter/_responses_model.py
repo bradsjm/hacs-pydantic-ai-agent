@@ -22,8 +22,7 @@ from pydantic_ai.models import (
     check_allow_model_requests,
     get_user_agent,
 )
-from pydantic_ai.profiles import ModelProfileSpec
-from pydantic_ai.profiles.openai import OpenAIModelProfile
+from pydantic_ai.profiles import ModelProfile, ModelProfileSpec
 from pydantic_ai.providers import Provider
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT
@@ -67,7 +66,7 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
         """Initialize the model."""
         self._model_name = model_name
         self._provider = provider
-        super().__init__(settings=settings, profile=profile or provider.model_profile)
+        super().__init__(settings=settings, profile=cast(ModelProfile | None, profile))
 
     @property
     def client(self) -> AsyncOpenAICompatible:
@@ -151,8 +150,9 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
         tools, tool_choice = self._get_tools_and_tool_choice(
             model_settings, model_request_parameters
         )
-        openai_profile = OpenAIModelProfile.from_profile(self.profile)
-        strict_supported = openai_profile.openai_supports_strict_tool_definition
+        strict_supported = bool(
+            self.profile.get("openai_supports_strict_tool_definition")
+        )
         text: dict[str, Any] | None = None
         if model_request_parameters.output_mode == "native":
             output_object = model_request_parameters.output_object
@@ -163,9 +163,8 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
                     strict_supported=strict_supported,
                 )
             }
-        elif (
-            model_request_parameters.output_mode == "prompted"
-            and self.profile.supports_json_object_output
+        elif model_request_parameters.output_mode == "prompted" and self.profile.get(
+            "supports_json_object_output"
         ):
             text = {"format": {"type": "json_object"}}
 
@@ -221,9 +220,9 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
             raise UnexpectedModelBehavior(
                 "Native tools are not supported by the Responses adapter"
             )
-        strict_supported = OpenAIModelProfile.from_profile(
-            self.profile
-        ).openai_supports_strict_tool_definition
+        strict_supported = bool(
+            self.profile.get("openai_supports_strict_tool_definition")
+        )
         tools = [
             map_tool_definition(tool, strict_supported=strict_supported)
             for tool in model_request_parameters.tool_defs.values()
@@ -288,10 +287,8 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
 
 
 def _system_role(model: Model[Any]) -> str:
-    return (
-        OpenAIModelProfile.from_profile(model.profile).openai_system_prompt_role
-        or "system"
-    )
+    role = model.profile.get("openai_system_prompt_role")
+    return role if isinstance(role, str) and role else "system"
 
 
 def _reasoning(

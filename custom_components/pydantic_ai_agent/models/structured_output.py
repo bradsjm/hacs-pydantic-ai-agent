@@ -47,11 +47,11 @@ def resolved_structured_output_mode(profile: ResolvedModelProfile) -> str:
     runtime_profile = model_profile_for_provider_mode(
         profile.provider_mode, profile.model_name
     )
-    if runtime_profile is not None and runtime_profile.supports_tools:
+    if runtime_profile is not None and runtime_profile.get("supports_tools"):
         return OUTPUT_MODE_TOOL
     if runtime_profile is not None and (
-        runtime_profile.supports_json_schema_output
-        or runtime_profile.supports_json_object_output
+        runtime_profile.get("supports_json_schema_output")
+        or runtime_profile.get("supports_json_object_output")
     ):
         return OUTPUT_MODE_NATIVE
     return OUTPUT_MODE_PROMPTED

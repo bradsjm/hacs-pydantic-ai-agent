@@ -101,11 +101,11 @@ def test_as_model_profile_reflects_structured_output_flags(
         supports_tools=False,
     ).as_model_profile()
 
-    assert model_profile.supports_thinking is True
-    assert model_profile.thinking_always_enabled is True
-    assert model_profile.supports_tools is False
-    assert model_profile.supports_json_schema_output is json_schema
-    assert model_profile.supports_json_object_output is json_object
+    assert model_profile["supports_thinking"] is True
+    assert model_profile["thinking_always_enabled"] is True
+    assert model_profile["supports_tools"] is False
+    assert model_profile["supports_json_schema_output"] is json_schema
+    assert model_profile["supports_json_object_output"] is json_object
 
 
 def test_is_openai_compatible_provider_mode_matches_supported_modes() -> None:

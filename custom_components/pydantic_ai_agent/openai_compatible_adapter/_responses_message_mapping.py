@@ -30,7 +30,6 @@ from pydantic_ai.messages import (
     VideoUrl,
 )
 from pydantic_ai.models import Model, ModelRequestParameters
-from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.tools import ToolDefinition
 
 from ..openai_compatible_client import omit
@@ -90,10 +89,8 @@ async def map_messages(
 
 def _system_role(model: Model[Any]) -> str:
     """Return the OpenAI-compatible system prompt role."""
-    return (
-        OpenAIModelProfile.from_profile(model.profile).openai_system_prompt_role
-        or "system"
-    )
+    role = model.profile.get("openai_system_prompt_role")
+    return role if isinstance(role, str) and role else "system"
 
 
 async def _map_model_request(

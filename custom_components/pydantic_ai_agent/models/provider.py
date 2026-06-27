@@ -102,10 +102,12 @@ def model_thinking_support(provider_mode: str, model_name: str) -> ThinkingSuppo
     profile = model_profile_for_provider_mode(provider_mode, model_name)
     if profile is None:
         return ThinkingSupport(supported=False, can_disable=False)
-    supported = profile.supports_thinking or profile.thinking_always_enabled
+    supported = bool(profile.get("supports_thinking")) or bool(
+        profile.get("thinking_always_enabled")
+    )
     return ThinkingSupport(
         supported=supported,
-        can_disable=supported and not profile.thinking_always_enabled,
+        can_disable=supported and not bool(profile.get("thinking_always_enabled")),
     )
 
 

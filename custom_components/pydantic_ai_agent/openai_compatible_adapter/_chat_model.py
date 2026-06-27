@@ -26,8 +26,7 @@ from pydantic_ai.models import (
     check_allow_model_requests,
     get_user_agent,
 )
-from pydantic_ai.profiles import ModelProfileSpec
-from pydantic_ai.profiles.openai import OpenAIModelProfile
+from pydantic_ai.profiles import ModelProfile, ModelProfileSpec
 from pydantic_ai.providers import Provider
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import AgentDepsT
@@ -90,7 +89,7 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
         """Initialize the model."""
         self._model_name = model_name
         self._provider = provider
-        super().__init__(settings=settings, profile=profile or provider.model_profile)
+        super().__init__(settings=settings, profile=cast(ModelProfile | None, profile))
 
     @property
     def client(self) -> AsyncOpenAICompatible:
@@ -177,9 +176,8 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
             output_object = model_request_parameters.output_object
             assert output_object is not None
             response_format = map_json_schema(output_object)
-        elif (
-            model_request_parameters.output_mode == "prompted"
-            and self.profile.supports_json_object_output
+        elif model_request_parameters.output_mode == "prompted" and self.profile.get(
+            "supports_json_object_output"
         ):
             response_format = {"type": "json_object"}
 
@@ -225,9 +223,9 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
         tools = [
             map_tool_definition(
                 tool,
-                strict_supported=OpenAIModelProfile.from_profile(
-                    self.profile
-                ).openai_supports_strict_tool_definition,
+                strict_supported=bool(
+                    self.profile.get("openai_supports_strict_tool_definition")
+                ),
             )
             for tool in tool_defs.values()
         ]
