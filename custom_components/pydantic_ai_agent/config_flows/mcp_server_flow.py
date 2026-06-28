@@ -13,6 +13,7 @@ from ..const import (
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SECRET_HEADER_KEYS,
+    CONF_MCP_TIMEOUT,
     CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     DEFAULT_MCP_TIMEOUT,
@@ -161,6 +162,8 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 errors[CONF_MCP_ALLOWED_TOOLS] = reason
             elif reason == "invalid_mcp_call_cache_ttl":
                 errors[CONF_MCP_CALL_CACHE_TTL] = reason
+            elif reason == "invalid_mcp_timeout":
+                errors[CONF_MCP_TIMEOUT] = reason
             else:
                 errors[CONF_MCP_HEADERS] = "invalid_mcp_headers"
         else:
@@ -238,6 +241,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 CONF_MCP_SECRET_HEADER_KEYS,
                 CONF_MCP_CALL_CACHE_ENABLED,
                 CONF_MCP_CALL_CACHE_TTL,
+                CONF_MCP_TIMEOUT,
                 CONF_MCP_INCLUDE_RETURN_SCHEMA,
                 CONF_MCP_DEFERRED_LOADING,
             ),
@@ -331,7 +335,9 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         server_id = current_subentry_id or str(data[CONF_NAME])
         _LOGGER.debug("Validating MCP server %s", server_id)
         try:
-            async with asyncio.timeout(DEFAULT_MCP_TIMEOUT * 3):
+            async with asyncio.timeout(
+                data.get(CONF_MCP_TIMEOUT, DEFAULT_MCP_TIMEOUT) * 3
+            ):
                 data = dict(data)
                 data[CONF_MCP_URL] = await async_validate_mcp_url(
                     self.hass, data[CONF_MCP_URL]

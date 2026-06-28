@@ -16,9 +16,11 @@ from ..const import (
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SECRET_HEADER_KEYS,
+    CONF_MCP_TIMEOUT,
     CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     DEFAULT_MCP_CALL_CACHE_TTL,
+    DEFAULT_MCP_TIMEOUT,
     MCP_TOOL_MODE_ALL,
     MCP_TOOL_MODE_DISABLED,
     MCP_TOOL_MODE_SPECIFIED,
@@ -65,6 +67,7 @@ def mcp_config_from_subentry(subentry: Any) -> dict[str, Any]:
         CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
             data.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
         ),
+        CONF_MCP_TIMEOUT: float(data.get(CONF_MCP_TIMEOUT, DEFAULT_MCP_TIMEOUT)),
         CONF_MCP_DEFERRED_LOADING: bool(data.get(CONF_MCP_DEFERRED_LOADING, False)),
         CONF_MCP_TOOL_MODE: tool_mode,
         CONF_MCP_ALLOWED_TOOLS: parse_allowed_tools(data.get(CONF_MCP_ALLOWED_TOOLS)),
@@ -88,6 +91,7 @@ def _mcp_config_from_data(
         CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
             data.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
         ),
+        CONF_MCP_TIMEOUT: float(data.get(CONF_MCP_TIMEOUT, DEFAULT_MCP_TIMEOUT)),
         CONF_MCP_DEFERRED_LOADING: bool(data.get(CONF_MCP_DEFERRED_LOADING, False)),
         CONF_MCP_TOOL_MODE: tool_mode,
         CONF_MCP_ALLOWED_TOOLS: parse_allowed_tools(data.get(CONF_MCP_ALLOWED_TOOLS)),

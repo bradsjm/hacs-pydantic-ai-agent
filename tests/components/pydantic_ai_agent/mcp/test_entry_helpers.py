@@ -12,8 +12,10 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SECRET_HEADER_KEYS,
+    CONF_MCP_TIMEOUT,
     CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
+    DEFAULT_MCP_TIMEOUT,
     MCP_TOOL_MODE_ALL,
     MCP_TOOL_MODE_DISABLED,
     MCP_TOOL_MODE_SPECIFIED,
@@ -21,6 +23,7 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_MCP_SERVER,
 )
 from custom_components.pydantic_ai_agent.mcp.entry_helpers import (
+    _mcp_config_from_data,
     effective_mcp_tool_mode,
     get_mcp_subentry,
     mcp_config_from_subentry,
@@ -168,5 +171,56 @@ def test_mcp_config_from_subentry_normalizes_stored_data(
     assert config[CONF_MCP_CALL_CACHE_TTL] == 120
     assert config[CONF_MCP_INCLUDE_RETURN_SCHEMA] is False
     assert config[CONF_MCP_DEFERRED_LOADING] is True
+    assert config[CONF_MCP_TIMEOUT] == DEFAULT_MCP_TIMEOUT
+    assert isinstance(config[CONF_MCP_TIMEOUT], float)
     assert config[CONF_MCP_TOOL_MODE] == MCP_TOOL_MODE_SPECIFIED
     assert config[CONF_MCP_ALLOWED_TOOLS] == ["weather.get", "weather.set"]
+
+
+@pytest.mark.parametrize(
+    ("extra_data", "expected_timeout"),
+    [
+        ({}, DEFAULT_MCP_TIMEOUT),
+        ({CONF_MCP_TIMEOUT: 30.0}, 30.0),
+    ],
+)
+def test_mcp_config_from_subentry_normalizes_timeout(
+    make_subentry: MakeSubentry,
+    extra_data: Mapping[str, Any],
+    expected_timeout: float,
+) -> None:
+    """MCP subentries expose a configured timeout and default legacy data."""
+    subentry = make_subentry(
+        title="Weather MCP",
+        data={CONF_MCP_URL: "https://example.test/mcp", **extra_data},
+        subentry_type=SUBENTRY_TYPE_MCP_SERVER,
+        subentry_id="mcp-1",
+    )
+
+    config = mcp_config_from_subentry(subentry)
+
+    assert config[CONF_MCP_TIMEOUT] == expected_timeout
+    assert isinstance(config[CONF_MCP_TIMEOUT], float)
+
+
+@pytest.mark.parametrize(
+    ("extra_data", "expected_timeout"),
+    [
+        ({}, DEFAULT_MCP_TIMEOUT),
+        ({CONF_MCP_TIMEOUT: 30.0}, 30.0),
+    ],
+)
+def test_mcp_config_from_data_normalizes_timeout(
+    extra_data: Mapping[str, Any], expected_timeout: float
+) -> None:
+    """Raw MCP config data exposes a configured timeout and default legacy data."""
+    config = _mcp_config_from_data(
+        {
+            CONF_MCP_URL: "https://example.test/mcp",
+            **extra_data,
+        },
+        server_id="mcp-1",
+    )
+
+    assert config[CONF_MCP_TIMEOUT] == expected_timeout
+    assert isinstance(config[CONF_MCP_TIMEOUT], float)

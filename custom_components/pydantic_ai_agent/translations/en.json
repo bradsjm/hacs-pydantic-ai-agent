@@ -333,6 +333,7 @@
         "invalid_auth": "{error_message}",
         "invalid_mcp_call_cache_ttl": "Enter a cache TTL between 1 and 86400 seconds.",
         "invalid_mcp_headers": "Enter HTTP headers one per line using 'Header-Name: value'.",
+        "invalid_mcp_timeout": "Enter a tool call timeout between 1 and 600 seconds.",
         "invalid_mcp_tools": "Enter comma-separated tool names.",
         "invalid_mcp_url": "{error_message}",
         "mcp_tools_not_allowlisted": "Select at least one tool when using Specified tools enabled.",
@@ -365,14 +366,16 @@
                 "mcp_call_cache_ttl": "Cache TTL (seconds)",
                 "mcp_deferred_loading": "Defer tool loading",
                 "mcp_headers": "HTTP headers",
-                "mcp_include_return_schema": "Include tool return schemas"
+                "mcp_include_return_schema": "Include tool return schemas",
+                "mcp_timeout": "Tool call timeout (seconds)"
               },
               "data_description": {
                 "mcp_call_cache_enabled": "Reuse successful MCP tool results for identical calls to this server until the cache TTL expires.",
                 "mcp_call_cache_ttl": "How long to reuse a cached successful MCP tool result when caching is enabled. Allowed range: 1 to 86400 seconds.",
                 "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools.",
                 "mcp_headers": "Optional HTTP headers. Add one header per row and enable Is secret for values that should be masked.",
-                "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility."
+                "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility.",
+                "mcp_timeout": "Seconds to wait for a single MCP tool call before returning a timeout error to the language model. Allowed range: 1 to 600 seconds."
               },
               "name": "Advanced Options"
             }
@@ -395,14 +398,16 @@
                 "mcp_call_cache_ttl": "Cache TTL (seconds)",
                 "mcp_deferred_loading": "Defer tool loading",
                 "mcp_headers": "HTTP headers",
-                "mcp_include_return_schema": "Include tool return schemas"
+                "mcp_include_return_schema": "Include tool return schemas",
+                "mcp_timeout": "Tool call timeout (seconds)"
               },
               "data_description": {
                 "mcp_call_cache_enabled": "Reuse successful MCP tool results for identical calls to this server until the cache TTL expires.",
                 "mcp_call_cache_ttl": "How long to reuse a cached successful MCP tool result when caching is enabled. Allowed range: 1 to 86400 seconds.",
                 "mcp_deferred_loading": "Hide this server's tools from the model until discovered through tool search. Useful for servers with many tools.",
                 "mcp_headers": "Optional HTTP headers. Add one header per row and enable Is secret for values that should be masked.",
-                "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility."
+                "mcp_include_return_schema": "Send each tool's return schema to the model. This can improve tool result handling, but may increase request size or affect provider compatibility.",
+                "mcp_timeout": "Seconds to wait for a single MCP tool call before returning a timeout error to the language model. Allowed range: 1 to 600 seconds."
               },
               "name": "Advanced Options"
             }

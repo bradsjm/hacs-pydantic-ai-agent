@@ -8,8 +8,12 @@ import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.util import slugify
+import httpx
+from mcp.shared.exceptions import McpError
+from pydantic_ai.exceptions import ModelRetry
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets import AbstractToolset
@@ -21,9 +25,9 @@ from ..const import (
     CONF_MCP_DEFERRED_LOADING,
     CONF_MCP_HEADERS,
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
+    CONF_MCP_TIMEOUT,
     CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
-    DEFAULT_MCP_TIMEOUT,
     MCP_TOOL_MODE_ALL,
 )
 from ..observability.metrics import record_mcp_tool_call
@@ -35,7 +39,7 @@ from .entry_helpers import (
     mcp_config_from_subentry,
     mcp_subentries,
 )
-from .errors import MCPValidationError
+from .errors import MCPValidationError, is_mcp_timeout_error
 from .validation import async_validate_mcp_url_details
 
 _LOGGER = logging.getLogger(__name__)
@@ -160,6 +164,8 @@ async def _async_runtime_mcp_toolset_for_subentry(
         return None
     cache_enabled = config[CONF_MCP_CALL_CACHE_ENABLED]
     cache_ttl = config[CONF_MCP_CALL_CACHE_TTL]
+    mcp_timeout = config[CONF_MCP_TIMEOUT]
+    server_title = config[CONF_NAME]
     server_id = subentry.subentry_id
 
     async def process_tool_call(
@@ -172,6 +178,8 @@ async def _async_runtime_mcp_toolset_for_subentry(
         allowed_tools: set[str] | None = allowed_tools,
         cache_enabled: bool = cache_enabled,
         cache_ttl: int = cache_ttl,
+        server_title: str = server_title,
+        mcp_timeout: float = mcp_timeout,
     ) -> Any:
         if allowed_tools is not None and tool_name not in allowed_tools:
             raise MCPValidationError(
@@ -180,26 +188,43 @@ async def _async_runtime_mcp_toolset_for_subentry(
                 server_id=server_id,
                 tool_name=tool_name,
             )
-        return await _process_cached_mcp_tool_call(
-            hass,
-            entry,
-            agent_subentry_id,
-            call_tool,
-            server_id,
-            tool_name,
-            tool_args,
-            cache_enabled=cache_enabled,
-            cache_ttl=cache_ttl,
-        )
+        try:
+            return await _process_cached_mcp_tool_call(
+                hass,
+                entry,
+                agent_subentry_id,
+                call_tool,
+                server_id,
+                tool_name,
+                tool_args,
+                cache_enabled=cache_enabled,
+                cache_ttl=cache_ttl,
+            )
+        except (TimeoutError, httpx.TimeoutException) as err:
+            raise ModelRetry(
+                f"The MCP tool {tool_name!r} on server {server_title!r} did not finish "
+                f"within {mcp_timeout} seconds. The server may be slow or temporarily "
+                "unavailable. Try simpler or smaller arguments, use a different tool, "
+                "or ask the user to increase the MCP server timeout."
+            ) from err
+        except McpError as err:
+            if is_mcp_timeout_error(err):
+                raise ModelRetry(
+                    f"The MCP tool {tool_name!r} on server {server_title!r} did not finish "
+                    f"within {mcp_timeout} seconds. The server may be slow or temporarily "
+                    "unavailable. Try simpler or smaller arguments, use a different tool, "
+                    "or ask the user to increase the MCP server timeout."
+                ) from err
+            raise
 
     toolset: AbstractToolset[Any] = MCPToolset(
         _mcp_client(
             validated_url,
             config[CONF_MCP_HEADERS],
-            DEFAULT_MCP_TIMEOUT,
+            mcp_timeout,
         ),
         id=server_id,
-        tool_error_behavior="error",
+        tool_error_behavior="retry",
         process_tool_call=process_tool_call,
         include_return_schema=config[CONF_MCP_INCLUDE_RETURN_SCHEMA],
     )

@@ -13,14 +13,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 import httpx
+from mcp.shared.exceptions import McpError
 from pydantic_ai.mcp import MCPToolset
 
 from ..const import (
     CONF_MCP_ALLOWED_TOOLS,
     CONF_MCP_HEADERS,
+    CONF_MCP_TIMEOUT,
     CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
-    DEFAULT_MCP_TIMEOUT,
     MCP_TOOL_MODE_ALL,
 )
 from ..runtime.redaction import redact_data
@@ -30,7 +31,7 @@ from .entry_helpers import (
     get_mcp_subentry,
     mcp_config_from_subentry,
 )
-from .errors import MCPValidationError
+from .errors import MCPValidationError, is_mcp_timeout_error
 from .validation import _jsonable, async_validate_mcp_url_details, schema_hash
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,8 +64,6 @@ def _cache_key(entry: ConfigEntry, subentry_id: str) -> str:
 async def async_discover_mcp_tools(
     hass: HomeAssistant,
     subentry: Any,
-    *,
-    request_timeout: float = DEFAULT_MCP_TIMEOUT,
 ) -> list[dict[str, Any]]:
     """Discover tools exposed by one remote MCP server subentry."""
     config = mcp_config_from_subentry(subentry)
@@ -72,7 +71,6 @@ async def async_discover_mcp_tools(
         hass,
         config,
         server_id=subentry.subentry_id,
-        request_timeout=request_timeout,
     )
 
 
@@ -82,10 +80,13 @@ async def async_discover_mcp_tools_from_config(
     *,
     server_id: str | None = None,
     apply_allowlist: bool = True,
-    request_timeout: float = DEFAULT_MCP_TIMEOUT,
+    request_timeout: float | None = None,
 ) -> list[dict[str, Any]]:
     """Discover tools exposed by one remote MCP server configuration."""
     config = _mcp_config_from_data(data, server_id=server_id)
+    timeout = (
+        request_timeout if request_timeout is not None else config[CONF_MCP_TIMEOUT]
+    )
     validated_url = await async_validate_mcp_url_details(hass, config[CONF_MCP_URL])
     config[CONF_MCP_URL] = validated_url.url
     allowed_tools: set[str] | None = None
@@ -99,19 +100,31 @@ async def async_discover_mcp_tools_from_config(
     )
     try:
         toolset = MCPToolset(
-            _mcp_client(validated_url, config[CONF_MCP_HEADERS], request_timeout),
+            _mcp_client(validated_url, config[CONF_MCP_HEADERS], timeout),
             id=server_id,
             tool_error_behavior="error",
         )
         # FastMCP uses the configured timeout for both session initialization and
         # the subsequent tools/list request, so the watchdog here must cover both
         # phases without allowing the config-flow progress task to hang forever.
-        async with asyncio.timeout(request_timeout * 2):
+        async with asyncio.timeout(timeout * 2):
             tools = await toolset.list_tools()
     except TimeoutError as err:
         raise MCPValidationError(
             "timeout",
             "Timed out connecting to the MCP server.",
+            server_id=server_id,
+        ) from err
+    except McpError as err:
+        if is_mcp_timeout_error(err):
+            raise MCPValidationError(
+                "timeout",
+                "Timed out connecting to the MCP server.",
+                server_id=server_id,
+            ) from err
+        raise MCPValidationError(
+            "cannot_connect",
+            "Could not connect to the MCP server.",
             server_id=server_id,
         ) from err
     except Exception as err:

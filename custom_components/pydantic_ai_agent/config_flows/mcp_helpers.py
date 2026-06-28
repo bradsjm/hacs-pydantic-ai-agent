@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable, Mapping
 import logging
+import math
 from typing import Any
 from urllib.parse import parse_qsl, urlparse
 
@@ -34,9 +35,11 @@ from ..const import (
     CONF_MCP_INCLUDE_RETURN_SCHEMA,
     CONF_MCP_SECRET_HEADER_KEYS,
     CONF_MCP_SERVER_IDS,
+    CONF_MCP_TIMEOUT,
     CONF_MCP_TOOL_MODE,
     CONF_MCP_URL,
     DEFAULT_MCP_CALL_CACHE_TTL,
+    DEFAULT_MCP_TIMEOUT,
     MCP_TOOL_MODE_ALL,
     MCP_TOOL_MODE_DISABLED,
     MCP_TOOL_MODE_SPECIFIED,
@@ -65,6 +68,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _SECTION_ADVANCED_MCP = "advanced_mcp"
 _MAX_MCP_CALL_CACHE_TTL = 86_400
+_MAX_MCP_TIMEOUT = 600.0
 
 
 def _normalise_selected_mcp_server_ids(raw_server_ids: object) -> list[str]:
@@ -208,6 +212,17 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
             )
         ),
         vol.Optional(
+            CONF_MCP_TIMEOUT,
+            default=options.get(CONF_MCP_TIMEOUT, DEFAULT_MCP_TIMEOUT),
+        ): NumberSelector(
+            NumberSelectorConfig(
+                mode=NumberSelectorMode.BOX,
+                min=1,
+                max=int(_MAX_MCP_TIMEOUT),
+                step=0.1,
+            )
+        ),
+        vol.Optional(
             CONF_MCP_DEFERRED_LOADING,
             default=options.get(CONF_MCP_DEFERRED_LOADING, False),
         ): BooleanSelector(),
@@ -329,6 +344,9 @@ def _mcp_server_data_from_user_input(
         CONF_MCP_CALL_CACHE_TTL: _parse_mcp_call_cache_ttl(
             user_input.get(CONF_MCP_CALL_CACHE_TTL, DEFAULT_MCP_CALL_CACHE_TTL)
         ),
+        CONF_MCP_TIMEOUT: _parse_mcp_timeout(
+            user_input.get(CONF_MCP_TIMEOUT, DEFAULT_MCP_TIMEOUT)
+        ),
         CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
             user_input.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
         ),
@@ -380,6 +398,21 @@ def _parse_mcp_call_cache_ttl(value: object) -> int:
     if ttl < 1 or ttl > _MAX_MCP_CALL_CACHE_TTL:
         raise vol.Invalid("invalid_mcp_call_cache_ttl")
     return ttl
+
+
+def _parse_mcp_timeout(value: object) -> float:
+    """Return a validated MCP tool call timeout in seconds."""
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        raise vol.Invalid("invalid_mcp_timeout")
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError) as err:
+        raise vol.Invalid("invalid_mcp_timeout") from err
+    if not math.isfinite(timeout):
+        raise vol.Invalid("invalid_mcp_timeout")
+    if timeout < 1 or timeout > _MAX_MCP_TIMEOUT:
+        raise vol.Invalid("invalid_mcp_timeout")
+    return timeout
 
 
 def _mcp_url_already_configured(
