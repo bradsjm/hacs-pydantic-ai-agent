@@ -38,7 +38,7 @@ class CatalogModelOption:
     input_price: float | None = None
     output_price: float | None = None
     cache_read_price: float | None = None
-    thinking_support: str = "none"
+    thinking_support: bool = False
     structured_output_support: str = "none"
     supports_tools: bool = True
 

@@ -110,9 +110,7 @@ def _normalize_models(
                 input_price=_price(pricing.get("input")),
                 output_price=_price(pricing.get("output")),
                 cache_read_price=_price(pricing.get("cache_read")),
-                thinking_support=(
-                    "supported" if raw_model.get("reasoning") is True else "none"
-                ),
+                thinking_support=raw_model.get("reasoning") is True,
                 structured_output_support=(
                     "json_object"
                     if raw_model.get("structured_output") is True

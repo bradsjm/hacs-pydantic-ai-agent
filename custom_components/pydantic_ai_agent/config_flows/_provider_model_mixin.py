@@ -353,7 +353,7 @@ class ProviderModelManagementMixin:
                     context_limit=0,
                     output_limit=0,
                     status=None,
-                    thinking_support=str(profile.get(CONF_THINKING_SUPPORT, "none")),
+                    thinking_support=bool(profile.get(CONF_THINKING_SUPPORT, False)),
                     structured_output_support=str(
                         profile.get(CONF_STRUCTURED_OUTPUT_SUPPORT, "none")
                     ),

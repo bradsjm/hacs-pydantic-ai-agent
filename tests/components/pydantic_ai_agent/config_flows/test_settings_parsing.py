@@ -82,13 +82,15 @@ def test_parse_key_value_json_setting_errors(value, reason: str) -> None:
 
 @pytest.mark.parametrize(
     ("value", "parsed"),
-    [("true", True), ("false", False), ("", ""), ("low", "low")],
+    [("none", "none"), ("low", "low"), ("medium", "medium"), ("xhigh", "xhigh")],
 )
 def test_parse_thinking_setting_accepts_supported_values(value: str, parsed) -> None:
     assert parsing._parse_thinking_setting(value) == parsed
 
 
-@pytest.mark.parametrize("value", [True, "yes", "TRUE", "auto"])
+@pytest.mark.parametrize(
+    "value", [True, "", "true", "false", "minimal", "yes", "TRUE", "auto"]
+)
 def test_parse_thinking_setting_rejects_invalid_values(value) -> None:
     with pytest.raises(ValueError, match="invalid thinking setting"):
         parsing._parse_thinking_setting(value)

@@ -17,14 +17,7 @@ from ..const import (
     PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
 )
 
-type ThinkingSupportMode = Literal["none", "supported", "always"]
 type StructuredOutputSupportMode = Literal["none", "json_object", "json_schema"]
-
-OPENAI_COMPATIBLE_THINKING_SUPPORT_OPTIONS: tuple[ThinkingSupportMode, ...] = (
-    "none",
-    "supported",
-    "always",
-)
 OPENAI_COMPATIBLE_STRUCTURED_OUTPUT_SUPPORT_OPTIONS: tuple[
     StructuredOutputSupportMode, ...
 ] = ("none", "json_object", "json_schema")
@@ -34,7 +27,7 @@ OPENAI_COMPATIBLE_STRUCTURED_OUTPUT_SUPPORT_OPTIONS: tuple[
 class PersistedOpenAICompatibleProfile:
     """Persisted capability settings for one OpenAI-compatible model profile."""
 
-    thinking_support: ThinkingSupportMode
+    thinking_support: bool
     structured_output_support: StructuredOutputSupportMode
     supports_tools: bool
 
@@ -44,7 +37,7 @@ class PersistedOpenAICompatibleProfile:
     ) -> PersistedOpenAICompatibleProfile:
         """Return parsed persisted OpenAI-compatible capability settings."""
         thinking_support = profile_data[CONF_THINKING_SUPPORT]
-        if thinking_support not in OPENAI_COMPATIBLE_THINKING_SUPPORT_OPTIONS:
+        if not isinstance(thinking_support, bool):
             raise ValueError(f"Invalid {CONF_THINKING_SUPPORT!r} value")
 
         structured_output_support = profile_data[CONF_STRUCTURED_OUTPUT_SUPPORT]
@@ -66,21 +59,17 @@ class PersistedOpenAICompatibleProfile:
 
     def supports_thinking(self) -> bool:
         """Return if the persisted profile supports configurable thinking."""
-        return self.thinking_support != "none"
+        return self.thinking_support
 
     def can_disable_thinking(self) -> bool:
         """Return if persisted thinking support can be disabled."""
-        return self.thinking_support == "supported"
+        return self.thinking_support
 
-    def effective_thinking_setting(
-        self, thinking: ThinkingLevel | None
-    ) -> ThinkingLevel | None:
+    def effective_thinking_setting(self, thinking: object) -> ThinkingLevel | None:
         """Return thinking only when supported by this persisted profile."""
-        if thinking is None or not self.supports_thinking():
+        if thinking in (None, "none", False) or not self.supports_thinking():
             return None
-        if thinking is False and not self.can_disable_thinking():
-            return None
-        return thinking
+        return thinking  # type: ignore[return-value]
 
     def as_model_profile(self) -> OpenAIModelProfile:
         """Return an OpenAIModelProfile synthesized from persisted settings."""
@@ -90,7 +79,7 @@ class PersistedOpenAICompatibleProfile:
         }
         return OpenAIModelProfile(
             supports_thinking=self.supports_thinking(),
-            thinking_always_enabled=self.thinking_support == "always",
+            thinking_always_enabled=False,
             supports_tools=self.supports_tools,
             supports_json_schema_output=self.structured_output_support == "json_schema",
             supports_json_object_output=supports_json_object_output,
@@ -111,7 +100,7 @@ def is_openai_compatible_provider_mode(provider_mode: str) -> bool:
 def default_openai_compatible_profile_data() -> dict[str, object]:
     """Return default persisted capability values for custom/discovered models."""
     return {
-        CONF_THINKING_SUPPORT: "none",
+        CONF_THINKING_SUPPORT: False,
         CONF_STRUCTURED_OUTPUT_SUPPORT: "none",
         CONF_SUPPORTS_TOOLS: True,
     }

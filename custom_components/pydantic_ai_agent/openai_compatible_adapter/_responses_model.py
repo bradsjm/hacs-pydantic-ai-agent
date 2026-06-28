@@ -299,11 +299,15 @@ def _reasoning(
     if model_request_parameters.thinking is not None:
         thinking = model_request_parameters.thinking
         effort = (
-            "medium" if thinking is True else "none" if thinking is False else thinking
+            None
+            if thinking in (False, "none")
+            else "medium"
+            if thinking is True
+            else thinking
         )
     summary = model_settings.get("openai_reasoning_summary")
     reasoning: dict[str, str] = {}
-    if isinstance(effort, str) and effort:
+    if isinstance(effort, str) and effort and effort != "none":
         reasoning["effort"] = effort
     if isinstance(summary, str) and summary:
         reasoning["summary"] = summary

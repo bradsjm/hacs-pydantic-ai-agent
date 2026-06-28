@@ -261,9 +261,7 @@ def _ai_task_data_from_user_input(
         entry,
         [data.get(CONF_PRIMARY_MODEL_REF), *fallback_refs],
     )
-    if not visibility.supports_thinking or (
-        data.get(CONF_THINKING) is False and not visibility.can_disable_thinking
-    ):
+    if not visibility.supports_thinking:
         data.pop(CONF_THINKING, None)
     _normalise_mcp_server_selection(data)
     _normalise_skill_selection(data)

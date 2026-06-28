@@ -37,7 +37,7 @@ def _custom_model_options(model_names: list[str]) -> tuple[CatalogModelOption, .
             context_limit=0,
             output_limit=0,
             status=None,
-            thinking_support="none",
+            thinking_support=False,
             structured_output_support="none",
             supports_tools=True,
         )
@@ -107,7 +107,7 @@ def _discovered_model_options(
             context_limit=0,
             output_limit=0,
             status=None,
-            thinking_support="none",
+            thinking_support=False,
             structured_output_support="none",
             supports_tools=True,
         )

@@ -83,7 +83,7 @@ class ResolvedModelProfile:
     model_pricing: dict[str, float] = field(default_factory=dict)
     context_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS
     context_window_source: str = CONTEXT_WINDOW_SOURCE_DEFAULT
-    thinking_support: str | None = None
+    thinking_support: bool | None = None
     structured_output_support: str | None = None
     supports_tools: bool | None = None
 
@@ -333,6 +333,8 @@ def thinking_capability(
 ) -> Thinking | None:
     """Return the configured Thinking capability for one agent/task run."""
     if CONF_THINKING not in run_settings:
+        return None
+    if run_settings[CONF_THINKING] in ("none", False):
         return None
     if profile is not None:
         requested_thinking = cast(ThinkingLevel, run_settings[CONF_THINKING])

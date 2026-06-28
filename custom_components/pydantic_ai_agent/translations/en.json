@@ -174,7 +174,7 @@
               "data_description": {
                 "max_iterations": "Maximum Pydantic AI agent request iterations for one AI task run. Default: 30.",
                 "max_tokens": "Maximum tokens the model may generate per response. Leave empty to use the provider/model default.",
-                "thinking": "Optional reasoning effort for this AI task if supported by the model. Leave empty to use the provider/model default.",
+                "thinking": "Reasoning effort for this AI task when thinking is enabled on the model profile. Choose None to omit reasoning effort from provider requests.",
                 "timeout": "Provider request timeout in seconds. Default: 60.0.",
                 "tool_retries": "Maximum number of times the model may retry a failed tool call during one AI task run. This applies to all tools available during the run. Set to 0 to disable tool retries. Default: 3."
               },
@@ -301,7 +301,7 @@
                 "max_iterations": "Maximum Pydantic AI agent request iterations for one conversation turn. Default: 10.",
                 "max_tokens": "Maximum tokens the model may generate per response. Leave empty to use the provider/model default.",
                 "streaming_enabled": "Stream partial assistant responses live as they are generated. Disable to wait for the full response before Home Assistant receives it. Enabled by default.",
-                "thinking": "Optional reasoning effort for this conversation agent if supported by the model. Leave empty to use the provider/model default.",
+                "thinking": "Reasoning effort for this conversation agent when thinking is enabled on the model profile. Choose None to omit reasoning effort from provider requests.",
                 "timeout": "Provider request timeout in seconds. Default: 60.0.",
                 "tool_retries": "Maximum number of times the model may retry a failed tool call during one conversation turn. This applies to all tools available during the run. Set to 0 to disable tool retries. Default: 3."
               },
@@ -556,13 +556,13 @@
                 "parallel_tool_calls": "Parallel tool calls",
                 "structured_output_support": "Structured output support",
                 "supports_tools": "Tool support",
-                "thinking_support": "Thinking support"
+                "thinking_support": "Expose reasoning levels"
               },
               "data_description": {
                 "parallel_tool_calls": "Allow the model/provider to make tool calls in parallel when supported.",
                 "structured_output_support": "Choose the strongest structured-output mode this OpenAI-compatible model supports.",
                 "supports_tools": "Enable when this OpenAI-compatible model supports tool calling.",
-                "thinking_support": "Choose whether this OpenAI-compatible model does not support thinking, supports optional thinking, or always keeps thinking enabled."
+                "thinking_support": "Enable when this OpenAI-compatible model supports reasoning effort levels. Runtime entries can then choose None, Low, Medium, High, or Extra high."
               },
               "name": "OpenAI-compatible capabilities"
             }
@@ -947,12 +947,10 @@
     },
     "thinking": {
       "options": {
-        "false": "Disabled",
         "high": "High",
         "low": "Low",
         "medium": "Medium",
-        "minimal": "Minimal",
-        "true": "Enabled",
+        "none": "None",
         "xhigh": "Extra high"
       }
     }

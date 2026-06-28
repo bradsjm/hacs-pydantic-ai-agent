@@ -91,13 +91,11 @@ def _format_templated_extra_body(value: object) -> list[dict[str, str]]:
 def _format_thinking_value(model_settings: Mapping[str, Any]) -> str:
     """Return the selector value for the configured thinking setting."""
     value = model_settings.get(_MODEL_SETTING_THINKING)
-    if value is True:
-        return "true"
     if value is False:
-        return "false"
-    if isinstance(value, str):
+        return "none"
+    if isinstance(value, str) and value in _THINKING_OPTIONS:
         return value
-    return ""
+    return "medium"
 
 
 def _is_blank(value: object) -> bool:
@@ -243,10 +241,6 @@ def _parse_thinking_setting(value: object) -> bool | str:
     if not isinstance(value, str):
         raise ValueError("invalid thinking setting")
     parsed = value.strip()
-    if parsed == "true":
-        return True
-    if parsed == "false":
-        return False
     if parsed not in _THINKING_OPTIONS:
         raise ValueError("invalid thinking setting")
     return parsed

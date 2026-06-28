@@ -112,10 +112,7 @@ _REMOVED_MODEL_SETTING_KEYS: set[str] = {
 }
 
 _THINKING_OPTIONS: tuple[str, ...] = (
-    "",
-    "true",
-    "false",
-    "minimal",
+    "none",
     "low",
     "medium",
     "high",

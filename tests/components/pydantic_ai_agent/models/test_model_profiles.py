@@ -18,7 +18,9 @@ from custom_components.pydantic_ai_agent.const import (
     SUBENTRY_TYPE_PROVIDER,
 )
 from custom_components.pydantic_ai_agent.models.model_profiles import (
+    ResolvedModelProfile,
     resolve_model_profile,
+    thinking_capability,
 )
 from homeassistant.const import CONF_NAME
 
@@ -39,7 +41,7 @@ def test_resolve_model_profile_reads_provider_owned_profile(
                     CONF_MODEL: "fast-model",
                     CONF_MODEL_SETTINGS: {"temperature": 0.2},
                     CONF_CONTEXT_WINDOW_TOKENS: 12345,
-                    CONF_THINKING_SUPPORT: "supported",
+                    CONF_THINKING_SUPPORT: True,
                     CONF_STRUCTURED_OUTPUT_SUPPORT: "json_schema",
                     CONF_SUPPORTS_TOOLS: False,
                 }
@@ -60,6 +62,26 @@ def test_resolve_model_profile_reads_provider_owned_profile(
     assert profile.model_name == "fast-model"
     assert profile.model_settings == {"temperature": 0.2}
     assert profile.context_window_tokens == 12345
-    assert profile.thinking_support == "supported"
+    assert profile.thinking_support is True
     assert profile.structured_output_support == "json_schema"
     assert profile.supports_tools is False
+
+
+def test_thinking_capability_omits_disabled_or_runtime_none() -> None:
+    """Runtime None and profile-level disabled omit Pydantic AI Thinking."""
+    disabled_profile = ResolvedModelProfile(
+        ref="provider-1:default",
+        provider_subentry_id="provider-1",
+        profile_id="default",
+        title="Fast Model",
+        provider_title="OpenAI Compatible",
+        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
+        model_name="fast-model",
+        model_settings={},
+        thinking_support=False,
+        structured_output_support="none",
+        supports_tools=True,
+    )
+
+    assert thinking_capability({"thinking": "none"}, disabled_profile) is None
+    assert thinking_capability({"thinking": "low"}, disabled_profile) is None

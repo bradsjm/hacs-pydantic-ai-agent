@@ -97,10 +97,6 @@ from .mcp_helpers import (
 )
 from .skill_helpers import _append_skill_schema_fields, _normalise_skill_selection
 
-_THINKING_OPTIONS_WITHOUT_DISABLE = tuple(
-    option for option in _THINKING_OPTIONS if option != "false"
-)
-
 
 def _agent_form_suggested_values(
     options: Mapping[str, Any], hass: HomeAssistant | None = None
@@ -402,14 +398,7 @@ def _run_settings_schema(
         ),
     }
     if visibility.supports_thinking:
-        thinking_options = (
-            list(_THINKING_OPTIONS)
-            if visibility.can_disable_thinking
-            else list(_THINKING_OPTIONS_WITHOUT_DISABLE)
-        )
         thinking_default = _format_thinking_value(options)
-        if thinking_default == "false" and not visibility.can_disable_thinking:
-            thinking_default = ""
         schema[
             vol.Optional(
                 _MODEL_SETTING_THINKING,
@@ -417,7 +406,7 @@ def _run_settings_schema(
             )
         ] = SelectSelector(
             SelectSelectorConfig(
-                options=thinking_options,
+                options=list(_THINKING_OPTIONS),
                 mode=SelectSelectorMode.DROPDOWN,
                 translation_key=_MODEL_SETTING_THINKING,
             )
@@ -502,9 +491,7 @@ def _conversation_data_from_user_input(
         entry,
         [data.get(CONF_PRIMARY_MODEL_REF), *fallback_refs],
     )
-    if not visibility.supports_thinking or (
-        data.get(CONF_THINKING) is False and not visibility.can_disable_thinking
-    ):
+    if not visibility.supports_thinking:
         data.pop(CONF_THINKING, None)
     _normalise_mcp_server_selection(data)
     _normalise_skill_selection(data)

@@ -304,6 +304,6 @@ def _reasoning_effort(model_request_parameters: ModelRequestParameters) -> str |
         return omit
     if thinking is True:
         return "medium"
-    if thinking is False:
-        return "none"
+    if thinking in (False, "none"):
+        return omit
     return thinking

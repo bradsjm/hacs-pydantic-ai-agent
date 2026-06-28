@@ -20,6 +20,8 @@ from ..const import (
     CONF_MODEL_PROFILES,
     CONF_MODEL_SETTINGS,
     CONF_TEMPLATED_EXTRA_BODY,
+    CONF_THINKING,
+    CONF_THINKING_SUPPORT,
     CONTEXT_MANAGEMENT_CONTEXT_MANAGER,
     CONTEXT_MANAGEMENT_MODES,
     CONTEXT_MANAGEMENT_SLIDING_WINDOW,
@@ -239,6 +241,66 @@ def _migrate_context_management_defaults(
             data.pop(CONF_CONTEXT_SUMMARIZATION_MODEL_REF, None)
         if changed:
             hass.config_entries.async_update_subentry(entry, subentry, data=data)
+
+
+def _migrate_simplified_thinking_settings(
+    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
+) -> None:
+    """Migrate old thinking support and runtime values to simplified settings."""
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER:
+            data, changed = _migrated_provider_thinking_support(subentry.data)
+            if changed:
+                hass.config_entries.async_update_subentry(entry, subentry, data=data)
+            continue
+        if subentry.subentry_type not in {
+            SUBENTRY_TYPE_CONVERSATION,
+            SUBENTRY_TYPE_AI_TASK,
+        }:
+            continue
+        data = dict(subentry.data)
+        migrated_thinking = _migrated_runtime_thinking(data.get(CONF_THINKING))
+        if migrated_thinking is None:
+            continue
+        data[CONF_THINKING] = migrated_thinking
+        hass.config_entries.async_update_subentry(entry, subentry, data=data)
+
+
+def _migrated_provider_thinking_support(
+    provider_data: Mapping[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    """Return provider data with boolean thinking support on every profile."""
+    profiles = provider_data.get(CONF_MODEL_PROFILES)
+    if not isinstance(profiles, Mapping):
+        return dict(provider_data), False
+    updated_profiles: dict[str, object] = {}
+    changed = False
+    for profile_id, profile in profiles.items():
+        if not isinstance(profile, Mapping):
+            updated_profiles[str(profile_id)] = profile
+            continue
+        updated_profile = dict(profile)
+        thinking_support = updated_profile.get(CONF_THINKING_SUPPORT)
+        if thinking_support in {"none", "supported", "always"}:
+            updated_profile[CONF_THINKING_SUPPORT] = thinking_support != "none"
+            changed = True
+        updated_profiles[str(profile_id)] = updated_profile
+    if not changed:
+        return dict(provider_data), False
+    data = dict(provider_data)
+    data[CONF_MODEL_PROFILES] = updated_profiles
+    return data, True
+
+
+def _migrated_runtime_thinking(value: object) -> str | None:
+    """Return the migrated runtime thinking value, or None when unchanged."""
+    if value is False:
+        return "none"
+    if value is True:
+        return "medium"
+    if value == "minimal":
+        return "low"
+    return None
 
 
 def _migrated_provider_context_windows(

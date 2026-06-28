@@ -115,12 +115,10 @@ def effective_thinking_setting(
     provider_mode: str, model_name: str, thinking: ThinkingLevel | None
 ) -> ThinkingLevel | None:
     """Return the effective thinking setting for one runtime model profile."""
-    if thinking is None:
+    if thinking in (None, "none", False):
         return None
     support = model_thinking_support(provider_mode, model_name)
     if not support.supported:
-        return None
-    if thinking is False and not support.can_disable:
         return None
     return thinking
 

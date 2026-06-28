@@ -389,16 +389,7 @@ def _model_profile_edit_schema(
                 vol.Required(
                     CONF_THINKING_SUPPORT,
                     default=capability_defaults[CONF_THINKING_SUPPORT],
-                ): SelectSelector(
-                    SelectSelectorConfig(
-                        options=[
-                            SelectOptionDict(label="None", value="none"),
-                            SelectOptionDict(label="Supported", value="supported"),
-                            SelectOptionDict(label="Always", value="always"),
-                        ],
-                        mode=SelectSelectorMode.DROPDOWN,
-                    )
-                ),
+                ): BooleanSelector(),
                 vol.Required(
                     CONF_STRUCTURED_OUTPUT_SUPPORT,
                     default=capability_defaults[CONF_STRUCTURED_OUTPUT_SUPPORT],

@@ -19,7 +19,7 @@ import pytest
 def test_default_openai_compatible_profile_data_is_conservative() -> None:
     """Default discovered/custom profiles support tools but not special output."""
     assert default_openai_compatible_profile_data() == {
-        CONF_THINKING_SUPPORT: "none",
+        CONF_THINKING_SUPPORT: False,
         CONF_STRUCTURED_OUTPUT_SUPPORT: "none",
         CONF_SUPPORTS_TOOLS: True,
     }
@@ -29,13 +29,13 @@ def test_persisted_profile_from_mapping_parses_capabilities() -> None:
     """Valid persisted mappings become typed capability profiles."""
     profile = PersistedOpenAICompatibleProfile.from_mapping(
         {
-            CONF_THINKING_SUPPORT: "supported",
+            CONF_THINKING_SUPPORT: True,
             CONF_STRUCTURED_OUTPUT_SUPPORT: "json_schema",
             CONF_SUPPORTS_TOOLS: False,
         }
     )
 
-    assert profile.thinking_support == "supported"
+    assert profile.thinking_support is True
     assert profile.structured_output_support == "json_schema"
     assert profile.supports_tools is False
     assert profile.supports_thinking() is True
@@ -51,12 +51,12 @@ def test_persisted_profile_from_mapping_parses_capabilities() -> None:
             CONF_SUPPORTS_TOOLS: True,
         },
         {
-            CONF_THINKING_SUPPORT: "none",
+            CONF_THINKING_SUPPORT: False,
             CONF_STRUCTURED_OUTPUT_SUPPORT: "yaml",
             CONF_SUPPORTS_TOOLS: True,
         },
         {
-            CONF_THINKING_SUPPORT: "none",
+            CONF_THINKING_SUPPORT: False,
             CONF_STRUCTURED_OUTPUT_SUPPORT: "none",
             CONF_SUPPORTS_TOOLS: "yes",
         },
@@ -72,10 +72,10 @@ def test_persisted_profile_from_mapping_rejects_invalid_values(
 
 @pytest.mark.parametrize(
     ("thinking_support", "requested", "expected"),
-    [("none", "low", None), ("supported", "low", "low"), ("always", False, None)],
+    [(False, "low", None), (True, "none", None), (True, "low", "low")],
 )
 def test_effective_thinking_setting_respects_support_mode(
-    thinking_support: str, requested: object, expected: object
+    thinking_support: bool, requested: object, expected: object
 ) -> None:
     """Thinking is only passed through when the persisted profile supports it."""
     profile = PersistedOpenAICompatibleProfile(
@@ -96,13 +96,13 @@ def test_as_model_profile_reflects_structured_output_flags(
 ) -> None:
     """Synthesized Pydantic AI model profiles mirror persisted capabilities."""
     model_profile = PersistedOpenAICompatibleProfile(
-        thinking_support="always",
+        thinking_support=True,
         structured_output_support=structured_support,
         supports_tools=False,
     ).as_model_profile()
 
     assert model_profile["supports_thinking"] is True
-    assert model_profile["thinking_always_enabled"] is True
+    assert model_profile["thinking_always_enabled"] is False
     assert model_profile["supports_tools"] is False
     assert model_profile["supports_json_schema_output"] is json_schema
     assert model_profile["supports_json_object_output"] is json_object
