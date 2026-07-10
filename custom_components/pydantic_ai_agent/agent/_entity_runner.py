@@ -127,7 +127,9 @@ async def run_model_profile(
         instructions=instructions,
         model_settings=settings,
         retries={"tools": tool_retries, "output": 2},
-        tools=tools_from_llm_api_with_diagnostics(chat_log.llm_api, run_recorder),
+        tools=tools_from_llm_api_with_diagnostics(
+            chat_log.llm_api, run_recorder, supports_images=profile.supports_images
+        ),
         toolsets=toolsets,
         max_concurrency=1,
         capabilities=run_capabilities,

@@ -47,14 +47,17 @@ def tools_from_llm_api(api_instance: llm.APIInstance | None) -> list[Tool[Any]]:
 
 
 def tools_from_llm_api_with_diagnostics(
-    api_instance: llm.APIInstance | None, run_recorder: RunDiagnosticsRecorder | None
+    api_instance: llm.APIInstance | None,
+    run_recorder: RunDiagnosticsRecorder | None,
+    *,
+    supports_images: bool | None = None,
 ) -> list[Tool[Any]]:
     """Convert Home Assistant LLM tools and record execution diagnostics."""
     if api_instance is None:
         return []
 
     return [
-        _tool_from_ha_tool(api_instance, tool, run_recorder)
+        _tool_from_ha_tool(api_instance, tool, run_recorder, supports_images)
         for tool in api_instance.tools
     ]
 
@@ -63,6 +66,7 @@ def _tool_from_ha_tool(
     api_instance: llm.APIInstance,
     tool: llm.Tool,
     run_recorder: RunDiagnosticsRecorder | None,
+    supports_images: bool | None,
 ) -> Tool[Any]:
     """Return one executable Pydantic AI tool backed by an HA LLM API tool."""
     parameters_json_schema = convert(
@@ -112,7 +116,7 @@ def _tool_from_ha_tool(
                 event="call_finished",
                 data={"tool_name": tool.name, "result": result},
             )
-        return normalize_multimodal_tool_result(result)
+        return normalize_multimodal_tool_result(result, supports_images=supports_images)
 
     return Tool.from_schema(
         execute,

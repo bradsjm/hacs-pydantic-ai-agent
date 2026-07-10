@@ -1,5 +1,6 @@
 """Tests for Home Assistant chat-log history conversion."""
 
+import base64
 from pathlib import Path
 
 from custom_components.pydantic_ai_agent.agent.history import (
@@ -117,6 +118,58 @@ async def test_chat_log_content_to_model_messages_converts_user_attachments(
     ]
 
 
+@pytest.mark.parametrize(
+    ("supports_images", "expected"),
+    [
+        (
+            None,
+            [
+                "describe this",
+                BinaryContent(data=b"image-bytes", media_type="image/png"),
+            ],
+        ),
+        (
+            True,
+            [
+                "describe this",
+                BinaryContent(data=b"image-bytes", media_type="image/png"),
+            ],
+        ),
+        (False, ["describe this"]),
+    ],
+)
+async def test_chat_log_content_to_model_messages_gates_image_attachments(
+    hass: HomeAssistant,
+    tmp_path: Path,
+    supports_images: bool | None,
+    expected: str | list[object],
+) -> None:
+    """Image attachments are dropped for image-unsupported models."""
+    image_path = tmp_path / "snapshot.png"
+    image_path.write_bytes(b"image-bytes")
+
+    messages = await chat_log_content_to_model_messages(
+        hass,
+        [
+            conversation.UserContent(
+                "describe this",
+                attachments=[
+                    conversation.Attachment(
+                        media_content_id="media-source://snapshot",
+                        mime_type="image/png",
+                        path=image_path,
+                    )
+                ],
+            )
+        ],
+        supports_images=supports_images,
+    )
+
+    assert isinstance(messages[0], ModelRequest)
+    assert isinstance(messages[0].parts[0], UserPromptPart)
+    assert messages[0].parts[0].content == expected
+
+
 async def test_chat_log_content_to_model_messages_rejects_unsupported_attachment(
     hass: HomeAssistant,
     tmp_path: Path,
@@ -141,6 +194,60 @@ async def test_chat_log_content_to_model_messages_rejects_unsupported_attachment
                 )
             ],
         )
+
+
+@pytest.mark.parametrize(
+    ("supports_images", "expected_content"),
+    [
+        (
+            None,
+            [
+                "camera snapshot",
+                BinaryContent(data=b"png-data", media_type="image/png"),
+            ],
+        ),
+        (
+            True,
+            [
+                "camera snapshot",
+                BinaryContent(data=b"png-data", media_type="image/png"),
+            ],
+        ),
+        (False, "camera snapshot"),
+    ],
+)
+async def test_chat_log_content_to_model_messages_gates_tool_result_images(
+    hass: HomeAssistant,
+    supports_images: bool | None,
+    expected_content: str | list[object],
+) -> None:
+    """Multimodal tool-result images drop for image-unsupported models."""
+    messages = await chat_log_content_to_model_messages(
+        hass,
+        [
+            conversation.ToolResultContent(
+                agent_id="agent-1",
+                tool_call_id="call-1",
+                tool_name="camera",
+                tool_result={
+                    "_type": "ha_multimodal_tool_result",
+                    "text": "camera snapshot",
+                    "attachments": [
+                        {
+                            "kind": "inline_image",
+                            "mime_type": "image/png",
+                            "base64": base64.b64encode(b"png-data").decode(),
+                        }
+                    ],
+                },
+            )
+        ],
+        supports_images=supports_images,
+    )
+
+    assert isinstance(messages[0], ModelRequest)
+    assert isinstance(messages[0].parts[0], ToolReturnPart)
+    assert messages[0].parts[0].content == expected_content
 
 
 def test_split_last_user_prompt_removes_only_latest_prompt() -> None:

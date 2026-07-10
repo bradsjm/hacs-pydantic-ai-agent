@@ -20,6 +20,7 @@ from ...const import (
     CONF_PROVIDER_MODE,
     CONF_PROVIDER_SECRET_HEADER_KEYS,
     CONF_STRUCTURED_OUTPUT_SUPPORT,
+    CONF_SUPPORTS_IMAGES,
     CONF_SUPPORTS_TOOLS,
     CONF_THINKING_SUPPORT,
     CONTEXT_WINDOW_SOURCE_DEFAULT,
@@ -95,6 +96,7 @@ def build_model_profiles(
             CONF_THINKING_SUPPORT: model.thinking_support,
             CONF_STRUCTURED_OUTPUT_SUPPORT: model.structured_output_support,
             CONF_SUPPORTS_TOOLS: model.supports_tools,
+            CONF_SUPPORTS_IMAGES: "image" in model.input_modalities,
         }
         pricing = _model_pricing(model)
         if pricing:

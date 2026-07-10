@@ -31,6 +31,7 @@ from ..const import (
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_MODE,
     CONF_STRUCTURED_OUTPUT_SUPPORT,
+    CONF_SUPPORTS_IMAGES,
     CONF_SUPPORTS_TOOLS,
     CONF_THINKING,
     CONF_THINKING_SUPPORT,
@@ -86,6 +87,7 @@ class ResolvedModelProfile:
     thinking_support: bool | None = None
     structured_output_support: str | None = None
     supports_tools: bool | None = None
+    supports_images: bool | None = None
 
 
 ModelProfile = ResolvedModelProfile
@@ -232,6 +234,7 @@ def resolve_model_profile(
         supports_tools=(
             openai_profile.supports_tools if openai_profile is not None else None
         ),
+        supports_images=_profile_supports_images(profile),
     )
 
 
@@ -313,6 +316,17 @@ def _profile_context_window_source(profile: Mapping[str, Any]) -> str:
     if isinstance(source, str) and source in CONTEXT_WINDOW_SOURCES:
         return source
     return CONTEXT_WINDOW_SOURCE_DEFAULT
+
+
+def _profile_supports_images(profile: Mapping[str, Any]) -> bool | None:
+    """Return persisted image-input support for one profile.
+
+    The models.dev catalog is the only source of image support, so this is read
+    directly from the persisted profile for every provider mode rather than
+    resolved at runtime. ``None`` means the capability is unknown.
+    """
+    value = profile.get(CONF_SUPPORTS_IMAGES)
+    return value if isinstance(value, bool) else None
 
 
 def provider_extra_body(

@@ -1,6 +1,7 @@
 """Home Assistant ChatLog to Pydantic AI message conversion."""
 
 from collections.abc import Iterable, Sequence
+import logging
 from typing import Any
 
 from homeassistant.components import conversation
@@ -24,9 +25,14 @@ from .multimodal_tool_result import normalize_multimodal_tool_result
 _SUPPORTED_ATTACHMENT_MIME_TYPES = {"application/pdf"}
 _SUPPORTED_ATTACHMENT_MIME_PREFIXES = ("image/",)
 
+_LOGGER = logging.getLogger(__name__)
+
 
 async def chat_log_content_to_model_messages(
-    hass: HomeAssistant, content: Iterable[conversation.Content]
+    hass: HomeAssistant,
+    content: Iterable[conversation.Content],
+    *,
+    supports_images: bool | None = None,
 ) -> list[ModelMessage]:
     """Convert Home Assistant chat log content into Pydantic AI messages."""
     messages: list[ModelMessage] = []
@@ -41,7 +47,7 @@ async def chat_log_content_to_model_messages(
                     parts=[
                         UserPromptPart(
                             content=await _user_prompt_content_from_ha_content(
-                                hass, item
+                                hass, item, supports_images
                             )
                         )
                     ]
@@ -57,7 +63,9 @@ async def chat_log_content_to_model_messages(
                     parts=[
                         ToolReturnPart(
                             tool_name=item.tool_name,
-                            content=normalize_multimodal_tool_result(item.tool_result),
+                            content=normalize_multimodal_tool_result(
+                                item.tool_result, supports_images=supports_images
+                            ),
                             tool_call_id=item.tool_call_id,
                         )
                     ]
@@ -89,7 +97,7 @@ def split_last_user_prompt(
 
 
 async def _user_prompt_content_from_ha_content(
-    hass: HomeAssistant, content: conversation.UserContent
+    hass: HomeAssistant, content: conversation.UserContent, supports_images: bool | None
 ) -> str | Sequence[Any]:
     """Return text-only or mixed text/binary content for a user message."""
     if not content.attachments:
@@ -99,6 +107,13 @@ async def _user_prompt_content_from_ha_content(
     # content parts; Home Assistant stores attachments separately on the message.
     parts: list[Any] = [content.content]
     for attachment in content.attachments:
+        if _is_image_attachment(attachment.mime_type) and supports_images is False:
+            _LOGGER.warning(
+                "Dropping image attachment with MIME type %s; selected model "
+                "does not support images",
+                attachment.mime_type,
+            )
+            continue
         parts.append(await _binary_content_from_attachment(hass, attachment))
     return parts
 
@@ -125,6 +140,11 @@ def _is_supported_attachment_mime_type(mime_type: str) -> bool:
     return mime_type in _SUPPORTED_ATTACHMENT_MIME_TYPES or mime_type.startswith(
         _SUPPORTED_ATTACHMENT_MIME_PREFIXES
     )
+
+
+def _is_image_attachment(mime_type: str) -> bool:
+    """Return whether the attachment MIME type is an image."""
+    return mime_type.startswith(_SUPPORTED_ATTACHMENT_MIME_PREFIXES)
 
 
 def _assistant_parts_from_ha_content(

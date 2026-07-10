@@ -7,6 +7,7 @@ from custom_components.pydantic_ai_agent.agent.multimodal_tool_result import (
     serialize_multimodal_tool_result,
 )
 from pydantic_ai import BinaryContent
+import pytest
 
 
 def _encoded(data: bytes) -> str:
@@ -83,6 +84,78 @@ def test_normalize_invalid_without_text_uses_default_text() -> None:
         )
         == "Tool returned image attachments."
     )
+
+
+def test_normalize_drops_images_when_unsupported() -> None:
+    """Image-unsupported models receive text only, with no BinaryContent."""
+    result = normalize_multimodal_tool_result(
+        {
+            "_type": "ha_multimodal_tool_result",
+            "text": "camera snapshot",
+            "attachments": [
+                {
+                    "kind": "inline_image",
+                    "mime_type": "image/png",
+                    "base64": _encoded(b"png-data"),
+                }
+            ],
+        },
+        supports_images=False,
+    )
+
+    assert result == "camera snapshot"
+
+
+def test_normalize_drops_images_without_text_uses_default_text() -> None:
+    """Image-unsupported models fall back to the stable default text."""
+    assert (
+        normalize_multimodal_tool_result(
+            {
+                "_type": "ha_multimodal_tool_result",
+                "attachments": [
+                    {
+                        "kind": "inline_image",
+                        "mime_type": "image/png",
+                        "base64": _encoded(b"png-data"),
+                    }
+                ],
+            },
+            supports_images=False,
+        )
+        == "Tool returned image attachments."
+    )
+
+
+@pytest.mark.parametrize("supports_images", [None, True])
+def test_normalize_keeps_images_when_supported_or_unknown(
+    supports_images: bool | None,
+) -> None:
+    """Supported/unknown capability keeps inline image BinaryContent parts."""
+    result = normalize_multimodal_tool_result(
+        {
+            "_type": "ha_multimodal_tool_result",
+            "text": "camera snapshot",
+            "attachments": [
+                {
+                    "kind": "inline_image",
+                    "mime_type": "image/png",
+                    "base64": _encoded(b"png-data"),
+                }
+            ],
+        },
+        supports_images=supports_images,
+    )
+
+    assert result == [
+        "camera snapshot",
+        BinaryContent(data=b"png-data", media_type="image/png"),
+    ]
+
+
+def test_normalize_unsupported_leaves_non_sentinel_unchanged() -> None:
+    """Non-sentinel values are returned unchanged even when unsupported."""
+    value = {"_type": "ordinary_result", "text": "hello"}
+    assert normalize_multimodal_tool_result(value, supports_images=False) is value
 
 
 def test_serialize_binary_content_to_sentinel() -> None:

@@ -20,12 +20,18 @@ _MAX_TOTAL_ATTACHMENT_BYTES = 10 * 1024 * 1024
 _DEFAULT_TEXT = "Tool returned image attachments."
 
 
-def normalize_multimodal_tool_result(value: object) -> object:
+def normalize_multimodal_tool_result(
+    value: object, *, supports_images: bool | None = None
+) -> object:
     """Convert a recognized HA multimodal sentinel into model-facing content."""
     if (sentinel := _as_multimodal_tool_result(value)) is None:
         return value
 
     text = _sentinel_text(sentinel)
+    # Image-unsupported models cannot consume inline image attachments, so drop
+    # them and return the textual result only.
+    if supports_images is False:
+        return text or _DEFAULT_TEXT
     attachments = sentinel.get("attachments")
     if not isinstance(attachments, Sequence) or isinstance(attachments, str | bytes):
         return text or _DEFAULT_TEXT

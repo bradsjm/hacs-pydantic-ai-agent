@@ -148,7 +148,11 @@ class PydanticAIBaseLLMEntity:
             )
         agent_output_type: object = str
 
-        messages = await chat_log_content_to_model_messages(self.hass, chat_log.content)
+        messages = await chat_log_content_to_model_messages(
+            self.hass,
+            chat_log.content,
+            supports_images=profiles[0].supports_images,
+        )
         user_prompt, message_history = split_last_user_prompt(messages)
         run_recorder.record(
             phase="input",
