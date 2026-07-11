@@ -1,7 +1,5 @@
 """Model profile selection and management helpers for config flows."""
 
-from __future__ import annotations
-
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -108,9 +106,7 @@ def _run_settings_visibility(
         if not isinstance(profile, Mapping) or not isinstance(provider_mode, str):
             continue
         try:
-            supported, can_disable = provider_profile_thinking_support(
-                provider_mode, profile
-            )
+            supported, can_disable = provider_profile_thinking_support(provider_mode, profile)
         except KeyError, ValueError:
             continue
         supports_thinking = supports_thinking or supported
@@ -223,15 +219,11 @@ def _normalised_provider_profile(
     normalized_profile[CONF_CONTEXT_WINDOW_TOKENS] = _context_window_tokens(profile)
     source = profile.get(CONF_CONTEXT_WINDOW_SOURCE)
     normalized_profile[CONF_CONTEXT_WINDOW_SOURCE] = (
-        source
-        if isinstance(source, str) and source in CONTEXT_WINDOW_SOURCES
-        else CONTEXT_WINDOW_SOURCE_DEFAULT
+        source if isinstance(source, str) and source in CONTEXT_WINDOW_SOURCES else CONTEXT_WINDOW_SOURCE_DEFAULT
     )
     model_settings = normalized_profile.get(CONF_MODEL_SETTINGS)
     if isinstance(model_settings, Mapping):
-        normalized_profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(
-            normalized_profile
-        )
+        normalized_profile[CONF_MODEL_SETTINGS] = _model_settings_from_options(normalized_profile)
     else:
         normalized_profile.pop(CONF_MODEL_SETTINGS, None)
     return normalized_profile
@@ -257,10 +249,7 @@ def _provider_model_profiles_for_discovery_mode(
     for profile_id, profile in existing_profiles.items():
         if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
             continue
-        if (
-            not bool(profile.get(CONF_DISCOVERED, False))
-            and profile_id not in keep_profile_ids
-        ):
+        if not bool(profile.get(CONF_DISCOVERED, False)) and profile_id not in keep_profile_ids:
             continue
         model_name = profile.get(CONF_MODEL)
         if not isinstance(model_name, str) or not model_name.strip():
@@ -318,9 +307,7 @@ def _provider_profile_selector_schema(
         {
             vol.Required(_CONF_MODEL_PROFILE_ID): SelectSelector(
                 SelectSelectorConfig(
-                    options=_provider_profile_options(
-                        data, model_ids, enabled_only=enabled_only
-                    ),
+                    options=_provider_profile_options(data, model_ids, enabled_only=enabled_only),
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             )
@@ -342,21 +329,15 @@ def _model_profile_edit_schema(
         CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {}),
     }
     schema: VolDictType = {
-        vol.Required(CONF_NAME, default=options[CONF_NAME]): TextSelector(
-            TextSelectorConfig()
-        ),
+        vol.Required(CONF_NAME, default=options[CONF_NAME]): TextSelector(TextSelectorConfig()),
     }
     if not bool(profile.get(CONF_DISCOVERED, False)):
-        schema[vol.Required(CONF_MODEL, default=profile.get(CONF_MODEL, ""))] = (
-            TextSelector(TextSelectorConfig())
-        )
+        schema[vol.Required(CONF_MODEL, default=profile.get(CONF_MODEL, ""))] = TextSelector(TextSelectorConfig())
     schema[
         vol.Optional(
             _MODEL_SETTING_TEMPERATURE,
             description={
-                "suggested_value": options[CONF_MODEL_SETTINGS].get(
-                    _MODEL_SETTING_TEMPERATURE
-                )
+                "suggested_value": options[CONF_MODEL_SETTINGS].get(_MODEL_SETTING_TEMPERATURE)
                 if isinstance(options[CONF_MODEL_SETTINGS], Mapping)
                 else None
             },
@@ -367,22 +348,16 @@ def _model_profile_edit_schema(
         vol.Required(
             CONF_CONTEXT_WINDOW_TOKENS,
             default=options[CONF_CONTEXT_WINDOW_TOKENS],
-        ): NumberSelector(
-            NumberSelectorConfig(mode=NumberSelectorMode.BOX, min=1, step=1)
-        )
+        ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, min=1, step=1))
     }
     advanced_model_settings_fields.update(advanced_model_settings_schema.schema)
     advanced_model_settings_schema = vol.Schema(advanced_model_settings_fields)
-    schema[
-        _section_schema_key(
-            _SECTION_ADVANCED_MODEL_SETTINGS, advanced_model_settings_schema.schema
-        )
-    ] = section(advanced_model_settings_schema, {"collapsed": True})
+    schema[_section_schema_key(_SECTION_ADVANCED_MODEL_SETTINGS, advanced_model_settings_schema.schema)] = section(
+        advanced_model_settings_schema, {"collapsed": True}
+    )
     if is_openai_compatible_provider_mode(provider_mode):
         capability_defaults = default_openai_compatible_profile_data() | {
-            key: profile[key]
-            for key in default_openai_compatible_profile_data()
-            if key in profile
+            key: profile[key] for key in default_openai_compatible_profile_data() if key in profile
         }
         capability_schema = vol.Schema(
             {
@@ -410,11 +385,7 @@ def _model_profile_edit_schema(
                 vol.Required(
                     _MODEL_SETTING_PARALLEL_TOOL_CALLS,
                     default=(
-                        bool(
-                            options[CONF_MODEL_SETTINGS].get(
-                                _MODEL_SETTING_PARALLEL_TOOL_CALLS, False
-                            )
-                        )
+                        bool(options[CONF_MODEL_SETTINGS].get(_MODEL_SETTING_PARALLEL_TOOL_CALLS, False))
                         if isinstance(options[CONF_MODEL_SETTINGS], Mapping)
                         else False
                     ),
@@ -428,8 +399,8 @@ def _model_profile_edit_schema(
             )
         ] = section(capability_schema, {"collapsed": True})
     model_pricing_schema = _model_pricing_schema(options)
-    schema[_section_schema_key(_SECTION_MODEL_PRICING, model_pricing_schema.schema)] = (
-        section(model_pricing_schema, {"collapsed": True})
+    schema[_section_schema_key(_SECTION_MODEL_PRICING, model_pricing_schema.schema)] = section(
+        model_pricing_schema, {"collapsed": True}
     )
     return vol.Schema(schema)
 
@@ -441,9 +412,7 @@ def model_profile_description_placeholders(
     return {"catalog_details": _model_profile_catalog_details(profile, model)}
 
 
-def _model_profile_catalog_details(
-    profile: Mapping[str, Any], model: CatalogModelOption | None
-) -> str:
+def _model_profile_catalog_details(profile: Mapping[str, Any], model: CatalogModelOption | None) -> str:
     """Return human-readable catalog details for one model profile."""
     del profile
     if model is None:
@@ -513,6 +482,4 @@ def _input_modality_labels(model: CatalogModelOption) -> tuple[str, ...]:
         "audio": "♪ audio",
         "pdf": "▤ pdf",
     }
-    return tuple(
-        labels[modality] for modality in model.input_modalities if modality in labels
-    )
+    return tuple(labels[modality] for modality in model.input_modalities if modality in labels)

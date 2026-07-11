@@ -59,9 +59,7 @@ def _provider_base_model_name(provider_mode: str, model_name: str) -> str:
         PROVIDER_GOOGLE_GEMINI: {"google", "google-gla"},
     }.get(provider_mode, set())
     if prefix not in valid_prefixes:
-        raise ValueError(
-            f"Model prefix {prefix!r} is not valid for provider mode {provider_mode!r}."
-        )
+        raise ValueError(f"Model prefix {prefix!r} is not valid for provider mode {provider_mode!r}.")
     if not name:
         raise ValueError("Model name cannot be empty.")
     return name
@@ -72,18 +70,12 @@ def _configured_headers(headers: dict[str, str] | None) -> dict[str, str]:
     return dict(headers or {})
 
 
-def model_profile_for_provider_mode(
-    provider_mode: str, model_name: str
-) -> ModelProfile | None:
+def model_profile_for_provider_mode(provider_mode: str, model_name: str) -> ModelProfile | None:
     """Return the effective Pydantic AI model profile for one provider mode."""
     if provider_mode == PROVIDER_ANTHROPIC:
-        return anthropic_model_profile(
-            _provider_base_model_name(PROVIDER_ANTHROPIC, model_name)
-        )
+        return anthropic_model_profile(_provider_base_model_name(PROVIDER_ANTHROPIC, model_name))
     if provider_mode == PROVIDER_GOOGLE_GEMINI:
-        return google_model_profile(
-            _provider_base_model_name(PROVIDER_GOOGLE_GEMINI, model_name)
-        )
+        return google_model_profile(_provider_base_model_name(PROVIDER_GOOGLE_GEMINI, model_name))
     if provider_mode in {
         PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
         PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
@@ -102,9 +94,7 @@ def model_thinking_support(provider_mode: str, model_name: str) -> ThinkingSuppo
     profile = model_profile_for_provider_mode(provider_mode, model_name)
     if profile is None:
         return ThinkingSupport(supported=False, can_disable=False)
-    supported = bool(profile.get("supports_thinking")) or bool(
-        profile.get("thinking_always_enabled")
-    )
+    supported = bool(profile.get("supports_thinking")) or bool(profile.get("thinking_always_enabled"))
     return ThinkingSupport(
         supported=supported,
         can_disable=supported and not bool(profile.get("thinking_always_enabled")),
@@ -127,9 +117,7 @@ def openai_compatible_model_profile(
     profile_data: Mapping[str, Any],
 ) -> OpenAIModelProfile:
     """Return an OpenAIModelProfile built only from persisted profile data."""
-    return PersistedOpenAICompatibleProfile.from_mapping(
-        profile_data
-    ).as_model_profile()
+    return PersistedOpenAICompatibleProfile.from_mapping(profile_data).as_model_profile()
 
 
 def openai_compatible_thinking_support(
@@ -147,9 +135,7 @@ def openai_compatible_effective_thinking_setting(
     profile_data: Mapping[str, Any], thinking: ThinkingLevel | None
 ) -> ThinkingLevel | None:
     """Return thinking from persisted OpenAI-compatible profile data."""
-    return PersistedOpenAICompatibleProfile.from_mapping(
-        profile_data
-    ).effective_thinking_setting(thinking)
+    return PersistedOpenAICompatibleProfile.from_mapping(profile_data).effective_thinking_setting(thinking)
 
 
 def _strip_version_suffix(base_url: str | None, *versions: str) -> str | None:
@@ -194,9 +180,7 @@ def anthropic_model(
         http_client=get_async_client(hass),
     )
     provider = AnthropicProvider(anthropic_client=anthropic_client)
-    return AnthropicModel(
-        _provider_base_model_name(PROVIDER_ANTHROPIC, model_name), provider=provider
-    )
+    return AnthropicModel(_provider_base_model_name(PROVIDER_ANTHROPIC, model_name), provider=provider)
 
 
 def google_gemini_model(
@@ -226,9 +210,7 @@ def google_gemini_model(
         ),
     )
     provider = GoogleProvider(client=client)
-    return GoogleModel(
-        _provider_base_model_name(PROVIDER_GOOGLE_GEMINI, model_name), provider=provider
-    )
+    return GoogleModel(_provider_base_model_name(PROVIDER_GOOGLE_GEMINI, model_name), provider=provider)
 
 
 def openai_compatible_completions_model(
@@ -272,9 +254,7 @@ def openai_compatible_responses_model(
         # connection-pooling configuration.
         http_client=get_async_client(hass),
     )
-    return OpenAICompatibleResponsesModel(
-        model_name, provider=provider, profile=profile
-    )
+    return OpenAICompatibleResponsesModel(model_name, provider=provider, profile=profile)
 
 
 def _api_url(base_url: str, path: str) -> str:
@@ -298,9 +278,7 @@ async def list_anthropic_model_names(
     request_timeout: float | httpx.Timeout | None,
 ) -> list[str]:
     """Return model IDs from Anthropic's model listing endpoint."""
-    base_url = _anthropic_base_url_for_sdk(data.get(CONF_BASE_URL)) or (
-        "https://api.anthropic.com"
-    )
+    base_url = _anthropic_base_url_for_sdk(data.get(CONF_BASE_URL)) or ("https://api.anthropic.com")
     client = get_async_client(hass)
     model_names: list[str] = []
     after_id: str | None = None
@@ -326,9 +304,9 @@ async def list_anthropic_model_names(
         items = payload.get("data")
         if not isinstance(items, Sequence) or isinstance(items, str | bytes | Mapping):
             items = ()
-        for item in items:
-            if isinstance(item, Mapping) and isinstance(item.get("id"), str):
-                model_names.append(item["id"])
+        model_names.extend(
+            item_id for item in items if isinstance(item, Mapping) and isinstance(item_id := item.get("id"), str)
+        )
         next_cursor = payload.get("last_id")
         if (
             not payload.get("has_more")
@@ -368,9 +346,7 @@ async def list_google_gemini_model_names(
     request_timeout: float | httpx.Timeout | None,
 ) -> list[str]:
     """Return text-generation model IDs from the Gemini model listing endpoint."""
-    base_url = _google_base_url_for_sdk(data.get(CONF_BASE_URL)) or (
-        "https://generativelanguage.googleapis.com"
-    )
+    base_url = _google_base_url_for_sdk(data.get(CONF_BASE_URL)) or ("https://generativelanguage.googleapis.com")
     client = get_async_client(hass)
     model_names: list[str] = []
     page_token: str | None = None
@@ -400,20 +376,14 @@ async def list_google_gemini_model_names(
             if name is not None:
                 model_names.append(name)
         next_cursor = payload.get("nextPageToken")
-        if (
-            not isinstance(next_cursor, str)
-            or not next_cursor
-            or next_cursor in seen_cursors
-        ):
+        if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen_cursors:
             break
         seen_cursors.add(next_cursor)
         page_token = next_cursor
     return sorted(set(model_names))
 
 
-def openai_compatible_client_from_config(
-    hass: HomeAssistant, data: Mapping[str, Any]
-) -> AsyncOpenAICompatible:
+def openai_compatible_client_from_config(hass: HomeAssistant, data: Mapping[str, Any]) -> AsyncOpenAICompatible:
     """Build a lightweight OpenAI-compatible client from config entry data."""
     headers = data.get(CONF_PROVIDER_HEADERS)
     provider = OpenAICompatibleProvider(

@@ -5,8 +5,6 @@ Re-export shim for all helpers extracted into leaf modules.
 
 # ruff: noqa: F401
 
-from __future__ import annotations
-
 from collections.abc import AsyncIterable, Callable, Iterable, Mapping
 import logging
 from typing import Any

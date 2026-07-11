@@ -62,16 +62,14 @@ def _format_key_value_json_rows(value: object) -> list[dict[str, str]]:
         return list_rows
     if not isinstance(value, Mapping):
         return []
-    mapping_rows: list[dict[str, str]] = []
-    for key in sorted(value):
-        if isinstance(key, str):
-            mapping_rows.append(
-                {
-                    CONF_KEY_VALUE_KEY: key,
-                    CONF_KEY_VALUE_JSON_VALUE: json.dumps(value[key], sort_keys=True),
-                }
-            )
-    return mapping_rows
+    return [
+        {
+            CONF_KEY_VALUE_KEY: key,
+            CONF_KEY_VALUE_JSON_VALUE: json.dumps(value[key], sort_keys=True),
+        }
+        for key in sorted(value)
+        if isinstance(key, str)
+    ]
 
 
 def _parse_key_value_text_rows(value: object) -> dict[str, str]:
@@ -80,10 +78,7 @@ def _parse_key_value_text_rows(value: object) -> dict[str, str]:
         return {}
     if isinstance(value, Mapping):
         parsed_mapping = dict(value)
-        if not all(
-            isinstance(key, str) and isinstance(item, str)
-            for key, item in parsed_mapping.items()
-        ):
+        if not all(isinstance(key, str) and isinstance(item, str) for key, item in parsed_mapping.items()):
             raise ValueError("invalid_key_value")
         return parsed_mapping
     if not isinstance(value, list):

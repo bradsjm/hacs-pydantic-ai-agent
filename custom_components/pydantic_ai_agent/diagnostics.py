@@ -54,13 +54,9 @@ from .observability.run_diagnostics import bound_diagnostics_data
 from .runtime.redaction import redact_data
 
 
-async def async_get_config_entry_diagnostics(
-    hass: HomeAssistant, entry: ConfigEntry
-) -> dict[str, Any]:
+async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-    subentries = []
-    for subentry in entry.subentries.values():
-        subentries.append(_subentry_diagnostics(entry, subentry))
+    subentries = [_subentry_diagnostics(entry, subentry) for subentry in entry.subentries.values()]
 
     diagnostics = {
         "entry": {
@@ -105,9 +101,7 @@ async def async_get_device_diagnostics(
     return cast(dict[str, Any], bound_diagnostics_data(diagnostics))
 
 
-def _subentry_diagnostics(
-    entry: ConfigEntry, subentry: ConfigSubentry
-) -> dict[str, Any]:
+def _subentry_diagnostics(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str, Any]:
     """Return redacted diagnostics for one config subentry."""
     model_settings = subentry.data.get(CONF_MODEL_SETTINGS)
     model_profiles = subentry.data.get(CONF_MODEL_PROFILES)
@@ -119,13 +113,9 @@ def _subentry_diagnostics(
         "configuration_summary": _configuration_summary(entry, subentry),
         "model": subentry.data.get(CONF_MODEL),
         "default_model_profile_id": subentry.data.get(CONF_DEFAULT_MODEL_PROFILE_ID),
-        "model_profile_count": len(model_profiles)
-        if isinstance(model_profiles, Mapping)
-        else 0,
+        "model_profile_count": len(model_profiles) if isinstance(model_profiles, Mapping) else 0,
         "ha_tools_enabled": bool(subentry.data.get(CONF_LLM_HASS_API)),
-        "model_settings_keys": sorted(model_settings)
-        if isinstance(model_settings, Mapping)
-        else [],
+        "model_settings_keys": sorted(model_settings) if isinstance(model_settings, Mapping) else [],
     }
 
 
@@ -136,23 +126,15 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
         return {}
     diagnostics: dict[str, Any] = {}
     if runtime_data.latest_run_diagnostics:
-        diagnostics["latest_run_diagnostics"] = redact_data(
-            runtime_data.latest_run_diagnostics
-        )
+        diagnostics["latest_run_diagnostics"] = redact_data(runtime_data.latest_run_diagnostics)
     if runtime_data.latest_stream_traces:
-        diagnostics["latest_stream_traces"] = redact_data(
-            runtime_data.latest_stream_traces
-        )
+        diagnostics["latest_stream_traces"] = redact_data(runtime_data.latest_stream_traces)
     diagnostics["mcp_server_count"] = len(mcp_subentries(entry))
-    diagnostics["cached_mcp_server_count"] = len(
-        getattr(runtime_data, "mcp_tool_cache", {})
-    )
+    diagnostics["cached_mcp_server_count"] = len(getattr(runtime_data, "mcp_tool_cache", {}))
     return diagnostics
 
 
-def _configuration_summary(
-    entry: ConfigEntry, subentry: ConfigSubentry
-) -> dict[str, Any]:
+def _configuration_summary(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str, Any]:
     """Return a compact, unredacted configuration summary for one subentry."""
     data = subentry.data
     summary: dict[str, Any] = {
@@ -166,29 +148,19 @@ def _configuration_summary(
             {
                 "name": data.get(CONF_AGENT_NAME, data.get(CONF_AI_TASK_NAME)),
                 CONF_PRIMARY_MODEL_REF: data.get(CONF_PRIMARY_MODEL_REF),
-                "fallback_model_profile_count": len(fallback_refs)
-                if isinstance(fallback_refs, list)
-                else 0,
-                "mcp_server_count": len(mcp_server_ids)
-                if isinstance(mcp_server_ids, list)
-                else 0,
+                "fallback_model_profile_count": len(fallback_refs) if isinstance(fallback_refs, list) else 0,
+                "mcp_server_count": len(mcp_server_ids) if isinstance(mcp_server_ids, list) else 0,
                 "skill_count": len(skill_ids) if isinstance(skill_ids, list) else 0,
                 CONF_LLM_HASS_API: data.get(CONF_LLM_HASS_API),
                 CONF_WEB_FETCH_ENABLED: bool(data.get(CONF_WEB_FETCH_ENABLED, False)),
                 CONF_WEB_SEARCH_ENABLED: bool(data.get(CONF_WEB_SEARCH_ENABLED, False)),
-                CONF_VIRTUAL_WORKSPACE_ENABLED: bool(
-                    data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)
-                ),
+                CONF_VIRTUAL_WORKSPACE_ENABLED: bool(data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)),
                 CONF_CONTEXT_MANAGEMENT_MODE: data.get(CONF_CONTEXT_MANAGEMENT_MODE),
-                "context_summarization_uses_active_model": not bool(
-                    data.get(CONF_CONTEXT_SUMMARIZATION_MODEL_REF)
-                ),
+                "context_summarization_uses_active_model": not bool(data.get(CONF_CONTEXT_SUMMARIZATION_MODEL_REF)),
             }
         )
         if data.get(CONF_CONTEXT_SUMMARIZATION_MODEL_REF):
-            summary[CONF_CONTEXT_SUMMARIZATION_MODEL_REF] = data.get(
-                CONF_CONTEXT_SUMMARIZATION_MODEL_REF
-            )
+            summary[CONF_CONTEXT_SUMMARIZATION_MODEL_REF] = data.get(CONF_CONTEXT_SUMMARIZATION_MODEL_REF)
         if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK:
             if output_mode := _structured_output_mode_summary(entry, subentry):
                 summary["structured_output_mode"] = output_mode
@@ -198,9 +170,7 @@ def _configuration_summary(
         summary.update(
             {
                 "default_model_profile_id": data.get(CONF_DEFAULT_MODEL_PROFILE_ID),
-                "model_profile_count": len(model_profiles)
-                if isinstance(model_profiles, Mapping)
-                else 0,
+                "model_profile_count": len(model_profiles) if isinstance(model_profiles, Mapping) else 0,
             }
         )
     elif subentry.subentry_type == SUBENTRY_TYPE_SKILL:
@@ -220,20 +190,14 @@ def _configuration_summary(
                 "allowed_tool_count": len(data.get(CONF_MCP_ALLOWED_TOOLS, []))
                 if isinstance(data.get(CONF_MCP_ALLOWED_TOOLS), list)
                 else 0,
-                CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
-                    data.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
-                ),
-                CONF_MCP_DEFERRED_LOADING: bool(
-                    data.get(CONF_MCP_DEFERRED_LOADING, False)
-                ),
+                CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(data.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)),
+                CONF_MCP_DEFERRED_LOADING: bool(data.get(CONF_MCP_DEFERRED_LOADING, False)),
             }
         )
     return summary
 
 
-def _structured_output_mode_summary(
-    entry: ConfigEntry, subentry: ConfigSubentry
-) -> str | None:
+def _structured_output_mode_summary(entry: ConfigEntry, subentry: ConfigSubentry) -> str | None:
     """Return the computed AI task structured output mode when resolvable."""
     if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
         return None

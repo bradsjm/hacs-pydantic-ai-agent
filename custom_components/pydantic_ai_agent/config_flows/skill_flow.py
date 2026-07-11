@@ -1,7 +1,5 @@
 """Config subentry flow handlers for native workspace Skills."""
 
-from __future__ import annotations
-
 from .common import (
     CONF_NAME,
     SOURCE_USER,
@@ -27,23 +25,17 @@ class SkillSubentryFlowHandler(ConfigSubentryFlow):
         """Return if this flow creates a new subentry."""
         return self.source == SOURCE_USER
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Add a Skill subentry."""
         self._options = {}
         return await self.async_step_init(user_input)
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Reconfigure a Skill subentry."""
         self._options = self._get_reconfigure_subentry().data.copy()
         return await self.async_step_init(user_input)
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Manage native Skill options."""
         entry = self._get_entry()
         if entry.state != ConfigEntryState.LOADED:

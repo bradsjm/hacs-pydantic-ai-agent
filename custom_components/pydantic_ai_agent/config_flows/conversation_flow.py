@@ -1,7 +1,5 @@
 """Config subentry flow handlers for Pydantic AI Agent."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 
 from .common import (
@@ -42,9 +40,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
         """Return if this flow creates a new subentry."""
         return self.source == SOURCE_USER
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Add a conversation subentry."""
         self._options = default_conversation_options()
         self._options[CONF_AGENT_NAME] = generated_default_title(
@@ -53,16 +49,12 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
         )
         return await self.async_step_init(user_input)
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Reconfigure a conversation subentry."""
         self._options = self._get_reconfigure_subentry().data.copy()
         return await self.async_step_init(user_input)
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Manage conversation options."""
         entry = self._get_entry()
         if entry.state != ConfigEntryState.LOADED:
@@ -89,9 +81,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
             except RunSettingsValidationError as err:
                 return self._async_show_init_form(flat_user_input, err.errors)
             if model_error := _selected_model_profile_error(self.hass, entry, data):
-                return self._async_show_init_form(
-                    data, {CONF_PRIMARY_MODEL_REF: model_error}
-                )
+                return self._async_show_init_form(data, {CONF_PRIMARY_MODEL_REF: model_error})
             if skill_error := _selected_skill_error(entry, data):
                 return self._async_show_init_form(data, {"base": skill_error})
             if mcp_error := _selected_mcp_server_error(entry, data):

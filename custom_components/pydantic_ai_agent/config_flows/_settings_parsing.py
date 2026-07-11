@@ -3,8 +3,6 @@
 This module must not import from any other config_flows module.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable, Mapping
 import json
 from typing import Any
@@ -63,9 +61,7 @@ def _format_key_value_json_setting(value: object) -> str:
         return value
     if not isinstance(value, Mapping):
         return ""
-    return "\n".join(
-        f"{key}: {json.dumps(value[key], sort_keys=True)}" for key in sorted(value)
-    )
+    return "\n".join(f"{key}: {json.dumps(value[key], sort_keys=True)}" for key in sorted(value))
 
 
 def _format_templated_extra_body(value: object) -> list[dict[str, str]]:
@@ -180,9 +176,7 @@ def _parse_key_value_json_setting(value: object) -> dict[str, Any]:
     return parsed
 
 
-def _parse_templated_extra_body(
-    hass: HomeAssistant, value: object
-) -> list[dict[str, str]]:
+def _parse_templated_extra_body(hass: HomeAssistant, value: object) -> list[dict[str, str]]:
     """Return configured templated extra-body rows from selector input."""
     if value in (None, ""):
         return []
@@ -209,9 +203,7 @@ def _parse_templated_extra_body(
     return parsed
 
 
-def _parse_templated_extra_body_row(
-    hass: HomeAssistant, item: object, seen: set[str]
-) -> tuple[str, str] | None:
+def _parse_templated_extra_body_row(hass: HomeAssistant, item: object, seen: set[str]) -> tuple[str, str] | None:
     """Return one parsed templated extra-body row."""
     if not isinstance(item, Mapping):
         raise ValueError("invalid_chat_template_kwargs")
@@ -272,9 +264,7 @@ def _parse_model_settings(
     return settings, errors, cleared
 
 
-def _parse_model_setting_value(
-    hass: HomeAssistant, key: str, value: object
-) -> tuple[object | None, bool]:
+def _parse_model_setting_value(hass: HomeAssistant, key: str, value: object) -> tuple[object | None, bool]:
     """Return one parsed model setting and whether it should be cleared."""
     if key in {_MODEL_SETTING_MAX_TOKENS, _MODEL_SETTING_MAX_ITERATIONS}:
         return _parse_positive_int_setting(value), False
@@ -396,11 +386,7 @@ def _model_settings_from_options(options: Mapping[str, Any]) -> dict[str, Any]:
     """Return existing model settings from subentry options."""
     model_settings = options.get(CONF_MODEL_SETTINGS)
     if isinstance(model_settings, Mapping):
-        return {
-            key: value
-            for key, value in model_settings.items()
-            if key not in _REMOVED_MODEL_SETTING_KEYS
-        }
+        return {key: value for key, value in model_settings.items() if key not in _REMOVED_MODEL_SETTING_KEYS}
     return {}
 
 
@@ -428,9 +414,7 @@ def _merge_model_pricing(
     return merged
 
 
-def _store_model_settings(
-    data: dict[str, Any], model_settings: Mapping[str, Any]
-) -> None:
+def _store_model_settings(data: dict[str, Any], model_settings: Mapping[str, Any]) -> None:
     """Store model settings only when at least one setting is configured."""
     if model_settings:
         data[CONF_MODEL_SETTINGS] = dict(model_settings)
@@ -438,9 +422,7 @@ def _store_model_settings(
         data.pop(CONF_MODEL_SETTINGS, None)
 
 
-def _store_model_pricing(
-    data: dict[str, Any], model_pricing: Mapping[str, float]
-) -> None:
+def _store_model_pricing(data: dict[str, Any], model_pricing: Mapping[str, float]) -> None:
     """Store profile pricing, including an empty mapping after explicit clears."""
     data[CONF_MODEL_PRICING] = dict(model_pricing)
 

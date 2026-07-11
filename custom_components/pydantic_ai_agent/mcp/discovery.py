@@ -84,9 +84,7 @@ async def async_discover_mcp_tools_from_config(
 ) -> list[dict[str, Any]]:
     """Discover tools exposed by one remote MCP server configuration."""
     config = _mcp_config_from_data(data, server_id=server_id)
-    timeout = (
-        request_timeout if request_timeout is not None else config[CONF_MCP_TIMEOUT]
-    )
+    timeout = request_timeout if request_timeout is not None else config[CONF_MCP_TIMEOUT]
     validated_url = await async_validate_mcp_url_details(hass, config[CONF_MCP_URL])
     config[CONF_MCP_URL] = validated_url.url
     allowed_tools: set[str] | None = None
@@ -98,17 +96,52 @@ async def async_discover_mcp_tools_from_config(
         server_id,
         config[CONF_NAME],
     )
+    tools = await _async_list_mcp_tools(
+        validated_url,
+        config[CONF_MCP_HEADERS],
+        timeout,
+        server_id,
+    )
+    discovered = [
+        tool_data
+        for tool in tools
+        if (
+            tool_data := _normalize_mcp_tool(
+                tool,
+                server_id=server_id,
+                server_name=config[CONF_NAME],
+                allowed_tools=allowed_tools,
+            )
+        )
+    ]
+    _LOGGER.info(
+        "Discovered %s %s MCP tools for server %s",
+        len(discovered),
+        "allowed" if apply_allowlist else "available",
+        server_id,
+    )
+    _LOGGER.debug("MCP server config used for discovery: %s", redact_data(config))
+    return discovered
+
+
+async def _async_list_mcp_tools(
+    validated_url: Any,
+    headers: dict[str, str],
+    request_timeout: float,
+    server_id: str,
+) -> Any:
+    """List MCP tools with a bounded transport lifecycle and typed errors."""
     try:
         toolset = MCPToolset(
-            _mcp_client(validated_url, config[CONF_MCP_HEADERS], timeout),
+            _mcp_client(validated_url, headers, request_timeout),
             id=server_id,
             tool_error_behavior="error",
         )
         # FastMCP uses the configured timeout for both session initialization and
         # the subsequent tools/list request, so the watchdog here must cover both
         # phases without allowing the config-flow progress task to hang forever.
-        async with asyncio.timeout(timeout * 2):
-            tools = await toolset.list_tools()
+        async with asyncio.timeout(request_timeout * 2):
+            return await toolset.list_tools()
     except TimeoutError as err:
         raise MCPValidationError(
             "timeout",
@@ -144,35 +177,31 @@ async def async_discover_mcp_tools_from_config(
             status_code=status_code if isinstance(status_code, int) else None,
             server_id=server_id,
         ) from err
-    discovered: list[dict[str, Any]] = []
-    for tool in tools:
-        tool_data = _jsonable(tool)
-        name = str(tool_data.get("name", ""))
-        if not name or (allowed_tools is not None and name not in allowed_tools):
-            continue
-        input_schema = (
-            tool_data.get("inputSchema") or tool_data.get("input_schema") or {}
-        )
-        if not isinstance(input_schema, Mapping):
-            input_schema = {}
-        discovered.append(
-            {
-                "server_id": server_id,
-                "server_name": config[CONF_NAME],
-                "name": name,
-                "description": tool_data.get("description") or "",
-                "input_schema": _jsonable(input_schema),
-                "schema_hash": schema_hash(input_schema),
-            }
-        )
-    _LOGGER.info(
-        "Discovered %s %s MCP tools for server %s",
-        len(discovered),
-        "allowed" if apply_allowlist else "available",
-        server_id,
-    )
-    _LOGGER.debug("MCP server config used for discovery: %s", redact_data(config))
-    return discovered
+
+
+def _normalize_mcp_tool(
+    tool: Any,
+    *,
+    server_id: str,
+    server_name: str,
+    allowed_tools: set[str] | None,
+) -> dict[str, Any] | None:
+    """Normalize one raw MCP tool, returning None when it is filtered out."""
+    tool_data = _jsonable(tool)
+    name = str(tool_data.get("name", ""))
+    if not name or (allowed_tools is not None and name not in allowed_tools):
+        return None
+    input_schema = tool_data.get("inputSchema") or tool_data.get("input_schema") or {}
+    if not isinstance(input_schema, Mapping):
+        input_schema = {}
+    return {
+        "server_id": server_id,
+        "server_name": server_name,
+        "name": name,
+        "description": tool_data.get("description") or "",
+        "input_schema": _jsonable(input_schema),
+        "schema_hash": schema_hash(input_schema),
+    }
 
 
 async def async_refresh_mcp_tools(

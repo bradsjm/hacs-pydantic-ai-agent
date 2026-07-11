@@ -1,7 +1,5 @@
 """Config subentry flow handlers for Pydantic AI Agent."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from typing import Any
 
@@ -45,9 +43,7 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
         """Return if this flow creates a new subentry."""
         return self.source == SOURCE_USER
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Add an AI task data subentry."""
         self._options = {
             CONF_AI_TASK_NAME: generated_default_title(
@@ -57,18 +53,14 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
         }
         return await self.async_step_init(user_input)
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Reconfigure an AI task data subentry."""
         subentry = self._get_reconfigure_subentry()
         self._options = subentry.data.copy()
         self._options.setdefault(CONF_AI_TASK_NAME, subentry.title)
         return await self.async_step_init(user_input)
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Manage AI task model options."""
         entry = self._get_entry()
         if entry.state != ConfigEntryState.LOADED:
@@ -95,13 +87,9 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
             except RunSettingsValidationError as err:
                 return self._async_show_init_form(flat_user_input, err.errors)
             if model_error := _selected_model_profile_error(self.hass, entry, data):
-                return self._async_show_init_form(
-                    data, {CONF_PRIMARY_MODEL_REF: model_error}
-                )
+                return self._async_show_init_form(data, {CONF_PRIMARY_MODEL_REF: model_error})
             if todo_error := _selected_todo_workspace_error(self.hass, data):
-                return self._async_show_init_form(
-                    data, {CONF_TODO_LIST_ENTITY_ID: todo_error}
-                )
+                return self._async_show_init_form(data, {CONF_TODO_LIST_ENTITY_ID: todo_error})
             if skill_error := _selected_skill_error(entry, data):
                 return self._async_show_init_form(data, {"base": skill_error})
             if mcp_error := _selected_mcp_server_error(entry, data):

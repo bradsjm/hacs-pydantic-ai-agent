@@ -44,7 +44,7 @@ dev = [
 
 [tool.ruff]
 target-version = "py314"
-line-length = 88
+line-length = 119
 src = ["custom_components", "tests", "scripts"]
 required-version = ">=0.15.20"
 
@@ -91,14 +91,23 @@ disable_error_code = ["call-overload", "arg-type", "index", "operator", "union-a
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["D104"]
-"tests/**/*.py" = ["ARG", "D", "ANN", "TC"]
+"tests/**/*.py" = ["ARG", "D", "ANN", "TC", "TID251"]
 
 [tool.ruff.format]
 docstring-code-format = true
 
 [tool.ruff.lint]
-select = ["ANN", "ARG", "ASYNC", "B", "BLE", "C4", "C90", "D", "DTZ", "E", "F", "G", "I", "LOG", "PIE", "PT", "PTH", "RET", "RSE", "RUF", "SIM", "SLOT", "T20", "TC", "UP", "W"]
-ignore = ["E501", "TC001", "TC002", "TC003", "TC006"]
+select = [
+  "ANN", "ARG", "ASYNC", "B", "BLE", "C", "D", "DTZ", "E", "F", "G", "I", "LOG",
+  "N804", "N805", "N806", "N815", "PERF", "PGH", "PIE", "PT", "PTH", "RET", "RSE", "RUF",
+  "S102", "S103", "S108", "S301", "S306", "S307", "S313", "S314", "S315", "S316", "S317",
+  "S318", "S319", "S601", "S602", "S604", "S608", "S609", "SIM", "SLOT", "T100", "T20",
+  "TC", "TID251", "UP", "W",
+]
+ignore = [
+  "B008", "D202", "D203", "D213", "D406", "D407", "D417", "E501", "SIM108", "TC001",
+  "TC002", "TC003", "TC006",
+]
 
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
@@ -107,13 +116,16 @@ known-first-party = ["pydantic_ai_agent"]
 [tool.ruff.lint.flake8-tidy-imports]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-"__future__.annotations".msg = "Python 3.14+ — annotations are default; do not import from __future__."
+"__future__.annotations".msg = "not needed because this project requires Python 3.14+"
+"async_timeout".msg = "use asyncio.timeout instead"
+"pytz".msg = "use zoneinfo instead"
+"tests".msg = "do not import from tests"
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
 [tool.ruff.lint.mccabe]
-max-complexity = 25
+max-complexity = 10
 
 [tool.codespell]
 ignore-words-list = ["hass", "nam", "iac", "sht", "hel"]

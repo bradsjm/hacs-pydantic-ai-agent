@@ -1,7 +1,5 @@
 """Config subentry flow handlers for Pydantic AI Agent."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 import logging
 from typing import Any, Literal, cast
@@ -238,9 +236,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             errors[CONF_PROVIDER_ID] = field_error
         return errors
 
-    async def async_step_pick_provider(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_pick_provider(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Choose a catalog provider by name."""
         catalog = self._wizard_catalog
         has_catalog_error = self._wizard_catalog_error is not None
@@ -251,9 +247,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         if user_input is None:
             return self.async_show_form(
                 step_id="pick_provider",
-                data_schema=provider_selection_schema(
-                    catalog, include_retry=has_catalog_error
-                ),
+                data_schema=provider_selection_schema(catalog, include_retry=has_catalog_error),
                 errors=self._pick_provider_errors(),
             )
         provider_id = user_input.get(CONF_PROVIDER_ID)
@@ -263,9 +257,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         if not isinstance(provider_id, str):
             return self.async_show_form(
                 step_id="pick_provider",
-                data_schema=provider_selection_schema(
-                    catalog, include_retry=has_catalog_error
-                ),
+                data_schema=provider_selection_schema(catalog, include_retry=has_catalog_error),
                 errors=self._pick_provider_errors("invalid_provider_config"),
             )
         if provider_id == CUSTOM_PROVIDER_ID:
@@ -274,9 +266,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         if provider is None:
             return self.async_show_form(
                 step_id="pick_provider",
-                data_schema=provider_selection_schema(
-                    catalog, include_retry=has_catalog_error
-                ),
+                data_schema=provider_selection_schema(catalog, include_retry=has_catalog_error),
                 errors=self._pick_provider_errors("invalid_provider_config"),
             )
         self._wizard_provider = provider
@@ -293,17 +283,13 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         self._wizard_driver = next(iter(provider.supported_drivers))
         return await self.async_step_wizard_connection()
 
-    async def async_step_pick_driver(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_pick_driver(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Choose an API mode when the provider supports more than one."""
         provider = self._wizard_provider
         if provider is None:
             return await self.async_step_pick_provider()
         if user_input is None:
-            return self.async_show_form(
-                step_id="pick_driver", data_schema=driver_selection_schema(provider)
-            )
+            return self.async_show_form(step_id="pick_driver", data_schema=driver_selection_schema(provider))
         driver = user_input.get(CONF_DRIVER)
         if driver not in provider.supported_drivers:
             return self.async_show_form(
@@ -314,9 +300,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         self._wizard_driver = str(driver)
         return await self.async_step_wizard_connection()
 
-    async def async_step_wizard_connection(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_wizard_connection(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Collect guided provider connection details."""
         provider = self._wizard_provider
         driver = self._wizard_driver
@@ -325,9 +309,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         if user_input is None:
             return self.async_show_form(
                 step_id="wizard_connection",
-                data_schema=connection_schema(
-                    provider, driver, self._wizard_connection_options
-                ),
+                data_schema=connection_schema(provider, driver, self._wizard_connection_options),
             )
         data_input = dict(user_input)
         data_input[CONF_PROVIDER_MODE] = driver
@@ -362,9 +344,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             return self._finish_guided_provider()
         return await self.async_step_pick_models()
 
-    async def async_step_model_filters(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_model_filters(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Filter a large or empty default catalog model list."""
         provider = self._wizard_provider
         if provider is None:
@@ -382,18 +362,12 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             errors=errors,
         )
 
-    async def async_step_pick_models(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_pick_models(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Select catalog models to enable."""
         models = filtered_models(self._wizard_models, self._wizard_filters)
         if user_input is None:
-            return self.async_show_form(
-                step_id="pick_models", data_schema=model_selection_schema(models)
-            )
-        selected_models = selected_models_by_id(
-            models, user_input.get(CONF_SELECTED_MODEL_IDS)
-        )
+            return self.async_show_form(step_id="pick_models", data_schema=model_selection_schema(models))
+        selected_models = selected_models_by_id(models, user_input.get(CONF_SELECTED_MODEL_IDS))
         if not selected_models:
             return self.async_show_form(
                 step_id="pick_models",
@@ -418,18 +392,12 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             provider_name=str(self._wizard_connection_data[CONF_NAME]),
             base_url=self._wizard_connection_data.get(CONF_BASE_URL),
             provider_headers=dict(headers) if isinstance(headers, Mapping) else None,
-            provider_secret_header_keys=self._wizard_connection_data.get(
-                CONF_PROVIDER_SECRET_HEADER_KEYS
-            ),
-            provider_extra_body=dict(extra_body)
-            if isinstance(extra_body, Mapping)
-            else None,
+            provider_secret_header_keys=self._wizard_connection_data.get(CONF_PROVIDER_SECRET_HEADER_KEYS),
+            provider_extra_body=dict(extra_body) if isinstance(extra_body, Mapping) else None,
         )
         return self.async_create_entry(title=str(data[CONF_NAME]), data=data)
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Add a provider subentry."""
         self._options = {
             CONF_NAME: generated_default_title(
@@ -459,9 +427,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         self._wizard_selected_models = ()
         return await self.async_step_pick_provider(user_input)
 
-    async def async_step_reconfigure(
-        self, _user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_reconfigure(self, _user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Reconfigure a provider subentry."""
         self._options = self._provider_form_options(self._get_reconfigure_subentry())
         self._pending_error = None
@@ -485,9 +451,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             options.get(CONF_PROVIDER_HEADERS),
             options.get(CONF_PROVIDER_SECRET_HEADER_KEYS),
         )
-        options[CONF_PROVIDER_EXTRA_BODY] = _format_key_value_json_rows(
-            options.get(CONF_PROVIDER_EXTRA_BODY)
-        )
+        options[CONF_PROVIDER_EXTRA_BODY] = _format_key_value_json_rows(options.get(CONF_PROVIDER_EXTRA_BODY))
         return options
 
     def _provider_subentries(self) -> list[ConfigSubentry]:
@@ -498,9 +462,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
 
     def _selected_model_ids(self, selected_model_ids: object) -> list[str]:
         """Return normalized selected model identifiers preserving submit order."""
-        if isinstance(selected_model_ids, str) or not isinstance(
-            selected_model_ids, list
-        ):
+        if isinstance(selected_model_ids, str) or not isinstance(selected_model_ids, list):
             return []
         seen: set[str] = set()
         normalized: list[str] = []
@@ -529,11 +491,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             if not isinstance(model_name, str):
                 continue
             model_name = model_name.strip()
-            if (
-                not model_name
-                or model_name in previous_custom_model_ids
-                or not bool(profile.get(CONF_ENABLED, False))
-            ):
+            if not model_name or model_name in previous_custom_model_ids or not bool(profile.get(CONF_ENABLED, False)):
                 continue
             known_model_ids.add(model_name)
         return known_model_ids
@@ -553,20 +511,14 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             if not isinstance(model_name, str):
                 continue
             model_name = model_name.strip()
-            if (
-                not model_name
-                or model_name not in previous_custom_model_ids
-                or bool(profile.get(CONF_ENABLED, False))
-            ):
+            if not model_name or model_name not in previous_custom_model_ids or bool(profile.get(CONF_ENABLED, False)):
                 continue
             disabled_custom_model_ids.add(model_name)
         return disabled_custom_model_ids
 
     def _provider_already_configured(self, data: Mapping[str, Any]) -> bool:
         """Return if another provider subentry already uses this connection."""
-        current_subentry_id = (
-            None if self._is_new else self._get_reconfigure_subentry().subentry_id
-        )
+        current_subentry_id = None if self._is_new else self._get_reconfigure_subentry().subentry_id
         for provider_subentry in self._provider_subentries():
             if provider_subentry.subentry_id == current_subentry_id:
                 continue
@@ -590,21 +542,15 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             description_placeholders=description_placeholders,
         )
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Create a provider subentry."""
         return await self._async_provider_form_step("init", user_input)
 
-    async def async_step_edit_connection(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_edit_connection(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Edit provider connection settings."""
         return await self._async_provider_form_step("edit_connection", user_input)
 
-    async def _async_provider_form_step(
-        self, step_id: str, user_input: dict[str, Any] | None
-    ) -> SubentryFlowResult:
+    async def _async_provider_form_step(self, step_id: str, user_input: dict[str, Any] | None) -> SubentryFlowResult:
         """Handle the provider create/edit form."""
         entry = self._get_entry()
         if entry.state != ConfigEntryState.LOADED:
@@ -615,9 +561,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                 user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_CUSTOMIZE_MODEL_LIST)
             )
             try:
-                previous_data = (
-                    None if self._is_new else self._get_reconfigure_subentry().data
-                )
+                previous_data = None if self._is_new else self._get_reconfigure_subentry().data
                 data = _normalise_provider_data(flat_user_input, previous_data)
                 _validate_provider_data(self.hass, data)
             except ProviderValidationError as err:
@@ -646,14 +590,10 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             return self._finish_provider_form()
 
         if not self._options and not self._is_new:
-            self._options = self._provider_form_options(
-                self._get_reconfigure_subentry()
-            )
+            self._options = self._provider_form_options(self._get_reconfigure_subentry())
         return await self._async_show_provider_form(step_id, options=self._options)
 
-    async def _async_validate_provider_form(
-        self, _data: dict[str, Any]
-    ) -> tuple[str, str, dict[str, str]] | None:
+    async def _async_validate_provider_form(self, _data: dict[str, Any]) -> tuple[str, str, dict[str, str]] | None:
         """Validate one provider form submission."""
         existing_data: Mapping[str, Any] = {}
         existing_profiles: Mapping[str, Any] = {}
@@ -664,9 +604,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             CONF_NAME: self._pending_data[CONF_NAME],
             CONF_PROVIDER_MODE: self._pending_data[CONF_PROVIDER_MODE],
             CONF_API_KEY: self._pending_data[CONF_API_KEY],
-            CONF_MODEL_PROFILES: dict(existing_profiles)
-            if isinstance(existing_profiles, Mapping)
-            else {},
+            CONF_MODEL_PROFILES: dict(existing_profiles) if isinstance(existing_profiles, Mapping) else {},
         }
         custom_model_names = _provider_custom_model_names(existing_data)
         if not self._is_new and custom_model_names:
@@ -723,9 +661,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             data=data,
         )
 
-    async def async_step_reconfigure_menu(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_reconfigure_menu(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Show the shallow provider-management menu."""
         del user_input
         return self.async_show_menu(
@@ -737,9 +673,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             ],
         )
 
-    async def async_step_manage_models(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_manage_models(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Manage which provider-owned model profiles are available."""
         if result := await self._async_prepare_manage_models_entry():
             return result
@@ -757,9 +691,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             )
         models = self._managed_models_for_selection()
         raw_selected_model_ids = user_input.get(CONF_SELECTED_MODEL_IDS)
-        if isinstance(raw_selected_model_ids, str) or not isinstance(
-            raw_selected_model_ids, list
-        ):
+        if isinstance(raw_selected_model_ids, str) or not isinstance(raw_selected_model_ids, list):
             return self.async_show_form(
                 step_id="manage_models",
                 data_schema=model_selection_schema(
@@ -774,43 +706,25 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         previous_custom_model_names = _provider_custom_model_names(data)
         previous_custom_model_ids = set(previous_custom_model_names)
         selected_model_ids = self._selected_model_ids(raw_selected_model_ids)
-        known_model_ids = self._known_model_ids_for_manage_models(
-            data, previous_custom_model_ids
-        )
-        disabled_custom_model_ids = self._disabled_custom_model_ids_for_manage_models(
-            data, previous_custom_model_ids
-        )
+        known_model_ids = self._known_model_ids_for_manage_models(data, previous_custom_model_ids)
+        disabled_custom_model_ids = self._disabled_custom_model_ids_for_manage_models(data, previous_custom_model_ids)
         custom_model_names = [
-            model_id
-            for model_id in previous_custom_model_names
-            if model_id in disabled_custom_model_ids
+            model_id for model_id in previous_custom_model_names if model_id in disabled_custom_model_ids
         ]
-        for model_id in [
+        custom_model_names.extend(
             model_id
             for model_id in selected_model_ids
-            if model_id not in known_model_ids
-        ]:
-            if model_id not in disabled_custom_model_ids:
-                custom_model_names.append(model_id)
+            if model_id not in known_model_ids and model_id not in disabled_custom_model_ids
+        )
         if custom_model_names:
             data[CONF_CUSTOM_MODEL_NAMES] = custom_model_names
         else:
             data.pop(CONF_CUSTOM_MODEL_NAMES, None)
         models_by_id = {model.id: model for model in models}
         selected_models = tuple(
-            models_by_id[model_id]
-            for model_id in selected_model_ids
-            if model_id in models_by_id
-        ) + _custom_model_options(
-            [
-                model_id
-                for model_id in custom_model_names
-                if model_id not in models_by_id
-            ]
-        )
-        error = self._sync_selected_model_profiles(
-            selected_models, models, set(custom_model_names)
-        )
+            models_by_id[model_id] for model_id in selected_model_ids if model_id in models_by_id
+        ) + _custom_model_options([model_id for model_id in custom_model_names if model_id not in models_by_id])
+        error = self._sync_selected_model_profiles(selected_models, models, set(custom_model_names))
         if error is not None:
             return self.async_show_form(
                 step_id="manage_models",
@@ -843,14 +757,10 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         return self.async_show_progress(
             step_id="manage_models_prepare",
             progress_action="discover_models",
-            progress_task=self.hass.async_create_task(
-                self._async_prepare_manage_models_flow()
-            ),
+            progress_task=self.hass.async_create_task(self._async_prepare_manage_models_flow()),
         )
 
-    async def async_step_manage_models_prepare(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_manage_models_prepare(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Finish provider model-management preparation progress."""
         del user_input
         task = self.async_get_progress_task()
@@ -862,9 +772,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             )
         if task is not None:
             await task
-        return self.async_show_progress_done(
-            next_step_id="manage_models_prepare_finish"
-        )
+        return self.async_show_progress_done(next_step_id="manage_models_prepare_finish")
 
     async def async_step_manage_models_prepare_finish(
         self, user_input: dict[str, object] | None = None
@@ -930,9 +838,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         self._profile_models = models
         self._manage_models_show_filters = self._profile_needs_model_filter_step()
 
-    async def _async_discovered_models_for_manage(
-        self, data: Mapping[str, Any]
-    ) -> tuple[CatalogModelOption, ...]:
+    async def _async_discovered_models_for_manage(self, data: Mapping[str, Any]) -> tuple[CatalogModelOption, ...]:
         """Return provider-discovered model options for availability management."""
         model_names = _cached_provider_model_names(data)
         if model_names is None:
@@ -958,50 +864,28 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             _LOGGER.warning("Unable to load model catalog for model management")
             return None, ()
         metadata = data.get(CONF_PROVIDER_METADATA)
-        catalog_provider_id = (
-            metadata.get(CONF_CATALOG_PROVIDER_ID)
-            if isinstance(metadata, Mapping)
-            else None
-        )
-        provider = (
-            catalog.providers.get(catalog_provider_id)
-            if isinstance(catalog_provider_id, str)
-            else None
-        )
+        catalog_provider_id = metadata.get(CONF_CATALOG_PROVIDER_ID) if isinstance(metadata, Mapping) else None
+        provider = catalog.providers.get(catalog_provider_id) if isinstance(catalog_provider_id, str) else None
         profiles = provider_model_profiles(self._get_reconfigure_subentry())
         profile_model_ids = {
-            str(profile[CONF_MODEL])
-            for profile in profiles.values()
-            if isinstance(profile.get(CONF_MODEL), str)
+            str(profile[CONF_MODEL]) for profile in profiles.values() if isinstance(profile.get(CONF_MODEL), str)
         }
         if provider is None:
             provider_matches = [
                 (
-                    len(
-                        profile_model_ids
-                        & {
-                            model.id
-                            for model in catalog.models_for_provider(candidate.id)
-                        }
-                    ),
+                    len(profile_model_ids & {model.id for model in catalog.models_for_provider(candidate.id)}),
                     candidate,
                 )
                 for candidate in catalog.providers.values()
             ]
             best_score = max((score for score, _ in provider_matches), default=0)
-            matches = [
-                candidate
-                for score, candidate in provider_matches
-                if score == best_score and score > 0
-            ]
+            matches = [candidate for score, candidate in provider_matches if score == best_score and score > 0]
             if len(matches) != 1:
                 return None, ()
             provider = matches[0]
         return provider, catalog.models_for_provider(provider.id)
 
-    def _enabled_model_ids_for_options(
-        self, models: tuple[CatalogModelOption, ...]
-    ) -> tuple[str, ...]:
+    def _enabled_model_ids_for_options(self, models: tuple[CatalogModelOption, ...]) -> tuple[str, ...]:
         """Return enabled model IDs that are visible in a selection form."""
         visible_ids = {model.id for model in models}
         profiles = self._current_profile_flow_data().get(CONF_MODEL_PROFILES, {})
@@ -1021,20 +905,13 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         from ..models.model_profiles import model_profile_display_name
 
         models_by_id = {model.id: model for model in self._profile_models}
-        managed_models = {
-            model.id: model
-            for model in filtered_models(self._profile_models, self._profile_filters)
-        }
-        for model in _custom_model_options(
-            _provider_custom_model_names(self._current_profile_flow_data())
-        ):
+        managed_models = {model.id: model for model in filtered_models(self._profile_models, self._profile_filters)}
+        for model in _custom_model_options(_provider_custom_model_names(self._current_profile_flow_data())):
             managed_models.setdefault(model.id, model)
         profiles = self._current_profile_flow_data().get(CONF_MODEL_PROFILES, {})
         if isinstance(profiles, Mapping):
             for profile in profiles.values():
-                if not isinstance(profile, Mapping) or not bool(
-                    profile.get(CONF_ENABLED, False)
-                ):
+                if not isinstance(profile, Mapping) or not bool(profile.get(CONF_ENABLED, False)):
                     continue
                 model_name = profile.get(CONF_MODEL)
                 if not isinstance(model_name, str) or not model_name.strip():
@@ -1057,9 +934,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                     output_limit=0,
                     status=None,
                     thinking_support=bool(profile.get(CONF_THINKING_SUPPORT, False)),
-                    structured_output_support=str(
-                        profile.get(CONF_STRUCTURED_OUTPUT_SUPPORT, "none")
-                    ),
+                    structured_output_support=str(profile.get(CONF_STRUCTURED_OUTPUT_SUPPORT, "none")),
                     supports_tools=bool(profile.get(CONF_SUPPORTS_TOOLS, True)),
                 )
         return tuple(managed_models.values())
@@ -1102,15 +977,11 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                 selected_existing_model_ids.add(model_name)
             synced_profiles[profile_id] = profile_data
         missing_selected_models = tuple(
-            model
-            for model in selected_models
-            if model.id not in selected_existing_model_ids
+            model for model in selected_models if model.id not in selected_existing_model_ids
         )
         missing_profiles = build_model_profiles(missing_selected_models)
         custom_model_ids_set = {
-            model.id
-            for model in missing_selected_models
-            if model.provider_id == CUSTOM_PROVIDER_ID
+            model.id for model in missing_selected_models if model.provider_id == CUSTOM_PROVIDER_ID
         }
         for profile in missing_profiles.values():
             if profile[CONF_MODEL] in custom_model_ids_set:
@@ -1161,13 +1032,9 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         if self._profile_filter_provider is None or not self._profile_models:
             return False
         default_models = filtered_models(self._profile_models, self._profile_filters)
-        return len(default_models) < len(
-            self._profile_models
-        ) or needs_model_filter_step(self._profile_models)
+        return len(default_models) < len(self._profile_models) or needs_model_filter_step(self._profile_models)
 
-    async def async_step_manage_model_filters(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_manage_model_filters(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Filter provider-owned models before managing availability."""
         provider = self._profile_filter_provider
         if provider is None:
@@ -1194,22 +1061,16 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
 
     # Provider model profile editing
 
-    async def async_step_customize_model_profile(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_customize_model_profile(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Choose a provider-owned profile to edit."""
         del user_input
         self._profile_flow_data = dict(self._get_reconfigure_subentry().data)
         self._profile_refresh_error = None
         self._selected_profile_id = None
-        self._profile_models = await self._async_profile_catalog_models(
-            self._profile_flow_data
-        )
+        self._profile_models = await self._async_profile_catalog_models(self._profile_flow_data)
         return await self.async_step_pick_model_profile()
 
-    async def async_step_pick_model_profile(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_pick_model_profile(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Pick one existing provider-owned model profile."""
         data = self._current_profile_flow_data()
         if user_input is None:
@@ -1217,10 +1078,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                 return self.async_show_form(
                     step_id="pick_model_profile",
                     data_schema=vol.Schema({}),
-                    errors={
-                        "base": getattr(self, "_profile_refresh_error", None)
-                        or "model_list_unavailable"
-                    },
+                    errors={"base": getattr(self, "_profile_refresh_error", None) or "model_list_unavailable"},
                 )
             errors = {}
             if profile_refresh_error := getattr(self, "_profile_refresh_error", None):
@@ -1233,9 +1091,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         self._selected_profile_id = str(user_input[_CONF_MODEL_PROFILE_ID])
         return await self.async_step_edit_model_profile()
 
-    async def async_step_edit_model_profile(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_edit_model_profile(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Edit one provider-owned model profile."""
         profile_id = self._selected_profile_id
         if profile_id is None:
@@ -1256,18 +1112,14 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             parsed_settings, errors, cleared = _parse_model_settings(
                 self.hass,
                 flat_user_input,
-                _MAIN_MODEL_SETTING_KEYS
-                | _ADVANCED_MODEL_SETTING_KEYS
-                | {_MODEL_SETTING_PARALLEL_TOOL_CALLS},
+                _MAIN_MODEL_SETTING_KEYS | _ADVANCED_MODEL_SETTING_KEYS | {_MODEL_SETTING_PARALLEL_TOOL_CALLS},
             )
             pricing_field_keys = {
                 _MODEL_PRICING_INPUT,
                 _MODEL_PRICING_OUTPUT,
                 _MODEL_PRICING_CACHE_READ,
             }
-            parsed_pricing, pricing_errors, pricing_cleared = _parse_model_pricing(
-                flat_user_input, pricing_field_keys
-            )
+            parsed_pricing, pricing_errors, pricing_cleared = _parse_model_pricing(flat_user_input, pricing_field_keys)
             pricing_submitted = any(key in flat_user_input for key in pricing_field_keys)
             errors.update(pricing_errors)
             data = _model_profile_data_from_user_input(flat_user_input)
@@ -1275,24 +1127,16 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             existing_settings = _model_settings_from_options(
                 {CONF_MODEL_SETTINGS: profile.get(CONF_MODEL_SETTINGS, {})}
             )
-            model_settings = _merge_model_settings(
-                existing_settings, parsed_settings, cleared
-            )
+            model_settings = _merge_model_settings(existing_settings, parsed_settings, cleared)
             try:
                 merge_extra_body(
                     self._current_profile_flow_data().get(CONF_PROVIDER_EXTRA_BODY),
-                    render_templated_extra_body(
-                        self.hass, model_settings.get(CONF_TEMPLATED_EXTRA_BODY)
-                    ),
+                    render_templated_extra_body(self.hass, model_settings.get(CONF_TEMPLATED_EXTRA_BODY)),
                 )
             except HomeAssistantError:
                 errors[CONF_TEMPLATED_EXTRA_BODY] = "templated_extra_body_path_conflict"
-            existing_pricing = _model_pricing_from_options(
-                {CONF_MODEL_PRICING: profile.get(CONF_MODEL_PRICING, {})}
-            )
-            model_pricing = _merge_model_pricing(
-                existing_pricing, parsed_pricing, pricing_cleared
-            )
+            existing_pricing = _model_pricing_from_options({CONF_MODEL_PRICING: profile.get(CONF_MODEL_PRICING, {})})
+            model_pricing = _merge_model_pricing(existing_pricing, parsed_pricing, pricing_cleared)
             if errors:
                 return self.async_show_form(
                     step_id="edit_model_profile",
@@ -1303,11 +1147,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                             CONF_MODEL_SETTINGS: model_settings,
                             CONF_MODEL_PRICING: model_pricing,
                         },
-                        str(
-                            self._current_profile_flow_data().get(
-                                CONF_PROVIDER_MODE, ""
-                            )
-                        ),
+                        str(self._current_profile_flow_data().get(CONF_PROVIDER_MODE, "")),
                     ),
                     errors=errors,
                     description_placeholders=self._model_profile_description_placeholders(
@@ -1315,9 +1155,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                     ),
                 )
             pending_profile = dict(profile) | data
-            if is_openai_compatible_provider_mode(
-                str(self._current_profile_flow_data().get(CONF_PROVIDER_MODE, ""))
-            ):
+            if is_openai_compatible_provider_mode(str(self._current_profile_flow_data().get(CONF_PROVIDER_MODE, ""))):
                 try:
                     PersistedOpenAICompatibleProfile.from_mapping(pending_profile)
                 except KeyError, ValueError:
@@ -1329,11 +1167,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
                                 CONF_MODEL_SETTINGS: model_settings,
                                 CONF_MODEL_PRICING: model_pricing,
                             },
-                            str(
-                                self._current_profile_flow_data().get(
-                                    CONF_PROVIDER_MODE, ""
-                                )
-                            ),
+                            str(self._current_profile_flow_data().get(CONF_PROVIDER_MODE, "")),
                         ),
                         errors={"base": "openai_compatible_profile_incomplete"},
                         description_placeholders=self._model_profile_description_placeholders(
@@ -1344,13 +1178,9 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             self._pending_model_settings = dict(model_settings)
             self._pending_model_pricing = dict(model_pricing)
             self._pending_profile_error = None
-            _store_model_settings(
-                self._pending_profile_data, self._pending_model_settings
-            )
+            _store_model_settings(self._pending_profile_data, self._pending_model_settings)
             if CONF_MODEL_PRICING in profile or pricing_submitted:
-                _store_model_pricing(
-                    self._pending_profile_data, self._pending_model_pricing
-                )
+                _store_model_pricing(self._pending_profile_data, self._pending_model_pricing)
             return await self.async_step_model_profile_finish()
         return self.async_show_form(
             step_id="edit_model_profile",
@@ -1363,9 +1193,7 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
             ),
         )
 
-    async def async_step_model_profile_finish(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_model_profile_finish(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Persist a provider-owned model profile edit or replay validation errors."""
         del user_input
         provider_subentry = self._get_reconfigure_subentry()
@@ -1389,37 +1217,23 @@ class ProviderSubentryFlowHandler(ConfigSubentryFlow):
         profile["id"] = profile_id
         profiles[profile_id] = profile
         data[CONF_MODEL_PROFILES] = profiles
-        return self.async_update_and_abort(
-            self._get_entry(), provider_subentry, title=data[CONF_NAME], data=data
-        )
+        return self.async_update_and_abort(self._get_entry(), provider_subentry, title=data[CONF_NAME], data=data)
 
-    def _model_profile_description_placeholders(
-        self, profile: Mapping[str, Any]
-    ) -> dict[str, str]:
+    def _model_profile_description_placeholders(self, profile: Mapping[str, Any]) -> dict[str, str]:
         """Return edit-model-profile description placeholders."""
         model_name = profile.get(CONF_MODEL)
         model = None
         if isinstance(model_name, str):
             model = next(
-                (
-                    candidate
-                    for candidate in getattr(self, "_profile_models", ())
-                    if candidate.id == model_name
-                ),
+                (candidate for candidate in getattr(self, "_profile_models", ()) if candidate.id == model_name),
                 None,
             )
         return model_profile_description_placeholders(profile, model)
 
-    async def _async_profile_catalog_models(
-        self, data: Mapping[str, Any]
-    ) -> tuple[CatalogModelOption, ...]:
+    async def _async_profile_catalog_models(self, data: Mapping[str, Any]) -> tuple[CatalogModelOption, ...]:
         """Return catalog models for profile-edit descriptions when available."""
         metadata = data.get(CONF_PROVIDER_METADATA)
-        catalog_provider_id = (
-            metadata.get(CONF_CATALOG_PROVIDER_ID)
-            if isinstance(metadata, Mapping)
-            else None
-        )
+        catalog_provider_id = metadata.get(CONF_CATALOG_PROVIDER_ID) if isinstance(metadata, Mapping) else None
         if not isinstance(catalog_provider_id, str):
             return ()
         try:

@@ -74,6 +74,10 @@
   completion capture must remain controlled by the entry setting.
 - Keep changes small and source-grounded. Do not add compatibility shims,
   fallback paths, or comments that merely restate the code.
+- Keep McCabe complexity at or below the configured maximum. Reduce complexity
+  through cohesive, behavior-oriented decomposition; do not game the metric
+  with suppressions, arbitrary wrappers, or trivial one-use helpers that only
+  move branches elsewhere.
 
 ## Architecture Map
 

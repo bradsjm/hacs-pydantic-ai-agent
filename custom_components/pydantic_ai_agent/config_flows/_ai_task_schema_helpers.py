@@ -1,7 +1,5 @@
 """AI task schema helpers for config flows."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from typing import Any
 
@@ -81,16 +79,12 @@ def _ai_task_data_schema(
     """Return the AI task data subentry schema."""
     options = dict(options or {})
     model_options = _model_profile_select_options(entry)
-    fallback_refs = _deduplicate_fallback_model_refs(
-        options.get(CONF_FALLBACK_MODEL_REFS, [])
-    )
+    fallback_refs = _deduplicate_fallback_model_refs(options.get(CONF_FALLBACK_MODEL_REFS, []))
     primary_model_ref = options.get(CONF_PRIMARY_MODEL_REF)
     if not isinstance(primary_model_ref, str):
         primary_model_ref = None
     fallback_refs = [ref for ref in fallback_refs if ref != primary_model_ref]
-    fallback_model_options = _fallback_model_profile_select_options(
-        hass, entry, fallback_refs, primary_model_ref
-    )
+    fallback_model_options = _fallback_model_profile_select_options(hass, entry, fallback_refs, primary_model_ref)
     hass_apis: list[SelectOptionDict] = []
     valid_api_ids: set[str] = set()
     for api in llm.async_get_apis(hass):
@@ -98,9 +92,7 @@ def _ai_task_data_schema(
         valid_api_ids.add(api.id)
 
     if CONF_LLM_HASS_API in options:
-        options[CONF_LLM_HASS_API] = [
-            api for api in options[CONF_LLM_HASS_API] if api in valid_api_ids
-        ]
+        options[CONF_LLM_HASS_API] = [api for api in options[CONF_LLM_HASS_API] if api in valid_api_ids]
     schema: VolDictType = {
         vol.Required(
             CONF_AI_TASK_NAME,
@@ -134,16 +126,16 @@ def _ai_task_data_schema(
                 translation_key=CONF_FALLBACK_MODEL_REFS,
             )
         )
-        schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = (
-            section(vol.Schema(fallback_schema), {"collapsed": True})
+        schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = section(
+            vol.Schema(fallback_schema), {"collapsed": True}
         )
     context_schema = _context_management_schema(
         options,
         entry,
         default_mode=CONTEXT_MANAGEMENT_SLIDING_WINDOW,
     )
-    schema[_section_schema_key(_SECTION_CONTEXT_MANAGEMENT, context_schema.schema)] = (
-        section(context_schema, {"collapsed": True})
+    schema[_section_schema_key(_SECTION_CONTEXT_MANAGEMENT, context_schema.schema)] = section(
+        context_schema, {"collapsed": True}
     )
     run_settings_schema = _run_settings_schema(
         options,
@@ -156,8 +148,8 @@ def _ai_task_data_schema(
             ],
         ),
     )
-    schema[_section_schema_key(_SECTION_RUN_SETTINGS, run_settings_schema.schema)] = (
-        section(run_settings_schema, {"collapsed": True})
+    schema[_section_schema_key(_SECTION_RUN_SETTINGS, run_settings_schema.schema)] = section(
+        run_settings_schema, {"collapsed": True}
     )
     api_schema_key = vol.Optional(CONF_LLM_HASS_API)
     if CONF_LLM_HASS_API in options:
@@ -183,9 +175,7 @@ def _ai_task_data_schema(
             CONF_TODO_LIST_ENTITY_ID,
             default=options[CONF_TODO_LIST_ENTITY_ID],
         )
-    external_tools_schema[todo_schema_key] = EntitySelector(
-        EntitySelectorConfig(domain=TODO_DOMAIN)
-    )
+    external_tools_schema[todo_schema_key] = EntitySelector(EntitySelectorConfig(domain=TODO_DOMAIN))
     external_tools_schema[
         vol.Optional(
             CONF_WEB_FETCH_ENABLED,
@@ -205,8 +195,8 @@ def _ai_task_data_schema(
         )
     ] = BooleanSelector()
     _append_mcp_server_schema_fields(external_tools_schema, options, entry)
-    schema[_section_schema_key(_SECTION_EXTERNAL_TOOLS, external_tools_schema)] = (
-        section(vol.Schema(external_tools_schema), {"collapsed": True})
+    schema[_section_schema_key(_SECTION_EXTERNAL_TOOLS, external_tools_schema)] = section(
+        vol.Schema(external_tools_schema), {"collapsed": True}
     )
     skills_schema: VolDictType = {}
     _append_skill_schema_fields(skills_schema, options, entry)
@@ -234,12 +224,8 @@ def _ai_task_data_from_user_input(
         ),
     )
     data = dict(user_input)
-    data[CONF_FALLBACK_MODEL_REFS] = _normalise_fallback_model_refs(
-        data.get(CONF_FALLBACK_MODEL_REFS, [])
-    )
-    _normalise_context_management_settings(
-        data, entry, default_mode=CONTEXT_MANAGEMENT_SLIDING_WINDOW
-    )
+    data[CONF_FALLBACK_MODEL_REFS] = _normalise_fallback_model_refs(data.get(CONF_FALLBACK_MODEL_REFS, []))
+    _normalise_context_management_settings(data, entry, default_mode=CONTEXT_MANAGEMENT_SLIDING_WINDOW)
     _drop_disabled_external_tool_flags(data)
     if data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is not True:
         data.pop(CONF_VIRTUAL_WORKSPACE_ENABLED, None)

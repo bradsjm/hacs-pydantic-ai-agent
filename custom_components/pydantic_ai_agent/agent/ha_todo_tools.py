@@ -123,17 +123,13 @@ class TodoWorkspace:
         if not completion_note:
             return "Error: completion_note is required to complete an item."
         items = await self._items()
-        item = next(
-            (candidate for candidate in items if candidate.get("uid") == uid), None
-        )
+        item = next((candidate for candidate in items if candidate.get("uid") == uid), None)
         if item is None:
             return f"Error: todo item {uid} was not found."
         timestamp = dt_util.utcnow().isoformat()
         current_description = item.get("description", "")
         note = f"{_TODO_COMPLETE_SEPARATOR}\n{timestamp}: {completion_note}"
-        description = (
-            f"{current_description.rstrip()}\n{note}" if current_description else note
-        )
+        description = f"{current_description.rstrip()}\n{note}" if current_description else note
         try:
             await self._call_service(
                 TodoServices.UPDATE_ITEM,
@@ -145,10 +141,7 @@ class TodoWorkspace:
             )
         except HomeAssistantError as err:
             return f"Error completing todo item {uid}: {err}"
-        return (
-            f"Completed todo item {uid} with note timestamp {timestamp}.\n"
-            + await self.read_items()
-        )
+        return f"Completed todo item {uid} with note timestamp {timestamp}.\n" + await self.read_items()
 
     async def remove_items(self, uids: list[str]) -> str:
         """Remove todo items by UID and return the refreshed workspace."""
@@ -159,10 +152,7 @@ class TodoWorkspace:
             await self._remove_uids(clean_uids)
         except HomeAssistantError as err:
             return f"Error removing todo items: {err}"
-        return (
-            f"Removed todo item(s): {', '.join(clean_uids)}.\n"
-            + await self.read_items()
-        )
+        return f"Removed todo item(s): {', '.join(clean_uids)}.\n" + await self.read_items()
 
     def toolset(self) -> FunctionToolset[None]:
         """Return Pydantic AI tools bound to this workspace."""
@@ -242,14 +232,10 @@ class TodoWorkspace:
             raise HomeAssistantError("Todo get_items returned an invalid response")
         entity_response = response.get(self.entity_id, {})
         if not isinstance(entity_response, dict):
-            raise HomeAssistantError(
-                "Todo get_items returned an invalid entity response"
-            )
+            raise HomeAssistantError("Todo get_items returned an invalid entity response")
         items = entity_response.get("items", [])
         if not isinstance(items, list):
-            raise HomeAssistantError(
-                "Todo get_items returned an invalid items response"
-            )
+            raise HomeAssistantError("Todo get_items returned an invalid items response")
         return [item for item in items if isinstance(item, dict)]
 
     async def _remove_uids(self, uids: list[str]) -> None:
@@ -275,16 +261,9 @@ class TodoWorkspace:
 
     def _format_items(self, items: list[dict[str, str]]) -> str:
         """Return a compact text summary of todo items."""
-        completed = [
-            item for item in items if item.get("status") == TodoItemStatus.COMPLETED
-        ]
-        pending = [
-            item for item in items if item.get("status") != TodoItemStatus.COMPLETED
-        ]
-        lines = [
-            f"Summary: {len(completed)} completed, 0 in progress, "
-            f"{len(pending)} pending"
-        ]
+        completed = [item for item in items if item.get("status") == TodoItemStatus.COMPLETED]
+        pending = [item for item in items if item.get("status") != TodoItemStatus.COMPLETED]
+        lines = [f"Summary: {len(completed)} completed, 0 in progress, {len(pending)} pending"]
         if not items:
             lines.append("No todo items exist yet.")
             return "\n".join(lines)
@@ -292,14 +271,10 @@ class TodoWorkspace:
             if not group:
                 continue
             lines.append(f"\n{heading}:")
-            for item in group:
-                lines.append(self._format_item(item))
+            lines.extend(self._format_item(item) for item in group)
         if pending:
             return "\n".join(lines)
-        lines.append(
-            "All tasks are completed. Do not call ha_todo_read_items again; "
-            "finish the AI Task response."
-        )
+        lines.append("All tasks are completed. Do not call ha_todo_read_items again; finish the AI Task response.")
         return "\n".join(lines)
 
     @staticmethod

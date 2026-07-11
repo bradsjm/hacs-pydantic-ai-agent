@@ -3,8 +3,6 @@
 This module must not import from any other config_flows module.
 """
 
-from __future__ import annotations
-
 from datetime import timedelta
 import re
 

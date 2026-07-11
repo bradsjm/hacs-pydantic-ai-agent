@@ -1,7 +1,5 @@
 """Persisted OpenAI-compatible model profile helpers."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -18,9 +16,11 @@ from ..const import (
 )
 
 type StructuredOutputSupportMode = Literal["none", "json_object", "json_schema"]
-OPENAI_COMPATIBLE_STRUCTURED_OUTPUT_SUPPORT_OPTIONS: tuple[
-    StructuredOutputSupportMode, ...
-] = ("none", "json_object", "json_schema")
+OPENAI_COMPATIBLE_STRUCTURED_OUTPUT_SUPPORT_OPTIONS: tuple[StructuredOutputSupportMode, ...] = (
+    "none",
+    "json_object",
+    "json_schema",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,19 +32,14 @@ class PersistedOpenAICompatibleProfile:
     supports_tools: bool
 
     @classmethod
-    def from_mapping(
-        cls, profile_data: Mapping[str, Any]
-    ) -> PersistedOpenAICompatibleProfile:
+    def from_mapping(cls, profile_data: Mapping[str, Any]) -> PersistedOpenAICompatibleProfile:
         """Return parsed persisted OpenAI-compatible capability settings."""
         thinking_support = profile_data[CONF_THINKING_SUPPORT]
         if not isinstance(thinking_support, bool):
             raise ValueError(f"Invalid {CONF_THINKING_SUPPORT!r} value")
 
         structured_output_support = profile_data[CONF_STRUCTURED_OUTPUT_SUPPORT]
-        if (
-            structured_output_support
-            not in OPENAI_COMPATIBLE_STRUCTURED_OUTPUT_SUPPORT_OPTIONS
-        ):
+        if structured_output_support not in OPENAI_COMPATIBLE_STRUCTURED_OUTPUT_SUPPORT_OPTIONS:
             raise ValueError(f"Invalid {CONF_STRUCTURED_OUTPUT_SUPPORT!r} value")
 
         supports_tools = profile_data[CONF_SUPPORTS_TOOLS]

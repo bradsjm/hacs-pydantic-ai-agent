@@ -1,7 +1,5 @@
 """Workspace config flow for Pydantic AI Agent."""
 
-from __future__ import annotations
-
 from .ai_task_flow import AITaskDataSubentryFlowHandler
 from .common import (
     CONF_NAME,
@@ -40,17 +38,13 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
     MINOR_VERSION = 5
     _default_workspace_name: str | None = None
 
-    def _async_update_workspace_and_abort(
-        self, entry: ConfigEntry, data: dict[str, Any]
-    ) -> ConfigFlowResult:
+    def _async_update_workspace_and_abort(self, entry: ConfigEntry, data: dict[str, Any]) -> ConfigFlowResult:
         """Update a workspace entry using the active reload mechanism."""
         if entry.update_listeners:
             return self.async_update_and_abort(entry, data=data)
         return self.async_update_reload_and_abort(entry, data=data)
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Create a new workspace config entry."""
         errors: dict[str, str] = {}
 
@@ -61,9 +55,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(
-                _base_schema(
-                    user_input or {CONF_NAME: self._new_workspace_default_name()}
-                ),
+                _base_schema(user_input or {CONF_NAME: self._new_workspace_default_name()}),
                 _provider_form_suggested_values(user_input),
             ),
             errors=errors,
@@ -78,9 +70,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
             )
         return self._default_workspace_name
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Reconfigure workspace metadata and Logfire settings."""
         entry = self._get_reconfigure_entry()
         if user_input is None:
@@ -98,9 +88,7 @@ class PydanticAIAgentConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @classmethod
     @callback
-    def async_get_supported_subentry_types(
-        cls, _config_entry: ConfigEntry
-    ) -> dict[str, type[ConfigSubentryFlow]]:
+    def async_get_supported_subentry_types(cls, _config_entry: ConfigEntry) -> dict[str, type[ConfigSubentryFlow]]:
         """Return subentries supported by this integration."""
         return {
             SUBENTRY_TYPE_PROVIDER: ProviderSubentryFlowHandler,

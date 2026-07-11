@@ -1,7 +1,5 @@
 """Structured output helpers for Pydantic AI model and Agent requests."""
 
-from __future__ import annotations
-
 from collections.abc import Callable, Iterable
 import hashlib
 from typing import TYPE_CHECKING, Any, cast
@@ -44,22 +42,17 @@ def resolved_structured_output_mode(profile: ResolvedModelProfile) -> str:
             return OUTPUT_MODE_NATIVE
         return OUTPUT_MODE_PROMPTED
 
-    runtime_profile = model_profile_for_provider_mode(
-        profile.provider_mode, profile.model_name
-    )
+    runtime_profile = model_profile_for_provider_mode(profile.provider_mode, profile.model_name)
     if runtime_profile is not None and runtime_profile.get("supports_tools"):
         return OUTPUT_MODE_TOOL
     if runtime_profile is not None and (
-        runtime_profile.get("supports_json_schema_output")
-        or runtime_profile.get("supports_json_object_output")
+        runtime_profile.get("supports_json_schema_output") or runtime_profile.get("supports_json_object_output")
     ):
         return OUTPUT_MODE_NATIVE
     return OUTPUT_MODE_PROMPTED
 
 
-def structured_output_name(
-    name: str | None, fallback: str, reserved_names: Iterable[str] = ()
-) -> str:
+def structured_output_name(name: str | None, fallback: str, reserved_names: Iterable[str] = ()) -> str:
     """Return a valid, stable Pydantic AI output name."""
     reserved = set(reserved_names)
     base = slugify(name or fallback) or fallback

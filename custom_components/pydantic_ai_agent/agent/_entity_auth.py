@@ -1,7 +1,5 @@
 """Auth-failure helpers used during entity agent runs."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.core import HomeAssistant
@@ -23,13 +21,9 @@ def _join_instructions(*parts: str | None) -> str | None:
     return "\n\n".join(instructions) if instructions else None
 
 
-def _has_provider_auth_failure(
-    entry: PydanticAIAgentConfigEntry, provider_subentry_id: str
-) -> bool:
+def _has_provider_auth_failure(entry: PydanticAIAgentConfigEntry, provider_subentry_id: str) -> bool:
     """Return if runtime has a current auth issue for a provider."""
-    return bool(
-        entry.runtime_data.runtime_provider_auth_failures.get(provider_subentry_id)
-    )
+    return bool(entry.runtime_data.runtime_provider_auth_failures.get(provider_subentry_id))
 
 
 def _record_runtime_auth_failure(
@@ -37,9 +31,7 @@ def _record_runtime_auth_failure(
     profile: Any,  # noqa: ANN401
 ) -> None:
     """Record a runtime auth issue for one provider/profile pair."""
-    failures = entry.runtime_data.runtime_provider_auth_failures.setdefault(
-        profile.provider_subentry_id, []
-    )
+    failures = entry.runtime_data.runtime_provider_auth_failures.setdefault(profile.provider_subentry_id, [])
     if profile.ref not in failures:
         failures.append(profile.ref)
 
@@ -50,9 +42,7 @@ def _clear_runtime_auth_failure(
     profile: Any,  # noqa: ANN401
 ) -> None:
     """Clear a runtime auth issue for one provider/profile pair when safe."""
-    _clear_runtime_auth_failure_for_ref(
-        hass, entry, profile.provider_subentry_id, profile.ref
-    )
+    _clear_runtime_auth_failure_for_ref(hass, entry, profile.provider_subentry_id, profile.ref)
 
 
 def _clear_runtime_auth_failure_for_ref(
@@ -62,15 +52,11 @@ def _clear_runtime_auth_failure_for_ref(
     profile_ref: str,
 ) -> None:
     """Clear a runtime auth issue by provider/profile reference when safe."""
-    failures = entry.runtime_data.runtime_provider_auth_failures.get(
-        provider_subentry_id
-    )
+    failures = entry.runtime_data.runtime_provider_auth_failures.get(provider_subentry_id)
     if failures is not None and profile_ref in failures:
         failures.remove(profile_ref)
         if not failures:
-            entry.runtime_data.runtime_provider_auth_failures.pop(
-                provider_subentry_id, None
-            )
+            entry.runtime_data.runtime_provider_auth_failures.pop(provider_subentry_id, None)
     if not _has_provider_auth_failure(entry, provider_subentry_id):
         async_delete_provider_auth_issue(hass, entry, provider_subentry_id)
 

@@ -1,7 +1,5 @@
 """Provider data normalization and validation helpers for config flows."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from hashlib import sha256
 import json
@@ -68,9 +66,7 @@ from .helpers import (
 )
 
 
-def _format_http_headers(
-    headers: object, secret_header_keys: object = ()
-) -> list[dict[str, str | bool]]:
+def _format_http_headers(headers: object, secret_header_keys: object = ()) -> list[dict[str, str | bool]]:
     """Return HTTP headers in selector-compatible row shape."""
     return format_header_rows(headers, secret_header_keys)
 
@@ -237,10 +233,7 @@ def _validate_base_url(data: Mapping[str, Any]) -> None:
     if suffix := _base_url_endpoint_suffix(data.get(CONF_BASE_URL)):
         raise ProviderValidationError(
             "invalid_base_url_endpoint",
-            (
-                "Enter the provider API base URL, not an endpoint URL. "
-                f"Remove the trailing /{suffix}."
-            ),
+            (f"Enter the provider API base URL, not an endpoint URL. Remove the trailing /{suffix}."),
         )
 
 
@@ -327,14 +320,10 @@ def _normalise_provider_data(
     user_input: Mapping[str, Any], previous_data: Mapping[str, Any] | None = None
 ) -> dict[str, Any]:
     """Return normalized provider data for storage and validation."""
-    data = _flatten_section_data(
-        user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_CUSTOMIZE_MODEL_LIST)
-    )
+    data = _flatten_section_data(user_input, (_SECTION_ADVANCED_OPTIONS, _SECTION_CUSTOMIZE_MODEL_LIST))
     data[CONF_NAME] = str(data[CONF_NAME]).strip() or DEFAULT_SERVICE_NAME
     data[CONF_BASE_URL] = _normalise_base_url(data.get(CONF_BASE_URL))
-    headers, secret_header_keys = _parse_provider_headers(
-        data.get(CONF_PROVIDER_HEADERS), previous_data
-    )
+    headers, secret_header_keys = _parse_provider_headers(data.get(CONF_PROVIDER_HEADERS), previous_data)
     if headers:
         data[CONF_PROVIDER_HEADERS] = headers
         data[CONF_PROVIDER_SECRET_HEADER_KEYS] = secret_header_keys
@@ -342,9 +331,7 @@ def _normalise_provider_data(
         data.pop(CONF_PROVIDER_HEADERS, None)
         data.pop(CONF_PROVIDER_SECRET_HEADER_KEYS, None)
     try:
-        provider_extra_body = _parse_key_value_json_setting(
-            data.get(CONF_PROVIDER_EXTRA_BODY, "")
-        )
+        provider_extra_body = _parse_key_value_json_setting(data.get(CONF_PROVIDER_EXTRA_BODY, ""))
     except ValueError as err:
         raise ProviderValidationError(
             _model_setting_error(_MODEL_SETTING_EXTRA_BODY, str(err)),
@@ -381,8 +368,7 @@ def _validate_provider_data(hass: HomeAssistant, data: Mapping[str, Any]) -> Non
     if data.get(CONF_PROVIDER_EXTRA_BODY) and not _provider_extra_body_supported(data):
         raise ProviderValidationError(
             "provider_extra_body_unsupported",
-            "Extra body is only supported by OpenAI-compatible and Anthropic "
-            "provider modes.",
+            "Extra body is only supported by OpenAI-compatible and Anthropic provider modes.",
         )
 
 

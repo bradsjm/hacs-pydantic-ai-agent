@@ -35,9 +35,7 @@ from pydantic_ai.tools import ToolDefinition
 from ..openai_compatible_client import omit
 
 
-def map_tool_definition(
-    tool: ToolDefinition, *, strict_supported: bool
-) -> dict[str, Any]:
+def map_tool_definition(tool: ToolDefinition, *, strict_supported: bool) -> dict[str, Any]:
     """Map a Pydantic AI tool definition to a Responses function tool."""
     mapped: dict[str, Any] = {
         "type": "function",
@@ -73,16 +71,13 @@ async def map_messages(
     mapped_messages: list[dict[str, Any]] = []
     for message in messages:
         if isinstance(message, ModelRequest):
-            async for item in _map_model_request(model, message):
-                mapped_messages.append(item)
+            mapped_messages.extend([item async for item in _map_model_request(model, message)])
         elif isinstance(message, ModelResponse):
             mapped_messages.extend(_map_model_response(model, message))
         else:
             assert_never(message)
 
-    instruction_parts = (
-        model._get_instruction_parts(messages, model_request_parameters) or []
-    )
+    instruction_parts = model._get_instruction_parts(messages, model_request_parameters) or []
     instructions = "\n\n".join(part.content for part in instruction_parts)
     return instructions or omit, mapped_messages
 
@@ -93,9 +88,7 @@ def _system_role(model: Model[Any]) -> str:
     return role if isinstance(role, str) and role else "system"
 
 
-async def _map_model_request(
-    model: Model[Any], message: ModelRequest
-) -> AsyncIterable[dict[str, Any]]:
+async def _map_model_request(model: Model[Any], message: ModelRequest) -> AsyncIterable[dict[str, Any]]:
     for part in message.parts:
         if isinstance(part, SystemPromptPart):
             yield {"role": _system_role(model), "content": part.content}
@@ -128,9 +121,7 @@ async def _map_model_request(
             assert_never(part)
 
 
-def _map_model_response(
-    model: Model[Any], message: ModelResponse
-) -> list[dict[str, Any]]:
+def _map_model_response(model: Model[Any], message: ModelResponse) -> list[dict[str, Any]]:
     """Map a prior model response to Responses input items."""
     mapped: list[dict[str, Any]] = []
     for item in message.parts:
@@ -151,9 +142,7 @@ def _map_model_response(
                     "status": "completed",
                     "content": [content],
                 }
-                if item.provider_details and (
-                    phase := item.provider_details.get("phase")
-                ):
+                if item.provider_details and (phase := item.provider_details.get("phase")):
                     mapped_item["phase"] = phase
                 mapped.append(mapped_item)
             else:
@@ -162,18 +151,14 @@ def _map_model_response(
             mapped.extend(_map_thinking_part(model, item, should_send_item_id))
         elif isinstance(item, ToolCallPart):
             mapped.append(_map_tool_call(model, item, should_send_item_id))
-        elif isinstance(
-            item, NativeToolCallPart | NativeToolReturnPart | FilePart | CompactionPart
-        ):
+        elif isinstance(item, NativeToolCallPart | NativeToolReturnPart | FilePart | CompactionPart):
             pass
         else:
             assert_never(item)
     return mapped
 
 
-def _map_thinking_part(
-    model: Model[Any], item: ThinkingPart, should_send_item_id: bool
-) -> list[dict[str, Any]]:
+def _map_thinking_part(model: Model[Any], item: ThinkingPart, should_send_item_id: bool) -> list[dict[str, Any]]:
     raw_content = None
     if item.provider_name == model.system:
         raw_content = (item.provider_details or {}).get("raw_content")
@@ -188,16 +173,12 @@ def _map_thinking_part(
         if item.content:
             mapped["summary"] = [{"type": "summary_text", "text": item.content}]
         if raw_content:
-            mapped["content"] = [
-                {"type": "reasoning_text", "text": text} for text in raw_content
-            ]
+            mapped["content"] = [{"type": "reasoning_text", "text": text} for text in raw_content]
         return [mapped]
     return [{"role": "assistant", "content": f"<think>\n{item.content}\n</think>"}]
 
 
-def _map_tool_call(
-    model: Model[Any], part: ToolCallPart, should_send_item_id: bool
-) -> dict[str, Any]:
+def _map_tool_call(model: Model[Any], part: ToolCallPart, should_send_item_id: bool) -> dict[str, Any]:
     """Map a prior tool call to Responses function-call history."""
     call_id, item_id = _split_combined_tool_call_id(part.tool_call_id)
     mapped: dict[str, Any] = {
@@ -246,8 +227,7 @@ def _map_content_item(model: Model[Any], item: Any) -> dict[str, Any] | None:  #
     if isinstance(item, UploadedFile):
         if item.provider_name != model.system:
             raise UserError(
-                f"UploadedFile with provider_name={item.provider_name!r} cannot be "
-                f"used with {model.system!r}."
+                f"UploadedFile with provider_name={item.provider_name!r} cannot be used with {model.system!r}."
             )
         return {"type": "input_file", "file_id": item.file_id}
     if isinstance(item, CachePoint):

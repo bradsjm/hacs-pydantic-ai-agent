@@ -1,7 +1,5 @@
 """Pure helper functions extracted from provider_flow.py."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from typing import Any
 
@@ -59,13 +57,9 @@ def _catalog_model_pricing(model: CatalogModelOption | None) -> dict[str, float]
     return pricing
 
 
-def _catalog_provider_metadata_still_valid(
-    existing_data: Mapping[str, Any], storage_data: Mapping[str, Any]
-) -> bool:
+def _catalog_provider_metadata_still_valid(existing_data: Mapping[str, Any], storage_data: Mapping[str, Any]) -> bool:
     """Return if stored catalog metadata still matches the edited endpoint."""
-    return _effective_catalog_base_url(existing_data) == _effective_catalog_base_url(
-        storage_data
-    )
+    return _effective_catalog_base_url(existing_data) == _effective_catalog_base_url(storage_data)
 
 
 def _effective_catalog_base_url(data: Mapping[str, Any]) -> str | None:

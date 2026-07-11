@@ -33,9 +33,7 @@ from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.tools import ToolDefinition
 
 
-def map_tool_definition(
-    tool: ToolDefinition, *, strict_supported: bool
-) -> dict[str, Any]:
+def map_tool_definition(tool: ToolDefinition, *, strict_supported: bool) -> dict[str, Any]:
     """Map a Pydantic AI tool definition to an OpenAI-compatible function tool."""
     function: dict[str, Any] = {
         "name": tool.name,
@@ -69,24 +67,17 @@ async def map_messages(
     mapped_messages: list[dict[str, Any]] = []
     for message in messages:
         if isinstance(message, ModelRequest):
-            async for item in _map_model_request(model, message):
-                mapped_messages.append(item)
+            mapped_messages.extend([item async for item in _map_model_request(model, message)])
         elif isinstance(message, ModelResponse):
             if (mapped := _map_model_response(message)) is not None:
                 mapped_messages.append(mapped)
         else:
             assert_never(message)
 
-    if instruction_parts := model._get_instruction_parts(
-        messages, model_request_parameters
-    ):
+    if instruction_parts := model._get_instruction_parts(messages, model_request_parameters):
         system_role = _system_role(model)
         first_non_system = next(
-            (
-                i
-                for i, item in enumerate(mapped_messages)
-                if item.get("role") != system_role
-            ),
+            (i for i, item in enumerate(mapped_messages) if item.get("role") != system_role),
             len(mapped_messages),
         )
         mapped_messages[first_non_system:first_non_system] = [
@@ -101,9 +92,7 @@ def _system_role(model: Model[Any]) -> str:
     return role if isinstance(role, str) and role else "system"
 
 
-async def _map_model_request(
-    model: Model[Any], message: ModelRequest
-) -> AsyncIterable[dict[str, Any]]:
+async def _map_model_request(model: Model[Any], message: ModelRequest) -> AsyncIterable[dict[str, Any]]:
     file_content: list[Any] = []
     for part in message.parts:
         if isinstance(part, SystemPromptPart):
@@ -149,9 +138,7 @@ def _map_model_response(message: ModelResponse) -> dict[str, Any] | None:
                 texts.append("\n".join([start_tag, item.content, end_tag]))
         elif isinstance(item, ToolCallPart):
             tool_calls.append(_map_tool_call(item))
-        elif isinstance(
-            item, NativeToolCallPart | NativeToolReturnPart | FilePart | CompactionPart
-        ):
+        elif isinstance(item, NativeToolCallPart | NativeToolReturnPart | FilePart | CompactionPart):
             pass
         else:
             assert_never(item)
@@ -182,11 +169,7 @@ def _map_user_prompt(part: UserPromptPart) -> dict[str, Any]:
     if isinstance(part.content, str):
         content: str | list[dict[str, Any]] = part.content
     else:
-        content = [
-            mapped
-            for item in part.content
-            if (mapped := _map_content_item(item)) is not None
-        ]
+        content = [mapped for item in part.content if (mapped := _map_content_item(item)) is not None]
     return {"role": "user", "content": content}
 
 
@@ -212,10 +195,7 @@ def _map_content_item(item: Any) -> dict[str, Any] | None:  # noqa: ANN401
     if isinstance(item, CachePoint):
         return None
     if isinstance(item, AudioUrl | VideoUrl):
-        raise UserError(
-            "Audio and video URL inputs are not supported"
-            " by this Chat Completions adapter"
-        )
+        raise UserError("Audio and video URL inputs are not supported by this Chat Completions adapter")
     assert_never(item)
 
 
