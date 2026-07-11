@@ -36,7 +36,7 @@ from ..const import (
     SUBENTRY_TYPE_MCP_SERVER,
     SUBENTRY_TYPE_SKILL,
 )
-from ..mcp import cached_mcp_tools
+from ..mcp import cached_mcp_tools, mcp_subentries
 from ..mcp.entry_helpers import effective_mcp_tool_mode
 from ..models.model_profiles import (
     model_profile_ref,
@@ -62,7 +62,7 @@ def workspace_status(
     if include_subentries:
         data["subentries"] = _subentries_status(entry)
     if include_runtime:
-        data["runtime"] = _runtime_status(runtime_data)
+        data["runtime"] = _runtime_status(entry, runtime_data)
     return data
 
 
@@ -252,7 +252,6 @@ def _agent_subentry_status(
 
 def _mcp_server_status(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str, Any]:
     runtime_data = getattr(entry, "runtime_data", None)
-    runtime_servers = getattr(runtime_data, "mcp_servers", {}) if runtime_data else {}
     cached_tools = (
         cached_mcp_tools(entry, subentry.subentry_id) if runtime_data else None
     )
@@ -264,7 +263,7 @@ def _mcp_server_status(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str
         CONF_MCP_TOOL_MODE: effective_mcp_tool_mode(subentry.data),
         "allowed_tool_count": _list_count(allowed_tools),
         "cached_tool_count": len(cached_tools) if cached_tools is not None else 0,
-        "runtime_loaded": subentry.subentry_id in runtime_servers,
+        "runtime_loaded": runtime_data is not None,
     }
 
 
@@ -281,7 +280,7 @@ def _skill_subentry_status(subentry: ConfigSubentry) -> dict[str, Any]:
     }
 
 
-def _runtime_status(runtime_data: object) -> dict[str, Any] | None:
+def _runtime_status(entry: ConfigEntry, runtime_data: object) -> dict[str, Any] | None:
     if runtime_data is None:
         return None
     metrics = getattr(runtime_data, "metrics", None)
@@ -290,7 +289,7 @@ def _runtime_status(runtime_data: object) -> dict[str, Any] | None:
     return {
         "workspace_name": getattr(runtime_data, "workspace_name", None),
         "provider_count": len(getattr(runtime_data, "providers", {})),
-        "mcp_server_count": len(getattr(runtime_data, "mcp_servers", {})),
+        "mcp_server_count": len(mcp_subentries(entry)),
         "cached_mcp_tool_server_count": len(
             getattr(runtime_data, "mcp_tool_cache", {})
         ),

@@ -128,9 +128,13 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
     def _handle_lifecycle_event(
         self, event: ResponseStreamEvent, event_type: str
     ) -> None:
-        """Accumulate usage from lifecycle events."""
-        if event.response is not None and event_type != "response.created":
-            self._usage += map_usage(event.response)
+        """Store the latest cumulative usage from lifecycle events."""
+        if (
+            event.response is not None
+            and event.response.usage is not None
+            and event_type != "response.created"
+        ):
+            self._usage = map_usage(event.response)
 
     def _handle_output_text_event(
         self,

@@ -25,19 +25,6 @@ class ProviderRuntimeData:
     discovered_models: list[str] | None = None
 
 
-@dataclass(frozen=True, kw_only=True)
-class MCPServerRuntimeData:
-    """MCP runtime data owned by one workspace MCP subentry."""
-
-    subentry_id: str
-    name: str
-    url: str
-    headers: dict[str, str] = field(default_factory=dict)
-    allowed_tools: list[str] = field(default_factory=list)
-    call_cache_enabled: bool = False
-    call_cache_ttl: int = 300
-
-
 @dataclass(kw_only=True)
 class MCPCallCacheEntry:
     """One cached MCP tool call result."""
@@ -52,7 +39,6 @@ class WorkspaceRuntimeData:
 
     workspace_name: str
     providers: dict[str, ProviderRuntimeData] = field(default_factory=dict)
-    mcp_servers: dict[str, MCPServerRuntimeData] = field(default_factory=dict)
     model_profiles: dict[str, Any] = field(default_factory=dict)
     mcp_tool_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     mcp_call_cache: dict[str, MCPCallCacheEntry] = field(default_factory=dict)

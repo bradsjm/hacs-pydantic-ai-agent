@@ -4,34 +4,21 @@ from collections.abc import Mapping
 import logging
 from typing import Any
 
-from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_API_KEY
 from homeassistant.exceptions import HomeAssistantError
-import voluptuous as vol
 
 from ..const import (
     CONF_BASE_URL,
-    CONF_MCP_ALLOWED_TOOLS,
-    CONF_MCP_CALL_CACHE_ENABLED,
-    CONF_MCP_CALL_CACHE_TTL,
-    CONF_MCP_HEADERS,
-    CONF_MCP_URL,
     CONF_PROVIDER_EXTRA_BODY,
     CONF_PROVIDER_HEADERS,
     CONF_PROVIDER_MODE,
-    DEFAULT_MCP_CALL_CACHE_TTL,
-    SUBENTRY_TYPE_MCP_SERVER,
 )
 from ..models.model_profiles import (
     enabled_model_profile_refs,
     parse_model_profile_ref,
     resolve_model_profile,
 )
-from .types import (
-    MCPServerRuntimeData,
-    ProviderRuntimeData,
-    PydanticAIAgentConfigEntry,
-)
+from .types import ProviderRuntimeData, PydanticAIAgentConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,50 +79,7 @@ def _resolved_model_profiles(
     return profiles
 
 
-def _mcp_server_runtimes(
-    entry: PydanticAIAgentConfigEntry,
-) -> dict[str, MCPServerRuntimeData]:
-    """Return runtime MCP server data for structurally valid MCP subentries."""
-    from ..mcp import (
-        MCPValidationError,
-        normalise_mcp_url,
-        parse_allowed_tools,
-        parse_mcp_headers,
-    )
-
-    runtimes: dict[str, MCPServerRuntimeData] = {}
-    for subentry in _mcp_server_subentries(entry):
-        try:
-            url = normalise_mcp_url(subentry.data.get(CONF_MCP_URL))
-            headers = parse_mcp_headers(subentry.data.get(CONF_MCP_HEADERS))
-            allowed_tools = parse_allowed_tools(
-                subentry.data.get(CONF_MCP_ALLOWED_TOOLS)
-            )
-        except MCPValidationError, TypeError, ValueError, vol.Invalid:
-            _LOGGER.warning(
-                "Skipping MCP server subentry %s with invalid stored data",
-                subentry.subentry_id,
-            )
-            continue
-        runtimes[subentry.subentry_id] = MCPServerRuntimeData(
-            subentry_id=subentry.subentry_id,
-            name=subentry.title,
-            url=url,
-            headers=headers,
-            allowed_tools=allowed_tools,
-            call_cache_enabled=bool(
-                subentry.data.get(CONF_MCP_CALL_CACHE_ENABLED, False)
-            ),
-            call_cache_ttl=int(
-                subentry.data.get(CONF_MCP_CALL_CACHE_TTL, DEFAULT_MCP_CALL_CACHE_TTL)
-            ),
-        )
-    return runtimes
-
-
-def _provider_subentries(
-    entry: PydanticAIAgentConfigEntry,
-) -> list[ConfigSubentry]:
+def _provider_subentries(entry: PydanticAIAgentConfigEntry) -> list[Any]:
     """Return all provider subentries."""
     from ..const import SUBENTRY_TYPE_PROVIDER
 
@@ -143,15 +87,4 @@ def _provider_subentries(
         subentry
         for subentry in entry.subentries.values()
         if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER
-    ]
-
-
-def _mcp_server_subentries(
-    entry: PydanticAIAgentConfigEntry,
-) -> list[ConfigSubentry]:
-    """Return all MCP server subentries."""
-    return [
-        subentry
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER
     ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.config_entries import (
@@ -92,62 +93,35 @@ class AITaskDataSubentryFlowHandler(ConfigSubentryFlow):
                     entry,
                 )
             except RunSettingsValidationError as err:
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=self.add_suggested_values_to_schema(
-                        _ai_task_data_schema(
-                            self.hass, self._options | flat_user_input, entry
-                        ),
-                        _agent_form_suggested_values(
-                            self._options | flat_user_input, self.hass
-                        ),
-                    ),
-                    errors=err.errors,
-                )
+                return self._async_show_init_form(flat_user_input, err.errors)
             if model_error := _selected_model_profile_error(self.hass, entry, data):
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=self.add_suggested_values_to_schema(
-                        _ai_task_data_schema(self.hass, self._options | data, entry),
-                        _agent_form_suggested_values(self._options | data, self.hass),
-                    ),
-                    errors={CONF_PRIMARY_MODEL_REF: model_error},
+                return self._async_show_init_form(
+                    data, {CONF_PRIMARY_MODEL_REF: model_error}
                 )
             if todo_error := _selected_todo_workspace_error(self.hass, data):
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=self.add_suggested_values_to_schema(
-                        _ai_task_data_schema(self.hass, self._options | data, entry),
-                        _agent_form_suggested_values(self._options | data, self.hass),
-                    ),
-                    errors={CONF_TODO_LIST_ENTITY_ID: todo_error},
+                return self._async_show_init_form(
+                    data, {CONF_TODO_LIST_ENTITY_ID: todo_error}
                 )
             if skill_error := _selected_skill_error(entry, data):
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=self.add_suggested_values_to_schema(
-                        _ai_task_data_schema(self.hass, self._options | data, entry),
-                        _agent_form_suggested_values(self._options | data, self.hass),
-                    ),
-                    errors={"base": skill_error},
-                )
+                return self._async_show_init_form(data, {"base": skill_error})
             if mcp_error := _selected_mcp_server_error(entry, data):
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=self.add_suggested_values_to_schema(
-                        _ai_task_data_schema(self.hass, self._options | data, entry),
-                        _agent_form_suggested_values(self._options | data, self.hass),
-                    ),
-                    errors={"base": mcp_error},
-                )
+                return self._async_show_init_form(data, {"base": mcp_error})
             return self._async_finish_ai_task_options(data)
 
+        return self._async_show_init_form({})
+
+    def _async_show_init_form(
+        self, data: Mapping[str, Any], errors: dict[str, str] | None = None
+    ) -> SubentryFlowResult:
+        """Render the AI task options form with suggested values."""
+        options = self._options | dict(data)
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                _ai_task_data_schema(self.hass, self._options, entry),
-                _agent_form_suggested_values(self._options, self.hass),
+                _ai_task_data_schema(self.hass, options, self._get_entry()),
+                _agent_form_suggested_values(options, self.hass),
             ),
+            errors=errors,
         )
 
     def _async_finish_ai_task_options(

@@ -44,6 +44,7 @@ from .validation import async_validate_mcp_url_details
 
 _LOGGER = logging.getLogger(__name__)
 _MISSING = object()
+_MAX_MCP_CALL_CACHE_ENTRIES = 256
 
 
 async def _validated_runtime_mcp_config(
@@ -96,10 +97,15 @@ def _store_cached_mcp_tool_result(
 ) -> None:
     """Store one successful MCP tool result in the runtime cache."""
     _prune_expired_mcp_tool_results(hass, entry)
-    entry.runtime_data.mcp_call_cache[cache_key] = MCPCallCacheEntry(
+    cache = entry.runtime_data.mcp_call_cache
+    is_new_key = cache_key not in cache
+    cache[cache_key] = MCPCallCacheEntry(
         expires_at=hass.loop.time() + cache_ttl,
         result=result,
     )
+    if is_new_key:
+        while len(cache) > _MAX_MCP_CALL_CACHE_ENTRIES:
+            cache.pop(next(iter(cache)))
 
 
 def _prune_expired_mcp_tool_results(

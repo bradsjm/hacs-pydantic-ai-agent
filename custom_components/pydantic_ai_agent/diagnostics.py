@@ -40,6 +40,7 @@ from .const import (
     SUBENTRY_TYPE_PROVIDER,
     SUBENTRY_TYPE_SKILL,
 )
+from .mcp import mcp_subentries
 from .mcp.entry_helpers import effective_mcp_tool_mode
 from .models.model_profiles import primary_model_profile
 from .models.structured_output import resolved_structured_output_mode
@@ -142,7 +143,7 @@ def _runtime_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
         diagnostics["latest_stream_traces"] = redact_data(
             runtime_data.latest_stream_traces
         )
-    diagnostics["mcp_server_count"] = len(getattr(runtime_data, "mcp_servers", {}))
+    diagnostics["mcp_server_count"] = len(mcp_subentries(entry))
     diagnostics["cached_mcp_server_count"] = len(
         getattr(runtime_data, "mcp_tool_cache", {})
     )

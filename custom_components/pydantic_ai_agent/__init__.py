@@ -52,12 +52,8 @@ from .runtime.migration import (
     _remove_stale_subentry_registry_entries,
 )
 from .runtime.setup_helpers import (
-    _mcp_server_runtimes,
     _provider_runtimes,
     _resolved_model_profiles,
-)
-from .runtime.types import (
-    MCPServerRuntimeData as MCPServerRuntimeData,
 )
 from .runtime.types import (
     ProviderRuntimeData as ProviderRuntimeData,
@@ -128,7 +124,6 @@ async def async_setup_entry(
 ) -> bool:
     """Build workspace runtime data, then set up entity platforms."""
     provider_runtimes = _provider_runtimes(entry)
-    mcp_runtime = _mcp_server_runtimes(entry)
     model_profiles = _resolved_model_profiles(entry, provider_runtimes)
     forwarded_platforms = False
     await async_configure_logfire(hass, entry)
@@ -136,7 +131,6 @@ async def async_setup_entry(
         entry.runtime_data = WorkspaceRuntimeData(
             workspace_name=entry.data[CONF_NAME],
             providers=provider_runtimes,
-            mcp_servers=mcp_runtime,
             model_profiles=model_profiles,
             logfire_enabled=logfire_enabled(hass, entry),
             logfire_include_content=logfire_include_content(hass, entry),

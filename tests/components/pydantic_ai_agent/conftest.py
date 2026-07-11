@@ -10,11 +10,12 @@ Home Assistant fixture at all. This conftest provides:
   subentry-aware model/MCP/skill helpers.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from typing import Any
 
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 pytest_plugins = ("pytest_homeassistant_custom_component",)
 
@@ -75,5 +76,43 @@ def make_subentry() -> Any:
         if subentry_id is not None:
             kwargs["subentry_id"] = subentry_id
         return ConfigSubentry(**kwargs)
+
+    return _factory
+
+
+@pytest.fixture
+def make_config_entry() -> Any:
+    """Factory that builds a current-version workspace config entry."""
+    from custom_components.pydantic_ai_agent.const import CONF_NAME, DOMAIN
+    from homeassistant.config_entries import ConfigEntryState, ConfigSubentry
+
+    def _factory(
+        *,
+        name: str = "Workspace",
+        title: str = "Workspace",
+        data: Mapping[str, Any] | None = None,
+        subentries: Sequence[ConfigSubentry] = (),
+        entry_id: str | None = None,
+        state: ConfigEntryState | None = None,
+    ) -> MockConfigEntry:
+        return MockConfigEntry(
+            domain=DOMAIN,
+            title=title,
+            data={CONF_NAME: name, **(data or {})},
+            entry_id=entry_id,
+            subentries_data=(
+                {
+                    "data": subentry.data,
+                    "subentry_id": subentry.subentry_id,
+                    "subentry_type": subentry.subentry_type,
+                    "title": subentry.title,
+                    "unique_id": subentry.unique_id,
+                }
+                for subentry in subentries
+            ),
+            version=2,
+            minor_version=5,
+            state=state,
+        )
 
     return _factory

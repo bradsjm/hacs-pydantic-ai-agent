@@ -1,6 +1,6 @@
 """Pydantic AI provider helpers."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -282,6 +282,9 @@ def _api_url(base_url: str, path: str) -> str:
     return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
 
+_MAX_MODEL_LIST_PAGES = 100
+
+
 def _provider_headers_from_config(data: Mapping[str, Any]) -> dict[str, str]:
     """Return configured provider headers from config entry data."""
     headers = data.get(CONF_PROVIDER_HEADERS)
@@ -301,7 +304,8 @@ async def list_anthropic_model_names(
     client = get_async_client(hass)
     model_names: list[str] = []
     after_id: str | None = None
-    while True:
+    seen_cursors: set[str] = set()
+    for _page in range(_MAX_MODEL_LIST_PAGES):
         params = {"limit": "1000"}
         if after_id is not None:
             params["after_id"] = after_id
@@ -319,12 +323,22 @@ async def list_anthropic_model_names(
         payload = response.json()
         if not isinstance(payload, Mapping):
             return []
-        for item in payload.get("data", []):
+        items = payload.get("data")
+        if not isinstance(items, Sequence) or isinstance(items, str | bytes | Mapping):
+            items = ()
+        for item in items:
             if isinstance(item, Mapping) and isinstance(item.get("id"), str):
                 model_names.append(item["id"])
-        if not payload.get("has_more") or not isinstance(payload.get("last_id"), str):
+        next_cursor = payload.get("last_id")
+        if (
+            not payload.get("has_more")
+            or not isinstance(next_cursor, str)
+            or not next_cursor
+            or next_cursor in seen_cursors
+        ):
             break
-        after_id = payload["last_id"]
+        seen_cursors.add(next_cursor)
+        after_id = next_cursor
     return sorted(set(model_names))
 
 
@@ -332,7 +346,9 @@ def _extract_google_model_name(item: object) -> str | None:
     """Extract model name from a Gemini item that supports generateContent."""
     if not isinstance(item, Mapping):
         return None
-    methods = item.get("supportedGenerationMethods", [])
+    methods = item.get("supportedGenerationMethods")
+    if not isinstance(methods, Sequence) or isinstance(methods, str | bytes | Mapping):
+        return None
     if "generateContent" not in methods:
         return None
     model_id = item.get("baseModelId")
@@ -358,7 +374,8 @@ async def list_google_gemini_model_names(
     client = get_async_client(hass)
     model_names: list[str] = []
     page_token: str | None = None
-    while True:
+    seen_cursors: set[str] = set()
+    for _page in range(_MAX_MODEL_LIST_PAGES):
         params = {"pageSize": "1000"}
         if page_token is not None:
             params["pageToken"] = page_token
@@ -375,13 +392,22 @@ async def list_google_gemini_model_names(
         payload = response.json()
         if not isinstance(payload, Mapping):
             return []
-        for item in payload.get("models", []):
+        items = payload.get("models")
+        if not isinstance(items, Sequence) or isinstance(items, str | bytes | Mapping):
+            items = ()
+        for item in items:
             name = _extract_google_model_name(item)
             if name is not None:
                 model_names.append(name)
-        page_token = payload.get("nextPageToken")
-        if not isinstance(page_token, str) or not page_token:
+        next_cursor = payload.get("nextPageToken")
+        if (
+            not isinstance(next_cursor, str)
+            or not next_cursor
+            or next_cursor in seen_cursors
+        ):
             break
+        seen_cursors.add(next_cursor)
+        page_token = next_cursor
     return sorted(set(model_names))
 
 
