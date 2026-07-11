@@ -85,6 +85,8 @@ and its `provider_wizard` subpackage.
 
 - Run `scripts/test -k config_flow` for flow-level changes.
 - Run `scripts/test -k config_flow_helpers` for shared helper changes.
+- Run `scripts/test -k provider_flow` for provider creation, reconfigure, model,
+  and profile-flow changes.
 - Run `scripts/test -k provider_wizard` for guided provider setup changes.
 - Run `scripts/test -k mcp_server_flow` for MCP server form changes.
 - Run `scripts/test -k mcp_server_manage_tools_flow` for MCP tool exposure
