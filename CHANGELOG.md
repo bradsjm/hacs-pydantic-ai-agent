@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0
+
+- Simplify provider thinking configuration to explicit support and effort settings, with migration for existing entries.
+- Add configurable MCP tool timeouts with stable timeout handling during discovery and runtime calls.
+- Gate image attachments by model capability so unsupported models receive text-only tool results.
+- Improve provider model discovery pagination and harden MCP runtime state, caching, diagnostics, and cleanup.
+
 ## 0.5.0
 
 - Upgrade runtime and development dependencies, including Pydantic AI 2.0, Home Assistant 2026.6.4, Logfire 4.37.0, and related provider SDKs.
