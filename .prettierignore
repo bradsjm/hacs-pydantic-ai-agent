@@ -4,3 +4,4 @@ uv.lock
 .venv/
 .ruff_cache/
 node_modules/
+docs-site/

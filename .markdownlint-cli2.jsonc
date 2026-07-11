@@ -15,5 +15,6 @@
     "uv.lock",
     "pnpm-lock.yaml",
     "package-lock.json",
+    "docs-site/**",
   ],
 }

@@ -28,7 +28,7 @@ generation backed by the [Pydantic AI library](https://pydantic.dev/pydantic-ai)
 
 ## Installation
 
-This integration requires Home Assistant 2026.5.1 or newer.
+This integration requires Home Assistant 2026.6.4 or newer.
 
 ### HACS Custom Repository
 
@@ -202,6 +202,10 @@ token are left loaded but get a repair warning and do not emit Logfire traces.
 
 The integration also exposes redacted diagnostics, system health data, metrics,
 and repair handling through the runtime services listed above.
+
+## Documentation
+
+Full user and developer documentation is published at [bradsjm.github.io/hacs-pydantic-ai-agent](https://bradsjm.github.io/hacs-pydantic-ai-agent/). The source lives in [`docs-site/`](docs-site/). To preview it locally, run `pnpm install`, `pnpm build`, and `pnpm serve` from `docs-site/`.
 
 ## Development
 

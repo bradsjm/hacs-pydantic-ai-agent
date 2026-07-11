@@ -129,7 +129,7 @@ max-complexity = 10
 
 [tool.codespell]
 ignore-words-list = ["hass", "nam", "iac", "sht", "hel"]
-skip = "./.git,./.agents,./.mex,./.opencode,./.venv,./node_modules,./uv.lock,./pnpm-lock.yaml,./package-lock.json,*.min.js,*.lock"
+skip = "./.git,./.agents,./.mex,./.opencode,./.venv,./node_modules,./docs-site/**,./uv.lock,./pnpm-lock.yaml,./package-lock.json,*.min.js,*.lock"
 
 [tool.pydoclint]
 style = "google"

@@ -1,0 +1,25 @@
+# Pydantic AI Agent
+
+> Documentation for the Pydantic AI Agent Home Assistant custom integration.
+
+## Start here
+
+- [Introduction](/hacs-pydantic-ai-agent/): Product scope and supported modes.
+- [Requirements](/hacs-pydantic-ai-agent/installation/requirements): Home Assistant and runtime requirements.
+- [HACS installation](/hacs-pydantic-ai-agent/installation/hacs): Install the custom integration.
+- [Quickstart](/hacs-pydantic-ai-agent/quickstart): Create a workspace, provider, and agent.
+
+## Concepts and configuration
+
+- [Workspaces and subentries](/hacs-pydantic-ai-agent/concepts/workspaces-subentries)
+- [Providers and model profiles](/hacs-pydantic-ai-agent/concepts/providers-profiles)
+- [MCP configuration](/hacs-pydantic-ai-agent/configuration/mcp)
+- [Context, web, and virtual workspace](/hacs-pydantic-ai-agent/configuration/context-web-workspace)
+- [Observability](/hacs-pydantic-ai-agent/configuration/observability)
+
+## Reference and operations
+
+- [Services](/hacs-pydantic-ai-agent/reference/services)
+- [Entities](/hacs-pydantic-ai-agent/reference/entities)
+- [Privacy and security](/hacs-pydantic-ai-agent/operations/privacy-security)
+- [Troubleshooting](/hacs-pydantic-ai-agent/operations/troubleshooting)

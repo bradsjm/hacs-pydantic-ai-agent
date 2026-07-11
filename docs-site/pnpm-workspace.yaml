@@ -1,0 +1,9 @@
+packages: []
+overrides:
+  webpack: 5.98.0
+onlyBuiltDependencies:
+  - core-js
+  - core-js-pure
+allowBuilds:
+  core-js: true
+  core-js-pure: true
