@@ -178,25 +178,22 @@ async def test_mcp_cache_isolates_server_tool_and_arguments(
         ("server-1", "weather", {"city": "London"}),
     ]
 
-    first_results = []
-    second_results = []
-    for results in (first_results, second_results):
-        for server_id, tool_name, arguments in calls_by_key:
-            results.append(
-                await runtime._process_cached_mcp_tool_call(
-                    hass,
-                    cast(Any, entry),
-                    "agent-1",
-                    call_tool,
-                    server_id,
-                    tool_name,
-                    arguments,
-                    cache_enabled=True,
-                    cache_ttl=60,
-                )
-            )
+    results = [
+        await runtime._process_cached_mcp_tool_call(
+            hass,
+            cast(Any, entry),
+            "agent-1",
+            call_tool,
+            server_id,
+            tool_name,
+            arguments,
+            cache_enabled=True,
+            cache_ttl=60,
+        )
+        for server_id, tool_name, arguments in calls_by_key
+    ]
 
-    assert first_results == second_results == [
+    assert results == [
         {"call": 1},
         {"call": 2},
         {"call": 3},

@@ -69,11 +69,8 @@ async def test_chat_log_content_to_model_messages_converts_core_content(
         ToolCallPart,
     ]
     text_part, thinking_part, tool_call_part = messages[2].parts
-    assert isinstance(text_part, TextPart)
     assert text_part.content == "done"
-    assert isinstance(thinking_part, ThinkingPart)
     assert thinking_part.content == "reasoning"
-    assert isinstance(tool_call_part, ToolCallPart)
     assert tool_call_part.tool_name == "light.turn_on"
     assert tool_call_part.args == {"entity_id": "light.kitchen"}
     assert tool_call_part.tool_call_id == "call-1"
@@ -84,38 +81,6 @@ async def test_chat_log_content_to_model_messages_converts_core_content(
     assert tool_return_part.content == {"ok": True}
     assert tool_return_part.tool_call_id == "call-1"
 
-
-async def test_chat_log_content_to_model_messages_converts_user_attachments(
-    hass: HomeAssistant,
-    tmp_path: Path,
-) -> None:
-    """Supported attachments are represented as binary user-prompt content."""
-    image_path = tmp_path / "snapshot.png"
-    image_path.write_bytes(b"image-bytes")
-
-    messages = await chat_log_content_to_model_messages(
-        hass,
-        [
-            conversation.UserContent(
-                "describe this",
-                attachments=[
-                    conversation.Attachment(
-                        media_content_id="media-source://snapshot",
-                        mime_type="image/png",
-                        path=image_path,
-                    )
-                ],
-            )
-        ],
-    )
-
-    assert len(messages) == 1
-    assert isinstance(messages[0], ModelRequest)
-    assert isinstance(messages[0].parts[0], UserPromptPart)
-    assert messages[0].parts[0].content == [
-        "describe this",
-        BinaryContent(data=b"image-bytes", media_type="image/png"),
-    ]
 
 
 @pytest.mark.parametrize(
@@ -165,6 +130,7 @@ async def test_chat_log_content_to_model_messages_gates_image_attachments(
         supports_images=supports_images,
     )
 
+    assert len(messages) == 1
     assert isinstance(messages[0], ModelRequest)
     assert isinstance(messages[0].parts[0], UserPromptPart)
     assert messages[0].parts[0].content == expected

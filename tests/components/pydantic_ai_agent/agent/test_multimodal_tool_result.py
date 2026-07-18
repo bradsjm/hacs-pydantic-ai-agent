@@ -54,36 +54,75 @@ def test_normalize_valid_sentinel_returns_text_and_binary_content() -> None:
     assert result[2] == BinaryContent(data=b"webp-data", media_type="image/webp")
 
 
-def test_normalize_invalid_attachment_falls_back_to_text() -> None:
-    """Malformed or unsupported attachments degrade to text-only results."""
-    for attachment in (
-        {
-            "kind": "inline_image",
-            "mime_type": "image/gif",
-            "base64": _encoded(b"gif"),
-        },
-        {"kind": "inline_image", "mime_type": "image/png", "base64": "not-base64"},
-    ):
-        assert (
-            normalize_multimodal_tool_result(
-                {
-                    "_type": "ha_multimodal_tool_result",
-                    "text": "fallback text",
-                    "attachments": [attachment],
-                }
-            )
-            == "fallback text"
-        )
-
-
-def test_normalize_invalid_without_text_uses_default_text() -> None:
-    """Invalid sentinels with no text still produce a stable text fallback."""
+@pytest.mark.parametrize(
+    "attachment",
+    [
+        pytest.param(
+            {
+                "kind": "inline_image",
+                "mime_type": "image/gif",
+                "base64": _encoded(b"gif"),
+            },
+            id="unsupported-mime-type",
+        ),
+        pytest.param(
+            {
+                "kind": "inline_image",
+                "mime_type": "image/png",
+                "base64": "not-base64",
+            },
+            id="invalid-base64",
+        ),
+    ],
+)
+def test_normalize_invalid_attachment_falls_back_to_text(
+    attachment: dict[str, str],
+) -> None:
+    """Malformed or unsupported attachments degrade to explicit text."""
     assert (
         normalize_multimodal_tool_result(
-            {"_type": "ha_multimodal_tool_result", "attachments": "bad"}
+            {
+                "_type": "ha_multimodal_tool_result",
+                "text": "fallback text",
+                "attachments": [attachment],
+            }
         )
-        == "Tool returned image attachments."
+        == "fallback text"
     )
+
+
+@pytest.mark.parametrize(
+    ("attachments", "supports_images"),
+    [
+        pytest.param("bad", None, id="malformed-attachments"),
+        pytest.param(
+            [
+                {
+                    "kind": "inline_image",
+                    "mime_type": "image/png",
+                    "base64": _encoded(b"png-data"),
+                }
+            ],
+            False,
+            id="images-unsupported",
+        ),
+    ],
+)
+def test_normalize_without_text_returns_non_empty_text(
+    attachments: object,
+    supports_images: bool | None,
+) -> None:
+    """No-text results retain a usable textual tool result."""
+    result = normalize_multimodal_tool_result(
+        {
+            "_type": "ha_multimodal_tool_result",
+            "attachments": attachments,
+        },
+        supports_images=supports_images,
+    )
+
+    assert isinstance(result, str)
+    assert result
 
 
 def test_normalize_drops_images_when_unsupported() -> None:
@@ -104,26 +143,6 @@ def test_normalize_drops_images_when_unsupported() -> None:
     )
 
     assert result == "camera snapshot"
-
-
-def test_normalize_drops_images_without_text_uses_default_text() -> None:
-    """Image-unsupported models fall back to the stable default text."""
-    assert (
-        normalize_multimodal_tool_result(
-            {
-                "_type": "ha_multimodal_tool_result",
-                "attachments": [
-                    {
-                        "kind": "inline_image",
-                        "mime_type": "image/png",
-                        "base64": _encoded(b"png-data"),
-                    }
-                ],
-            },
-            supports_images=False,
-        )
-        == "Tool returned image attachments."
-    )
 
 
 @pytest.mark.parametrize("supports_images", [None, True])

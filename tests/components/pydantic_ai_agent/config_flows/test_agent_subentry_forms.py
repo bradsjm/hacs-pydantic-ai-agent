@@ -25,7 +25,7 @@ from custom_components.pydantic_ai_agent.const import (
     PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
     SUBENTRY_TYPE_PROVIDER,
 )
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -70,6 +70,7 @@ async def test_conversation_invalid_model_rerenders_init_form(
     flow.hass = hass
     flow.handler = (entry.entry_id, "conversation")
 
+    flow.context = {"source": SOURCE_USER}
     result = await flow.async_step_user(
         {
             CONF_AGENT_NAME: "Conversation",
@@ -91,6 +92,7 @@ async def test_ai_task_invalid_todo_workspace_rerenders_init_form(
     flow.hass = hass
     flow.handler = (entry.entry_id, "ai_task_data")
 
+    flow.context = {"source": SOURCE_USER}
     result = await flow.async_step_user(
         {
             CONF_AI_TASK_NAME: "AI Task",

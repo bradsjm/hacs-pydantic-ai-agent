@@ -90,15 +90,13 @@ def test_iter_exception_chain_stops_on_repeated_identity() -> None:
     assert iter_exception_chain(err) == [err]
 
 
-def test_iter_exception_chain_long_cycle_remains_finite_and_ordered() -> None:
+def test_iter_exception_chain_stops_at_safety_cap() -> None:
     errs = [RuntimeError(str(index)) for index in range(20)]
     _chain(*errs)
-    errs[-1].__cause__ = errs[5]
 
     chain = iter_exception_chain(errs[0])
 
-    assert chain[:3] == errs[:3]
-    assert len(chain) <= len(errs)
+    assert chain == errs[:8]
     assert len(chain) == len({id(item) for item in chain})
 
 

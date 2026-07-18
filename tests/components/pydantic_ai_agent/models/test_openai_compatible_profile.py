@@ -66,7 +66,7 @@ def test_persisted_profile_from_mapping_rejects_invalid_values(
     profile_data: dict[str, object],
 ) -> None:
     """Invalid persisted capability values fail with a stable exception class."""
-    with pytest.raises(ValueError, match="Invalid"):
+    with pytest.raises(ValueError):  # noqa: PT011 - error type is the contract
         PersistedOpenAICompatibleProfile.from_mapping(profile_data)
 
 

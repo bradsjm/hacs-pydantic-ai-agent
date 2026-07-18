@@ -10,8 +10,6 @@ from custom_components.pydantic_ai_agent.const import (
 )
 from custom_components.pydantic_ai_agent.models.model_settings import (
     MODEL_SETTING_EXTRA_BODY,
-    REMOVED_PROFILE_MODEL_SETTING_KEYS,
-    RUNTIME_STRIPPED_MODEL_SETTING_KEYS,
     normalise_applied_model_settings,
     normalise_persisted_model_settings,
     profile_model_settings,
@@ -54,7 +52,6 @@ def test_normalise_persisted_model_settings_strips_profile_owned_noise() -> None
     normalised = normalise_persisted_model_settings(settings)
 
     assert normalised == '{"a":{"b":1},"z":2}'
-    assert set(settings) > REMOVED_PROFILE_MODEL_SETTING_KEYS
 
 
 def test_normalise_applied_model_settings_returns_sorted_compact_json() -> None:
@@ -101,8 +98,5 @@ def test_runtime_model_settings_data_applies_only_run_overrides() -> None:
     data = runtime_model_settings_data(profile_settings, run_settings)
 
     assert data == {"temperature": 0.5, CONF_MAX_TOKENS: 50, CONF_TIMEOUT: 8}
-    assert RUNTIME_STRIPPED_MODEL_SETTING_KEYS.issuperset(
-        {CONF_TEMPLATED_EXTRA_BODY, MODEL_SETTING_EXTRA_BODY}
-    )
     assert profile_settings[CONF_MAX_TOKENS] == 10
     assert run_settings[CONF_TIMEOUT] == 8

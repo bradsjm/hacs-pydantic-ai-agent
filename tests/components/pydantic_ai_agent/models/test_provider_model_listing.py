@@ -169,7 +169,7 @@ async def test_anthropic_listing_stops_at_page_limit(
     """A malformed continuing endpoint cannot trigger more than 100 requests."""
     payloads = [
         {"data": [{"id": str(index)}], "has_more": True, "last_id": str(index)}
-        for index in range(provider._MAX_MODEL_LIST_PAGES)
+        for index in range(100)
     ]
     client = _Client(payloads)
     monkeypatch.setattr(provider, "get_async_client", lambda _: client)
@@ -178,5 +178,5 @@ async def test_anthropic_listing_stops_at_page_limit(
         hass, {CONF_API_KEY: "key"}, request_timeout=None
     )
 
-    assert len(client.params) == provider._MAX_MODEL_LIST_PAGES
-    assert result == sorted(str(index) for index in range(provider._MAX_MODEL_LIST_PAGES))
+    assert len(client.params) == 100
+    assert result == sorted(str(index) for index in range(100))

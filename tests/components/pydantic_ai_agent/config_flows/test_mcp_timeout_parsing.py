@@ -55,7 +55,7 @@ def test_parse_mcp_timeout_rejects_invalid_values(value: object) -> None:
     with pytest.raises(vol.Invalid) as exc_info:
         _parse_mcp_timeout(value)
 
-    assert str(exc_info.value) == "invalid_mcp_timeout"
+    assert exc_info.value.msg == "invalid_mcp_timeout"
 
 
 @pytest.mark.parametrize(

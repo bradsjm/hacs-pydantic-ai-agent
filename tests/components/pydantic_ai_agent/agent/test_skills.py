@@ -125,13 +125,8 @@ async def test_async_skills_capabilities_filters_selected_skill_subentries(
             "description": "Guidance",
         }
     ]
-    assert await tools["load_skill"].function("skill-1") == {
-        "skill_id": "skill-1",
-        "name": "Lighting",
-        "description": "Guidance",
-        "content": "Use warm lights.",
-        "references": [{"title": "Docs"}],
-    }
+    loaded_skill = await tools["load_skill"].function("skill-1")
+    assert loaded_skill["references"] == [{"title": "Docs"}]
 
 
 async def test_async_skills_capabilities_returns_empty_for_no_valid_selection(

@@ -143,8 +143,7 @@ async def test_process_tool_call_converts_client_timeouts_to_model_retry(
     with pytest.raises(ModelRetry) as exc_info:
         await process_tool_call(None, call_tool, "weather.get", {"city": "Paris"})
 
-    assert "weather.get" in str(exc_info.value)
-    assert "20" in str(exc_info.value)
+    assert exc_info.value.__cause__ is err
 
 
 async def test_process_tool_call_converts_mcp_timeout_error_to_model_retry(
@@ -158,17 +157,21 @@ async def test_process_tool_call_converts_mcp_timeout_error_to_model_retry(
     )
     process_tool_call = cast(ProcessToolCall, toolset.kwargs["process_tool_call"])
 
+    err = McpError(
+        ErrorData(
+            code=httpx.codes.REQUEST_TIMEOUT,
+            message="Request timed out. Waited 20 seconds.",
+        )
+    )
+
     async def call_tool(_tool_name: str, _tool_args: dict[str, Any]) -> object:
         await asyncio.sleep(0)
-        raise McpError(
-            ErrorData(
-                code=httpx.codes.REQUEST_TIMEOUT,
-                message="Request timed out. Waited 20 seconds.",
-            )
-        )
+        raise err
 
-    with pytest.raises(ModelRetry):
+    with pytest.raises(ModelRetry) as exc_info:
         await process_tool_call(None, call_tool, "weather.get", {"city": "Paris"})
+
+    assert exc_info.value.__cause__ is err
 
 
 async def test_process_tool_call_keeps_non_timeout_mcp_errors_terminal(

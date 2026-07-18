@@ -19,6 +19,7 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types impo
 )
 from custom_components.pydantic_ai_agent.const import (
     CONF_API_KEY,
+    CONF_BASE_URL,
     CONF_ENABLED,
     CONF_MODEL,
     CONF_MODEL_PROFILES,
@@ -142,6 +143,8 @@ async def test_manual_custom_provider_creation(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_NAME] == "Manual Provider"
     assert result["data"][CONF_API_KEY] == "manual-key"
+    assert result["data"][CONF_PROVIDER_MODE] == PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS
+    assert result["data"][CONF_BASE_URL] == "https://manual.example.com/v1"
 
 
 async def test_guided_provider_creation(
@@ -247,7 +250,7 @@ async def test_reconfigure_manages_provider_models(
     assert saved["reason"] == "reconfigure_successful"
 
 
-async def test_profile_edit_replays_context_window_error(
+async def test_profile_edit_attaches_context_window_error_to_field(
     hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
     make_subentry: Callable[..., Any],

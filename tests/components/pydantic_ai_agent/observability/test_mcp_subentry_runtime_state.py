@@ -27,7 +27,13 @@ def test_mcp_status_uses_configured_subentries(
         entry_id="entry-1",
         subentries=(mcp_subentry,),
     )
-    entry.runtime_data = WorkspaceRuntimeData(workspace_name="Workspace")
+    entry.runtime_data = WorkspaceRuntimeData(
+        workspace_name="Workspace",
+        mcp_tool_cache={
+            "stale-mcp-1": [{"name": "stale-tool-1"}],
+            "stale-mcp-2": [{"name": "stale-tool-2"}],
+        },
+    )
 
     diagnostics = _runtime_diagnostics(entry)
     status = workspace_status(entry, include_subentries=True, include_runtime=True)

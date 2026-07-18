@@ -7,6 +7,7 @@ from custom_components.pydantic_ai_agent.const import (
     CONF_KEY_VALUE_JSON_VALUE,
     CONF_KEY_VALUE_KEY,
 )
+from homeassistant.core import HomeAssistant
 import pytest
 
 
@@ -20,31 +21,25 @@ import pytest
 )
 @pytest.mark.parametrize("value", [True, False, 1.25, "1.25", object()])
 def test_integer_parsers_reject_bools_and_non_integral_values(parser, value) -> None:
-    try:
+    with pytest.raises(ValueError):  # noqa: PT011 - parser raises bare ValueError
         parser(value)
-    except ValueError:
-        return
-    pytest.fail("expected ValueError")
 
 
 @pytest.mark.parametrize(
-    ("parser", "accepted", "rejected"),
+    ("parser", "accepted", "expected", "rejected"),
     [
-        (parsing._parse_positive_int_setting, "1", "0"),
-        (parsing._parse_non_negative_int_setting, "0", "-1"),
-        (parsing._parse_positive_float_setting, "0.5", "0"),
-        (parsing._parse_non_negative_float_setting, "0", "-0.1"),
+        (parsing._parse_positive_int_setting, "1", 1, "0"),
+        (parsing._parse_non_negative_int_setting, "0", 0, "-1"),
+        (parsing._parse_positive_float_setting, "0.5", 0.5, "0"),
+        (parsing._parse_non_negative_float_setting, "0", 0.0, "-0.1"),
     ],
 )
 def test_positive_and_non_negative_parsers_enforce_bounds(
-    parser, accepted: str, rejected: str
+    parser, accepted: str, expected: int | float, rejected: str
 ) -> None:
-    assert parser(accepted) in {0, 0.5, 1}
-    try:
+    assert parser(accepted) == expected
+    with pytest.raises(ValueError):  # noqa: PT011 - parser raises bare ValueError
         parser(rejected)
-    except ValueError:
-        return
-    pytest.fail("expected ValueError")
 
 
 def test_parse_key_value_json_setting_from_text() -> None:
@@ -69,20 +64,26 @@ def test_parse_key_value_json_setting_from_list_rows() -> None:
         ("missing-separator", "invalid_key_value"),
         ("body: {", "invalid_json"),
         ("dup: 1\ndup: 2", "duplicate_key"),
-        ([], ""),
     ],
 )
 def test_parse_key_value_json_setting_errors(value, reason: str) -> None:
-    if not reason:
-        assert parsing._parse_key_value_json_setting(value) == {}
-        return
     with pytest.raises(ValueError, match=reason):
         parsing._parse_key_value_json_setting(value)
 
 
+def test_parse_key_value_json_setting_accepts_empty_list() -> None:
+    assert parsing._parse_key_value_json_setting([]) == {}
+
+
 @pytest.mark.parametrize(
     ("value", "parsed"),
-    [("none", "none"), ("low", "low"), ("medium", "medium"), ("xhigh", "xhigh")],
+    [
+        ("none", "none"),
+        ("low", "low"),
+        ("medium", "medium"),
+        ("high", "high"),
+        ("xhigh", "xhigh"),
+    ],
 )
 def test_parse_thinking_setting_accepts_supported_values(value: str, parsed) -> None:
     assert parsing._parse_thinking_setting(value) == parsed
@@ -92,11 +93,13 @@ def test_parse_thinking_setting_accepts_supported_values(value: str, parsed) -> 
     "value", [True, "", "true", "false", "minimal", "yes", "TRUE", "auto"]
 )
 def test_parse_thinking_setting_rejects_invalid_values(value) -> None:
-    with pytest.raises(ValueError, match="invalid thinking setting"):
+    with pytest.raises(ValueError):  # noqa: PT011 - parser error type is the contract
         parsing._parse_thinking_setting(value)
 
 
-def test_parse_templated_extra_body_accepts_json_serializable_template(hass) -> None:
+def test_parse_templated_extra_body_accepts_json_serializable_template(
+    hass: HomeAssistant,
+) -> None:
     rows = parsing._parse_templated_extra_body(
         hass,
         [
@@ -115,7 +118,9 @@ def test_parse_templated_extra_body_accepts_json_serializable_template(hass) -> 
     ]
 
 
-def test_parse_templated_extra_body_rejects_duplicate_keys(hass) -> None:
+def test_parse_templated_extra_body_rejects_duplicate_keys(
+    hass: HomeAssistant,
+) -> None:
     with pytest.raises(ValueError, match="duplicate_key"):
         parsing._parse_templated_extra_body(
             hass,

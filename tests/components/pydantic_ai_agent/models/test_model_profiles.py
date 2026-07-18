@@ -101,17 +101,11 @@ def test_resolve_model_profile_supports_images_defaults_to_unknown(
     assert profile.supports_images is None
 
 
-def test_thinking_capability_omits_disabled_or_runtime_none() -> None:
+def test_thinking_capability_omits_disabled_or_runtime_none(
+    make_profile: Callable[..., ResolvedModelProfile],
+) -> None:
     """Runtime None and profile-level disabled omit Pydantic AI Thinking."""
-    disabled_profile = ResolvedModelProfile(
-        ref="provider-1:default",
-        provider_subentry_id="provider-1",
-        profile_id="default",
-        title="Fast Model",
-        provider_title="OpenAI Compatible",
-        provider_mode=PROVIDER_OPENAI_COMPATIBLE_COMPLETIONS,
-        model_name="fast-model",
-        model_settings={},
+    disabled_profile = make_profile(
         thinking_support=False,
         structured_output_support="none",
         supports_tools=True,

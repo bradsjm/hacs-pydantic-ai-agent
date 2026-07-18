@@ -12,7 +12,7 @@ from homeassistant.setup import async_setup_component
 async def test_config_entry_setup_and_unload(
     hass: HomeAssistant, make_config_entry: Any
 ) -> None:
-    """A workspace owns runtime state only while its platforms are loaded."""
+    """Initialize workspace runtime, then release platforms and Logfire."""
     entry = make_config_entry(name="Visible Workspace")
     entry.add_to_hass(hass)
     assert await async_setup_component(hass, "homeassistant", {})

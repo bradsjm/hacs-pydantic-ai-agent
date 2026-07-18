@@ -73,8 +73,12 @@ async def test_config_entry_diagnostics_redact_secrets_and_count_mcp_subentries(
     assert set(diagnostics) == {"entry", "subentries", "runtime"}
     assert diagnostics["runtime"]["mcp_server_count"] == 1
     assert diagnostics["entry"]["data"][CONF_LOGFIRE_TOKEN] == REDACTED
-    provider_data = diagnostics["subentries"][0]["data"]
-    mcp_data = diagnostics["subentries"][1]["data"]
+    subentry_data = {
+        subentry["subentry_id"]: subentry["data"]
+        for subentry in diagnostics["subentries"]
+    }
+    provider_data = subentry_data["provider-1"]
+    mcp_data = subentry_data["mcp-1"]
     assert provider_data[CONF_API_KEY] == REDACTED
     assert provider_data[CONF_PROVIDER_HEADERS]["Authorization"] == REDACTED
     assert provider_data[CONF_PROMPT] == REDACTED

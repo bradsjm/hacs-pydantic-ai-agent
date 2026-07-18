@@ -72,6 +72,18 @@ def test_home_assistant_error_passthrough() -> None:
     assert _home_assistant_error(err) is err
 
 
+@pytest.mark.parametrize(
+    "err",
+    [
+        TimeoutError(),
+        httpx.ReadTimeout("timeout"),
+        UsageLimitExceeded("too many"),
+    ],
+)
+def test_should_fallback_for_retryable_non_http_failures(err: Exception) -> None:
+    assert _should_fallback(err) is True
+
+
 @pytest.mark.parametrize("status", [408, 409, 429, 500, 503])
 def test_should_fallback_for_retryable_http_statuses(status: int) -> None:
     assert _should_fallback(ModelHTTPError(status, "test-model")) is True

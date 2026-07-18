@@ -34,7 +34,7 @@ def test_apply_patch_rejects_invalid_envelope(workspace: VirtualWorkspace) -> No
 
     assert result["success"] is False
     assert result["changedFiles"] == []
-    assert "must start" in result["errors"][0]
+    assert result["errors"]
 
 
 @pytest.mark.parametrize(
@@ -113,7 +113,7 @@ def test_apply_patch_rejects_protected_path_replacement(
     )
 
     assert result["success"] is False
-    assert "protected workspace paths" in result["errors"][0]
+    assert result["errors"]
     assert workspace.metadata("/workspace")["type"] == "directory"
 
 

@@ -6,7 +6,11 @@ from custom_components.pydantic_ai_agent.config_flows.provider_wizard.flow impor
 from custom_components.pydantic_ai_agent.config_flows.provider_wizard.types import (
     CatalogModelOption,
 )
-from custom_components.pydantic_ai_agent.const import CONF_SUPPORTS_IMAGES
+from custom_components.pydantic_ai_agent.const import (
+    CONF_ENABLED,
+    CONF_MODEL,
+    CONF_SUPPORTS_IMAGES,
+)
 
 
 def _catalog_model(
@@ -40,5 +44,9 @@ def test_build_model_profiles_persists_supports_images_from_modalities() -> None
         profile_id_factory=iter(("vision-id", "text-id")).__next__,
     )
 
+    assert profiles["vision-id"][CONF_MODEL] == "vision"
+    assert profiles["vision-id"][CONF_ENABLED] is True
+    assert profiles["text-id"][CONF_MODEL] == "text-only"
+    assert profiles["text-id"][CONF_ENABLED] is True
     assert profiles["vision-id"][CONF_SUPPORTS_IMAGES] is True
     assert profiles["text-id"][CONF_SUPPORTS_IMAGES] is False
