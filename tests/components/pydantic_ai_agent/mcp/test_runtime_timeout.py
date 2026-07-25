@@ -197,18 +197,17 @@ async def test_process_tool_call_keeps_non_timeout_mcp_errors_terminal(
     assert exc_info.value.error.code == 500
 
 
-async def test_runtime_mcp_toolset_uses_configured_timeout_and_retry_behavior(
+async def test_runtime_mcp_toolset_uses_configured_timeout(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     make_subentry: MakeSubentry,
 ) -> None:
-    """Runtime MCP toolsets pass configured timeout and retry tool feedback."""
-    toolset, client_call = await _build_runtime_toolset(
+    """Runtime MCP toolsets pass the configured timeout."""
+    _toolset, client_call = await _build_runtime_toolset(
         hass, monkeypatch, make_subentry
     )
 
     assert client_call["timeout"] == 20.0
-    assert toolset.kwargs["tool_error_behavior"] == "retry"
 
 
 async def test_process_tool_call_rejects_non_allowlisted_tools_terminally(

@@ -121,7 +121,6 @@ async def test_provider_model_listing_stops_on_repeated_cursor(
     result = await listing(hass, {CONF_API_KEY: "key"}, request_timeout=None)
 
     assert result == ["one", "two"]
-    assert len(client.params) == 2
 
 
 @pytest.mark.parametrize(

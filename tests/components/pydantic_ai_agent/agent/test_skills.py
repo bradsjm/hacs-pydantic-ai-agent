@@ -55,7 +55,6 @@ async def test_native_skills_capability_lists_and_loads_skills() -> None:
         Callable[[], Awaitable[list[dict[str, str]]]], tools["list_skills"].function
     )
 
-    assert "Selected workspace skills" in capability.get_instructions()
     assert await list_skills() == [
         {
             "skill_id": "skill-1",

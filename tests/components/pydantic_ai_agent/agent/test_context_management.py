@@ -89,13 +89,11 @@ def test_context_manager_uses_active_profile_without_summarization_ref(
     make_profile: Callable[..., ResolvedModelProfile],
 ) -> None:
     """Context manager mode builds the summarizer from the active profile by default."""
-    built_profiles: list[ResolvedModelProfile] = []
 
     def model_factory(
         _hass: HomeAssistant, _entry: Any, profile: ResolvedModelProfile
     ) -> object:
-        built_profiles.append(profile)
-        return "active-model"
+        return f"built:{profile.ref}"
 
     active_profile = make_profile(context_window_tokens=200)
     capability = context_management_capability(
@@ -110,8 +108,7 @@ def test_context_manager_uses_active_profile_without_summarization_ref(
     assert isinstance(capability, ContextManagerCapability)
     assert capability.max_tokens == 200
     assert capability.keep == ("messages", 10)
-    assert capability.summarization_model == "active-model"
-    assert built_profiles == [active_profile]
+    assert capability.summarization_model == "built:provider-1:default"
 
 
 def test_context_manager_uses_configured_summarization_profile(
@@ -135,13 +132,11 @@ def test_context_manager_uses_configured_summarization_profile(
             },
         },
     )
-    built_profiles: list[ResolvedModelProfile] = []
 
     def model_factory(
         _hass: HomeAssistant, _entry: Any, profile: ResolvedModelProfile
     ) -> object:
-        built_profiles.append(profile)
-        return "summary-model"
+        return f"built:{profile.ref}:{profile.model_name}"
 
     capability = context_management_capability(
         hass,
@@ -156,6 +151,6 @@ def test_context_manager_uses_configured_summarization_profile(
     )
 
     assert isinstance(capability, ContextManagerCapability)
-    assert capability.summarization_model == "summary-model"
-    assert built_profiles[0].ref == "provider-2:summary"
-    assert built_profiles[0].model_name == "summary-model"
+    assert capability.summarization_model == (
+        "built:provider-2:summary:summary-model"
+    )

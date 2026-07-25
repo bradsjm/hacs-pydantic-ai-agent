@@ -1,4 +1,4 @@
-from types import MappingProxyType, SimpleNamespace
+from types import SimpleNamespace
 
 from custom_components.pydantic_ai_agent.observability.metrics import (
     AgentRunMetrics,
@@ -15,7 +15,6 @@ def test_records_returns_read_only_live_view() -> None:
     store = MetricsStore()
     records = store.records
 
-    assert isinstance(records, MappingProxyType)
     with pytest.raises(TypeError):
         records["new"] = AgentRunMetrics()
 

@@ -25,13 +25,19 @@ async def test_list_mcp_tools_returns_discovered_tools(
     hass: HomeAssistant, make_config_entry: Any, make_subentry: Any
 ) -> None:
     """The list service groups and flattens newly discovered MCP tools."""
-    mcp = make_subentry(
+    weather_mcp = make_subentry(
         subentry_id="mcp-weather",
         subentry_type=SUBENTRY_TYPE_MCP_SERVER,
         title="Weather",
-        data={CONF_MCP_URL: "https://example.test/mcp"},
+        data={CONF_MCP_URL: "https://example.test/weather"},
     )
-    entry = make_config_entry(subentries=(mcp,))
+    search_mcp = make_subentry(
+        subentry_id="mcp-search",
+        subentry_type=SUBENTRY_TYPE_MCP_SERVER,
+        title="Search",
+        data={CONF_MCP_URL: "https://example.test/search"},
+    )
+    entry = make_config_entry(subentries=(weather_mcp, search_mcp))
     entry.add_to_hass(hass)
     assert await async_setup_component(hass, "homeassistant", {})
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -48,9 +54,27 @@ async def test_list_mcp_tools_returns_discovered_tools(
         },
         "schema_hash": "forecast-schema",
     }
+    search_tool = {
+        "server_id": "mcp-search",
+        "server_name": "Search",
+        "name": "web_search",
+        "description": "Search the web",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+        "schema_hash": "search-schema",
+    }
+    tools_by_server = {
+        "mcp-weather": [tool],
+        "mcp-search": [search_tool],
+    }
     with patch(
         "custom_components.pydantic_ai_agent.async_refresh_mcp_tools",
-        new=AsyncMock(return_value=[tool]),
+        new=AsyncMock(
+            side_effect=lambda _hass, _entry, subentry_id: tools_by_server[subentry_id]
+        ),
     ):
         response = await hass.services.async_call(
             DOMAIN,
@@ -62,8 +86,11 @@ async def test_list_mcp_tools_returns_discovered_tools(
 
     assert response == {
         "success": True,
-        "servers": {"mcp-weather": [tool]},
-        "tools": [tool],
+        "servers": {
+            "mcp-weather": [tool],
+            "mcp-search": [search_tool],
+        },
+        "tools": [tool, search_tool],
         "errors": [],
     }
     assert json.loads(json.dumps(response)) == response

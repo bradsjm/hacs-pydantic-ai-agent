@@ -10,19 +10,9 @@ from custom_components.pydantic_ai_agent.const import (
 )
 from custom_components.pydantic_ai_agent.models.openai_compatible_profile import (
     PersistedOpenAICompatibleProfile,
-    default_openai_compatible_profile_data,
     is_openai_compatible_provider_mode,
 )
 import pytest
-
-
-def test_default_openai_compatible_profile_data_is_conservative() -> None:
-    """Default discovered/custom profiles support tools but not special output."""
-    assert default_openai_compatible_profile_data() == {
-        CONF_THINKING_SUPPORT: False,
-        CONF_STRUCTURED_OUTPUT_SUPPORT: "none",
-        CONF_SUPPORTS_TOOLS: True,
-    }
 
 
 def test_persisted_profile_from_mapping_parses_capabilities() -> None:

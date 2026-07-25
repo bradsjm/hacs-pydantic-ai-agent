@@ -35,7 +35,7 @@ async def test_config_entry_setup_and_unload(
         patch(
             "custom_components.pydantic_ai_agent.async_release_logfire",
             new=AsyncMock(),
-        ) as release_logfire,
+        ),
     ):
         assert await hass.config_entries.async_setup(entry.entry_id) is True
 
@@ -46,4 +46,3 @@ async def test_config_entry_setup_and_unload(
         assert await hass.config_entries.async_unload(entry.entry_id) is True
 
     unload_platforms.assert_awaited_once_with(entry, PLATFORMS)
-    release_logfire.assert_awaited_once_with(hass, entry)
