@@ -45,9 +45,7 @@ class OpenAICompatibleStreamedResponse(StreamedResponse):
         """Close the underlying HTTP stream."""
         await self._response.close()
 
-    def _emit_reasoning_events(
-        self, delta: ChatCompletionChunkDelta
-    ) -> Generator[ModelResponseStreamEvent]:
+    def _emit_reasoning_events(self, delta: ChatCompletionChunkDelta) -> Generator[ModelResponseStreamEvent]:
         """Yield thinking events from a chunk delta's reasoning fields."""
         reasoning = _first_text(delta, "reasoning", "reasoning_content")
         if reasoning is None:
@@ -59,9 +57,7 @@ class OpenAICompatibleStreamedResponse(StreamedResponse):
             provider_name=self.provider_name,
         )
 
-    def _emit_text_events(
-        self, delta: ChatCompletionChunkDelta
-    ) -> Generator[ModelResponseStreamEvent]:
+    def _emit_text_events(self, delta: ChatCompletionChunkDelta) -> Generator[ModelResponseStreamEvent]:
         """Yield text delta and re-tagged thinking events."""
         if not delta.content:
             return
@@ -70,16 +66,12 @@ class OpenAICompatibleStreamedResponse(StreamedResponse):
             content=delta.content,
             thinking_tags=("<think>", "</think>"),
         ):
-            if isinstance(event, PartStartEvent) and isinstance(
-                event.part, ThinkingPart
-            ):
+            if isinstance(event, PartStartEvent) and isinstance(event.part, ThinkingPart):
                 event.part.id = "content"
                 event.part.provider_name = self.provider_name
             yield event
 
-    def _emit_tool_call_events(
-        self, delta: ChatCompletionChunkDelta
-    ) -> Generator[ModelResponseStreamEvent]:
+    def _emit_tool_call_events(self, delta: ChatCompletionChunkDelta) -> Generator[ModelResponseStreamEvent]:
         """Yield tool-call delta events from a chunk delta."""
         for tool_call in delta.tool_calls or []:
             maybe_event = self._parts_manager.handle_tool_call_delta(
@@ -91,9 +83,7 @@ class OpenAICompatibleStreamedResponse(StreamedResponse):
             if maybe_event is not None:
                 yield maybe_event
 
-    def _process_chunk(
-        self, chunk: ChatCompletionChunk
-    ) -> Generator[ModelResponseStreamEvent]:
+    def _process_chunk(self, chunk: ChatCompletionChunk) -> Generator[ModelResponseStreamEvent]:
         """Yield events for a single streamed completion chunk."""
         self._usage += map_usage(chunk)
         if chunk.id:

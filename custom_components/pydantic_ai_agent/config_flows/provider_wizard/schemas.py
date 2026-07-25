@@ -58,9 +58,7 @@ _PROVIDER_EXTRA_BODY_MODES = {
 _SECTION_ADVANCED_OPTIONS = "advanced_options"
 
 
-def provider_selection_schema(
-    catalog: CompactCatalog, *, include_retry: bool = False
-) -> vol.Schema:
+def provider_selection_schema(catalog: CompactCatalog, *, include_retry: bool = False) -> vol.Schema:
     """Return a provider selection schema."""
     return vol.Schema(
         {
@@ -78,9 +76,7 @@ def driver_selection_schema(provider: CatalogProviderOption) -> vol.Schema:
     """Return an API mode selection schema."""
     return vol.Schema(
         {
-            vol.Required(
-                CONF_DRIVER, default=provider.supported_drivers[0]
-            ): SelectSelector(
+            vol.Required(CONF_DRIVER, default=provider.supported_drivers[0]): SelectSelector(
                 SelectSelectorConfig(
                     options=driver_options(provider),
                     mode=SelectSelectorMode.LIST,
@@ -90,15 +86,11 @@ def driver_selection_schema(provider: CatalogProviderOption) -> vol.Schema:
     )
 
 
-def connection_schema(
-    provider: CatalogProviderOption, driver: str, options: dict[str, object]
-) -> vol.Schema:
+def connection_schema(provider: CatalogProviderOption, driver: str, options: dict[str, object]) -> vol.Schema:
     """Return guided provider connection details schema."""
     data = _flatten_section_data(options, (_SECTION_ADVANCED_OPTIONS,))
     schema: VolDictType = {
-        vol.Required(
-            CONF_NAME, default=data.get(CONF_NAME, provider.name)
-        ): TextSelector(TextSelectorConfig()),
+        vol.Required(CONF_NAME, default=data.get(CONF_NAME, provider.name)): TextSelector(TextSelectorConfig()),
         vol.Required(CONF_API_KEY, default=data.get(CONF_API_KEY, "")): TextSelector(
             TextSelectorConfig(type=TextSelectorType.PASSWORD)
         ),
@@ -152,15 +144,11 @@ def model_filter_schema(
     """Return model filter controls for a large provider."""
     filters = filters or ModelFilterOptions()
     family_options = [SelectOptionDict(label="All families", value="")]
-    family_options.extend(
-        SelectOptionDict(label=family, value=family) for family in provider.families
-    )
+    family_options.extend(SelectOptionDict(label=family, value=family) for family in provider.families)
     return vol.Schema(
         {
             vol.Optional(CONF_FAMILY, default=filters.family or ""): SelectSelector(
-                SelectSelectorConfig(
-                    options=family_options, mode=SelectSelectorMode.DROPDOWN
-                )
+                SelectSelectorConfig(options=family_options, mode=SelectSelectorMode.DROPDOWN)
             ),
             vol.Optional(SECTION_ADVANCED_FILTERS, default={}): section(
                 vol.Schema(
@@ -212,30 +200,16 @@ def model_selection_schema(
 
 def model_symbol_key_description_placeholders() -> dict[str, str]:
     """Return description placeholders for model selector glyph meanings."""
-    return {
-        "model_symbol_key": "Symbols:\n\n"
-        "- ⚙️ tools\n"
-        "- 📷 image\n"
-        "- 💭 reasoning\n"
-        "- 🎧 audio\n"
-        "- 📹 video\n"
-        "- 📄 PDF"
-    }
+    return {"model_symbol_key": "Symbols:\n\n- ⚙️ tools\n- 📷 image\n- 💭 reasoning\n- 🎧 audio\n- 📹 video\n- 📄 PDF"}
 
 
-def provider_options(
-    catalog: CompactCatalog, *, include_retry: bool = False
-) -> list[SelectOptionDict]:
+def provider_options(catalog: CompactCatalog, *, include_retry: bool = False) -> list[SelectOptionDict]:
     """Return provider selector options including custom setup."""
     providers = catalog.sorted_providers()
     duplicate_names = _duplicate_values(provider.name for provider in providers)
     options = []
     if include_retry:
-        options.append(
-            SelectOptionDict(
-                label="Try loading catalog again", value=CATALOG_RETRY_PROVIDER_ID
-            )
-        )
+        options.append(SelectOptionDict(label="Try loading catalog again", value=CATALOG_RETRY_PROVIDER_ID))
     for provider in providers:
         label = provider.name
         if label in duplicate_names:
@@ -247,10 +221,7 @@ def provider_options(
 
 def driver_options(provider: CatalogProviderOption) -> list[SelectOptionDict]:
     """Return API mode selector options for a provider."""
-    return [
-        SelectOptionDict(label=MODE_LABELS[driver], value=driver)
-        for driver in provider.supported_drivers
-    ]
+    return [SelectOptionDict(label=MODE_LABELS[driver], value=driver) for driver in provider.supported_drivers]
 
 
 def model_options(models: tuple[CatalogModelOption, ...]) -> list[SelectOptionDict]:
@@ -260,9 +231,7 @@ def model_options(models: tuple[CatalogModelOption, ...]) -> list[SelectOptionDi
     duplicate_labels = _duplicate_values(labels_by_id.values())
     return [
         SelectOptionDict(
-            label=_disambiguated_model_label(
-                model, labels_by_id[model.id], duplicate_labels
-            ),
+            label=_disambiguated_model_label(model, labels_by_id[model.id], duplicate_labels),
             value=model.id,
         )
         for model in sorted_models
@@ -275,9 +244,7 @@ def filters_from_user_input(user_input: dict[str, object]) -> ModelFilterOptions
     family = data.get(CONF_FAMILY)
     return ModelFilterOptions(
         hide_without_tool_call=bool(data.get(CONF_HIDE_WITHOUT_TOOL_CALL, True)),
-        hide_without_structured_output=bool(
-            data.get(CONF_HIDE_WITHOUT_STRUCTURED_OUTPUT, True)
-        ),
+        hide_without_structured_output=bool(data.get(CONF_HIDE_WITHOUT_STRUCTURED_OUTPUT, True)),
         hide_deprecated=bool(data.get(CONF_HIDE_DEPRECATED, True)),
         hide_non_text_output=bool(data.get(CONF_HIDE_NON_TEXT_OUTPUT, True)),
         family=family if isinstance(family, str) and family else None,
@@ -337,9 +304,7 @@ def _model_glyphs(model: CatalogModelOption) -> tuple[str, ...]:
     return tuple(glyphs)
 
 
-def _flatten_section_data(
-    data: dict[str, object], section_keys: Iterable[str]
-) -> dict[str, object]:
+def _flatten_section_data(data: dict[str, object], section_keys: Iterable[str]) -> dict[str, object]:
     """Return form data with HA section namespaces flattened."""
     flattened = dict(data)
     for key in section_keys:
@@ -351,9 +316,7 @@ def _flatten_section_data(
     return flattened
 
 
-def _disambiguated_model_label(
-    model: CatalogModelOption, label: str, duplicate_labels: set[str]
-) -> str:
+def _disambiguated_model_label(model: CatalogModelOption, label: str, duplicate_labels: set[str]) -> str:
     """Return a model label with a stable ID hint when needed."""
     if label not in duplicate_labels:
         return label

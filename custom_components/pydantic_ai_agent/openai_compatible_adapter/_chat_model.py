@@ -125,9 +125,7 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
         )
         settings = model_settings or {}
         with _map_api_errors(self.model_name):
-            response = await self._completions_create(
-                messages, False, settings, model_request_parameters
-            )
+            response = await self._completions_create(messages, False, settings, model_request_parameters)
         return self._process_response(cast(ChatCompletion, response))
 
     @asynccontextmanager
@@ -147,9 +145,7 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
         )
         settings = model_settings or {}
         with _map_api_errors(self.model_name):
-            response = await self._completions_create(
-                messages, True, settings, model_request_parameters
-            )
+            response = await self._completions_create(messages, True, settings, model_request_parameters)
             streamed_response = cast(ChatCompletionStream, response)
             async with streamed_response:
                 yield OpenAICompatibleStreamedResponse(
@@ -168,17 +164,13 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
         model_request_parameters: ModelRequestParameters,
     ) -> ChatCompletion | ChatCompletionStream:
         """Create a Chat Completions request using the low-level client."""
-        tools, tool_choice = self._get_tools_and_tool_choice(
-            model_settings, model_request_parameters
-        )
+        tools, tool_choice = self._get_tools_and_tool_choice(model_settings, model_request_parameters)
         response_format = None
         if model_request_parameters.output_mode == "native":
             output_object = model_request_parameters.output_object
             assert output_object is not None
             response_format = map_json_schema(output_object)
-        elif model_request_parameters.output_mode == "prompted" and self.profile.get(
-            "supports_json_object_output"
-        ):
+        elif model_request_parameters.output_mode == "prompted" and self.profile.get("supports_json_object_output"):
             response_format = {"type": "json_object"}
 
         extra_headers = {}
@@ -202,9 +194,7 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
             top_p=model_settings.get("top_p", omit),
             presence_penalty=model_settings.get("presence_penalty", omit),
             frequency_penalty=model_settings.get("frequency_penalty", omit),
-            parallel_tool_calls=model_settings.get("parallel_tool_calls", omit)
-            if tools
-            else omit,
+            parallel_tool_calls=model_settings.get("parallel_tool_calls", omit) if tools else omit,
             extra_headers=extra_headers,
             extra_body=cast(dict[str, Any] | None, model_settings.get("extra_body")),
         )
@@ -216,16 +206,12 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
     ) -> tuple[list[dict[str, Any]], str | dict[str, Any] | None]:
         """Return request tools and OpenAI-compatible tool_choice."""
         if model_request_parameters.native_tools:
-            raise UnexpectedModelBehavior(
-                "Native tools are not supported by the Chat Completions adapter"
-            )
+            raise UnexpectedModelBehavior("Native tools are not supported by the Chat Completions adapter")
         tool_defs = model_request_parameters.tool_defs
         tools = [
             map_tool_definition(
                 tool,
-                strict_supported=bool(
-                    self.profile.get("openai_supports_strict_tool_definition")
-                ),
+                strict_supported=bool(self.profile.get("openai_supports_strict_tool_definition")),
             )
             for tool in tool_defs.values()
         ]
@@ -241,9 +227,7 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
     def _process_response(self, response: ChatCompletion) -> ModelResponse:
         """Process a non-streamed Chat Completions response."""
         if not response.choices:
-            raise UnexpectedModelBehavior(
-                "Chat Completions response did not include choices"
-            )
+            raise UnexpectedModelBehavior("Chat Completions response did not include choices")
         timestamp = datetime.now(UTC)
         choice = response.choices[0]
         if choice.message.refusal:
@@ -262,11 +246,7 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
         for field_name in ("reasoning", "reasoning_content"):
             reasoning = getattr(choice.message, field_name, None)
             if isinstance(reasoning, str) and reasoning:
-                parts.append(
-                    ThinkingPart(
-                        id=field_name, content=reasoning, provider_name=self.system
-                    )
-                )
+                parts.append(ThinkingPart(id=field_name, content=reasoning, provider_name=self.system))
                 break
         if choice.message.content:
             parts.append(TextPart(choice.message.content))
@@ -281,9 +261,7 @@ class OpenAICompatibleChatModel(Model[AsyncOpenAICompatible]):
                 )
             else:
                 assert_never(tool_call.type)
-        provider_details = (
-            {"finish_reason": choice.finish_reason} if choice.finish_reason else None
-        )
+        provider_details = {"finish_reason": choice.finish_reason} if choice.finish_reason else None
         return ModelResponse(
             parts=parts,
             usage=map_usage(response),

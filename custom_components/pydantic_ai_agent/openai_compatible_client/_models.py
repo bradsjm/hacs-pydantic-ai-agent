@@ -26,9 +26,7 @@ class ModelsResource:
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,  # noqa: ASYNC109
     ) -> list[str]:
         """Return available model IDs."""
-        request_timeout = (
-            None if is_omitted(timeout) else cast(float | httpx.Timeout | None, timeout)
-        )
+        request_timeout = None if is_omitted(timeout) else cast(float | httpx.Timeout | None, timeout)
         try:
             response = await self._client.http_client.get(
                 self._client.url_for("/models"),
@@ -44,13 +42,9 @@ class ModelsResource:
         except ValueError as err:
             raise APIConnectionError(message=f"Invalid response JSON: {err}") from err
 
-        if not isinstance(data, Mapping) or not isinstance(
-            models := data.get("data"), list
-        ):
+        if not isinstance(data, Mapping) or not isinstance(models := data.get("data"), list):
             raise APIConnectionError(message="Invalid models response JSON")
         model_ids = {
-            model["id"]
-            for model in models
-            if isinstance(model, Mapping) and isinstance(model.get("id"), str)
+            model["id"] for model in models if isinstance(model, Mapping) and isinstance(model.get("id"), str)
         }
         return sorted(model_ids)

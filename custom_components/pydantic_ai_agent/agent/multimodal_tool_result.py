@@ -20,9 +20,7 @@ _MAX_TOTAL_ATTACHMENT_BYTES = 10 * 1024 * 1024
 _DEFAULT_TEXT = "Tool returned image attachments."
 
 
-def normalize_multimodal_tool_result(
-    value: object, *, supports_images: bool | None = None
-) -> object:
+def normalize_multimodal_tool_result(value: object, *, supports_images: bool | None = None) -> object:
     """Convert a recognized HA multimodal sentinel into model-facing content."""
     if (sentinel := _as_multimodal_tool_result(value)) is None:
         return value
@@ -61,18 +59,14 @@ def serialize_multimodal_tool_result(value: object) -> object:
             if item:
                 text_parts.append(item)
             continue
-        if not isinstance(item, BinaryContent) or (
-            item.media_type not in _ALLOWED_INLINE_IMAGE_MIME_TYPES
-        ):
+        if not isinstance(item, BinaryContent) or (item.media_type not in _ALLOWED_INLINE_IMAGE_MIME_TYPES):
             return value
         attachment: dict[str, str] = {
             "kind": _INLINE_IMAGE_KIND,
             "mime_type": item.media_type,
             "base64": base64.b64encode(item.data).decode(),
         }
-        if isinstance(item.vendor_metadata, Mapping) and isinstance(
-            detail := item.vendor_metadata.get("detail"), str
-        ):
+        if isinstance(item.vendor_metadata, Mapping) and isinstance(detail := item.vendor_metadata.get("detail"), str):
             attachment["detail"] = detail
         attachments.append(attachment)
 
@@ -98,18 +92,14 @@ def _sentinel_text(value: Mapping[str, object]) -> str:
     return text if isinstance(text, str) else ""
 
 
-def _binary_content_from_attachment(
-    value: object, total_bytes: int
-) -> BinaryContent | None:
+def _binary_content_from_attachment(value: object, total_bytes: int) -> BinaryContent | None:
     if not isinstance(value, Mapping):
         return None
     if value.get("kind") != _INLINE_IMAGE_KIND:
         return None
     mime_type = value.get("mime_type")
     encoded = value.get("base64")
-    if not isinstance(mime_type, str) or (
-        mime_type not in _ALLOWED_INLINE_IMAGE_MIME_TYPES
-    ):
+    if not isinstance(mime_type, str) or (mime_type not in _ALLOWED_INLINE_IMAGE_MIME_TYPES):
         return None
     if not isinstance(encoded, str):
         return None

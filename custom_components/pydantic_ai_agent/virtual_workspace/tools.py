@@ -59,9 +59,7 @@ def build_virtual_workspace_toolset(
             _remove_schema(),
             _remove(workspace),
         ),
-        _tool(
-            "copy", "Copy a virtual workspace path.", _copy_schema(), _copy(workspace)
-        ),
+        _tool("copy", "Copy a virtual workspace path.", _copy_schema(), _copy(workspace)),
         _tool(
             "move",
             "Move a virtual workspace path after confirmation.",
@@ -260,9 +258,7 @@ def _bash_schema() -> dict[str, Any]:
                 "Command to execute in the virtual bash.",
                 max_length=MAX_COMMAND_BYTES,
             ),
-            "workingDirectory": _string(
-                "Virtual working directory. Defaults to /workspace."
-            ),
+            "workingDirectory": _string("Virtual working directory. Defaults to /workspace."),
         },
         ["command"],
     )
@@ -335,15 +331,9 @@ def _copy_move_schema(action: str, *, confirm_required: bool = False) -> dict[st
     return _object_schema(
         {
             "source": _string(f"Virtual source path to {action.lower()}."),
-            "destination": _string(
-                f"Virtual destination path for the {action.lower()}."
-            ),
+            "destination": _string(f"Virtual destination path for the {action.lower()}."),
             "overwrite": _boolean("Set true to replace an existing destination."),
-            "confirm": _boolean(
-                "Required for every move."
-                if confirm_required
-                else "Required with overwrite=true."
-            ),
+            "confirm": _boolean("Required for every move." if confirm_required else "Required with overwrite=true."),
         },
         required,
     )
@@ -353,9 +343,7 @@ def _apply_patch_schema() -> dict[str, Any]:
     return _object_schema(
         {
             "patch": _string("Codex-style patch envelope to apply."),
-            "confirm": _boolean(
-                "Required for updates, deletes, moves, and overwrites."
-            ),
+            "confirm": _boolean("Required for updates, deletes, moves, and overwrites."),
         },
         ["patch"],
     )

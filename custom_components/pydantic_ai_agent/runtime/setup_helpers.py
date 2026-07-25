@@ -52,9 +52,7 @@ def _provider_runtimes(
             provider_mode=provider_mode,
             base_url=subentry.data.get(CONF_BASE_URL),
             provider_headers=dict(headers) if isinstance(headers, Mapping) else {},
-            provider_extra_body=dict(provider_extra_body)
-            if isinstance(provider_extra_body, Mapping)
-            else {},
+            provider_extra_body=dict(provider_extra_body) if isinstance(provider_extra_body, Mapping) else {},
         )
     return runtimes
 
@@ -83,8 +81,4 @@ def _provider_subentries(entry: PydanticAIAgentConfigEntry) -> list[Any]:
     """Return all provider subentries."""
     from ..const import SUBENTRY_TYPE_PROVIDER
 
-    return [
-        subentry
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER
-    ]
+    return [subentry for subentry in entry.subentries.values() if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER]

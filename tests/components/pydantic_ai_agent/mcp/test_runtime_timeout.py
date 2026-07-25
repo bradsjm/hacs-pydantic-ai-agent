@@ -63,9 +63,7 @@ async def _build_runtime_toolset(
     client_call: dict[str, object] = {}
     CapturingMCPToolset.latest = None
 
-    async def fake_validate_mcp_url_details(
-        _hass: HomeAssistant, url: str
-    ) -> ValidatedMCPURL:
+    async def fake_validate_mcp_url_details(_hass: HomeAssistant, url: str) -> ValidatedMCPURL:
         await asyncio.sleep(0)
         return ValidatedMCPURL(
             url=url,
@@ -85,9 +83,7 @@ async def _build_runtime_toolset(
         return object()
 
     monkeypatch.setattr(runtime, "MCPToolset", CapturingMCPToolset)
-    monkeypatch.setattr(
-        runtime, "async_validate_mcp_url_details", fake_validate_mcp_url_details
-    )
+    monkeypatch.setattr(runtime, "async_validate_mcp_url_details", fake_validate_mcp_url_details)
     monkeypatch.setattr(runtime, "_mcp_client", fake_mcp_client)
 
     subentry = make_subentry(
@@ -131,9 +127,7 @@ async def test_process_tool_call_converts_client_timeouts_to_model_retry(
     err: BaseException,
 ) -> None:
     """Client-side MCP tool-call timeouts are retry feedback for the model."""
-    toolset, _client_call = await _build_runtime_toolset(
-        hass, monkeypatch, make_subentry
-    )
+    toolset, _client_call = await _build_runtime_toolset(hass, monkeypatch, make_subentry)
     process_tool_call = cast(ProcessToolCall, toolset.kwargs["process_tool_call"])
 
     async def call_tool(_tool_name: str, _tool_args: dict[str, Any]) -> object:
@@ -152,9 +146,7 @@ async def test_process_tool_call_converts_mcp_timeout_error_to_model_retry(
     make_subentry: MakeSubentry,
 ) -> None:
     """Server-reported MCP request timeouts are retry feedback for the model."""
-    toolset, _client_call = await _build_runtime_toolset(
-        hass, monkeypatch, make_subentry
-    )
+    toolset, _client_call = await _build_runtime_toolset(hass, monkeypatch, make_subentry)
     process_tool_call = cast(ProcessToolCall, toolset.kwargs["process_tool_call"])
 
     err = McpError(
@@ -180,9 +172,7 @@ async def test_process_tool_call_keeps_non_timeout_mcp_errors_terminal(
     make_subentry: MakeSubentry,
 ) -> None:
     """Non-timeout MCP errors still terminate the tool call."""
-    toolset, _client_call = await _build_runtime_toolset(
-        hass, monkeypatch, make_subentry
-    )
+    toolset, _client_call = await _build_runtime_toolset(hass, monkeypatch, make_subentry)
     process_tool_call = cast(ProcessToolCall, toolset.kwargs["process_tool_call"])
     err = McpError(ErrorData(code=500, message="Server error"))
 
@@ -203,9 +193,7 @@ async def test_runtime_mcp_toolset_uses_configured_timeout(
     make_subentry: MakeSubentry,
 ) -> None:
     """Runtime MCP toolsets pass the configured timeout."""
-    _toolset, client_call = await _build_runtime_toolset(
-        hass, monkeypatch, make_subentry
-    )
+    _toolset, client_call = await _build_runtime_toolset(hass, monkeypatch, make_subentry)
 
     assert client_call["timeout"] == 20.0
 

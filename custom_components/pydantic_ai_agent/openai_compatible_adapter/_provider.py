@@ -69,16 +69,8 @@ class OpenAICompatibleProvider(Provider[AsyncOpenAICompatible]):
         """Initialize the provider."""
         self._name = name
         if client is not None:
-            if (
-                api_key is not None
-                or base_url is not None
-                or headers is not None
-                or http_client is not None
-            ):
-                raise ValueError(
-                    "client cannot be combined with api_key, base_url,"
-                    " headers, or http_client"
-                )
+            if api_key is not None or base_url is not None or headers is not None or http_client is not None:
+                raise ValueError("client cannot be combined with api_key, base_url, headers, or http_client")
             self._client = client
             return
 

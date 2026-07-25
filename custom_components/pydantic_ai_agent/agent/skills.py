@@ -131,9 +131,7 @@ def _normalise_selected_skill_ids(raw_skill_ids: object) -> list[str]:
     return skill_ids
 
 
-def _skill_from_subentry(
-    skill_id: str, title: str, data: Mapping[str, Any]
-) -> NativeSkill | None:
+def _skill_from_subentry(skill_id: str, title: str, data: Mapping[str, Any]) -> NativeSkill | None:
     """Return a native Skill from a Skill subentry."""
     content = data.get(CONF_SKILL_CONTENT)
     if not isinstance(content, str) or not content.strip():

@@ -42,12 +42,8 @@ class _StreamTraceRecorder:
     chat_deltas_total: int = 0
     events: list[dict[str, Any]] = field(default_factory=list)
     chat_deltas: list[dict[str, Any]] = field(default_factory=list)
-    events_tail: deque[dict[str, Any]] = field(
-        default_factory=lambda: deque(maxlen=_TRACE_TAIL_ITEMS)
-    )
-    chat_deltas_tail: deque[dict[str, Any]] = field(
-        default_factory=lambda: deque(maxlen=_TRACE_TAIL_ITEMS)
-    )
+    events_tail: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=_TRACE_TAIL_ITEMS))
+    chat_deltas_tail: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=_TRACE_TAIL_ITEMS))
 
     def record_event(self, event: object) -> None:
         """Record one Pydantic AI stream event summary."""
@@ -100,9 +96,7 @@ class _StreamTraceRecorder:
         events_tail = list(self.events_tail)
         chat_deltas_tail = list(self.chat_deltas_tail)
         events_truncated = self.events_total > len(self.events) + len(events_tail)
-        chat_deltas_truncated = self.chat_deltas_total > len(self.chat_deltas) + len(
-            chat_deltas_tail
-        )
+        chat_deltas_truncated = self.chat_deltas_total > len(self.chat_deltas) + len(chat_deltas_tail)
         return {
             "schema_version": 1,
             "limits": {
@@ -125,8 +119,7 @@ class _StreamTraceRecorder:
                 self.chat_deltas_total - len(self.chat_deltas) - len(chat_deltas_tail),
                 0,
             ),
-            "chat_deltas": self.chat_deltas
-            + ([] if chat_deltas_truncated else chat_deltas_tail),
+            "chat_deltas": self.chat_deltas + ([] if chat_deltas_truncated else chat_deltas_tail),
             "chat_deltas_tail": chat_deltas_tail if chat_deltas_truncated else [],
             "final_new_messages": _messages_summary(final_messages, True),
             "backfill": dict(backfill),
@@ -195,20 +188,14 @@ def _part_delta_summary(delta: object, include_preview: bool) -> dict[str, Any]:
         "part_delta_kind": getattr(delta, "part_delta_kind", None),
     }
     if isinstance(delta, TextPartDelta):
-        _add_text_summary(
-            summary, "content_delta", delta.content_delta, include_preview
-        )
+        _add_text_summary(summary, "content_delta", delta.content_delta, include_preview)
     elif isinstance(delta, ThinkingPartDelta):
-        _add_text_summary(
-            summary, "content_delta", delta.content_delta, include_preview
-        )
+        _add_text_summary(summary, "content_delta", delta.content_delta, include_preview)
         summary["signature_delta_present"] = bool(delta.signature_delta)
     return summary
 
 
-def _chat_delta_summary(
-    delta: Mapping[str, Any], include_preview: bool
-) -> dict[str, Any]:
+def _chat_delta_summary(delta: Mapping[str, Any], include_preview: bool) -> dict[str, Any]:
     """Return a safe summary of a ChatLog delta."""
     summary: dict[str, Any] = {"keys": sorted(delta)}
     if role := delta.get("role"):
@@ -235,9 +222,7 @@ def _chat_delta_summary(
     return summary
 
 
-def _messages_summary(
-    messages: list[ModelMessage], include_preview: bool
-) -> list[dict[str, Any]]:
+def _messages_summary(messages: list[ModelMessage], include_preview: bool) -> list[dict[str, Any]]:
     """Return a safe summary of final Agent messages."""
     summaries: list[dict[str, Any]] = []
     for index, message in enumerate(messages):
@@ -246,16 +231,12 @@ def _messages_summary(
             "type": type(message).__name__,
         }
         if isinstance(message, (ModelResponse, ModelRequest)):
-            summary["parts"] = [
-                _part_summary(part, include_preview) for part in message.parts
-            ]
+            summary["parts"] = [_part_summary(part, include_preview) for part in message.parts]
         summaries.append(summary)
     return summaries
 
 
-def _chat_content_summary(
-    content: conversation.Content | None, include_preview: bool
-) -> dict[str, Any] | None:
+def _chat_content_summary(content: conversation.Content | None, include_preview: bool) -> dict[str, Any] | None:
     """Return a safe summary of final ChatLog content."""
     if content is None:
         return None
@@ -277,18 +258,14 @@ def _chat_content_summary(
     return summary
 
 
-def _add_text_summary(
-    summary: dict[str, Any], field_name: str, text: str | None, include_preview: bool
-) -> None:
+def _add_text_summary(summary: dict[str, Any], field_name: str, text: str | None, include_preview: bool) -> None:
     """Add text length and optional preview fields to a summary."""
     text = text or ""
     summary[f"{field_name}_chars"] = len(text)
     _add_preview(summary, field_name, text, include_preview)
 
 
-def _add_preview(
-    summary: dict[str, Any], field_name: str, text: str, include_preview: bool
-) -> None:
+def _add_preview(summary: dict[str, Any], field_name: str, text: str, include_preview: bool) -> None:
     """Add a bounded text preview when requested."""
     if include_preview and text:
         summary[f"{field_name}_preview"] = text[:_TRACE_PREVIEW_CHARS]

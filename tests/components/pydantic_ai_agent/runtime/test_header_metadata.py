@@ -67,9 +67,7 @@ def test_parse_header_rows_accepts_mapping() -> None:
     assert parse_header_rows({"X-Header": "value"}) == ({"X-Header": "value"}, [])
 
 
-def test_parse_header_rows_restores_redacted_mapping_values_from_previous_secret() -> (
-    None
-):
+def test_parse_header_rows_restores_redacted_mapping_values_from_previous_secret() -> None:
     assert parse_header_rows(
         {"Authorization": HEADER_VALUE_REDACTED, "X-Trace": "trace"},
         previous_headers={"authorization": "old-token"},
@@ -121,9 +119,7 @@ def test_parse_header_rows_rejects_invalid_input(value: object, error_key: str) 
         parse_header_rows(value)
 
 
-def test_parse_header_rows_rejects_unmatched_redacted_secret_when_previous_exists() -> (
-    None
-):
+def test_parse_header_rows_rejects_unmatched_redacted_secret_when_previous_exists() -> None:
     with pytest.raises(ValueError, match="invalid_key_value"):
         parse_header_rows(
             [_row("X-New", HEADER_VALUE_REDACTED, True)],
@@ -132,18 +128,14 @@ def test_parse_header_rows_rejects_unmatched_redacted_secret_when_previous_exist
         )
 
 
-def test_parse_header_rows_preserves_unmatched_redacted_secret_without_previous() -> (
-    None
-):
+def test_parse_header_rows_preserves_unmatched_redacted_secret_without_previous() -> None:
     assert parse_header_rows([_row("X-New", HEADER_VALUE_REDACTED, True)]) == (
         {"X-New": HEADER_VALUE_REDACTED},
         ["X-New"],
     )
 
 
-def test_normalize_secret_header_keys_filters_current_mapping_and_preserves_order() -> (
-    None
-):
+def test_normalize_secret_header_keys_filters_current_mapping_and_preserves_order() -> None:
     assert normalize_secret_header_keys(
         {
             "X-First": "one",
@@ -162,9 +154,7 @@ def test_normalize_secret_header_keys_returns_empty_for_non_mapping(
     assert normalize_secret_header_keys(headers, ["authorization"]) == []
 
 
-def test_mask_secret_header_values_masks_case_insensitively_and_drops_non_string_keys() -> (
-    None
-):
+def test_mask_secret_header_values_masks_case_insensitively_and_drops_non_string_keys() -> None:
     assert mask_secret_header_values(
         {
             "Authorization": "token",

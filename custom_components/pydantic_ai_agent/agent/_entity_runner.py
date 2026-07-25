@@ -97,11 +97,7 @@ async def run_model_profile(
     toolsets = [*mcp_toolsets, *virtual_toolsets, *extra_toolsets]
     run_capabilities = list(capabilities)
     if any(isinstance(toolset, DeferredLoadingToolset) for toolset in toolsets):
-        run_capabilities = [
-            capability
-            for capability in run_capabilities
-            if not isinstance(capability, ToolSearch)
-        ]
+        run_capabilities = [capability for capability in run_capabilities if not isinstance(capability, ToolSearch)]
         run_capabilities.append(ToolSearch(strategy="keywords"))
     if thinking := thinking_capability(subentry.data, profile):
         run_capabilities.append(thinking)
@@ -116,9 +112,7 @@ async def run_model_profile(
             "mcp_toolset_count": len(mcp_toolsets),
             "extra_toolset_count": len(extra_toolsets),
             "virtual_workspace_enabled": virtual_workspace_enabled(subentry.data),
-            "capability_types": [
-                type(capability).__name__ for capability in run_capabilities
-            ],
+            "capability_types": [type(capability).__name__ for capability in run_capabilities],
         },
     )
     agent = agent_factory(
@@ -262,9 +256,7 @@ async def run_agent_try(
                             model_pricing=profile.model_pricing,
                         )
                     duration = hass.loop.time() - start
-                    await _append_agent_messages(
-                        chat_log, agent_id, result.new_messages()
-                    )
+                    await _append_agent_messages(chat_log, agent_id, result.new_messages())
                     run_recorder.record(
                         phase="llm_response",
                         source="provider",
@@ -319,9 +311,7 @@ async def run_agent_try(
                         "output": output,
                         "usage": result.usage,
                         "duration": duration,
-                        "final_chat_content": chat_log.content[-1]
-                        if chat_log.content
-                        else None,
+                        "final_chat_content": chat_log.content[-1] if chat_log.content else None,
                     },
                 )
                 return AgentRunOutcome(

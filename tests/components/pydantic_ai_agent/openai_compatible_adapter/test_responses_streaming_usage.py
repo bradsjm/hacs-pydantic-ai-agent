@@ -52,15 +52,9 @@ async def test_responses_streaming_uses_latest_cumulative_usage_snapshot() -> No
     )
 
     for event in (
-        ResponseStreamEvent(
-            type="response.created", response=_response(usage=created_usage)
-        ),
-        ResponseStreamEvent(
-            type="response.in_progress", response=_response(usage=in_progress_usage)
-        ),
-        ResponseStreamEvent(
-            type="response.completed", response=_response(usage=completed_usage)
-        ),
+        ResponseStreamEvent(type="response.created", response=_response(usage=created_usage)),
+        ResponseStreamEvent(type="response.in_progress", response=_response(usage=in_progress_usage)),
+        ResponseStreamEvent(type="response.completed", response=_response(usage=completed_usage)),
     ):
         await streamed_response._process_response_event(event, {}, {})
 
@@ -76,9 +70,7 @@ async def test_responses_streaming_preserves_usage_when_terminal_event_has_none(
     usage = ResponseUsage(input_tokens=10, output_tokens=8, total_tokens=18)
 
     await streamed_response._process_response_event(
-        ResponseStreamEvent(
-            type="response.in_progress", response=_response(usage=usage)
-        ),
+        ResponseStreamEvent(type="response.in_progress", response=_response(usage=usage)),
         {},
         {},
     )

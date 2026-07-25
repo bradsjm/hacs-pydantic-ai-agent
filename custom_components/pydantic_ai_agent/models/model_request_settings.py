@@ -23,16 +23,12 @@ def _model_settings_with_templated_extra_body(
     hass: HomeAssistant, profile: ModelProfile, settings: ModelSettings
 ) -> ModelSettings:
     """Return request settings with rendered templated extra body merged."""
-    rendered_extra_body = render_templated_extra_body(
-        hass, profile.model_settings.get(CONF_TEMPLATED_EXTRA_BODY)
-    )
+    rendered_extra_body = render_templated_extra_body(hass, profile.model_settings.get(CONF_TEMPLATED_EXTRA_BODY))
     if not rendered_extra_body:
         return settings
 
     request_settings = dict(settings)
-    request_settings["extra_body"] = merge_extra_body(
-        request_settings.get("extra_body"), rendered_extra_body
-    )
+    request_settings["extra_body"] = merge_extra_body(request_settings.get("extra_body"), rendered_extra_body)
     return ModelSettings(**cast(Any, request_settings))
 
 
@@ -49,11 +45,8 @@ def _model_settings_with_provider_extra_body(
         PROVIDER_OPENAI_COMPATIBLE_RESPONSES,
     }:
         raise HomeAssistantError(
-            "Provider extra body is only supported by OpenAI-compatible"
-            " and Anthropic provider modes"
+            "Provider extra body is only supported by OpenAI-compatible and Anthropic provider modes"
         )
     request_settings = dict(settings)
-    request_settings["extra_body"] = merge_extra_body(
-        request_settings.get("extra_body"), extra_body
-    )
+    request_settings["extra_body"] = merge_extra_body(request_settings.get("extra_body"), extra_body)
     return ModelSettings(**cast(Any, request_settings))

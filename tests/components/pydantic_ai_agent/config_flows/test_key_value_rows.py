@@ -106,6 +106,4 @@ def test_parse_rows_raise_stable_reason_keys(parser, rows, reason: str) -> None:
 
 def test_parse_mapping_values() -> None:
     assert _parse_key_value_text_rows({"a": "b"}) == {"a": "b"}
-    assert _parse_key_value_json_rows({"a": {"already": "parsed"}}) == {
-        "a": {"already": "parsed"}
-    }
+    assert _parse_key_value_json_rows({"a": {"already": "parsed"}}) == {"a": {"already": "parsed"}}

@@ -30,9 +30,7 @@ from .observability.run_failures import _AgentRunFailed
 from .virtual_workspace import virtual_workspace_enabled
 
 _TOOL_RESUME_SEPARATOR = "\n\n"
-_CONVERSATION_FAILURE_PREFIX = (
-    "Sorry, I couldn't get a response from the language model."
-)
+_CONVERSATION_FAILURE_PREFIX = "Sorry, I couldn't get a response from the language model."
 
 
 class _NoAssistantResponseError(HomeAssistantError):
@@ -57,31 +55,23 @@ async def async_setup_entry(
         )
 
 
-class PydanticAIConversationEntity(
-    PydanticAIBaseLLMEntity, conversation.ConversationEntity
-):
+class PydanticAIConversationEntity(PydanticAIBaseLLMEntity, conversation.ConversationEntity):
     """Conversation entity backed by Pydantic AI direct model streaming."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:message-processing-outline"
     _attr_name = None
 
-    def __init__(
-        self, entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
-    ) -> None:
+    def __init__(self, entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry) -> None:
         """Initialize the conversation entity."""
         name = subentry.data[CONF_AGENT_NAME]
         super().__init__(entry, subentry, name=name, device_name=name)
-        self._streaming_enabled = (
-            subentry.data.get(CONF_STREAMING_ENABLED, True) is not False
-        )
+        self._streaming_enabled = subentry.data.get(CONF_STREAMING_ENABLED, True) is not False
         self._attr_supports_streaming = self._streaming_enabled
         if subentry.data.get(CONF_LLM_HASS_API):
             # CONTROL means the agent can call HA tools/services, which is only
             # true when an HA LLM API is attached to this subentry.
-            self._attr_supported_features = (
-                conversation.ConversationEntityFeature.CONTROL
-            )
+            self._attr_supported_features = conversation.ConversationEntityFeature.CONTROL
         profiles = model_profile_chain(self.entry, self.subentry)
         self._attr_extra_state_attributes = {
             "provider_mode": profiles[0].provider_mode,
@@ -91,12 +81,8 @@ class PydanticAIConversationEntity(
             "ha_tools_enabled": bool(self.subentry.data.get(CONF_LLM_HASS_API)),
             "ha_llm_api": self.subentry.data.get(CONF_LLM_HASS_API),
             "streaming_enabled": self._streaming_enabled,
-            "web_fetch_enabled": bool(
-                self.subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
-            ),
-            "web_search_enabled": bool(
-                self.subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)
-            ),
+            "web_fetch_enabled": bool(self.subentry.data.get(CONF_WEB_FETCH_ENABLED, False)),
+            "web_search_enabled": bool(self.subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)),
             "virtual_workspace_enabled": virtual_workspace_enabled(self.subentry.data),
         }
 
@@ -130,9 +116,7 @@ class PydanticAIConversationEntity(
             )
             result = _async_get_result_from_chat_log(user_input, chat_log)
             if not isinstance(outcome, AgentRunOutcome):
-                raise _NoAssistantResponseError(
-                    "the provider did not return run metadata."
-                )
+                raise _NoAssistantResponseError("the provider did not return run metadata.")
             _clear_runtime_auth_failure_for_ref(
                 self.hass,
                 self.entry,
@@ -162,10 +146,7 @@ class PydanticAIConversationEntity(
             )
         except _NoAssistantResponseError as err:
             self._record_agent_run_failure(err, self.entity_id)
-            if (
-                isinstance(outcome, AgentRunOutcome)
-                and outcome.run_recorder is not None
-            ):
+            if isinstance(outcome, AgentRunOutcome) and outcome.run_recorder is not None:
                 outcome.run_recorder.record(
                     phase="failure",
                     event="no_assistant_response",
@@ -180,9 +161,7 @@ class PydanticAIConversationEntity(
                         "output": outcome.output,
                     },
                 )
-            return await _failure_result_from_chat_log(
-                user_input, chat_log, self.entity_id, str(err)
-            )
+            return await _failure_result_from_chat_log(user_input, chat_log, self.entity_id, str(err))
 
 
 def _async_get_result_from_chat_log(
@@ -230,9 +209,7 @@ async def _failure_result_from_chat_log(
     """Build a user-facing result for a failed provider request."""
     failure_text = f"{_CONVERSATION_FAILURE_PREFIX} {reason}"
     if partial_response:
-        failure_text = (
-            f"{_TOOL_RESUME_SEPARATOR}Sorry, I couldn't finish the response. {reason}"
-        )
+        failure_text = f"{_TOOL_RESUME_SEPARATOR}Sorry, I couldn't finish the response. {reason}"
 
     await _append_text(chat_log, agent_id, failure_text)
     result = _async_get_result_from_chat_log(user_input, chat_log)

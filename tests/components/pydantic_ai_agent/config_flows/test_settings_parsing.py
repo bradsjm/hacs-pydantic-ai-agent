@@ -43,9 +43,7 @@ def test_positive_and_non_negative_parsers_enforce_bounds(
 
 
 def test_parse_key_value_json_setting_from_text() -> None:
-    parsed = parsing._parse_key_value_json_setting(
-        'beta: true\nsettings: {"nested": [1, 2]}'
-    )
+    parsed = parsing._parse_key_value_json_setting('beta: true\nsettings: {"nested": [1, 2]}')
 
     assert parsed == {"beta": True, "settings": {"nested": [1, 2]}}
 
@@ -89,9 +87,7 @@ def test_parse_thinking_setting_accepts_supported_values(value: str, parsed) -> 
     assert parsing._parse_thinking_setting(value) == parsed
 
 
-@pytest.mark.parametrize(
-    "value", [True, "", "true", "false", "minimal", "yes", "TRUE", "auto"]
-)
+@pytest.mark.parametrize("value", [True, "", "true", "false", "minimal", "yes", "TRUE", "auto"])
 def test_parse_thinking_setting_rejects_invalid_values(value) -> None:
     with pytest.raises(ValueError):  # noqa: PT011 - parser error type is the contract
         parsing._parse_thinking_setting(value)

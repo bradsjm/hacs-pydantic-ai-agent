@@ -46,11 +46,7 @@ _LOGFIRE_STATE_KEY = "logfire"
 def _load_integration_version() -> str | None:
     """Return the packaged integration version once from manifest.json."""
     try:
-        manifest = json.loads(
-            (Path(__file__).resolve().parent.parent / "manifest.json").read_text(
-                encoding="utf-8"
-            )
-        )
+        manifest = json.loads((Path(__file__).resolve().parent.parent / "manifest.json").read_text(encoding="utf-8"))
     except OSError, json.JSONDecodeError:
         return None
     version = manifest.get("version")
@@ -93,10 +89,7 @@ async def async_configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bo
     include_content = bool(entry.data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False))
     state = _logfire_state(hass)
     async with state.configure_lock:
-        if (
-            state.configured_token is not None
-            and not state.owner_include_content_by_entry_id
-        ):
+        if state.configured_token is not None and not state.owner_include_content_by_entry_id:
             state.configured_token = None
             state.configured_include_content = False
 
@@ -122,8 +115,7 @@ async def async_configure_logfire(hass: HomeAssistant, entry: ConfigEntry) -> bo
             return True
 
         _LOGGER.warning(
-            "Logfire is already configured by another Pydantic AI Agent entry; "
-            "Logfire is disabled for entry %s",
+            "Logfire is already configured by another Pydantic AI Agent entry; Logfire is disabled for entry %s",
             entry.entry_id,
         )
         async_create_logfire_token_conflict_issue(hass, entry)
@@ -148,9 +140,7 @@ def _configured_include_content(state: LogfireState) -> bool:
     return any(state.owner_include_content_by_entry_id.values())
 
 
-async def _async_configure_next_logfire_owner(
-    hass: HomeAssistant, released_entry_id: str
-) -> None:
+async def _async_configure_next_logfire_owner(hass: HomeAssistant, released_entry_id: str) -> None:
     """Promote a loaded conflicting entry after the last owner releases Logfire."""
     promoted_token: str | None = None
     for candidate in hass.config_entries.async_entries(DOMAIN):
@@ -219,14 +209,10 @@ def logfire_token_conflict(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Return if the entry has a token that conflicts with active Logfire."""
     token = _entry_logfire_token(entry)
     configured_token = _logfire_state(hass).configured_token
-    return (
-        token is not None and configured_token is not None and token != configured_token
-    )
+    return token is not None and configured_token is not None and token != configured_token
 
 
-def instrument_agent(
-    hass: HomeAssistant, entry: ConfigEntry, agent: Agent[Any, Any]
-) -> None:
+def instrument_agent(hass: HomeAssistant, entry: ConfigEntry, agent: Agent[Any, Any]) -> None:
     """Instrument one Pydantic AI agent when this entry owns active Logfire."""
     if not logfire_active_for_entry(hass, entry):
         return
@@ -355,12 +341,8 @@ def _span_attributes(
         "ha.llm_api_ids": llm_api_ids,
         "ha.logfire_include_content": logfire_include_content(hass, entry),
         "ha.web_fetch_enabled": bool(subentry.data.get(CONF_WEB_FETCH_ENABLED, False)),
-        "ha.web_search_enabled": bool(
-            subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)
-        ),
-        "ha.virtual_workspace_enabled": bool(
-            subentry.data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)
-        ),
+        "ha.web_search_enabled": bool(subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)),
+        "ha.virtual_workspace_enabled": bool(subentry.data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)),
         "gen_ai.operation.name": _gen_ai_operation_name(profile.provider_mode),
         "gen_ai.system": _gen_ai_provider_name(profile.provider_mode),
         "gen_ai.provider.name": _gen_ai_provider_name(profile.provider_mode),
@@ -370,19 +352,11 @@ def _span_attributes(
     if _INTEGRATION_VERSION is not None:
         attributes["ha.integration_version"] = _INTEGRATION_VERSION
     if subentry.subentry_type == SUBENTRY_TYPE_CONVERSATION:
-        attributes["ha.agent_name"] = str(
-            subentry.data.get(CONF_AGENT_NAME, subentry.title)
-        )
+        attributes["ha.agent_name"] = str(subentry.data.get(CONF_AGENT_NAME, subentry.title))
     if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK:
-        attributes["ha.structured_output_mode"] = resolved_structured_output_mode(
-            profile
-        )
-        attributes["ha.ai_task_name"] = str(
-            subentry.data.get(CONF_AI_TASK_NAME, subentry.title)
-        )
-        attributes["ha.todo_workspace_enabled"] = bool(
-            subentry.data.get(CONF_TODO_LIST_ENTITY_ID)
-        )
+        attributes["ha.structured_output_mode"] = resolved_structured_output_mode(profile)
+        attributes["ha.ai_task_name"] = str(subentry.data.get(CONF_AI_TASK_NAME, subentry.title))
+        attributes["ha.todo_workspace_enabled"] = bool(subentry.data.get(CONF_TODO_LIST_ENTITY_ID))
     return attributes
 
 

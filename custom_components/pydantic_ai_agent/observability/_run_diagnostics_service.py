@@ -33,12 +33,8 @@ _RUN_DIAGNOSTICS_SERVICE_SCHEMA = vol.Schema(
         vol.Required(ATTR_CONFIG_ENTRY_ID): str,
         vol.Required(ATTR_SUBENTRY_ID): str,
         vol.Optional(ATTR_SECTION): vol.In(_RUN_DIAGNOSTIC_SECTIONS),
-        vol.Optional(ATTR_OFFSET, default=0): vol.All(
-            vol.Coerce(int), vol.Range(min=0)
-        ),
-        vol.Optional(ATTR_LIMIT, default=25): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=100)
-        ),
+        vol.Optional(ATTR_OFFSET, default=0): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        vol.Optional(ATTR_LIMIT, default=25): vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
     }
 )
 
@@ -58,9 +54,7 @@ def async_register_run_diagnostics_service(hass: HomeAssistant) -> None:
     )
 
 
-def _config_entry_for_service(
-    hass: HomeAssistant, entry_id: str
-) -> PydanticAIAgentConfigEntry:
+def _config_entry_for_service(hass: HomeAssistant, entry_id: str) -> PydanticAIAgentConfigEntry:
     """Return a config entry for a response service."""
     entry = hass.config_entries.async_get_entry(entry_id)
     if entry is None or entry.domain != DOMAIN:
@@ -89,11 +83,7 @@ def _agent_run_diagnostics_service(
             },
         )
     runtime_data = getattr(entry, "runtime_data", None)
-    diagnostics = (
-        None
-        if runtime_data is None
-        else runtime_data.latest_run_diagnostics.get(subentry_id)
-    )
+    diagnostics = None if runtime_data is None else runtime_data.latest_run_diagnostics.get(subentry_id)
     base: dict[str, Any] = {
         "success": True,
         "config_entry_id": entry.entry_id,

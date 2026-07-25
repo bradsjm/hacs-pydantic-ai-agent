@@ -33,18 +33,12 @@ _format_api_error = format_api_error
 _map_http_error = map_http_error
 
 
-async def async_list_provider_model_names(
-    hass: HomeAssistant, data: Mapping[str, Any]
-) -> list[str]:
+async def async_list_provider_model_names(hass: HomeAssistant, data: Mapping[str, Any]) -> list[str]:
     """Return model names advertised by the configured provider."""
     provider_mode = data[CONF_PROVIDER_MODE]
     if provider_mode == PROVIDER_ANTHROPIC:
-        return await list_anthropic_model_names(
-            hass, data, request_timeout=DEFAULT_TIMEOUT
-        )
+        return await list_anthropic_model_names(hass, data, request_timeout=DEFAULT_TIMEOUT)
     if provider_mode == PROVIDER_GOOGLE_GEMINI:
-        return await list_google_gemini_model_names(
-            hass, data, request_timeout=DEFAULT_TIMEOUT
-        )
+        return await list_google_gemini_model_names(hass, data, request_timeout=DEFAULT_TIMEOUT)
     client = openai_compatible_client_from_config(hass, data)
     return await client.models.list(timeout=DEFAULT_TIMEOUT)

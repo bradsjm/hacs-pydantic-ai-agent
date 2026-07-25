@@ -123,9 +123,7 @@ class ProviderWizardCatalogManager:
         if self.cleanup_unsub is not None:
             self.cleanup_unsub()
         delay = max((self.expires_at() - dt_util.utcnow()).total_seconds(), 0)
-        self.cleanup_unsub = async_call_later(
-            self.hass, delay, lambda _now: self.clear_expired()
-        )
+        self.cleanup_unsub = async_call_later(self.hass, delay, lambda _now: self.clear_expired())
 
 
 def catalog_manager(hass: HomeAssistant) -> ProviderWizardCatalogManager:

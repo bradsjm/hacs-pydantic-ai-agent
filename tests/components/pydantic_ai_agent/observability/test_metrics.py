@@ -82,6 +82,4 @@ def test_metric_value_and_bool_read_record_attributes() -> None:
 
 
 def test_metrics_signal_includes_domain_entry_and_subentry() -> None:
-    assert metrics_signal("entry-1", "subentry-2") == (
-        "pydantic_ai_agent_metrics_entry-1_subentry-2"
-    )
+    assert metrics_signal("entry-1", "subentry-2") == ("pydantic_ai_agent_metrics_entry-1_subentry-2")

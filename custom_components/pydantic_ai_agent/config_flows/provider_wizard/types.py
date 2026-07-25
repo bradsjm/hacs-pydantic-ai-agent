@@ -61,7 +61,5 @@ class CompactCatalog:
 
 def sorted_unique_strings(values: Iterable[object]) -> tuple[str, ...]:
     """Return normalized non-empty strings in stable display order."""
-    parsed = {
-        value.strip() for value in values if isinstance(value, str) and value.strip()
-    }
+    parsed = {value.strip() for value in values if isinstance(value, str) and value.strip()}
     return tuple(sorted(parsed, key=str.casefold))

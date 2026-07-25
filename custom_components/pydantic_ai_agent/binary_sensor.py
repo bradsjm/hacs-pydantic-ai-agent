@@ -71,9 +71,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[PydanticAIMetricBinarySensorDescription, ...] 
     ),
 )
 
-CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
-    PydanticAIConfigBinarySensorDescription, ...
-] = (
+CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigBinarySensorDescription, ...] = (
     PydanticAIConfigBinarySensorDescription(
         key="assist_enabled",
         translation_key="assist_enabled",
@@ -87,27 +85,21 @@ CONFIG_BINARY_SENSOR_DESCRIPTIONS: tuple[
         translation_key="web_fetch_enabled",
         icon="mdi:web",
         entity_registry_enabled_default=True,
-        value_fn=lambda subentry: bool(
-            subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
-        ),
+        value_fn=lambda subentry: bool(subentry.data.get(CONF_WEB_FETCH_ENABLED, False)),
     ),
     PydanticAIConfigBinarySensorDescription(
         key="web_search_enabled",
         translation_key="web_search_enabled",
         icon="mdi:web",
         entity_registry_enabled_default=True,
-        value_fn=lambda subentry: bool(
-            subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)
-        ),
+        value_fn=lambda subentry: bool(subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)),
     ),
     PydanticAIConfigBinarySensorDescription(
         key="virtual_workspace_enabled",
         translation_key="virtual_workspace_enabled",
         icon="mdi:folder-cog-outline",
         entity_registry_enabled_default=True,
-        value_fn=lambda subentry: (
-            subentry.data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is True
-        ),
+        value_fn=lambda subentry: subentry.data.get(CONF_VIRTUAL_WORKSPACE_ENABLED) is True,
     ),
     PydanticAIConfigBinarySensorDescription(
         key="todo_workspace_enabled",
@@ -163,13 +155,9 @@ class PydanticAIMetricBinarySensor(BinarySensorEntity):
         self.subentry = subentry
         self._description = description
         self.entity_description = description
-        self._attr_entity_registry_enabled_default = (
-            description.entity_registry_enabled_default
-        )
+        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         profile = primary_model_profile(entry, subentry)
-        self._attr_unique_id = unique_id_for_subentry_entity(
-            entry, subentry, description.key
-        )
+        self._attr_unique_id = unique_id_for_subentry_entity(entry, subentry, description.key)
         self._attr_device_info = dr.DeviceInfo(
             identifiers={device_identifier_for_subentry(entry, subentry)},
             name=_subentry_name(subentry),
@@ -217,13 +205,9 @@ class PydanticAIConfigBinarySensor(BinarySensorEntity):
         self.subentry = subentry
         self._description = description
         self.entity_description = description
-        self._attr_entity_registry_enabled_default = (
-            description.entity_registry_enabled_default
-        )
+        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         profile = primary_model_profile(entry, subentry)
-        self._attr_unique_id = unique_id_for_subentry_entity(
-            entry, subentry, description.key
-        )
+        self._attr_unique_id = unique_id_for_subentry_entity(entry, subentry, description.key)
         self._attr_device_info = dr.DeviceInfo(
             identifiers={device_identifier_for_subentry(entry, subentry)},
             name=_subentry_name(subentry),

@@ -24,17 +24,13 @@ RUN_SETTING_KEYS: Final[frozenset[str]] = frozenset(
         CONF_TOOL_RETRIES,
     }
 )
-REMOVED_PROFILE_MODEL_SETTING_KEYS: Final[frozenset[str]] = (
-    RUN_SETTING_KEYS | frozenset({MODEL_SETTING_EXTRA_BODY})
-)
-RUNTIME_STRIPPED_MODEL_SETTING_KEYS: Final[frozenset[str]] = (
-    RUN_SETTING_KEYS | frozenset({CONF_TEMPLATED_EXTRA_BODY, MODEL_SETTING_EXTRA_BODY})
+REMOVED_PROFILE_MODEL_SETTING_KEYS: Final[frozenset[str]] = RUN_SETTING_KEYS | frozenset({MODEL_SETTING_EXTRA_BODY})
+RUNTIME_STRIPPED_MODEL_SETTING_KEYS: Final[frozenset[str]] = RUN_SETTING_KEYS | frozenset(
+    {CONF_TEMPLATED_EXTRA_BODY, MODEL_SETTING_EXTRA_BODY}
 )
 
 
-def strip_model_settings(
-    settings: Mapping[str, Any] | None, keys: Set[str]
-) -> dict[str, Any]:
+def strip_model_settings(settings: Mapping[str, Any] | None, keys: Set[str]) -> dict[str, Any]:
     """Return model settings with integration-owned keys removed."""
     stripped = dict(settings or {})
     for key in keys:
@@ -44,9 +40,7 @@ def strip_model_settings(
 
 def normalise_persisted_model_settings(settings: Mapping[str, Any] | None) -> str:
     """Return stable persisted model settings for comparison."""
-    provider_settings = strip_model_settings(
-        settings, REMOVED_PROFILE_MODEL_SETTING_KEYS
-    )
+    provider_settings = strip_model_settings(settings, REMOVED_PROFILE_MODEL_SETTING_KEYS)
     return json.dumps(provider_settings, sort_keys=True, separators=(",", ":"))
 
 
@@ -64,9 +58,7 @@ def runtime_model_settings_data(
     profile_settings: Mapping[str, Any] | None, run_settings: Mapping[str, Any] | None
 ) -> dict[str, Any]:
     """Return request model settings before default timeout is applied."""
-    settings = strip_model_settings(
-        profile_settings, RUNTIME_STRIPPED_MODEL_SETTING_KEYS
-    )
+    settings = strip_model_settings(profile_settings, RUNTIME_STRIPPED_MODEL_SETTING_KEYS)
     if run_settings is not None:
         if CONF_MAX_TOKENS in run_settings:
             settings[CONF_MAX_TOKENS] = run_settings[CONF_MAX_TOKENS]

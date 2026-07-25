@@ -56,10 +56,7 @@ def test_normalise_persisted_model_settings_strips_profile_owned_noise() -> None
 
 def test_normalise_applied_model_settings_returns_sorted_compact_json() -> None:
     """Applied settings comparison preserves all keys but is stable."""
-    assert (
-        normalise_applied_model_settings({"z": 2, "a": {"b": 1}})
-        == '{"a":{"b":1},"z":2}'
-    )
+    assert normalise_applied_model_settings({"z": 2, "a": {"b": 1}}) == '{"a":{"b":1},"z":2}'
 
 
 def test_profile_model_settings_keeps_extra_body_but_removes_run_keys() -> None:

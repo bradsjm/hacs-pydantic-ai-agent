@@ -54,9 +54,7 @@ def handle_profile_error(
         _clear_runtime_auth_failure(hass, entry, profile)
     if is_last_attempt or not _should_fallback(err):
         failure = _classify_run_failure(err, usage_limits=usage_limits)
-        if not _async_create_runtime_auth_issue(
-            hass, entry, profile, err, failure.user_message
-        ):
+        if not _async_create_runtime_auth_issue(hass, entry, profile, err, failure.user_message):
             _clear_runtime_auth_failure(hass, entry, profile)
         record_agent_run_failure(
             hass,
@@ -190,9 +188,7 @@ def store_run_diagnostics(
     summary: Mapping[str, Any],
 ) -> None:
     """Store latest bounded last-run diagnostics for this subentry."""
-    entry.runtime_data.latest_run_diagnostics[subentry.subentry_id] = recorder.payload(
-        status=status, summary=summary
-    )
+    entry.runtime_data.latest_run_diagnostics[subentry.subentry_id] = recorder.payload(status=status, summary=summary)
 
 
 def set_span_usage_attributes(
@@ -208,9 +204,7 @@ def set_span_usage_attributes(
         if total_tokens := _int_usage_value(result.usage, "total_tokens"):
             usage_attributes["gen_ai.usage.total_tokens"] = total_tokens
         usage_attributes["gen_ai.response.model"] = (
-            _string_attribute(result, "model_name")
-            or _string_attribute(result, "model")
-            or model_name
+            _string_attribute(result, "model_name") or _string_attribute(result, "model") or model_name
         )
         cost = usage_costs(result.usage, model_pricing)
         if cost.input is not None:
@@ -219,9 +213,7 @@ def set_span_usage_attributes(
             usage_attributes["ha.output_cost"] = cost.output
         if cost.cache_read is not None:
             usage_attributes["ha.cache_read_cost"] = cost.cache_read
-        if any(
-            value is not None for value in (cost.input, cost.output, cost.cache_read)
-        ):
+        if any(value is not None for value in (cost.input, cost.output, cost.cache_read)):
             usage_attributes["ha.cost_currency"] = "USD"
         if cost.total is not None:
             usage_attributes["ha.total_cost"] = cost.total

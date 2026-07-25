@@ -22,9 +22,7 @@ from .observability.logfire_support import logfire_enabled
 
 
 @callback
-def async_register(
-    _hass: HomeAssistant, register: system_health.SystemHealthRegistration
-) -> None:
+def async_register(_hass: HomeAssistant, register: system_health.SystemHealthRegistration) -> None:
     """Register system health callbacks."""
     register.async_register_info(system_health_info)
 
@@ -46,9 +44,7 @@ async def system_health_info(hass: HomeAssistant) -> dict[str, Any]:
         "selected_mcp_server_count": _selected_mcp_server_count(entries),
         "cached_mcp_tool_count": _cached_mcp_tool_count(loaded_entries),
         "selected_skill_count": _selected_skill_count(entries),
-        "logfire_enabled_count": sum(
-            1 for entry in entries if logfire_enabled(hass, entry)
-        ),
+        "logfire_enabled_count": sum(1 for entry in entries if logfire_enabled(hass, entry)),
     }
 
 
@@ -68,10 +64,7 @@ def _provider_mode_counts(entries: list[ConfigEntry]) -> dict[str, int]:
 def _subentry_count(entries: list[ConfigEntry], subentry_type: str) -> int:
     """Return the number of configured subentries of a type."""
     return sum(
-        1
-        for entry in entries
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == subentry_type
+        1 for entry in entries for subentry in entry.subentries.values() if subentry.subentry_type == subentry_type
     )
 
 
@@ -111,9 +104,5 @@ def _selected_mcp_server_count(entries: list[ConfigEntry]) -> int:
 def _cached_mcp_tool_count(entries: list[ConfigEntry]) -> int:
     """Return total cached MCP tools across loaded workspaces."""
     return sum(
-        sum(
-            len(tools)
-            for tools in getattr(entry.runtime_data, "mcp_tool_cache", {}).values()
-        )
-        for entry in entries
+        sum(len(tools) for tools in getattr(entry.runtime_data, "mcp_tool_cache", {}).values()) for entry in entries
     )

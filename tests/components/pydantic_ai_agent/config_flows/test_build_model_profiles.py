@@ -13,9 +13,7 @@ from custom_components.pydantic_ai_agent.const import (
 )
 
 
-def _catalog_model(
-    *, model_id: str, input_modalities: tuple[str, ...]
-) -> CatalogModelOption:
+def _catalog_model(*, model_id: str, input_modalities: tuple[str, ...]) -> CatalogModelOption:
     """Return a minimal catalog model option for the given modalities."""
     return CatalogModelOption(
         id=model_id,

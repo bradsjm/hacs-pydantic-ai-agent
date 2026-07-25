@@ -72,9 +72,7 @@ async def test_list_mcp_tools_returns_discovered_tools(
     }
     with patch(
         "custom_components.pydantic_ai_agent.async_refresh_mcp_tools",
-        new=AsyncMock(
-            side_effect=lambda _hass, _entry, subentry_id: tools_by_server[subentry_id]
-        ),
+        new=AsyncMock(side_effect=lambda _hass, _entry, subentry_id: tools_by_server[subentry_id]),
     ):
         response = await hass.services.async_call(
             DOMAIN,

@@ -51,9 +51,7 @@ def test_apply_patch_rejects_invalid_envelope(workspace: VirtualWorkspace) -> No
 *** End Patch""",
     ],
 )
-def test_update_and_delete_require_confirmation(
-    workspace: VirtualWorkspace, patch: str
-) -> None:
+def test_update_and_delete_require_confirmation(workspace: VirtualWorkspace, patch: str) -> None:
     """Destructive patch operations are explicitly confirm-gated."""
     workspace.write_file("notes.txt", "old\n")
 

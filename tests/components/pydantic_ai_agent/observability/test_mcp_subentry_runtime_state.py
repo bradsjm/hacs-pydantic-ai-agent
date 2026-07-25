@@ -13,9 +13,7 @@ from custom_components.pydantic_ai_agent.observability._debug_service_responses 
 from custom_components.pydantic_ai_agent.runtime.types import WorkspaceRuntimeData
 
 
-def test_mcp_status_uses_configured_subentries(
-    make_config_entry: Any, make_subentry: Any
-) -> None:
+def test_mcp_status_uses_configured_subentries(make_config_entry: Any, make_subentry: Any) -> None:
     """Configured MCP servers do not require a duplicate runtime snapshot."""
     mcp_subentry = make_subentry(
         subentry_id="mcp-1",

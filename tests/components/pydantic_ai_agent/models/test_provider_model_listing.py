@@ -45,16 +45,10 @@ class _Client:
             provider.list_google_gemini_model_names,
             [
                 {
-                    "models": [
-                        {"baseModelId": "b", "supportedGenerationMethods": ["generateContent"]}
-                    ],
+                    "models": [{"baseModelId": "b", "supportedGenerationMethods": ["generateContent"]}],
                     "nextPageToken": "cursor",
                 },
-                {
-                    "models": [
-                        {"baseModelId": "a", "supportedGenerationMethods": ["generateContent"]}
-                    ]
-                },
+                {"models": [{"baseModelId": "a", "supportedGenerationMethods": ["generateContent"]}]},
             ],
             ["a", "b"],
             [
@@ -93,15 +87,11 @@ async def test_provider_model_listing_advances_pages(
         (
             provider.list_google_gemini_model_names,
             {
-                "models": [
-                    {"baseModelId": "one", "supportedGenerationMethods": ["generateContent"]}
-                ],
+                "models": [{"baseModelId": "one", "supportedGenerationMethods": ["generateContent"]}],
                 "nextPageToken": "same",
             },
             {
-                "models": [
-                    {"baseModelId": "two", "supportedGenerationMethods": ["generateContent"]}
-                ],
+                "models": [{"baseModelId": "two", "supportedGenerationMethods": ["generateContent"]}],
                 "nextPageToken": "same",
             },
         ),
@@ -149,33 +139,19 @@ async def test_gemini_listing_ignores_null_generation_methods(
     monkeypatch.setattr(
         provider,
         "get_async_client",
-        lambda _: _Client(
-            [{"models": [{"baseModelId": "bad", "supportedGenerationMethods": None}]}]
-        ),
+        lambda _: _Client([{"models": [{"baseModelId": "bad", "supportedGenerationMethods": None}]}]),
     )
 
-    assert (
-        await provider.list_google_gemini_model_names(
-            hass, {CONF_API_KEY: "key"}, request_timeout=None
-        )
-        == []
-    )
+    assert await provider.list_google_gemini_model_names(hass, {CONF_API_KEY: "key"}, request_timeout=None) == []
 
 
-async def test_anthropic_listing_stops_at_page_limit(
-    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_anthropic_listing_stops_at_page_limit(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:
     """A malformed continuing endpoint cannot trigger more than 100 requests."""
-    payloads = [
-        {"data": [{"id": str(index)}], "has_more": True, "last_id": str(index)}
-        for index in range(100)
-    ]
+    payloads = [{"data": [{"id": str(index)}], "has_more": True, "last_id": str(index)} for index in range(100)]
     client = _Client(payloads)
     monkeypatch.setattr(provider, "get_async_client", lambda _: client)
 
-    result = await provider.list_anthropic_model_names(
-        hass, {CONF_API_KEY: "key"}, request_timeout=None
-    )
+    result = await provider.list_anthropic_model_names(hass, {CONF_API_KEY: "key"}, request_timeout=None)
 
     assert len(client.params) == 100
     assert result == sorted(str(index) for index in range(100))

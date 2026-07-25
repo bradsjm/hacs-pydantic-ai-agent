@@ -38,18 +38,12 @@ async def chat_log_content_to_model_messages(
     messages: list[ModelMessage] = []
     for item in content:
         if isinstance(item, conversation.SystemContent):
-            messages.append(
-                ModelRequest(parts=[SystemPromptPart(content=item.content)])
-            )
+            messages.append(ModelRequest(parts=[SystemPromptPart(content=item.content)]))
         elif isinstance(item, conversation.UserContent):
             messages.append(
                 ModelRequest(
                     parts=[
-                        UserPromptPart(
-                            content=await _user_prompt_content_from_ha_content(
-                                hass, item, supports_images
-                            )
-                        )
+                        UserPromptPart(content=await _user_prompt_content_from_ha_content(hass, item, supports_images))
                     ]
                 )
             )
@@ -109,8 +103,7 @@ async def _user_prompt_content_from_ha_content(
     for attachment in content.attachments:
         if _is_image_attachment(attachment.mime_type) and supports_images is False:
             _LOGGER.warning(
-                "Dropping image attachment with MIME type %s; selected model "
-                "does not support images",
+                "Dropping image attachment with MIME type %s; selected model does not support images",
                 attachment.mime_type,
             )
             continue
@@ -118,9 +111,7 @@ async def _user_prompt_content_from_ha_content(
     return parts
 
 
-async def _binary_content_from_attachment(
-    hass: HomeAssistant, attachment: conversation.Attachment
-) -> BinaryContent:
+async def _binary_content_from_attachment(hass: HomeAssistant, attachment: conversation.Attachment) -> BinaryContent:
     """Read supported Home Assistant attachments off the event loop."""
     mime_type = attachment.mime_type
     if not _is_supported_attachment_mime_type(mime_type):
@@ -137,9 +128,7 @@ async def _binary_content_from_attachment(
 
 def _is_supported_attachment_mime_type(mime_type: str) -> bool:
     """Return whether the attachment MIME type is supported."""
-    return mime_type in _SUPPORTED_ATTACHMENT_MIME_TYPES or mime_type.startswith(
-        _SUPPORTED_ATTACHMENT_MIME_PREFIXES
-    )
+    return mime_type in _SUPPORTED_ATTACHMENT_MIME_TYPES or mime_type.startswith(_SUPPORTED_ATTACHMENT_MIME_PREFIXES)
 
 
 def _is_image_attachment(mime_type: str) -> bool:

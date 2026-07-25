@@ -47,9 +47,7 @@ _MISSING = object()
 _MAX_MCP_CALL_CACHE_ENTRIES = 256
 
 
-async def _validated_runtime_mcp_config(
-    hass: HomeAssistant, subentry: Any
-) -> tuple[dict[str, Any], Any]:
+async def _validated_runtime_mcp_config(hass: HomeAssistant, subentry: Any) -> tuple[dict[str, Any], Any]:
     """Return validated runtime MCP config and URL details."""
     try:
         config = mcp_config_from_subentry(subentry)
@@ -108,9 +106,7 @@ def _store_cached_mcp_tool_result(
             cache.pop(next(iter(cache)))
 
 
-def _prune_expired_mcp_tool_results(
-    hass: HomeAssistant, entry: ConfigEntry[WorkspaceRuntimeData]
-) -> None:
+def _prune_expired_mcp_tool_results(hass: HomeAssistant, entry: ConfigEntry[WorkspaceRuntimeData]) -> None:
     """Drop expired MCP tool call cache entries."""
     now = hass.loop.time()
     for cache_key, cached_entry in tuple(entry.runtime_data.mcp_call_cache.items()):
@@ -281,9 +277,7 @@ async def async_runtime_mcp_toolsets(
     return toolsets
 
 
-def _mcp_call_cache_key(
-    server_id: str, tool_name: str, tool_args: dict[str, Any]
-) -> str | None:
+def _mcp_call_cache_key(server_id: str, tool_name: str, tool_args: dict[str, Any]) -> str | None:
     """Return a stable cache key for one MCP tool call."""
     try:
         return json.dumps(

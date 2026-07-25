@@ -18,9 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
 
-def test_provider_auth_issue_create_delete_round_trip(
-    hass: HomeAssistant, make_config_entry: Any
-) -> None:
+def test_provider_auth_issue_create_delete_round_trip(hass: HomeAssistant, make_config_entry: Any) -> None:
     """Provider authentication failures are visible until validation recovers."""
     entry = make_config_entry(entry_id="workspace-1")
     issue_id = provider_auth_issue_id(entry, "provider-1")
@@ -43,9 +41,7 @@ def test_provider_auth_issue_create_delete_round_trip(
     assert registry.async_get_issue(DOMAIN, issue_id) is None
 
 
-def test_logfire_conflict_issue_create_delete_round_trip(
-    hass: HomeAssistant, make_config_entry: Any
-) -> None:
+def test_logfire_conflict_issue_create_delete_round_trip(hass: HomeAssistant, make_config_entry: Any) -> None:
     """A Logfire token conflict is visible only while the conflict exists."""
     entry = make_config_entry(entry_id="workspace-1")
     issue_id = f"{LOGFIRE_TOKEN_CONFLICT_ISSUE_ID}_{entry.entry_id}"

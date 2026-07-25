@@ -182,9 +182,7 @@ class PydanticAIBaseLLMEntity:
             structured_output_tool_names: set[str] = set()
             if output_name is not None and output_json_schema is not None:
                 output_mode = resolved_structured_output_mode(profile)
-                structured_output_tool_names = output_tool_names(
-                    output_mode, output_name
-                )
+                structured_output_tool_names = output_tool_names(output_mode, output_name)
                 agent_output_type = structured_agent_output_type(
                     output_mode=output_mode,
                     output_name=output_name,
@@ -239,9 +237,7 @@ class PydanticAIBaseLLMEntity:
                 )
                 if record_success:
                     _clear_runtime_auth_failure(self.hass, self.entry, profile)
-                    record_agent_run_success(
-                        self.hass, self.entry, self.subentry, outcome, agent_id
-                    )
+                    record_agent_run_success(self.hass, self.entry, self.subentry, outcome, agent_id)
                     store_run_diagnostics(
                         self.entry,
                         self.subentry,
@@ -271,20 +267,15 @@ class PydanticAIBaseLLMEntity:
                 )
 
         raise HomeAssistantError(
-            "All configured model profiles failed: "
-            + ", ".join(model_display_names(profiles))
+            "All configured model profiles failed: " + ", ".join(model_display_names(profiles))
         ) from (errors[-1] if errors else None)
 
-    def _structured_output_name(
-        self, api_instance: llm.APIInstance | None, structure_name: str | None
-    ) -> str:
+    def _structured_output_name(self, api_instance: llm.APIInstance | None, structure_name: str | None) -> str:
         """Return an output name that cannot shadow configured HA tools."""
         return structured_output_name(
             structure_name,
             "generated_data",
-            reserved_names=(
-                tool.name for tool in tool_definitions_from_llm_api(api_instance)
-            ),
+            reserved_names=(tool.name for tool in tool_definitions_from_llm_api(api_instance)),
         )
 
     def _tool_retries(self) -> int:
@@ -310,9 +301,7 @@ class PydanticAIBaseLLMEntity:
             summary=summary,
         )
 
-    def _record_agent_run_success(
-        self, outcome: AgentRunOutcome, agent_id: str | None = None
-    ) -> None:
+    def _record_agent_run_success(self, outcome: AgentRunOutcome, agent_id: str | None = None) -> None:
         """Record successful run metrics and fire the completion event."""
         record_agent_run_success(
             self.hass,
@@ -342,23 +331,17 @@ class PydanticAIBaseLLMEntity:
         )
 
 
-def unique_id_for_subentry(
-    entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
-) -> str:
+def unique_id_for_subentry(entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry) -> str:
     """Return the unique ID for one subentry-backed entity."""
     return f"{DOMAIN}_{entry.entry_id}_{subentry.subentry_type}_{subentry.subentry_id}"
 
 
-def unique_id_for_subentry_entity(
-    entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry, key: str
-) -> str:
+def unique_id_for_subentry_entity(entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry, key: str) -> str:
     """Return the unique ID for one subentry-backed diagnostic entity."""
     return f"{unique_id_for_subentry(entry, subentry)}_{key}"
 
 
-def device_identifier_for_subentry(
-    entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
-) -> tuple[str, str]:
+def device_identifier_for_subentry(entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry) -> tuple[str, str]:
     """Return the device identifier for one subentry-backed entity."""
     return (
         DOMAIN,

@@ -56,10 +56,7 @@ def tools_from_llm_api_with_diagnostics(
     if api_instance is None:
         return []
 
-    return [
-        _tool_from_ha_tool(api_instance, tool, run_recorder, supports_images)
-        for tool in api_instance.tools
-    ]
+    return [_tool_from_ha_tool(api_instance, tool, run_recorder, supports_images) for tool in api_instance.tools]
 
 
 def _tool_from_ha_tool(
@@ -105,9 +102,7 @@ def _tool_from_ha_tool(
                         attempts=ctx.retry + 1,
                         reason=str(err),
                     ) from err
-                raise ModelRetry(
-                    f'Home Assistant tool "{tool.name}" failed: {err}'
-                ) from None
+                raise ModelRetry(f'Home Assistant tool "{tool.name}" failed: {err}') from None
             raise
         if run_recorder is not None:
             run_recorder.record(

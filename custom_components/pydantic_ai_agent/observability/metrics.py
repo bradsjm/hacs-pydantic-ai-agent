@@ -105,18 +105,10 @@ def record_run_success(
     record.cumulative_output_tokens += output_tokens
     record.cumulative_cache_read_tokens += cache_read_tokens
     record.cumulative_total_tokens += total_tokens
-    record.cumulative_input_cost = _add_optional_cost(
-        record.cumulative_input_cost, cost.input
-    )
-    record.cumulative_output_cost = _add_optional_cost(
-        record.cumulative_output_cost, cost.output
-    )
-    record.cumulative_cache_read_cost = _add_optional_cost(
-        record.cumulative_cache_read_cost, cost.cache_read
-    )
-    record.cumulative_total_cost = _add_optional_cost(
-        record.cumulative_total_cost, cost.total
-    )
+    record.cumulative_input_cost = _add_optional_cost(record.cumulative_input_cost, cost.input)
+    record.cumulative_output_cost = _add_optional_cost(record.cumulative_output_cost, cost.output)
+    record.cumulative_cache_read_cost = _add_optional_cost(record.cumulative_cache_read_cost, cost.cache_read)
+    record.cumulative_total_cost = _add_optional_cost(record.cumulative_total_cost, cost.total)
     record.last_run_duration = duration
     record.last_error_type = None
     record.consecutive_failures = 0
@@ -247,9 +239,7 @@ class _RunCosts:
     total: float | None
 
 
-def usage_costs(
-    usage: object, model_pricing: Mapping[str, float] | None = None
-) -> _RunCosts:
+def usage_costs(usage: object, model_pricing: Mapping[str, float] | None = None) -> _RunCosts:
     """Return USD costs for one usage object from configured pricing."""
     input_tokens = _int_usage_value(usage, "input_tokens")
     output_tokens = _int_usage_value(usage, "output_tokens")

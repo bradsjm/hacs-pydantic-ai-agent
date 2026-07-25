@@ -16,9 +16,7 @@ class ModelFilterOptions:
     family: str | None = None
 
 
-def model_matches_filters(
-    model: CatalogModelOption, filters: ModelFilterOptions | None = None
-) -> bool:
+def model_matches_filters(model: CatalogModelOption, filters: ModelFilterOptions | None = None) -> bool:
     """Return if a model should be shown for the selected filters."""
     filters = filters or ModelFilterOptions()
     if filters.family and model.family != filters.family:
@@ -29,9 +27,7 @@ def model_matches_filters(
         return False
     if filters.hide_without_tool_call and not model.tool_call:
         return False
-    return not (
-        filters.hide_without_structured_output and model.structured_output is False
-    )
+    return not (filters.hide_without_structured_output and model.structured_output is False)
 
 
 def filtered_models(

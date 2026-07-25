@@ -35,11 +35,7 @@ class ProviderValidationError(Exception):
 def format_api_error(err: ModelAPIError) -> ProviderValidationError:
     """Map a non-HTTP model API error to a config-flow validation error."""
     if connection_message := connection_failure_message(err):
-        reason = (
-            "timeout"
-            if connection_message == "Request timed out."
-            else "cannot_connect"
-        )
+        reason = "timeout" if connection_message == "Request timed out." else "cannot_connect"
         return ProviderValidationError(reason, connection_message)
     return ProviderValidationError(
         "provider_error",
@@ -89,15 +85,9 @@ def _format_metadata(metadata: object) -> str:
 def _display_safe_metadata(metadata: object) -> object:
     sensitive_keys = redaction_keys()
     if isinstance(metadata, Mapping):
-        filtered = {
-            key: _display_safe_metadata(value)
-            for key, value in metadata.items()
-            if key not in sensitive_keys
-        }
+        filtered = {key: _display_safe_metadata(value) for key, value in metadata.items() if key not in sensitive_keys}
         return filtered or "**REDACTED**"
-    if isinstance(metadata, Sequence) and not isinstance(
-        metadata, str | bytes | bytearray
-    ):
+    if isinstance(metadata, Sequence) and not isinstance(metadata, str | bytes | bytearray):
         return [_display_safe_metadata(value) for value in metadata]
     return metadata
 

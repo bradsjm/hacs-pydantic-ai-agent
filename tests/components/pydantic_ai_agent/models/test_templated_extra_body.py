@@ -23,9 +23,7 @@ def _field(key: str, template: str = "1") -> dict[str, str]:
 
 def test_validate_templated_extra_body_paths_accepts_nested_and_legacy_keys() -> None:
     """Dotted keys and legacy chat_template_kwargs keys build valid paths."""
-    validate_templated_extra_body_paths(
-        [_field("metadata.user"), _field("chat_template_kwargs.temperature")]
-    )
+    validate_templated_extra_body_paths([_field("metadata.user"), _field("chat_template_kwargs.temperature")])
 
 
 @pytest.mark.parametrize(

@@ -41,9 +41,7 @@ class CustomConnectError(httpx.ConnectError):
         (CustomConnectError("custom connect"), "Connection failed."),
     ],
 )
-def test_connection_failure_message_classifies_transport_failures(
-    err: BaseException, message: str
-) -> None:
+def test_connection_failure_message_classifies_transport_failures(err: BaseException, message: str) -> None:
     assert connection_failure_message(err) == message
     assert has_connection_failure(err) is True
 

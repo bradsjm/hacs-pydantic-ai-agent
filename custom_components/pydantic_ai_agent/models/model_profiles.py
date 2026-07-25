@@ -95,11 +95,7 @@ ModelProfile = ResolvedModelProfile
 
 def provider_subentries(entry: PydanticAIAgentConfigEntry) -> list[ConfigSubentry]:
     """Return configured provider subentries."""
-    return [
-        subentry
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER
-    ]
+    return [subentry for subentry in entry.subentries.values() if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER]
 
 
 def provider_model_profiles(subentry: ConfigSubentry) -> dict[str, dict[str, Any]]:
@@ -148,19 +144,14 @@ def model_profile_exists(entry: PydanticAIAgentConfigEntry, raw_ref: str) -> boo
     return True
 
 
-def configured_model_profile_exists(
-    entry: PydanticAIAgentConfigEntry, raw_ref: str
-) -> bool:
+def configured_model_profile_exists(entry: PydanticAIAgentConfigEntry, raw_ref: str) -> bool:
     """Return if a persisted workspace-local provider/profile ref is usable."""
     try:
         provider_subentry_id, profile_id = parse_model_profile_ref(raw_ref)
     except HomeAssistantError:
         return False
     provider_subentry = entry.subentries.get(provider_subentry_id)
-    if (
-        provider_subentry is None
-        or provider_subentry.subentry_type != SUBENTRY_TYPE_PROVIDER
-    ):
+    if provider_subentry is None or provider_subentry.subentry_type != SUBENTRY_TYPE_PROVIDER:
         return False
     profile = provider_model_profiles(provider_subentry).get(profile_id)
     if profile is None or not _profile_enabled(profile):
@@ -179,16 +170,11 @@ def configured_model_profile_exists(
     return True
 
 
-def resolve_model_profile(
-    entry: PydanticAIAgentConfigEntry, raw_ref: str
-) -> ResolvedModelProfile:
+def resolve_model_profile(entry: PydanticAIAgentConfigEntry, raw_ref: str) -> ResolvedModelProfile:
     """Resolve one workspace-local provider-owned model profile."""
     provider_subentry_id, profile_id = parse_model_profile_ref(raw_ref)
     provider_subentry = entry.subentries.get(provider_subentry_id)
-    if (
-        provider_subentry is None
-        or provider_subentry.subentry_type != SUBENTRY_TYPE_PROVIDER
-    ):
+    if provider_subentry is None or provider_subentry.subentry_type != SUBENTRY_TYPE_PROVIDER:
         raise HomeAssistantError("Configured model profile was not found")
     runtime_data = getattr(entry, "runtime_data", None)
     if runtime_data is not None and provider_subentry_id not in runtime_data.providers:
@@ -203,9 +189,7 @@ def resolve_model_profile(
     if not isinstance(model_name, str) or not model_name.strip():
         raise HomeAssistantError("Configured model profile is missing a model name")
     raw_settings = profile.get(CONF_MODEL_SETTINGS)
-    model_settings = profile_model_settings(
-        raw_settings if isinstance(raw_settings, Mapping) else None
-    )
+    model_settings = profile_model_settings(raw_settings if isinstance(raw_settings, Mapping) else None)
     raw_pricing = profile.get(CONF_MODEL_PRICING)
     model_pricing = _profile_pricing(raw_pricing)
     context_window_tokens = _profile_context_window_tokens(profile)
@@ -223,24 +207,14 @@ def resolve_model_profile(
         model_settings=model_settings,
         context_window_tokens=context_window_tokens,
         context_window_source=context_window_source,
-        thinking_support=(
-            openai_profile.thinking_support if openai_profile is not None else None
-        ),
-        structured_output_support=(
-            openai_profile.structured_output_support
-            if openai_profile is not None
-            else None
-        ),
-        supports_tools=(
-            openai_profile.supports_tools if openai_profile is not None else None
-        ),
+        thinking_support=(openai_profile.thinking_support if openai_profile is not None else None),
+        structured_output_support=(openai_profile.structured_output_support if openai_profile is not None else None),
+        supports_tools=(openai_profile.supports_tools if openai_profile is not None else None),
         supports_images=_profile_supports_images(profile),
     )
 
 
-def primary_model_profile(
-    entry: PydanticAIAgentConfigEntry, owner_subentry: ConfigSubentry
-) -> ResolvedModelProfile:
+def primary_model_profile(entry: PydanticAIAgentConfigEntry, owner_subentry: ConfigSubentry) -> ResolvedModelProfile:
     """Return the primary model profile for one consumer subentry."""
     primary_ref = owner_subentry.data.get(CONF_PRIMARY_MODEL_REF)
     if not isinstance(primary_ref, str) or not primary_ref:
@@ -329,9 +303,7 @@ def _profile_supports_images(profile: Mapping[str, Any]) -> bool | None:
     return value if isinstance(value, bool) else None
 
 
-def provider_extra_body(
-    entry: PydanticAIAgentConfigEntry, profile: ResolvedModelProfile
-) -> dict[str, Any]:
+def provider_extra_body(entry: PydanticAIAgentConfigEntry, profile: ResolvedModelProfile) -> dict[str, Any]:
     """Return provider-level extra request body fields for one profile."""
     provider_subentry = entry.subentries.get(profile.provider_subentry_id)
     if provider_subentry is None:
@@ -353,9 +325,7 @@ def thinking_capability(
     if profile is not None:
         requested_thinking = cast(ThinkingLevel, run_settings[CONF_THINKING])
         if is_openai_compatible_provider_mode(profile.provider_mode):
-            thinking = _resolved_openai_effective_thinking_setting(
-                profile, requested_thinking
-            )
+            thinking = _resolved_openai_effective_thinking_setting(profile, requested_thinking)
         else:
             thinking = effective_thinking_setting(
                 profile.provider_mode,
@@ -438,9 +408,7 @@ def chat_model_for_profile(
             )
     except ValueError as err:
         raise HomeAssistantError(str(err)) from err
-    raise HomeAssistantError(
-        f"Unsupported provider mode: {provider_runtime.provider_mode!r}"
-    )
+    raise HomeAssistantError(f"Unsupported provider mode: {provider_runtime.provider_mode!r}")
 
 
 def _profile_enabled(profile: Mapping[str, Any]) -> bool:
@@ -453,9 +421,7 @@ def _profile_title(profile: Mapping[str, Any], model_name: str) -> str:
     return model_profile_display_name(profile) or model_name
 
 
-def provider_profile_thinking_support(
-    provider_mode: str, profile: Mapping[str, Any]
-) -> tuple[bool, bool]:
+def provider_profile_thinking_support(provider_mode: str, profile: Mapping[str, Any]) -> tuple[bool, bool]:
     """Return thinking support for one persisted provider-owned profile."""
     if is_openai_compatible_provider_mode(provider_mode):
         support = openai_compatible_thinking_support(profile)
@@ -490,21 +456,13 @@ def _resolved_openai_compatible_profile(
     try:
         return PersistedOpenAICompatibleProfile.from_mapping(profile)
     except (KeyError, ValueError) as err:
-        raise HomeAssistantError(
-            "Configured OpenAI-compatible model profile is incomplete"
-        ) from err
+        raise HomeAssistantError("Configured OpenAI-compatible model profile is incomplete") from err
 
 
 def _resolved_openai_profile_data(profile: ResolvedModelProfile) -> dict[str, Any]:
     """Return persisted OpenAI-compatible capability fields for one profile."""
-    if (
-        profile.thinking_support is None
-        or profile.structured_output_support is None
-        or profile.supports_tools is None
-    ):
-        raise HomeAssistantError(
-            "Configured OpenAI-compatible model profile is incomplete"
-        )
+    if profile.thinking_support is None or profile.structured_output_support is None or profile.supports_tools is None:
+        raise HomeAssistantError("Configured OpenAI-compatible model profile is incomplete")
     return {
         CONF_THINKING_SUPPORT: profile.thinking_support,
         CONF_STRUCTURED_OUTPUT_SUPPORT: profile.structured_output_support,
@@ -523,6 +481,4 @@ def _resolved_openai_effective_thinking_setting(
     profile: ResolvedModelProfile, thinking: ThinkingLevel | None
 ) -> ThinkingLevel | None:
     """Return persisted-profile thinking for one resolved OpenAI-compatible model."""
-    return openai_compatible_effective_thinking_setting(
-        _resolved_openai_profile_data(profile), thinking
-    )
+    return openai_compatible_effective_thinking_setting(_resolved_openai_profile_data(profile), thinking)

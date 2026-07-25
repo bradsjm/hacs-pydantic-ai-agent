@@ -51,9 +51,7 @@ async def test_native_skills_capability_lists_and_loads_skills() -> None:
         ]
     )
     tools = capability.get_toolset().tools
-    list_skills = cast(
-        Callable[[], Awaitable[list[dict[str, str]]]], tools["list_skills"].function
-    )
+    list_skills = cast(Callable[[], Awaitable[list[dict[str, str]]]], tools["list_skills"].function)
 
     assert await list_skills() == [
         {
@@ -114,9 +112,7 @@ async def test_async_skills_capabilities_filters_selected_skill_subentries(
 
     assert len(capabilities) == 1
     tools = capabilities[0].get_toolset().tools
-    list_skills = cast(
-        Callable[[], Awaitable[list[dict[str, str]]]], tools["list_skills"].function
-    )
+    list_skills = cast(Callable[[], Awaitable[list[dict[str, str]]]], tools["list_skills"].function)
     assert await list_skills() == [
         {
             "skill_id": "skill-1",
@@ -132,9 +128,7 @@ async def test_async_skills_capabilities_returns_empty_for_no_valid_selection(
     hass: HomeAssistant,
 ) -> None:
     """Invalid selection input or missing selected skills produces no capability."""
-    assert (
-        await async_skills_capabilities(hass, SimpleNamespace(subentries={}), 123) == []
-    )
+    assert await async_skills_capabilities(hass, SimpleNamespace(subentries={}), 123) == []
     assert (
         await async_skills_capabilities(
             hass,

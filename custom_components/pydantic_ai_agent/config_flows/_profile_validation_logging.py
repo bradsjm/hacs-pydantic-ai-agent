@@ -24,14 +24,11 @@ def _provider_validation_placeholders(
     return placeholders
 
 
-def _log_provider_validation_failure(
-    *, step: str, model_name: str, err: ProviderValidationError
-) -> None:
+def _log_provider_validation_failure(*, step: str, model_name: str, err: ProviderValidationError) -> None:
     """Log provider validation failures without request details or credentials."""
     if err.status_code == 429:
         _LOGGER.warning(
-            'Provider validation rate limited during %s for model "%s": '
-            "reason=%s status_code=%s",
+            'Provider validation rate limited during %s for model "%s": reason=%s status_code=%s',
             step,
             model_name,
             err.reason,
@@ -48,9 +45,7 @@ def _log_provider_validation_failure(
     )
 
 
-def _selected_todo_workspace_error(
-    hass: HomeAssistant, data: Mapping[str, Any]
-) -> str | None:
+def _selected_todo_workspace_error(hass: HomeAssistant, data: Mapping[str, Any]) -> str | None:
     """Return a form error for an invalid todo workspace entity."""
     entity_id = data.get(CONF_TODO_LIST_ENTITY_ID)
     if not entity_id:
@@ -63,9 +58,6 @@ def _selected_todo_workspace_error(
     supported_features = state.attributes.get("supported_features", 0)
     if not isinstance(supported_features, int):
         return "todo_list_unsupported"
-    if (
-        supported_features & _TODO_WORKSPACE_REQUIRED_FEATURES
-        != _TODO_WORKSPACE_REQUIRED_FEATURES
-    ):
+    if supported_features & _TODO_WORKSPACE_REQUIRED_FEATURES != _TODO_WORKSPACE_REQUIRED_FEATURES:
         return "todo_list_unsupported"
     return None

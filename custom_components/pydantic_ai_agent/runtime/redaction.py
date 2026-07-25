@@ -63,14 +63,10 @@ def _redact_value(value: object, sensitive_keys: frozenset[object]) -> object:
         redacted: dict[object, object] = {}
         for key, item in value.items():
             if key == CONF_PROVIDER_HEADERS:
-                redacted[key] = mask_secret_header_values(
-                    item, value.get(CONF_PROVIDER_SECRET_HEADER_KEYS)
-                )
+                redacted[key] = mask_secret_header_values(item, value.get(CONF_PROVIDER_SECRET_HEADER_KEYS))
                 continue
             if key == CONF_MCP_HEADERS:
-                redacted[key] = mask_secret_header_values(
-                    item, value.get(CONF_MCP_SECRET_HEADER_KEYS)
-                )
+                redacted[key] = mask_secret_header_values(item, value.get(CONF_MCP_SECRET_HEADER_KEYS))
                 continue
             if key in sensitive_keys:
                 redacted[key] = REDACTED

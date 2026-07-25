@@ -38,14 +38,10 @@ def normalize_catalog(payload: Mapping[str, object]) -> CompactCatalog:
     providers: dict[str, CatalogProviderOption] = {}
     models_by_provider: dict[str, tuple[CatalogModelOption, ...]] = {}
     for raw_provider_id, raw_provider in payload.items():
-        if not isinstance(raw_provider_id, str) or not isinstance(
-            raw_provider, Mapping
-        ):
+        if not isinstance(raw_provider_id, str) or not isinstance(raw_provider, Mapping):
             continue
         provider_id = _string(raw_provider.get("id")) or raw_provider_id
-        supported_drivers = supported_drivers_for_provider(
-            provider_id, raw_provider.get("npm")
-        )
+        supported_drivers = supported_drivers_for_provider(provider_id, raw_provider.get("npm"))
         if not supported_drivers:
             continue
 
@@ -70,9 +66,7 @@ def normalize_catalog(payload: Mapping[str, object]) -> CompactCatalog:
     return CompactCatalog(providers=providers, models_by_provider=models_by_provider)
 
 
-def _normalize_models(
-    provider_id: str, models_payload: Mapping[str, object]
-) -> tuple[CatalogModelOption, ...]:
+def _normalize_models(provider_id: str, models_payload: Mapping[str, object]) -> tuple[CatalogModelOption, ...]:
     """Return compact models from one provider's raw model payload."""
     models: list[CatalogModelOption] = []
     for raw_model_id, raw_model in models_payload.items():
@@ -111,11 +105,7 @@ def _normalize_models(
                 output_price=_price(pricing.get("output")),
                 cache_read_price=_price(pricing.get("cache_read")),
                 thinking_support=raw_model.get("reasoning") is True,
-                structured_output_support=(
-                    "json_object"
-                    if raw_model.get("structured_output") is True
-                    else "none"
-                ),
+                structured_output_support=("json_object" if raw_model.get("structured_output") is True else "none"),
                 supports_tools=raw_model.get("tool_call") is True,
             )
         )
@@ -145,9 +135,7 @@ def _strip_endpoint_suffix(value: str) -> str:
     for ending in _ENDPOINT_PATH_ENDINGS:
         if path.endswith(ending):
             return urlunparse(parsed._replace(path=parsed.path[: -len(ending)]))
-    segments = tuple(
-        segment for segment in parsed.path.rstrip("/").split("/") if segment
-    )
+    segments = tuple(segment for segment in parsed.path.rstrip("/").split("/") if segment)
     lowered = tuple(segment.lower() for segment in segments)
     for suffix in _ENDPOINT_SUFFIXES:
         if len(lowered) >= len(suffix) and lowered[-len(suffix) :] == suffix:

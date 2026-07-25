@@ -58,9 +58,7 @@ def test_classify_timeouts(err: Exception) -> None:
 
 
 def test_classify_usage_limit_with_request_limit() -> None:
-    failure = _classify_run_failure(
-        UsageLimitExceeded("too many"), usage_limits=UsageLimits(request_limit=3)
-    )
+    failure = _classify_run_failure(UsageLimitExceeded("too many"), usage_limits=UsageLimits(request_limit=3))
 
     assert failure.error_type == "UsageLimitExceeded"
     assert "maximum of 3 iterations" in failure.user_message

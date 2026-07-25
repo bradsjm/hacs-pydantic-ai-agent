@@ -106,9 +106,7 @@ def test_normalise_mcp_url_rejects_invalid_inputs(url: object) -> None:
 
 def test_parse_mcp_headers_accepts_mapping_and_selector_rows() -> None:
     """Stored mappings and selector row lists parse to HTTP header mappings."""
-    assert parse_mcp_headers({"Authorization": "Bearer token"}) == {
-        "Authorization": "Bearer token"
-    }
+    assert parse_mcp_headers({"Authorization": "Bearer token"}) == {"Authorization": "Bearer token"}
     assert parse_mcp_headers(
         [
             {CONF_KEY_VALUE_KEY: "X-API-Key", CONF_KEY_VALUE_VALUE: "secret"},
@@ -135,9 +133,7 @@ def test_parse_mcp_headers_rejects_invalid_header_name() -> None:
         ("", []),
     ],
 )
-def test_parse_allowed_tools_sorts_unique_tool_names(
-    value: object, expected: list[str]
-) -> None:
+def test_parse_allowed_tools_sorts_unique_tool_names(value: object, expected: list[str]) -> None:
     """Allowlisted tools parse from text or sequences with stable ordering."""
     assert parse_allowed_tools(value) == expected
 

@@ -53,19 +53,14 @@ def build_provider_data(
         CONF_PROVIDER_MODE: provider_mode,
         CONF_API_KEY: api_key.strip(),
         CONF_PROVIDER_METADATA: {CONF_CATALOG_PROVIDER_ID: provider.id},
-        CONF_MODEL_PROFILES: build_model_profiles(
-            selected_models, profile_id_factory=profile_id_factory
-        ),
+        CONF_MODEL_PROFILES: build_model_profiles(selected_models, profile_id_factory=profile_id_factory),
     }
     effective_base_url = base_url or provider.default_base_url
     if effective_base_url:
         data[CONF_BASE_URL] = effective_base_url.rstrip("/")
     if provider_headers:
         data[CONF_PROVIDER_HEADERS] = dict(provider_headers)
-        if (
-            isinstance(provider_secret_header_keys, list)
-            and provider_secret_header_keys
-        ):
+        if isinstance(provider_secret_header_keys, list) and provider_secret_header_keys:
             data[CONF_PROVIDER_SECRET_HEADER_KEYS] = list(provider_secret_header_keys)
     if provider_extra_body:
         data[CONF_PROVIDER_EXTRA_BODY] = dict(provider_extra_body)
@@ -110,9 +105,7 @@ def selected_models_by_id(
     """Return selected catalog models preserving catalog order."""
     if isinstance(selected_model_ids, str) or not isinstance(selected_model_ids, list):
         return ()
-    selected_ids = {
-        model_id for model_id in selected_model_ids if isinstance(model_id, str)
-    }
+    selected_ids = {model_id for model_id in selected_model_ids if isinstance(model_id, str)}
     return tuple(model for model in models if model.id in selected_ids)
 
 

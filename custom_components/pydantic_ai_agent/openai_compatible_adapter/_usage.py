@@ -33,8 +33,7 @@ def map_usage(
         ),
         input_audio_tokens=(
             raw_usage.prompt_tokens_details.audio_tokens
-            if raw_usage.prompt_tokens_details is not None
-            and raw_usage.prompt_tokens_details.audio_tokens is not None
+            if raw_usage.prompt_tokens_details is not None and raw_usage.prompt_tokens_details.audio_tokens is not None
             else 0
         ),
         output_audio_tokens=(
@@ -67,9 +66,7 @@ def _usage_details(raw_usage: CompletionUsage | ResponseUsage) -> dict[str, int]
     return details
 
 
-def _flatten_details(
-    details: dict[str, int], prefix: str, data: dict[str, Any]
-) -> None:
+def _flatten_details(details: dict[str, int], prefix: str, data: dict[str, Any]) -> None:
     """Flatten nested integer detail values."""
     for key, value in data.items():
         if isinstance(value, int):

@@ -47,9 +47,7 @@ _REMOVED_IN_REPO_ENTITY_UNIQUE_ID_KEYS: tuple[tuple[str, str], ...] = (
 )
 
 
-def _remove_removed_llm_api_refs(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+def _remove_removed_llm_api_refs(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> None:
     """Remove persisted LLM API selections for the deleted in-repo API."""
     for subentry in entry.subentries.values():
         if subentry.subentry_type not in {
@@ -63,10 +61,7 @@ def _remove_removed_llm_api_refs(
         cleaned_api_ids = [
             api_id
             for api_id in api_ids
-            if not (
-                isinstance(api_id, str)
-                and api_id.startswith(_REMOVED_IN_REPO_LLM_API_PREFIX)
-            )
+            if not (isinstance(api_id, str) and api_id.startswith(_REMOVED_IN_REPO_LLM_API_PREFIX))
         ]
         if cleaned_api_ids == api_ids:
             continue
@@ -78,9 +73,7 @@ def _remove_removed_llm_api_refs(
         hass.config_entries.async_update_subentry(entry, subentry, data=data)
 
 
-def _remove_removed_entity_registry_entries(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+def _remove_removed_entity_registry_entries(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> None:
     """Remove registry entries for diagnostic entities that no longer exist."""
     entity_registry = er.async_get(hass)
     for domain, key in _REMOVED_IN_REPO_ENTITY_UNIQUE_ID_KEYS:
@@ -90,9 +83,7 @@ def _remove_removed_entity_registry_entries(
             entity_registry.async_remove(entity_id)
 
 
-def _remove_removed_device_registry_entry(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+def _remove_removed_device_registry_entry(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> None:
     """Remove obsolete workspace-level diagnostic device when it is empty."""
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
@@ -102,18 +93,12 @@ def _remove_removed_device_registry_entry(
     device_registry.async_remove_device(device.id)
 
 
-def _remove_stale_subentry_registry_entries(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+def _remove_stale_subentry_registry_entries(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> None:
     """Remove entities and empty devices for subentries no longer in the entry."""
     live_subentry_ids = set(entry.subentries)
     entity_registry = er.async_get(hass)
-    for entity_entry in er.async_entries_for_config_entry(
-        entity_registry, entry.entry_id
-    ):
-        subentry_id = entity_entry.config_subentry_id or _subentry_id_from_unique_id(
-            entity_entry.unique_id, entry
-        )
+    for entity_entry in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+        subentry_id = entity_entry.config_subentry_id or _subentry_id_from_unique_id(entity_entry.unique_id, entry)
         if subentry_id is not None and subentry_id not in live_subentry_ids:
             entity_registry.async_remove(entity_entry.entity_id)
 
@@ -128,9 +113,7 @@ def _remove_stale_subentry_registry_entries(
         device_registry.async_remove_device(device.id)
 
 
-def _subentry_id_from_unique_id(
-    unique_id: str, entry: PydanticAIAgentConfigEntry
-) -> str | None:
+def _subentry_id_from_unique_id(unique_id: str, entry: PydanticAIAgentConfigEntry) -> str | None:
     """Return the subentry ID from an integration-owned entity unique ID."""
     prefix = f"{DOMAIN}_{entry.entry_id}_"
     if not unique_id.startswith(prefix):
@@ -146,17 +129,13 @@ def _subentry_id_from_unique_id(
             continue
         subentry_and_key = remainder.removeprefix(type_prefix)
         for subentry_id in entry.subentries:
-            if subentry_and_key == subentry_id or subentry_and_key.startswith(
-                f"{subentry_id}_"
-            ):
+            if subentry_and_key == subentry_id or subentry_and_key.startswith(f"{subentry_id}_"):
                 return subentry_id
         return subentry_and_key.rsplit("_", 1)[0]
     return None
 
 
-def _subentry_id_from_device(
-    device: dr.DeviceEntry, entry: PydanticAIAgentConfigEntry
-) -> str | None:
+def _subentry_id_from_device(device: dr.DeviceEntry, entry: PydanticAIAgentConfigEntry) -> str | None:
     """Return the subentry ID represented by an integration-owned device."""
     prefix = f"{entry.entry_id}:"
     for domain, identifier in device.identifiers:
@@ -168,9 +147,7 @@ def _subentry_id_from_device(
     return None
 
 
-async def _async_remove_removed_memory_store(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+async def _async_remove_removed_memory_store(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> None:
     """Remove obsolete per-entry memory from the deleted in-repo API."""
     store: Store[dict[str, Any]] = Store(
         hass,
@@ -180,9 +157,7 @@ async def _async_remove_removed_memory_store(
     await store.async_remove()
 
 
-def _migrate_profile_templated_extra_body(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+def _migrate_profile_templated_extra_body(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> None:
     """Migrate old profile chat_template_kwargs rows to templated extra body."""
     for subentry in entry.subentries.values():
         if subentry.subentry_type != SUBENTRY_TYPE_PROVIDER:
@@ -197,9 +172,7 @@ def _migrate_profile_templated_extra_body(
             hass.config_entries.async_update_subentry(entry, subentry, data=data)
 
 
-def _remove_ai_task_legacy_output_mode(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+def _remove_ai_task_legacy_output_mode(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> None:
     """Remove deprecated stored AI task output-mode selections."""
     for subentry in entry.subentries.values():
         if subentry.subentry_type != SUBENTRY_TYPE_AI_TASK:
@@ -211,9 +184,7 @@ def _remove_ai_task_legacy_output_mode(
         hass.config_entries.async_update_subentry(entry, subentry, data=data)
 
 
-def _migrate_context_management_defaults(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+def _migrate_context_management_defaults(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> None:
     """Backfill context-management settings added in schema 2.4."""
     for subentry in entry.subentries.values():
         if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER:
@@ -243,9 +214,7 @@ def _migrate_context_management_defaults(
             hass.config_entries.async_update_subentry(entry, subentry, data=data)
 
 
-def _migrate_simplified_thinking_settings(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+def _migrate_simplified_thinking_settings(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> None:
     """Migrate old thinking support and runtime values to simplified settings."""
     for subentry in entry.subentries.values():
         if subentry.subentry_type == SUBENTRY_TYPE_PROVIDER:

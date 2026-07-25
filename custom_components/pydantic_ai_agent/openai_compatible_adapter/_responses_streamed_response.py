@@ -44,9 +44,7 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
         phase_by_item: dict[str, str] = {}
         annotations_by_item: dict[str, list[Any]] = {}
         async for event in self._response:
-            for stream_event in await self._process_response_event(
-                event, phase_by_item, annotations_by_item
-            ):
+            for stream_event in await self._process_response_event(event, phase_by_item, annotations_by_item):
                 yield stream_event
         if self._refusal_text:
             self.provider_details = {
@@ -101,9 +99,7 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
             "response.output_text.done",
             "response.output_text.annotation.added",
         }:
-            return self._handle_output_text_event(
-                event, annotations_by_item, phase_by_item
-            )
+            return self._handle_output_text_event(event, annotations_by_item, phase_by_item)
 
         if event_type in {
             "response.function_call_arguments.delta",
@@ -121,19 +117,11 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
             self._handle_refusal_event(event)
             return []
 
-        raise UnexpectedModelBehavior(
-            f"Unsupported Responses stream event: {event_type!r}"
-        )
+        raise UnexpectedModelBehavior(f"Unsupported Responses stream event: {event_type!r}")
 
-    def _handle_lifecycle_event(
-        self, event: ResponseStreamEvent, event_type: str
-    ) -> None:
+    def _handle_lifecycle_event(self, event: ResponseStreamEvent, event_type: str) -> None:
         """Store the latest cumulative usage from lifecycle events."""
-        if (
-            event.response is not None
-            and event.response.usage is not None
-            and event_type != "response.created"
-        ):
+        if event.response is not None and event.response.usage is not None and event_type != "response.created":
             self._usage = map_usage(event.response)
 
     def _handle_output_text_event(
@@ -174,14 +162,10 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
                 )
             )
         if event.annotation is not None:
-            annotations_by_item.setdefault(_event_item_id(event), []).append(
-                event.annotation
-            )
+            annotations_by_item.setdefault(_event_item_id(event), []).append(event.annotation)
         return []
 
-    def _handle_function_call_event(
-        self, event: ResponseStreamEvent
-    ) -> list[ModelResponseStreamEvent]:
+    def _handle_function_call_event(self, event: ResponseStreamEvent) -> list[ModelResponseStreamEvent]:
         """Handle function call argument delta and done events."""
         if event.type == "response.function_call_arguments.delta":
             self._tool_arg_delta_item_ids.add(_event_item_id(event))
@@ -193,9 +177,7 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
             return [stream_event] if stream_event is not None else []
         return []
 
-    def _handle_reasoning_event(
-        self, event: ResponseStreamEvent
-    ) -> list[ModelResponseStreamEvent]:
+    def _handle_reasoning_event(self, event: ResponseStreamEvent) -> list[ModelResponseStreamEvent]:
         """Handle reasoning summary and raw reasoning text events."""
         event_type = event.type
         if event_type == "response.reasoning_text.delta":
@@ -245,9 +227,7 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
         item_id = _item_id(item, event)
         item_type = item.get("type")
         if item_type == "function_call":
-            details = (
-                {"namespace": item["namespace"]} if item.get("namespace") else None
-            )
+            details = {"namespace": item["namespace"]} if item.get("namespace") else None
             return [
                 self._parts_manager.handle_tool_call_part(
                     vendor_part_id=item_id,
@@ -265,23 +245,15 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
             return []
         if item_type == "reasoning":
             return []
-        raise UnexpectedModelBehavior(
-            f"Unsupported Responses output item type: {item_type!r}"
-        )
+        raise UnexpectedModelBehavior(f"Unsupported Responses output item type: {item_type!r}")
 
-    def _handle_output_item_done(
-        self, event: ResponseStreamEvent
-    ) -> list[ModelResponseStreamEvent]:
+    def _handle_output_item_done(self, event: ResponseStreamEvent) -> list[ModelResponseStreamEvent]:
         """Handle a Responses output-item-done event."""
         item = event.item or {}
         item_id = _item_id(item, event)
         item_type = item.get("type")
         if item_type == "function_call":
-            args = (
-                None
-                if item_id in self._tool_arg_delta_item_ids
-                else item.get("arguments")
-            )
+            args = None if item_id in self._tool_arg_delta_item_ids else item.get("arguments")
             maybe_event = self._parts_manager.handle_tool_call_delta(
                 vendor_part_id=item_id,
                 args=args,
@@ -303,9 +275,7 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
             )
         if item_type == "message":
             return []
-        raise UnexpectedModelBehavior(
-            f"Unsupported Responses output item type: {item_type!r}"
-        )
+        raise UnexpectedModelBehavior(f"Unsupported Responses output item type: {item_type!r}")
 
     @property
     def model_name(self) -> str:
@@ -340,8 +310,7 @@ class OpenAICompatibleResponsesStreamedResponse(StreamedResponse):
         provider_details = dict(self.provider_details or {})
         raw_finish_reason = (
             response.incomplete_details.reason
-            if response.incomplete_details is not None
-            and response.incomplete_details.reason is not None
+            if response.incomplete_details is not None and response.incomplete_details.reason is not None
             else response.status
         )
         if raw_finish_reason:

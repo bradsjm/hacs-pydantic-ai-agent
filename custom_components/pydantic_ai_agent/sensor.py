@@ -277,9 +277,7 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
         key="primary_language_model",
         translation_key="primary_language_model",
         icon="mdi:brain",
-        value_fn=lambda entry, subentry: (
-            primary_model_profile(entry, subentry).model_name
-        ),
+        value_fn=lambda entry, subentry: primary_model_profile(entry, subentry).model_name,
     ),
     PydanticAIConfigSensorDescription(
         key="skills_enabled",
@@ -297,9 +295,7 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
         native_unit_of_measurement="servers",
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=True,
-        value_fn=lambda _entry, subentry: len(
-            subentry.data.get(CONF_MCP_SERVER_IDS, [])
-        ),
+        value_fn=lambda _entry, subentry: len(subentry.data.get(CONF_MCP_SERVER_IDS, [])),
     ),
     PydanticAIConfigSensorDescription(
         key="structured_output_mode",
@@ -307,9 +303,7 @@ CONFIG_SENSOR_DESCRIPTIONS: tuple[PydanticAIConfigSensorDescription, ...] = (
         icon="mdi:code-json",
         subentry_types=(SUBENTRY_TYPE_AI_TASK,),
         entity_registry_enabled_default=True,
-        value_fn=lambda entry, subentry: resolved_structured_output_mode(
-            primary_model_profile(entry, subentry)
-        ),
+        value_fn=lambda entry, subentry: resolved_structured_output_mode(primary_model_profile(entry, subentry)),
     ),
 )
 
@@ -323,10 +317,7 @@ async def async_setup_entry(
     for valid in _agent_subentries(config_entry):
         subentry = valid.subentry
         async_add_entities(
-            [
-                PydanticAIMetricSensor(config_entry, subentry, description)
-                for description in SENSOR_DESCRIPTIONS
-            ],
+            [PydanticAIMetricSensor(config_entry, subentry, description) for description in SENSOR_DESCRIPTIONS],
             config_subentry_id=subentry.subentry_id,
         )
         async_add_entities(
@@ -357,13 +348,9 @@ class PydanticAIMetricSensor(SensorEntity):
         self.subentry = subentry
         self._description = description
         self.entity_description = description
-        self._attr_entity_registry_enabled_default = (
-            description.entity_registry_enabled_default
-        )
+        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         profile = primary_model_profile(entry, subentry)
-        self._attr_unique_id = unique_id_for_subentry_entity(
-            entry, subentry, description.key
-        )
+        self._attr_unique_id = unique_id_for_subentry_entity(entry, subentry, description.key)
         self._attr_device_info = dr.DeviceInfo(
             identifiers={device_identifier_for_subentry(entry, subentry)},
             name=_subentry_name(subentry),
@@ -412,13 +399,9 @@ class PydanticAIConfigSensor(SensorEntity):
         self.subentry = subentry
         self._description = description
         self.entity_description = description
-        self._attr_entity_registry_enabled_default = (
-            description.entity_registry_enabled_default
-        )
+        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
         profile = primary_model_profile(entry, subentry)
-        self._attr_unique_id = unique_id_for_subentry_entity(
-            entry, subentry, description.key
-        )
+        self._attr_unique_id = unique_id_for_subentry_entity(entry, subentry, description.key)
         self._attr_device_info = dr.DeviceInfo(
             identifiers={device_identifier_for_subentry(entry, subentry)},
             name=_subentry_name(subentry),

@@ -20,9 +20,7 @@ def _tool_problem_from_part(
             tool_name=part.tool_name,
             tool_call_id=part.tool_call_id,
             outcome="retry",
-            reason=_safe_tool_result_reason(
-                part.content, getattr(part, "metadata", None)
-            ),
+            reason=_safe_tool_result_reason(part.content, getattr(part, "metadata", None)),
         )
     outcome = getattr(part, "outcome", "success")
     reason = _safe_tool_result_reason(part.content, part.metadata)
@@ -45,10 +43,7 @@ def _tool_problem_from_part(
 
 def _safe_tool_result_reason(content: object, metadata: object) -> str | None:
     """Extract a short safe reason from structured tool failure content."""
-    if not (
-        isinstance(metadata, Mapping)
-        and metadata.get("source") == TOOL_RETURN_METADATA_SOURCE
-    ):
+    if not (isinstance(metadata, Mapping) and metadata.get("source") == TOOL_RETURN_METADATA_SOURCE):
         return None
     reason: object | None = None
     if isinstance(content, Mapping):

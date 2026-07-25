@@ -102,9 +102,7 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
         )
         settings = model_settings or {}
         with _map_api_errors(self.model_name):
-            response = await self._responses_create(
-                messages, settings, model_request_parameters
-            )
+            response = await self._responses_create(messages, settings, model_request_parameters)
         assert isinstance(response, Response)
         return self._process_response(response)
 
@@ -125,9 +123,7 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
         )
         settings = model_settings or {}
         with _map_api_errors(self.model_name):
-            response = await self._responses_create(
-                messages, settings, model_request_parameters, stream=True
-            )
+            response = await self._responses_create(messages, settings, model_request_parameters, stream=True)
             assert isinstance(response, ResponseStream)
             async with response:
                 yield OpenAICompatibleResponsesStreamedResponse(
@@ -147,12 +143,8 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
         stream: bool = False,
     ) -> Response | ResponseStream:
         """Create a Responses request using the low-level client."""
-        tools, tool_choice = self._get_tools_and_tool_choice(
-            model_settings, model_request_parameters
-        )
-        strict_supported = bool(
-            self.profile.get("openai_supports_strict_tool_definition")
-        )
+        tools, tool_choice = self._get_tools_and_tool_choice(model_settings, model_request_parameters)
+        strict_supported = bool(self.profile.get("openai_supports_strict_tool_definition"))
         text: dict[str, Any] | None = None
         if model_request_parameters.output_mode == "native":
             output_object = model_request_parameters.output_object
@@ -163,18 +155,12 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
                     strict_supported=strict_supported,
                 )
             }
-        elif model_request_parameters.output_mode == "prompted" and self.profile.get(
-            "supports_json_object_output"
-        ):
+        elif model_request_parameters.output_mode == "prompted" and self.profile.get("supports_json_object_output"):
             text = {"format": {"type": "json_object"}}
 
-        instructions, input_items = await map_messages(
-            self, messages, model_request_parameters
-        )
+        instructions, input_items = await map_messages(self, messages, model_request_parameters)
         if text and text.get("format", {}).get("type") == "json_object":
-            json_instruction = (
-                instructions if isinstance(instructions, str) else "Return JSON."
-            )
+            json_instruction = instructions if isinstance(instructions, str) else "Return JSON."
             input_items.insert(
                 0,
                 {
@@ -195,9 +181,7 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
             instructions=instructions,
             tools=tools or omit,
             tool_choice=tool_choice or omit,
-            parallel_tool_calls=model_settings.get("parallel_tool_calls", omit)
-            if tools
-            else omit,
+            parallel_tool_calls=model_settings.get("parallel_tool_calls", omit) if tools else omit,
             max_output_tokens=model_settings.get("max_tokens", omit),
             stream=stream,
             timeout=model_settings.get("timeout", NOT_GIVEN),
@@ -217,12 +201,8 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
     ) -> tuple[list[dict[str, Any]], str | dict[str, Any] | None]:
         """Return request tools and Responses tool_choice."""
         if model_request_parameters.native_tools:
-            raise UnexpectedModelBehavior(
-                "Native tools are not supported by the Responses adapter"
-            )
-        strict_supported = bool(
-            self.profile.get("openai_supports_strict_tool_definition")
-        )
+            raise UnexpectedModelBehavior("Native tools are not supported by the Responses adapter")
+        strict_supported = bool(self.profile.get("openai_supports_strict_tool_definition"))
         tools = [
             map_tool_definition(tool, strict_supported=strict_supported)
             for tool in model_request_parameters.tool_defs.values()
@@ -252,15 +232,12 @@ class OpenAICompatibleResponsesModel(Model[AsyncOpenAICompatible]):
             elif item_type == "function_call":
                 parts.append(_tool_call_part(item, self.system))
             else:
-                raise UnexpectedModelBehavior(
-                    f"Unsupported Responses output item type: {item_type!r}"
-                )
+                raise UnexpectedModelBehavior(f"Unsupported Responses output item type: {item_type!r}")
 
         provider_details: dict[str, Any] = {}
         raw_finish_reason = (
             response.incomplete_details.reason
-            if response.incomplete_details is not None
-            and response.incomplete_details.reason is not None
+            if response.incomplete_details is not None and response.incomplete_details.reason is not None
             else response.status
         )
         finish_reason = _FINISH_REASON_MAP.get(raw_finish_reason or "")
@@ -298,13 +275,7 @@ def _reasoning(
     effort = model_settings.get("openai_reasoning_effort")
     if model_request_parameters.thinking is not None:
         thinking = model_request_parameters.thinking
-        effort = (
-            None
-            if thinking in (False, "none")
-            else "medium"
-            if thinking is True
-            else thinking
-        )
+        effort = None if thinking in (False, "none") else "medium" if thinking is True else thinking
     summary = model_settings.get("openai_reasoning_summary")
     reasoning: dict[str, str] = {}
     if isinstance(effort, str) and effort and effort != "none":
@@ -358,9 +329,7 @@ def _reasoning_parts(item: dict[str, Any], provider_name: str) -> list[ThinkingP
     return []
 
 
-def _message_parts(
-    item: dict[str, Any], provider_name: str
-) -> tuple[list[TextPart], str | None]:
+def _message_parts(item: dict[str, Any], provider_name: str) -> tuple[list[TextPart], str | None]:
     parts: list[TextPart] = []
     refusal: str | None = None
     for content in item.get("content") or []:
@@ -386,9 +355,7 @@ def _message_parts(
                 )
             )
         else:
-            raise UnexpectedModelBehavior(
-                f"Unsupported Responses message content type: {content_type!r}"
-            )
+            raise UnexpectedModelBehavior(f"Unsupported Responses message content type: {content_type!r}")
     return parts, refusal
 
 

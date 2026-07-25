@@ -32,11 +32,7 @@ from .validation import normalise_mcp_url, parse_allowed_tools, parse_mcp_header
 
 def mcp_subentries(entry: ConfigEntry) -> list[Any]:
     """Return configured MCP server subentries."""
-    return [
-        subentry
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER
-    ]
+    return [subentry for subentry in entry.subentries.values() if subentry.subentry_type == SUBENTRY_TYPE_MCP_SERVER]
 
 
 def get_mcp_subentry(entry: ConfigEntry, subentry_id: str) -> Any:
@@ -61,12 +57,8 @@ def mcp_config_from_subentry(subentry: Any) -> dict[str, Any]:
         CONF_MCP_HEADERS: parse_mcp_headers(data.get(CONF_MCP_HEADERS)),
         CONF_MCP_SECRET_HEADER_KEYS: data.get(CONF_MCP_SECRET_HEADER_KEYS, []),
         CONF_MCP_CALL_CACHE_ENABLED: bool(data.get(CONF_MCP_CALL_CACHE_ENABLED, False)),
-        CONF_MCP_CALL_CACHE_TTL: int(
-            data.get(CONF_MCP_CALL_CACHE_TTL, DEFAULT_MCP_CALL_CACHE_TTL)
-        ),
-        CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
-            data.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
-        ),
+        CONF_MCP_CALL_CACHE_TTL: int(data.get(CONF_MCP_CALL_CACHE_TTL, DEFAULT_MCP_CALL_CACHE_TTL)),
+        CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(data.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)),
         CONF_MCP_TIMEOUT: float(data.get(CONF_MCP_TIMEOUT, DEFAULT_MCP_TIMEOUT)),
         CONF_MCP_DEFERRED_LOADING: bool(data.get(CONF_MCP_DEFERRED_LOADING, False)),
         CONF_MCP_TOOL_MODE: tool_mode,
@@ -74,9 +66,7 @@ def mcp_config_from_subentry(subentry: Any) -> dict[str, Any]:
     }
 
 
-def _mcp_config_from_data(
-    data: Mapping[str, Any], *, server_id: str | None = None
-) -> dict[str, Any]:
+def _mcp_config_from_data(data: Mapping[str, Any], *, server_id: str | None = None) -> dict[str, Any]:
     """Return normalized MCP server configuration from raw data."""
     tool_mode = effective_mcp_tool_mode(data)
     return {
@@ -85,12 +75,8 @@ def _mcp_config_from_data(
         CONF_MCP_HEADERS: parse_mcp_headers(data.get(CONF_MCP_HEADERS)),
         CONF_MCP_SECRET_HEADER_KEYS: data.get(CONF_MCP_SECRET_HEADER_KEYS, []),
         CONF_MCP_CALL_CACHE_ENABLED: bool(data.get(CONF_MCP_CALL_CACHE_ENABLED, False)),
-        CONF_MCP_CALL_CACHE_TTL: int(
-            data.get(CONF_MCP_CALL_CACHE_TTL, DEFAULT_MCP_CALL_CACHE_TTL)
-        ),
-        CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
-            data.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
-        ),
+        CONF_MCP_CALL_CACHE_TTL: int(data.get(CONF_MCP_CALL_CACHE_TTL, DEFAULT_MCP_CALL_CACHE_TTL)),
+        CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(data.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)),
         CONF_MCP_TIMEOUT: float(data.get(CONF_MCP_TIMEOUT, DEFAULT_MCP_TIMEOUT)),
         CONF_MCP_DEFERRED_LOADING: bool(data.get(CONF_MCP_DEFERRED_LOADING, False)),
         CONF_MCP_TOOL_MODE: tool_mode,
@@ -115,9 +101,7 @@ def effective_mcp_tool_mode(data: Mapping[str, Any]) -> str:
     return MCP_TOOL_MODE_DISABLED
 
 
-def stored_mcp_tool_configuration(
-    mode: str, allowed_tools: list[str]
-) -> dict[str, Any]:
+def stored_mcp_tool_configuration(mode: str, allowed_tools: list[str]) -> dict[str, Any]:
     """Return stored MCP tool configuration fields for one mode."""
     if mode == MCP_TOOL_MODE_ALL:
         return {CONF_MCP_TOOL_MODE: MCP_TOOL_MODE_ALL}

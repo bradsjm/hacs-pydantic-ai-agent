@@ -21,13 +21,9 @@ import pytest
         ("low", "low"),
     ],
 )
-def test_chat_reasoning_effort_maps_thinking(
-    thinking: bool | str, expected: object
-) -> None:
+def test_chat_reasoning_effort_maps_thinking(thinking: bool | str, expected: object) -> None:
     """Chat reasoning effort maps enabled values and omits disabled values."""
-    result = _chat_model._reasoning_effort(
-        ModelRequestParameters(thinking=thinking)
-    )
+    result = _chat_model._reasoning_effort(ModelRequestParameters(thinking=thinking))
 
     if expected is omit:
         assert result is omit

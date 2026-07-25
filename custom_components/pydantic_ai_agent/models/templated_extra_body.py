@@ -15,9 +15,7 @@ from ..const import (
 _LEGACY_CHAT_TEMPLATE_KWARGS_PREFIX = "chat_template_kwargs."
 
 
-def render_templated_extra_body(
-    hass: HomeAssistant, configured: object
-) -> dict[str, object]:
+def render_templated_extra_body(hass: HomeAssistant, configured: object) -> dict[str, object]:
     """Render configured templated extra-body fields for one model request."""
     if configured in (None, ""):
         return {}
@@ -36,13 +34,9 @@ def render_templated_extra_body(
             value = Template(value_template, hass).async_render(parse_result=True)
             json.dumps(value)
         except TemplateError as err:
-            raise HomeAssistantError(
-                f'Failed to render templated extra body field "{key}"'
-            ) from err
+            raise HomeAssistantError(f'Failed to render templated extra body field "{key}"') from err
         except (TypeError, ValueError) as err:
-            raise HomeAssistantError(
-                f'Failed to render templated extra body field "{key}"'
-            ) from err
+            raise HomeAssistantError(f'Failed to render templated extra body field "{key}"') from err
         try:
             _set_nested_value(rendered, _path_segments(key), value)
         except ValueError as err:
@@ -91,9 +85,7 @@ def _path_segments(key: str) -> tuple[str, ...]:
     return segments
 
 
-def _set_nested_value(
-    target: dict[str, object], path: tuple[str, ...], value: object
-) -> None:
+def _set_nested_value(target: dict[str, object], path: tuple[str, ...], value: object) -> None:
     """Set one dotted-path value and reject conflicting mapping/scalar paths."""
     current = target
     for segment in path[:-1]:
@@ -104,9 +96,7 @@ def _set_nested_value(
             current = child
             continue
         if not isinstance(existing, dict):
-            raise ValueError(
-                f'Conflicting templated extra body path "{".".join(path)}"'
-            )
+            raise ValueError(f'Conflicting templated extra body path "{".".join(path)}"')
         current = existing
 
     leaf = path[-1]
@@ -115,9 +105,7 @@ def _set_nested_value(
     current[leaf] = value
 
 
-def _deep_merge(
-    base: Mapping[str, object], overlay: Mapping[str, object]
-) -> dict[str, object]:
+def _deep_merge(base: Mapping[str, object], overlay: Mapping[str, object]) -> dict[str, object]:
     """Return a recursive merge of mapping values."""
     merged = {key: _clone_json_value(value) for key, value in base.items()}
     for key, value in overlay.items():
@@ -141,9 +129,7 @@ def _clone_json_value(value: object) -> object:
     return value
 
 
-def _validate_path_against_base(
-    path: tuple[str, ...], base: Mapping[str, object]
-) -> None:
+def _validate_path_against_base(path: tuple[str, ...], base: Mapping[str, object]) -> None:
     """Reject dotted paths that descend into non-mapping base extra-body values."""
     current: object = base
     for segment in path[:-1]:
@@ -151,6 +137,4 @@ def _validate_path_against_base(
             return
         current = current[segment]
         if not isinstance(current, Mapping):
-            raise HomeAssistantError(
-                f'Conflicting templated extra body path "{".".join(path)}"'
-            )
+            raise HomeAssistantError(f'Conflicting templated extra body path "{".".join(path)}"')

@@ -24,9 +24,7 @@ def test_mcp_cache_evicts_oldest_entry_at_capacity(hass: HomeAssistant) -> None:
     entry = _entry()
     cache = entry.runtime_data.mcp_call_cache
     for index in range(runtime._MAX_MCP_CALL_CACHE_ENTRIES):
-        cache[str(index)] = MCPCallCacheEntry(
-            expires_at=hass.loop.time() + 60, result=index
-        )
+        cache[str(index)] = MCPCallCacheEntry(expires_at=hass.loop.time() + 60, result=index)
 
     runtime._store_cached_mcp_tool_result(hass, cast(Any, entry), "new", 60, "new")
 
@@ -42,9 +40,7 @@ def test_mcp_cache_update_at_capacity_keeps_unrelated_entries(
     entry = _entry()
     cache = entry.runtime_data.mcp_call_cache
     for index in range(runtime._MAX_MCP_CALL_CACHE_ENTRIES):
-        cache[str(index)] = MCPCallCacheEntry(
-            expires_at=hass.loop.time() + 60, result=index
-        )
+        cache[str(index)] = MCPCallCacheEntry(expires_at=hass.loop.time() + 60, result=index)
 
     runtime._store_cached_mcp_tool_result(hass, cast(Any, entry), "0", 60, "updated")
 
@@ -226,9 +222,7 @@ async def test_mcp_cache_expiry_and_non_json_values_bypass_reuse(
         cache_enabled=True,
         cache_ttl=60,
     )
-    entry.runtime_data.mcp_call_cache[next(iter(entry.runtime_data.mcp_call_cache))].expires_at = (
-        hass.loop.time()
-    )
+    entry.runtime_data.mcp_call_cache[next(iter(entry.runtime_data.mcp_call_cache))].expires_at = hass.loop.time()
     assert (
         await runtime._process_cached_mcp_tool_call(
             hass,

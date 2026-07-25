@@ -90,25 +90,19 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         """Return if this flow creates a new subentry."""
         return self.source == SOURCE_USER
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Add an MCP server subentry."""
         self._options = {}
         self._manage_tools_prepared = False
         return await self.async_step_init(user_input)
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Reconfigure an MCP server subentry."""
         self._options = _mcp_server_form_options(self._get_reconfigure_subentry().data)
         self._manage_tools_prepared = False
         return await self.async_step_reconfigure_menu(user_input)
 
-    async def async_step_reconfigure_menu(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_reconfigure_menu(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Show the shallow MCP server management menu."""
         del user_input
         return self.async_show_menu(
@@ -116,21 +110,15 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
             menu_options=["edit_server", "manage_tools"],
         )
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Manage remote MCP server options."""
         return await self._async_server_form_step("init", user_input)
 
-    async def async_step_edit_server(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_edit_server(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Edit remote MCP server options."""
         return await self._async_server_form_step("edit_server", user_input)
 
-    async def _async_server_form_step(
-        self, step_id: str, user_input: dict[str, Any] | None
-    ) -> SubentryFlowResult:
+    async def _async_server_form_step(self, step_id: str, user_input: dict[str, Any] | None) -> SubentryFlowResult:
         """Handle the MCP server create/edit form."""
         entry = self._get_entry()
         if entry.state != ConfigEntryState.LOADED:
@@ -142,16 +130,12 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
                 data_schema=_mcp_server_schema(self._options),
             )
 
-        flat_user_input, submitted_keys = _flatten_section_data_with_presence(
-            user_input, (_SECTION_ADVANCED_MCP,)
-        )
+        flat_user_input, submitted_keys = _flatten_section_data_with_presence(user_input, (_SECTION_ADVANCED_MCP,))
         form_options = _mcp_server_form_options(flat_user_input)
         errors: dict[str, str] = {}
         description_placeholders: dict[str, str] = {}
         try:
-            previous_data = (
-                None if self._is_new else self._get_reconfigure_subentry().data
-            )
+            previous_data = None if self._is_new else self._get_reconfigure_subentry().data
             data = _mcp_server_data_from_user_input(flat_user_input, previous_data)
         except MCPValidationError as err:
             errors[CONF_MCP_URL] = err.reason
@@ -167,9 +151,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
             else:
                 errors[CONF_MCP_HEADERS] = "invalid_mcp_headers"
         else:
-            self._pending_mcp_form_options = (
-                self._storage_data_with_preserved_allowlist(data, submitted_keys)
-            )
+            self._pending_mcp_form_options = self._storage_data_with_preserved_allowlist(data, submitted_keys)
             self._pending_mcp_progress_action = "validate_mcp_server"
             self._pending_mcp_server_step_id = step_id
             self._pending_mcp_server_submitted_keys = submitted_keys
@@ -222,9 +204,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
 
         existing_data = self._get_reconfigure_subentry().data
         if CONF_MCP_TOOL_MODE in existing_data:
-            storage_data.setdefault(
-                CONF_MCP_TOOL_MODE, existing_data[CONF_MCP_TOOL_MODE]
-            )
+            storage_data.setdefault(CONF_MCP_TOOL_MODE, existing_data[CONF_MCP_TOOL_MODE])
         if CONF_MCP_ALLOWED_TOOLS in existing_data:
             storage_data.setdefault(
                 CONF_MCP_ALLOWED_TOOLS,
@@ -255,9 +235,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         submitted_keys: set[str],
     ) -> SubentryFlowResult:
         """Create or update the MCP server after validation."""
-        storage_data = self._storage_data_with_preserved_allowlist(
-            validated_data, submitted_keys
-        )
+        storage_data = self._storage_data_with_preserved_allowlist(validated_data, submitted_keys)
         if self._is_new:
             return self.async_create_entry(
                 title=storage_data[CONF_NAME],
@@ -335,22 +313,16 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         server_id = current_subentry_id or str(data[CONF_NAME])
         _LOGGER.debug("Validating MCP server %s", server_id)
         try:
-            async with asyncio.timeout(
-                data.get(CONF_MCP_TIMEOUT, DEFAULT_MCP_TIMEOUT) * 3
-            ):
+            async with asyncio.timeout(data.get(CONF_MCP_TIMEOUT, DEFAULT_MCP_TIMEOUT) * 3):
                 data = dict(data)
-                data[CONF_MCP_URL] = await async_validate_mcp_url(
-                    self.hass, data[CONF_MCP_URL]
-                )
+                data[CONF_MCP_URL] = await async_validate_mcp_url(self.hass, data[CONF_MCP_URL])
                 tools = await async_discover_mcp_tools_from_config(
                     self.hass,
                     data,
                     server_id=server_id,
                     apply_allowlist=False,
                 )
-                existing_allowed_tools = parse_allowed_tools(
-                    self._options.get(CONF_MCP_ALLOWED_TOOLS)
-                )
+                existing_allowed_tools = parse_allowed_tools(self._options.get(CONF_MCP_ALLOWED_TOOLS))
                 if not tools:
                     raise MCPValidationError(
                         "no_mcp_tools",
@@ -393,9 +365,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         )
         return data, tool_options, None
 
-    async def async_step_manage_tools(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
+    async def async_step_manage_tools(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         """Select the discovered MCP tools to allow."""
         entry = self._get_entry()
         if entry.state != ConfigEntryState.LOADED:
@@ -425,9 +395,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         if default_tool_mode == MCP_TOOL_MODE_SPECIFIED:
             default_tool_names = [
                 tool_name
-                for tool_name in parse_allowed_tools(
-                    subentry.data.get(CONF_MCP_ALLOWED_TOOLS)
-                )
+                for tool_name in parse_allowed_tools(subentry.data.get(CONF_MCP_ALLOWED_TOOLS))
                 if tool_name in tool_names
             ]
         else:
@@ -436,9 +404,7 @@ class MCPServerSubentryFlowHandler(ConfigSubentryFlow):
         if user_input is None:
             return self.async_show_form(
                 step_id="manage_tools",
-                data_schema=_mcp_tools_schema(
-                    tool_options, default_tool_mode, default_tool_names
-                ),
+                data_schema=_mcp_tools_schema(tool_options, default_tool_mode, default_tool_names),
             )
 
         tool_mode = str(user_input.get(CONF_MCP_TOOL_MODE, default_tool_mode))

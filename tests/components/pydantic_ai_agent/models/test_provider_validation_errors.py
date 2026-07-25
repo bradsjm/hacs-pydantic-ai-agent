@@ -32,9 +32,7 @@ def test_format_api_error_maps_generic_api_error() -> None:
 )
 def test_map_http_error_classifies_status_codes(status_code: int, reason: str) -> None:
     """HTTP status codes map to stable config-flow reason keys."""
-    error = map_http_error(
-        ModelHTTPError(status_code=status_code, model_name="model-1", body=None)
-    )
+    error = map_http_error(ModelHTTPError(status_code=status_code, model_name="model-1", body=None))
 
     assert error.reason == reason
     assert error.status_code == status_code

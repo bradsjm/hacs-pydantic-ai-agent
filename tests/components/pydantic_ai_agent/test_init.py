@@ -9,9 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
 
-async def test_config_entry_setup_and_unload(
-    hass: HomeAssistant, make_config_entry: Any
-) -> None:
+async def test_config_entry_setup_and_unload(hass: HomeAssistant, make_config_entry: Any) -> None:
     """Initialize workspace runtime, then release platforms and Logfire."""
     entry = make_config_entry(name="Visible Workspace")
     entry.add_to_hass(hass)

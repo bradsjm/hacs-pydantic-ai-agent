@@ -36,9 +36,7 @@ def _base_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     schema[vol.Optional(_SECTION_LOGFIRE, default={})] = section(
         vol.Schema(
             {
-                vol.Optional(CONF_LOGFIRE_TOKEN): TextSelector(
-                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
-                ),
+                vol.Optional(CONF_LOGFIRE_TOKEN): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
                 vol.Optional(
                     CONF_LOGFIRE_INCLUDE_CONTENT,
                     default=bool(data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False)),
@@ -63,9 +61,7 @@ def _normalise_workspace_data(user_input: Mapping[str, Any]) -> dict[str, Any]:
         token = token.strip()
     if token:
         data[CONF_LOGFIRE_TOKEN] = token
-        data[CONF_LOGFIRE_INCLUDE_CONTENT] = bool(
-            data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False)
-        )
+        data[CONF_LOGFIRE_INCLUDE_CONTENT] = bool(data.get(CONF_LOGFIRE_INCLUDE_CONTENT, False))
     else:
         data.pop(CONF_LOGFIRE_TOKEN, None)
         data.pop(CONF_LOGFIRE_INCLUDE_CONTENT, None)

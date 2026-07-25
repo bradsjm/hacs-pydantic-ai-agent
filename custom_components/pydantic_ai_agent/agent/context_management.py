@@ -22,9 +22,7 @@ if TYPE_CHECKING:
 
     from ..runtime.types import PydanticAIAgentConfigEntry
 
-type ModelFactory = Callable[
-    [HomeAssistant, PydanticAIAgentConfigEntry, ResolvedModelProfile], Model
-]
+type ModelFactory = Callable[[HomeAssistant, PydanticAIAgentConfigEntry, ResolvedModelProfile], Model]
 
 _CONTEXT_MANAGER_COMPRESS_THRESHOLD = 0.9
 _SLIDING_WINDOW_TRIGGER_RATIO = 0.9
@@ -63,9 +61,7 @@ def context_management_capability(
             "tokens",
             max(
                 1,
-                int(
-                    active_profile.context_window_tokens * _SLIDING_WINDOW_TRIGGER_RATIO
-                ),
+                int(active_profile.context_window_tokens * _SLIDING_WINDOW_TRIGGER_RATIO),
             ),
         ),
         keep=(

@@ -50,18 +50,14 @@ MakeSubentry = Callable[..., Any]
         ),
     ],
 )
-def test_effective_mcp_tool_mode_handles_current_and_legacy_data(
-    data: Mapping[str, Any], expected: str
-) -> None:
+def test_effective_mcp_tool_mode_handles_current_and_legacy_data(data: Mapping[str, Any], expected: str) -> None:
     """Tool mode is explicit when stored and inferred for legacy allowlists."""
     assert effective_mcp_tool_mode(data) == expected
 
 
 def test_stored_mcp_tool_configuration_for_each_mode() -> None:
     """Stored tool config contains only fields required by the selected mode."""
-    assert stored_mcp_tool_configuration(MCP_TOOL_MODE_ALL, []) == {
-        CONF_MCP_TOOL_MODE: MCP_TOOL_MODE_ALL
-    }
+    assert stored_mcp_tool_configuration(MCP_TOOL_MODE_ALL, []) == {CONF_MCP_TOOL_MODE: MCP_TOOL_MODE_ALL}
     assert stored_mcp_tool_configuration(MCP_TOOL_MODE_DISABLED, ["ignored"]) == {
         CONF_MCP_TOOL_MODE: MCP_TOOL_MODE_DISABLED,
         CONF_MCP_ALLOWED_TOOLS: [],
@@ -76,9 +72,7 @@ def test_stored_mcp_tool_configuration_for_each_mode() -> None:
     ("mode", "allowed_tools"),
     [(MCP_TOOL_MODE_SPECIFIED, []), ("unsupported", ["tool_a"])],
 )
-def test_stored_mcp_tool_configuration_rejects_invalid_modes(
-    mode: str, allowed_tools: list[str]
-) -> None:
+def test_stored_mcp_tool_configuration_rejects_invalid_modes(mode: str, allowed_tools: list[str]) -> None:
     """Specified mode must include tools, and unknown modes are invalid."""
     with pytest.raises(ValueError, match=r"specified mode requires|unsupported MCP"):
         stored_mcp_tool_configuration(mode, allowed_tools)
@@ -127,8 +121,7 @@ def test_get_mcp_subentry_rejects_missing_or_wrong_type(
 ) -> None:
     """Missing and non-MCP subentries raise a stable MCP validation reason."""
     entry_subentries = {
-        key: make_subentry(data={}, subentry_type=value, subentry_id=key)
-        for key, value in subentries.items()
+        key: make_subentry(data={}, subentry_type=value, subentry_id=key) for key, value in subentries.items()
     }
     entry = SimpleNamespace(subentries=entry_subentries)
 
@@ -194,5 +187,3 @@ def test_mcp_config_from_subentry_normalizes_timeout(
 
     assert config[CONF_MCP_TIMEOUT] == 30.0
     assert isinstance(config[CONF_MCP_TIMEOUT], float)
-
-

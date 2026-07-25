@@ -90,9 +90,7 @@ def test_context_manager_uses_active_profile_without_summarization_ref(
 ) -> None:
     """Context manager mode builds the summarizer from the active profile by default."""
 
-    def model_factory(
-        _hass: HomeAssistant, _entry: Any, profile: ResolvedModelProfile
-    ) -> object:
+    def model_factory(_hass: HomeAssistant, _entry: Any, profile: ResolvedModelProfile) -> object:
         return f"built:{profile.ref}"
 
     active_profile = make_profile(context_window_tokens=200)
@@ -133,9 +131,7 @@ def test_context_manager_uses_configured_summarization_profile(
         },
     )
 
-    def model_factory(
-        _hass: HomeAssistant, _entry: Any, profile: ResolvedModelProfile
-    ) -> object:
+    def model_factory(_hass: HomeAssistant, _entry: Any, profile: ResolvedModelProfile) -> object:
         return f"built:{profile.ref}:{profile.model_name}"
 
     capability = context_management_capability(
@@ -151,6 +147,4 @@ def test_context_manager_uses_configured_summarization_profile(
     )
 
     assert isinstance(capability, ContextManagerCapability)
-    assert capability.summarization_model == (
-        "built:provider-2:summary:summary-model"
-    )
+    assert capability.summarization_model == ("built:provider-2:summary:summary-model")

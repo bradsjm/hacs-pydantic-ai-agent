@@ -84,9 +84,7 @@ async def _append_missing_final_text(
 
     separator_prefix = _tool_resume_separator_prefix(
         chat_log.content,
-        trailing_assistant_present=isinstance(
-            chat_log.content[-1], conversation.AssistantContent
-        ),
+        trailing_assistant_present=isinstance(chat_log.content[-1], conversation.AssistantContent),
     )
     final_text_with_separator = f"{separator_prefix}{final_text}"
 
@@ -141,9 +139,7 @@ def _final_text_from_messages(messages: list[ModelMessage]) -> str:
     """Return text from the final assistant response in Agent messages."""
     for message in reversed(messages):
         if isinstance(message, ModelResponse):
-            return "".join(
-                part.content for part in message.parts if isinstance(part, TextPart)
-            )
+            return "".join(part.content for part in message.parts if isinstance(part, TextPart))
     return ""
 
 
@@ -161,9 +157,7 @@ async def _single_text(text: str) -> AsyncIterator[str]:
     yield text
 
 
-def _maybe_record_event(
-    event: object, trace_recorder: _StreamTraceRecorder | None
-) -> None:
+def _maybe_record_event(event: object, trace_recorder: _StreamTraceRecorder | None) -> None:
     """Record an event if a trace recorder is active."""
     if trace_recorder is not None:
         trace_recorder.record_event(event)
@@ -208,15 +202,11 @@ async def _process_agent_event(
         state.result = event.result
         return
     if isinstance(event, PartStartEvent):
-        async for delta in _handle_events_part_start(
-            event, output_tool_names, state, trace_recorder, flags
-        ):
+        async for delta in _handle_events_part_start(event, output_tool_names, state, trace_recorder, flags):
             yield delta
         return
     if isinstance(event, PartDeltaEvent):
-        async for delta in _handle_events_part_delta(
-            event, state, trace_recorder, flags
-        ):
+        async for delta in _handle_events_part_delta(event, state, trace_recorder, flags):
             yield delta
         return
     if isinstance(event, FunctionToolCallEvent | OutputToolCallEvent):
@@ -231,9 +221,7 @@ async def _process_agent_event(
             yield delta
         return
     if isinstance(event, FunctionToolResultEvent | OutputToolResultEvent):
-        async for delta in _handle_events_tool_result(
-            event, state, trace_recorder, flags
-        ):
+        async for delta in _handle_events_tool_result(event, state, trace_recorder, flags):
             yield delta
 
 
@@ -335,9 +323,7 @@ async def _handle_events_tool_result(
     flags["assistant_text_seen"] = False
 
 
-def _maybe_prepend_resumed_text_separator(
-    delta: dict[str, Any], flags: dict[str, bool]
-) -> dict[str, Any]:
+def _maybe_prepend_resumed_text_separator(delta: dict[str, Any], flags: dict[str, bool]) -> dict[str, Any]:
     """Prefix resumed assistant text after tool results once per resume."""
     content = delta.get("content")
     if not isinstance(content, str) or not content:
@@ -349,9 +335,7 @@ def _maybe_prepend_resumed_text_separator(
     return {**delta, "content": f"\n\n{content}"}
 
 
-def _tool_resume_separator_prefix(
-    content: list[conversation.Content], *, trailing_assistant_present: bool
-) -> str:
+def _tool_resume_separator_prefix(content: list[conversation.Content], *, trailing_assistant_present: bool) -> str:
     """Return the separator when the current tail is resumed text after tools."""
     index = len(content) - 2 if trailing_assistant_present else len(content) - 1
     saw_tool_result = False
@@ -361,10 +345,7 @@ def _tool_resume_separator_prefix(
     if not saw_tool_result or index < 0:
         return ""
     prior_content = content[index]
-    if (
-        isinstance(prior_content, conversation.AssistantContent)
-        and prior_content.content
-    ):
+    if isinstance(prior_content, conversation.AssistantContent) and prior_content.content:
         return _TOOL_RESUME_SEPARATOR
     return ""
 

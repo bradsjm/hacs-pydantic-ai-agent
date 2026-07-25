@@ -48,9 +48,7 @@ from ..models.structured_output import resolved_structured_output_mode
 from .metrics import AgentRunMetrics
 
 
-def workspace_status(
-    entry: ConfigEntry, *, include_subentries: bool, include_runtime: bool
-) -> dict[str, Any]:
+def workspace_status(entry: ConfigEntry, *, include_subentries: bool, include_runtime: bool) -> dict[str, Any]:
     runtime_data = getattr(entry, "runtime_data", None)
     data: dict[str, Any] = {
         "config_entry_id": entry.entry_id,
@@ -70,9 +68,7 @@ def model_profile_summaries(
     entry: ConfigEntry, provider_subentry: ConfigSubentry, *, enabled_only: bool
 ) -> list[dict[str, Any]]:
     runtime_data = getattr(entry, "runtime_data", None)
-    runtime_profiles = (
-        getattr(runtime_data, "model_profiles", {}) if runtime_data else {}
-    )
+    runtime_profiles = getattr(runtime_data, "model_profiles", {}) if runtime_data else {}
     summaries: list[dict[str, Any]] = []
     default_profile_id = provider_subentry.data.get(CONF_DEFAULT_MODEL_PROFILE_ID)
     for profile_id, profile in provider_model_profiles(provider_subentry).items():
@@ -104,12 +100,8 @@ def model_profile_summaries(
 
 def metrics_status(entry: ConfigEntry, *, subentry_id: str | None) -> dict[str, Any]:
     runtime_data = getattr(entry, "runtime_data", None)
-    metrics = (
-        getattr(runtime_data, "metrics", None) if runtime_data is not None else None
-    )
-    records: Mapping[str, Any] = (
-        getattr(metrics, "_records", {}) if metrics is not None else {}
-    )
+    metrics = getattr(runtime_data, "metrics", None) if runtime_data is not None else None
+    records: Mapping[str, Any] = getattr(metrics, "_records", {}) if metrics is not None else {}
     selected_ids = [subentry_id] if subentry_id is not None else sorted(records)
     return {
         "config_entry_id": entry.entry_id,
@@ -174,9 +166,7 @@ def _subentry_counts(entry: ConfigEntry) -> dict[str, int]:
 
 def _subentries_status(entry: ConfigEntry) -> dict[str, list[dict[str, Any]]]:
     return {
-        "providers": [
-            _provider_status(entry, subentry) for subentry in provider_subentries(entry)
-        ],
+        "providers": [_provider_status(entry, subentry) for subentry in provider_subentries(entry)],
         "mcp_servers": [
             _mcp_server_status(entry, subentry)
             for subentry in entry.subentries.values()
@@ -202,9 +192,7 @@ def _subentries_status(entry: ConfigEntry) -> dict[str, list[dict[str, Any]]]:
 
 def _provider_status(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str, Any]:
     profiles = provider_model_profiles(subentry)
-    enabled_count = sum(
-        1 for profile in profiles.values() if bool(profile.get(CONF_ENABLED, False))
-    )
+    enabled_count = sum(1 for profile in profiles.values() if bool(profile.get(CONF_ENABLED, False)))
     runtime_data = getattr(entry, "runtime_data", None)
     runtime_providers = getattr(runtime_data, "providers", {}) if runtime_data else {}
     return {
@@ -219,9 +207,7 @@ def _provider_status(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str, 
     }
 
 
-def _agent_subentry_status(
-    entry: ConfigEntry, subentry: ConfigSubentry
-) -> dict[str, Any]:
+def _agent_subentry_status(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str, Any]:
     data = subentry.data
     status = {
         "subentry_id": subentry.subentry_id,
@@ -235,16 +221,12 @@ def _agent_subentry_status(
         "ha_llm_api_count": _list_count(data.get(CONF_LLM_HASS_API)),
         "web_fetch_enabled": bool(data.get(CONF_WEB_FETCH_ENABLED, False)),
         "web_search_enabled": bool(data.get(CONF_WEB_SEARCH_ENABLED, False)),
-        "virtual_workspace_enabled": bool(
-            data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)
-        ),
+        "virtual_workspace_enabled": bool(data.get(CONF_VIRTUAL_WORKSPACE_ENABLED, False)),
         "todo_workspace_enabled": bool(data.get(CONF_TODO_LIST_ENTITY_ID)),
     }
     if subentry.subentry_type == SUBENTRY_TYPE_AI_TASK:
         try:
-            status["structured_output_mode"] = resolved_structured_output_mode(
-                primary_model_profile(entry, subentry)
-            )
+            status["structured_output_mode"] = resolved_structured_output_mode(primary_model_profile(entry, subentry))
         except HomeAssistantError, KeyError, TypeError, ValueError:
             status["structured_output_mode"] = None
     return status
@@ -252,9 +234,7 @@ def _agent_subentry_status(
 
 def _mcp_server_status(entry: ConfigEntry, subentry: ConfigSubentry) -> dict[str, Any]:
     runtime_data = getattr(entry, "runtime_data", None)
-    cached_tools = (
-        cached_mcp_tools(entry, subentry.subentry_id) if runtime_data else None
-    )
+    cached_tools = cached_mcp_tools(entry, subentry.subentry_id) if runtime_data else None
     allowed_tools = subentry.data.get(CONF_MCP_ALLOWED_TOOLS)
     return {
         "subentry_id": subentry.subentry_id,
@@ -290,16 +270,12 @@ def _runtime_status(entry: ConfigEntry, runtime_data: object) -> dict[str, Any] 
         "workspace_name": getattr(runtime_data, "workspace_name", None),
         "provider_count": len(getattr(runtime_data, "providers", {})),
         "mcp_server_count": len(mcp_subentries(entry)),
-        "cached_mcp_tool_server_count": len(
-            getattr(runtime_data, "mcp_tool_cache", {})
-        ),
+        "cached_mcp_tool_server_count": len(getattr(runtime_data, "mcp_tool_cache", {})),
         "model_profile_count": len(getattr(runtime_data, "model_profiles", {})),
         "metrics_record_count": len(records),
         "latest_run_diagnostic_count": len(latest_run_diagnostics),
         "logfire_enabled": bool(getattr(runtime_data, "logfire_enabled", False)),
-        "logfire_include_content": bool(
-            getattr(runtime_data, "logfire_include_content", False)
-        ),
+        "logfire_include_content": bool(getattr(runtime_data, "logfire_include_content", False)),
     }
 
 
@@ -311,16 +287,10 @@ def _mcp_tool_source_status(
     limit: int,
 ) -> dict[str, Any]:
     runtime_data = getattr(entry, "runtime_data", None)
-    cached_tools = (
-        cached_mcp_tools(entry, subentry.subentry_id)
-        if runtime_data is not None
-        else None
-    )
+    cached_tools = cached_mcp_tools(entry, subentry.subentry_id) if runtime_data is not None else None
     tool_names = []
     if include_tool_names and cached_tools is not None:
-        tool_names = [
-            str(tool.get("name")) for tool in cached_tools[:limit] if tool.get("name")
-        ]
+        tool_names = [str(tool.get("name")) for tool in cached_tools[:limit] if tool.get("name")]
     return {
         "subentry_id": subentry.subentry_id,
         "title": subentry.title,

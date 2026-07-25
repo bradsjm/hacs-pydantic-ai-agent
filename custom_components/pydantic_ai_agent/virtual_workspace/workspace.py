@@ -250,9 +250,7 @@ class VirtualWorkspace:
                         DirectoryEntry,
                         {
                             "name": name,
-                            "path": normalize_vfs_path(
-                                name, working_directory=normalized
-                            ),
+                            "path": normalize_vfs_path(name, working_directory=normalized),
                             **metadata,
                         },
                     )
@@ -359,9 +357,7 @@ class VirtualWorkspace:
                 raise VirtualWorkspaceError("source does not exist")
             self._reject_descendant_destination(src, dest)
             replaced_path = dest if self.exists(dest) else None
-            self._ensure_workspace_size_limit(
-                added_bytes=0, replaced_path=replaced_path
-            )
+            self._ensure_workspace_size_limit(added_bytes=0, replaced_path=replaced_path)
             snapshot = self.snapshot()
             try:
                 self._prepare_destination(dest, overwrite=overwrite, confirm=confirm)
@@ -429,10 +425,7 @@ class VirtualWorkspace:
 
     def _is_directory(self, path: str) -> bool:
         try:
-            return (
-                self.exists(path)
-                and self._tool.stat(path).get("file_type") == "directory"
-            )
+            return self.exists(path) and self._tool.stat(path).get("file_type") == "directory"
         except Exception:  # noqa: BLE001 - Bashkit stat failures mean the path is not a usable directory.
             return False
 
@@ -440,9 +433,7 @@ class VirtualWorkspace:
         self._tool.mkdir(DEFAULT_WORKING_DIRECTORY, recursive=True)
 
     def _reject_descendant_destination(self, source: str, destination: str) -> None:
-        if self._is_directory(source) and destination.startswith(
-            f"{source.rstrip('/')}/"
-        ):
+        if self._is_directory(source) and destination.startswith(f"{source.rstrip('/')}/"):
             raise VirtualWorkspaceError("destination cannot be inside source")
 
     def _ensure_workspace_size_limit(

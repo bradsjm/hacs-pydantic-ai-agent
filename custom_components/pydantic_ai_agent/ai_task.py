@@ -64,13 +64,10 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
     _attr_icon = "mdi:robot-outline"
     _attr_name = None
     _attr_supported_features = (
-        ai_task.AITaskEntityFeature.GENERATE_DATA
-        | ai_task.AITaskEntityFeature.SUPPORT_ATTACHMENTS
+        ai_task.AITaskEntityFeature.GENERATE_DATA | ai_task.AITaskEntityFeature.SUPPORT_ATTACHMENTS
     )
 
-    def __init__(
-        self, entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry
-    ) -> None:
+    def __init__(self, entry: PydanticAIAgentConfigEntry, subentry: ConfigSubentry) -> None:
         """Initialize the AI task entity."""
         name = str(subentry.data.get(CONF_AI_TASK_NAME, subentry.title))
         super().__init__(entry, subentry, name=name, device_name=name)
@@ -81,16 +78,10 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
             "model_profile": profiles[0].title,
             "fallback_model_profiles": model_display_names(profiles[1:]),
             "structured_output_mode": resolved_structured_output_mode(profiles[0]),
-            "web_fetch_enabled": bool(
-                self.subentry.data.get(CONF_WEB_FETCH_ENABLED, False)
-            ),
-            "web_search_enabled": bool(
-                self.subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)
-            ),
+            "web_fetch_enabled": bool(self.subentry.data.get(CONF_WEB_FETCH_ENABLED, False)),
+            "web_search_enabled": bool(self.subentry.data.get(CONF_WEB_SEARCH_ENABLED, False)),
             "virtual_workspace_enabled": virtual_workspace_enabled(self.subentry.data),
-            "todo_workspace_enabled": bool(
-                self.subentry.data.get(CONF_TODO_LIST_ENTITY_ID)
-            ),
+            "todo_workspace_enabled": bool(self.subentry.data.get(CONF_TODO_LIST_ENTITY_ID)),
             "ha_tools_enabled": bool(self.subentry.data.get(CONF_LLM_HASS_API)),
             "ha_llm_api": self.subentry.data.get(CONF_LLM_HASS_API),
         }
@@ -104,9 +95,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
         if task.llm_api is None and self.subentry.data.get(CONF_LLM_HASS_API):
             await chat_log.async_provide_llm_data(
                 llm.LLMContext(
-                    platform=getattr(
-                        getattr(self, "platform", None), "domain", AI_TASK_DOMAIN
-                    ),
+                    platform=getattr(getattr(self, "platform", None), "domain", AI_TASK_DOMAIN),
                     context=None,
                     language=None,
                     # Assist entity exposure defaults are keyed to the
@@ -175,9 +164,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
         data: object = last_content.content or ""
         if task.structure is not None:
             assert structured_outcome is not None
-            data = await self._async_validate_structured_data(
-                structured_outcome, last_content, task.structure
-            )
+            data = await self._async_validate_structured_data(structured_outcome, last_content, task.structure)
             if structured_outcome.run_recorder is not None:
                 structured_outcome.run_recorder.record(
                     phase="output_validation",
@@ -237,9 +224,7 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                         "output": structured_outcome.output,
                     },
                 )
-            raise HomeAssistantError(
-                "Provider returned malformed structured data"
-            ) from err
+            raise HomeAssistantError("Provider returned malformed structured data") from err
         except vol.Invalid as err:
             self._record_agent_run_failure(err)
             if structured_outcome.run_recorder:
@@ -257,7 +242,5 @@ class PydanticAIAgentAITaskEntity(PydanticAIBaseLLMEntity, ai_task.AITaskEntity)
                         "output": structured_outcome.output,
                     },
                 )
-            raise HomeAssistantError(
-                "Provider returned structured data that does not match the schema"
-            ) from err
+            raise HomeAssistantError("Provider returned structured data that does not match the schema") from err
         return data

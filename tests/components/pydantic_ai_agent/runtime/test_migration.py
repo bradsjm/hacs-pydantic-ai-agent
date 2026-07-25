@@ -106,9 +106,7 @@ async def test_migrate_entry_updates_persisted_subentries_from_minor_one(
     assert await async_migrate_entry(hass, entry) is True
 
     assert entry.minor_version == 5
-    migrated_profile = entry.subentries["provider-1"].data[CONF_MODEL_PROFILES][
-        "default"
-    ]
+    migrated_profile = entry.subentries["provider-1"].data[CONF_MODEL_PROFILES]["default"]
     assert migrated_profile[CONF_MODEL_SETTINGS] == {
         CONF_TEMPLATED_EXTRA_BODY: [
             {
@@ -122,17 +120,11 @@ async def test_migrate_entry_updates_persisted_subentries_from_minor_one(
     assert migrated_profile[CONF_THINKING_SUPPORT] is True
 
     migrated_conversation = entry.subentries["conversation-1"].data
-    assert (
-        migrated_conversation[CONF_CONTEXT_MANAGEMENT_MODE]
-        == CONTEXT_MANAGEMENT_CONTEXT_MANAGER
-    )
+    assert migrated_conversation[CONF_CONTEXT_MANAGEMENT_MODE] == CONTEXT_MANAGEMENT_CONTEXT_MANAGER
     assert CONF_CONTEXT_SUMMARIZATION_MODEL_REF not in migrated_conversation
     assert migrated_conversation[CONF_THINKING] == "medium"
 
     migrated_ai_task = entry.subentries["ai-task-1"].data
     assert "output_mode" not in migrated_ai_task
-    assert (
-        migrated_ai_task[CONF_CONTEXT_MANAGEMENT_MODE]
-        == CONTEXT_MANAGEMENT_SLIDING_WINDOW
-    )
+    assert migrated_ai_task[CONF_CONTEXT_MANAGEMENT_MODE] == CONTEXT_MANAGEMENT_SLIDING_WINDOW
     assert migrated_ai_task[CONF_THINKING] == "none"

@@ -94,9 +94,7 @@ async def async_validate_mcp_url(_hass: HomeAssistant, url: str) -> str:
     return validate_mcp_url_details(url).url
 
 
-async def async_validate_mcp_url_details(
-    _hass: HomeAssistant, url: str
-) -> ValidatedMCPURL:
+async def async_validate_mcp_url_details(_hass: HomeAssistant, url: str) -> ValidatedMCPURL:
     """Validate an MCP URL and return its exact origin."""
     return validate_mcp_url_details(url)
 
@@ -107,9 +105,7 @@ def validate_mcp_url_details(url: str) -> ValidatedMCPURL:
     parsed = urlparse(normalized)
     hostname = parsed.hostname
     if hostname is None:
-        raise MCPValidationError(
-            "invalid_mcp_url", "Enter an MCP server URL with a host."
-        )
+        raise MCPValidationError("invalid_mcp_url", "Enter an MCP server URL with a host.")
     port = _default_port(parsed.scheme, parsed.port)
     return ValidatedMCPURL(normalized, parsed.scheme, hostname, port)
 

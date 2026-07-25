@@ -82,7 +82,6 @@ async def test_chat_log_content_to_model_messages_converts_core_content(
     assert tool_return_part.tool_call_id == "call-1"
 
 
-
 @pytest.mark.parametrize(
     ("supports_images", "expected"),
     [

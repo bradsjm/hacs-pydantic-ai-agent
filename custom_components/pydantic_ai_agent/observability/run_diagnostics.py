@@ -87,9 +87,7 @@ class RunDiagnosticsRecorder:
                     "status": status,
                     "started_at": self.started_at.isoformat(),
                     "finished_at": finished_at.isoformat(),
-                    "duration_ms": round(
-                        (finished_at - self.started_at).total_seconds() * 1000, 3
-                    ),
+                    "duration_ms": round((finished_at - self.started_at).total_seconds() * 1000, 3),
                     "timeline_event_count": self._sequence,
                     "timeline": self._timeline(),
                     "summary": dict(summary or {}),
@@ -107,9 +105,7 @@ class RunDiagnosticsRecorder:
             "total_count": self._sequence,
             "head": self._timeline_head,
             "tail": tail,
-            "omitted_middle_count": self._sequence
-            - len(self._timeline_head)
-            - len(tail),
+            "omitted_middle_count": self._sequence - len(self._timeline_head) - len(tail),
         }
 
 
@@ -128,9 +124,7 @@ def bound_diagnostics_data(value: object, *, _depth: int = 0) -> object:
         }
     if is_dataclass(value) and not isinstance(value, type):
         return {
-            field.name: bound_diagnostics_data(
-                getattr(value, field.name), _depth=_depth + 1
-            )
+            field.name: bound_diagnostics_data(getattr(value, field.name), _depth=_depth + 1)
             for field in fields(value)
         }
     model_dump = getattr(value, "model_dump", None)
@@ -170,14 +164,8 @@ def _bound_sequence(value: Sequence[Any], *, _depth: int) -> object:
     return {
         "__diagnostics_bounded__": "sequence",
         "total_count": total,
-        "head": [
-            bound_diagnostics_data(item, _depth=_depth + 1)
-            for item in value[:_SEQUENCE_EDGE_ITEMS]
-        ],
-        "tail": [
-            bound_diagnostics_data(item, _depth=_depth + 1)
-            for item in value[-_SEQUENCE_EDGE_ITEMS:]
-        ],
+        "head": [bound_diagnostics_data(item, _depth=_depth + 1) for item in value[:_SEQUENCE_EDGE_ITEMS]],
+        "tail": [bound_diagnostics_data(item, _depth=_depth + 1) for item in value[-_SEQUENCE_EDGE_ITEMS:]],
         "omitted_middle_count": total - (_SEQUENCE_EDGE_ITEMS * 2),
     }
 
@@ -186,22 +174,13 @@ def _bound_mapping(value: Mapping[Any, Any], *, _depth: int) -> object:
     """Return a mapping or a head/tail representation for large mappings."""
     total = len(value)
     if total <= _MAPPING_EDGE_ITEMS * 2:
-        return {
-            str(key): bound_diagnostics_data(item, _depth=_depth + 1)
-            for key, item in value.items()
-        }
+        return {str(key): bound_diagnostics_data(item, _depth=_depth + 1) for key, item in value.items()}
     head_items = list(islice(value.items(), _MAPPING_EDGE_ITEMS))
     tail_items = deque(value.items(), maxlen=_MAPPING_EDGE_ITEMS)
     return {
         "__diagnostics_bounded__": "mapping",
         "total_count": total,
-        "head": {
-            str(key): bound_diagnostics_data(item, _depth=_depth + 1)
-            for key, item in head_items
-        },
-        "tail": {
-            str(key): bound_diagnostics_data(item, _depth=_depth + 1)
-            for key, item in tail_items
-        },
+        "head": {str(key): bound_diagnostics_data(item, _depth=_depth + 1) for key, item in head_items},
+        "tail": {str(key): bound_diagnostics_data(item, _depth=_depth + 1) for key, item in tail_items},
         "omitted_middle_count": total - (_MAPPING_EDGE_ITEMS * 2),
     }

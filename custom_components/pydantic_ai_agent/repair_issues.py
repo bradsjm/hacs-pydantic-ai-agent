@@ -88,9 +88,7 @@ def async_delete_logfire_token_conflict_issue(
     entry: ConfigEntry,
 ) -> None:
     """Delete the Logfire token conflict repair issue for an entry."""
-    ir.async_delete_issue(
-        hass, DOMAIN, f"{LOGFIRE_TOKEN_CONFLICT_ISSUE_ID}_{entry.entry_id}"
-    )
+    ir.async_delete_issue(hass, DOMAIN, f"{LOGFIRE_TOKEN_CONFLICT_ISSUE_ID}_{entry.entry_id}")
 
 
 @callback
@@ -103,25 +101,19 @@ def async_delete_entry_repair_issues(hass: HomeAssistant, entry: ConfigEntry) ->
     )
     issue_registry = ir.async_get(hass)
     issue_ids = [
-        issue_id
-        for domain, issue_id in issue_registry.issues
-        if domain == DOMAIN and issue_id.startswith(prefixes)
+        issue_id for domain, issue_id in issue_registry.issues if domain == DOMAIN and issue_id.startswith(prefixes)
     ]
     for issue_id in issue_ids:
         ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
 @callback
-def async_delete_model_validation_issues(
-    hass: HomeAssistant, entry: ConfigEntry
-) -> None:
+def async_delete_model_validation_issues(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Delete legacy model-validation repair issues for an entry."""
     prefix = f"{MODEL_VALIDATION_ISSUE_PREFIX}_{entry.entry_id}_"
     issue_registry = ir.async_get(hass)
     issue_ids = [
-        issue_id
-        for domain, issue_id in issue_registry.issues
-        if domain == DOMAIN and issue_id.startswith(prefix)
+        issue_id for domain, issue_id in issue_registry.issues if domain == DOMAIN and issue_id.startswith(prefix)
     ]
     for issue_id in issue_ids:
         ir.async_delete_issue(hass, DOMAIN, issue_id)

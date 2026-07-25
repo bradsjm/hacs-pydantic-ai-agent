@@ -24,8 +24,6 @@ import pytest
         (ValueError("not an MCP error"), False),
     ],
 )
-def test_is_mcp_timeout_error_classifies_timeout_codes(
-    err: BaseException, expected: bool
-) -> None:
+def test_is_mcp_timeout_error_classifies_timeout_codes(err: BaseException, expected: bool) -> None:
     """Only MCP request-timeout errors are classified as retryable timeouts."""
     assert is_mcp_timeout_error(err) is expected

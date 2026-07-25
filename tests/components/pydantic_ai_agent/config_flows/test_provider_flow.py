@@ -72,9 +72,7 @@ def _flow(
     flow.hass = hass
     flow.handler = (entry.entry_id, SUBENTRY_TYPE_PROVIDER)
     flow.context = (
-        {"source": SOURCE_USER}
-        if subentry_id is None
-        else {"source": SOURCE_RECONFIGURE, "subentry_id": subentry_id}
+        {"source": SOURCE_USER} if subentry_id is None else {"source": SOURCE_RECONFIGURE, "subentry_id": subentry_id}
     )
     return flow
 
@@ -106,9 +104,7 @@ def _catalog() -> CompactCatalog:
         output_limit=1024,
         status=None,
     )
-    return CompactCatalog(
-        providers={provider.id: provider}, models_by_provider={provider.id: (model,)}
-    )
+    return CompactCatalog(providers={provider.id: provider}, models_by_provider={provider.id: (model,)})
 
 
 def _prime_catalog(hass: HomeAssistant) -> None:
@@ -157,12 +153,8 @@ async def test_guided_provider_creation(
     flow = _flow(entry, hass)
 
     picker = await flow.async_step_user()
-    connection = await flow.async_step_pick_provider(
-        {"provider_id": "catalog-provider"}
-    )
-    result = await flow.async_step_wizard_connection(
-        {CONF_NAME: "Guided Provider", CONF_API_KEY: "guided-key"}
-    )
+    connection = await flow.async_step_pick_provider({"provider_id": "catalog-provider"})
+    result = await flow.async_step_wizard_connection({CONF_NAME: "Guided Provider", CONF_API_KEY: "guided-key"})
 
     assert picker["step_id"] == "pick_provider"
     assert connection["step_id"] == "wizard_connection"
@@ -203,9 +195,7 @@ async def test_duplicate_provider_is_rejected(
         subentry_type=SUBENTRY_TYPE_PROVIDER,
         data=_provider_data(),
     )
-    entry = make_config_entry(
-        subentries=(provider,), state=ConfigEntryState.LOADED
-    )
+    entry = make_config_entry(subentries=(provider,), state=ConfigEntryState.LOADED)
     entry.add_to_hass(hass)
     _prime_catalog(hass)
     flow = _flow(entry, hass)
@@ -231,17 +221,13 @@ async def test_reconfigure_manages_provider_models(
         subentry_type=SUBENTRY_TYPE_PROVIDER,
         data=data,
     )
-    entry = make_config_entry(
-        subentries=(provider,), state=ConfigEntryState.LOADED
-    )
+    entry = make_config_entry(subentries=(provider,), state=ConfigEntryState.LOADED)
     entry.add_to_hass(hass)
     flow = _flow(entry, hass, provider.subentry_id)
 
     menu = await flow.async_step_reconfigure()
     result = await flow.async_step_manage_models()
-    saved = await flow.async_step_manage_models(
-        {"selected_model_ids": ["configured-model"]}
-    )
+    saved = await flow.async_step_manage_models({"selected_model_ids": ["configured-model"]})
 
     assert menu["type"] is FlowResultType.MENU
     assert result["type"] is FlowResultType.FORM
@@ -261,9 +247,7 @@ async def test_profile_edit_attaches_context_window_error_to_field(
         subentry_type=SUBENTRY_TYPE_PROVIDER,
         data=_provider_data(),
     )
-    entry = make_config_entry(
-        subentries=(provider,), state=ConfigEntryState.LOADED
-    )
+    entry = make_config_entry(subentries=(provider,), state=ConfigEntryState.LOADED)
     entry.add_to_hass(hass)
     flow = _flow(entry, hass, provider.subentry_id)
 

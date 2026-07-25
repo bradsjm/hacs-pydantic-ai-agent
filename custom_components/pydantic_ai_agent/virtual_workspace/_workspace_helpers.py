@@ -19,9 +19,7 @@ def require_confirmed_overwrite(path: str, overwrite: bool, confirm: bool) -> No
     if protected_replacement_path(path):
         raise PathValidationError("protected workspace paths cannot be replaced")
     if not overwrite:
-        raise ConfirmationRequiredError(
-            "target exists; set overwrite=true to replace it"
-        )
+        raise ConfirmationRequiredError("target exists; set overwrite=true to replace it")
     if not confirm:
         raise ConfirmationRequiredError("overwrite requires confirm=true")
 

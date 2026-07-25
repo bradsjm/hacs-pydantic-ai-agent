@@ -21,16 +21,10 @@ def _header_key_name_set(header_keys: object) -> set[str]:
         values = header_keys
     else:
         return set()
-    return {
-        header_name.casefold()
-        for item in values
-        if isinstance(item, str) and (header_name := item.strip())
-    }
+    return {header_name.casefold() for item in values if isinstance(item, str) and (header_name := item.strip())}
 
 
-def format_header_rows(
-    headers: object, secret_header_keys: object = ()
-) -> list[dict[str, str | bool]]:
+def format_header_rows(headers: object, secret_header_keys: object = ()) -> list[dict[str, str | bool]]:
     """Return stored headers in selector-compatible row shape."""
     secrets = _header_key_name_set(secret_header_keys)
     if isinstance(headers, list):
@@ -43,9 +37,7 @@ def format_header_rows(
             if not isinstance(key, str) or not isinstance(row_value, str):
                 continue
             is_secret = item.get(CONF_KEY_VALUE_IS_SECRET)
-            is_secret = (
-                is_secret if isinstance(is_secret, bool) else key.casefold() in secrets
-            )
+            is_secret = is_secret if isinstance(is_secret, bool) else key.casefold() in secrets
             list_rows.append(
                 {
                     CONF_KEY_VALUE_KEY: key,
@@ -82,17 +74,12 @@ def parse_header_rows(
     previous_secret_header_keys: object = (),
 ) -> tuple[dict[str, str], list[str]]:
     """Return selector header rows as a mapping and secret-key list."""
-    previous_secret_values = _previous_secret_values(
-        previous_headers, previous_secret_header_keys
-    )
+    previous_secret_values = _previous_secret_values(previous_headers, previous_secret_header_keys)
     if value in (None, ""):
         return {}, []
     if isinstance(value, Mapping):
         parsed = dict(value)
-        if not all(
-            isinstance(key, str) and isinstance(item, str)
-            for key, item in parsed.items()
-        ):
+        if not all(isinstance(key, str) and isinstance(item, str) for key, item in parsed.items()):
             raise ValueError("invalid_key_value")
         return _restore_redacted_headers(parsed, previous_secret_values), []
     if not isinstance(value, list):
@@ -127,9 +114,7 @@ def _parse_header_row_list(
     return parsed, secret_keys
 
 
-def _previous_secret_values(
-    headers: object, secret_header_keys: object
-) -> dict[str, str]:
+def _previous_secret_values(headers: object, secret_header_keys: object) -> dict[str, str]:
     """Return previous secret header values keyed by normalized header name."""
     if isinstance(headers, list):
         headers, secret_header_keys = parse_header_rows(headers)
@@ -143,9 +128,7 @@ def _previous_secret_values(
     }
 
 
-def _restore_redacted_headers(
-    headers: dict[str, str], previous_secret_values: Mapping[str, str]
-) -> dict[str, str]:
+def _restore_redacted_headers(headers: dict[str, str], previous_secret_values: Mapping[str, str]) -> dict[str, str]:
     """Restore unchanged redacted placeholders from previous secret values."""
     return {
         key: _restore_redacted_header_value(key, value, previous_secret_values)
@@ -170,19 +153,13 @@ def _restore_redacted_header_value(
     return value
 
 
-def normalize_secret_header_keys(
-    headers: object, secret_header_keys: object
-) -> list[str]:
+def normalize_secret_header_keys(headers: object, secret_header_keys: object) -> list[str]:
     """Return secret header keys filtered to the current header mapping."""
     if not isinstance(headers, Mapping):
         return []
     secrets = _header_key_name_set(secret_header_keys)
     return [
-        key
-        for key in headers
-        if isinstance(key, str)
-        and isinstance(headers[key], str)
-        and key.casefold() in secrets
+        key for key in headers if isinstance(key, str) and isinstance(headers[key], str) and key.casefold() in secrets
     ]
 
 

@@ -26,11 +26,7 @@ def serialize_payload(value: object) -> object:
                 result[key] = serialized
         return result
     if isinstance(value, list):
-        return [
-            item
-            for item in (serialize_payload(item) for item in value)
-            if not is_omitted(item)
-        ]
+        return [item for item in (serialize_payload(item) for item in value) if not is_omitted(item)]
     return value
 
 
@@ -58,9 +54,7 @@ class ChatCompletionsResource:
             body.update(cast(dict[str, object], serialize_payload(extra_body)))
 
         headers = self._client.auth_headers | (extra_headers or {})
-        request_timeout = (
-            None if is_omitted(timeout) else cast(float | httpx.Timeout | None, timeout)
-        )
+        request_timeout = None if is_omitted(timeout) else cast(float | httpx.Timeout | None, timeout)
         url = self._client.url_for("/chat/completions")
         if stream:
             return ChatCompletionStream(

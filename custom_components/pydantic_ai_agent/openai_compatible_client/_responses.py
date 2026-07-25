@@ -39,9 +39,7 @@ class ResponsesResource:
             body.update(cast(dict[str, object], serialize_payload(extra_body)))
 
         headers = self._client.auth_headers | (extra_headers or {})
-        request_timeout = (
-            None if is_omitted(timeout) else cast(float | httpx.Timeout | None, timeout)
-        )
+        request_timeout = None if is_omitted(timeout) else cast(float | httpx.Timeout | None, timeout)
         if stream:
             return ResponseStream(
                 self._client.http_client.stream(

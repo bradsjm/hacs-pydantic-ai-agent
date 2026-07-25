@@ -44,9 +44,7 @@ class _SSEStream[EventT: BaseModel]:
 
     _event_type: type[EventT]
 
-    def __init__(
-        self, response_context: AbstractAsyncContextManager[httpx.Response]
-    ) -> None:
+    def __init__(self, response_context: AbstractAsyncContextManager[httpx.Response]) -> None:
         """Initialize the stream."""
         self._response_context = response_context
         self._response: httpx.Response | None = None

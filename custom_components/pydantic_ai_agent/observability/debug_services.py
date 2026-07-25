@@ -56,9 +56,7 @@ _TOOL_SOURCE_STATUS_SCHEMA = vol.Schema(
         **_OPTIONAL_ENTRY_SCHEMA,
         vol.Optional(ATTR_SUBENTRY_ID): str,
         vol.Optional(ATTR_INCLUDE_TOOL_NAMES, default=True): bool,
-        vol.Optional(ATTR_LIMIT, default=50): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=200)
-        ),
+        vol.Optional(ATTR_LIMIT, default=50): vol.All(vol.Coerce(int), vol.Range(min=1, max=200)),
     }
 )
 
@@ -149,9 +147,7 @@ def _get_agent_metrics(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]
     return {
         "success": True,
         "count": len(entries),
-        "entries": [
-            metrics_status(entry, subentry_id=subentry_id) for entry in entries
-        ],
+        "entries": [metrics_status(entry, subentry_id=subentry_id) for entry in entries],
     }
 
 
@@ -173,9 +169,7 @@ def _get_tool_source_status(hass: HomeAssistant, call: ServiceCall) -> dict[str,
     }
 
 
-def _entries_for_service(
-    hass: HomeAssistant, entry_id: str | None
-) -> list[ConfigEntry]:
+def _entries_for_service(hass: HomeAssistant, entry_id: str | None) -> list[ConfigEntry]:
     """Return matching Pydantic AI Agent config entries."""
     if entry_id is not None:
         entry = hass.config_entries.async_get_entry(entry_id)

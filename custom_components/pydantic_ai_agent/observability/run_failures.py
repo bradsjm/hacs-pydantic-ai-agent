@@ -79,11 +79,7 @@ def _classify_run_failure(
     cause = _run_failure_cause(err)
     error_type = type(cause).__name__
     context = _tool_problem_context(tool_problem)
-    prefix = (
-        "Terminated after a partial response because "
-        if partial_response
-        else "Terminated because "
-    )
+    prefix = "Terminated after a partial response because " if partial_response else "Terminated because "
 
     if isinstance(cause, UsageLimitExceeded):
         return _build_usage_limit_failure(
@@ -161,10 +157,7 @@ def _build_failure_message(
             "model/provider compatibility or try a different model profile."
         )
     if isinstance(cause, TimeoutError | httpx.TimeoutException):
-        return (
-            f"{prefix}the provider request timed out. Check network "
-            "connectivity or try again later."
-        )
+        return f"{prefix}the provider request timed out. Check network connectivity or try again later."
     if isinstance(cause, NotImplementedError | UserError):
         return f"Invalid provider configuration: {cause}"
     if isinstance(cause, HomeAssistantError):
@@ -217,9 +210,7 @@ def _home_assistant_error(err: Exception) -> HomeAssistantError:
 def _should_fallback(err: Exception) -> bool:
     """Return if a failed model attempt should try the next profile."""
     if isinstance(err, _AgentRunFailed):
-        return not err.failure.partial_response and _should_fallback(
-            cast(Exception, _run_failure_cause(err))
-        )
+        return not err.failure.partial_response and _should_fallback(cast(Exception, _run_failure_cause(err)))
     if isinstance(err, ModelHTTPError):
         return (
             err.status_code

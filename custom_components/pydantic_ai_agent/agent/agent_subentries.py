@@ -44,10 +44,7 @@ def iter_valid_agent_subentries[T](
             _log_invalid_agent_subentry(entry, subentry, platform, err)
         except Exception:
             _LOGGER.exception(
-                (
-                    'Skipping invalid %s subentry "%s" (%s) while setting up '
-                    '%s platform for entry "%s"; model_refs=%s'
-                ),
+                ('Skipping invalid %s subentry "%s" (%s) while setting up %s platform for entry "%s"; model_refs=%s'),
                 subentry.subentry_type,
                 subentry.subentry_id,
                 subentry.title,
@@ -65,10 +62,7 @@ def _log_invalid_agent_subentry(
 ) -> None:
     """Log safe context for an invalid agent subentry skipped at platform setup."""
     _LOGGER.warning(
-        (
-            'Skipping invalid %s subentry "%s" (%s) while setting up %s '
-            'platform for entry "%s"; model_refs=%s: %s'
-        ),
+        ('Skipping invalid %s subentry "%s" (%s) while setting up %s platform for entry "%s"; model_refs=%s: %s'),
         subentry.subentry_type,
         subentry.subentry_id,
         subentry.title,
@@ -86,8 +80,7 @@ def _safe_model_refs(data: Mapping[str, Any]) -> dict[str, str | list[str] | Non
         CONF_PRIMARY_MODEL_REF: _safe_string(data.get(CONF_PRIMARY_MODEL_REF)),
         CONF_FALLBACK_MODEL_REFS: (
             [item for item in fallback_refs if isinstance(item, str)]
-            if isinstance(fallback_refs, Sequence)
-            and not isinstance(fallback_refs, str | bytes)
+            if isinstance(fallback_refs, Sequence) and not isinstance(fallback_refs, str | bytes)
             else None
         ),
     }

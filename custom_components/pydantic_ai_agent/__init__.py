@@ -119,9 +119,7 @@ async def async_setup(hass: HomeAssistant, _config: dict[str, Any]) -> bool:
     return True
 
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> bool:
     """Build workspace runtime data, then set up entity platforms."""
     provider_runtimes = _provider_runtimes(entry)
     model_profiles = _resolved_model_profiles(entry, provider_runtimes)
@@ -161,9 +159,7 @@ async def async_setup_entry(
     return True
 
 
-async def async_unload_entry(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> bool:
     """Unload a config entry."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
@@ -172,9 +168,7 @@ async def async_unload_entry(
     return unloaded
 
 
-async def async_migrate_entry(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> bool:
+async def async_migrate_entry(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> bool:
     """Migrate workspace entries."""
     if entry.version != 2:
         _LOGGER.error(
@@ -216,9 +210,7 @@ async def async_migrate_entry(
     return False
 
 
-async def async_remove_entry(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+async def async_remove_entry(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> None:
     """Clean up repair issues when a config entry is permanently removed."""
     await async_release_logfire(hass, entry)
     async_delete_entry_repair_issues(hass, entry)
@@ -228,9 +220,7 @@ async def async_remove_entry(
     await _async_remove_removed_memory_store(hass, entry)
 
 
-async def async_update_entry(
-    hass: HomeAssistant, entry: PydanticAIAgentConfigEntry
-) -> None:
+async def async_update_entry(hass: HomeAssistant, entry: PydanticAIAgentConfigEntry) -> None:
     """Reload the entry after config entry or subentry updates."""
     await hass.config_entries.async_reload(entry.entry_id)
 
@@ -247,9 +237,7 @@ def _mcp_error_response(err: MCPValidationError) -> dict[str, Any]:
     }
 
 
-def _config_entry_for_service(
-    hass: HomeAssistant, entry_id: str
-) -> PydanticAIAgentConfigEntry:
+def _config_entry_for_service(hass: HomeAssistant, entry_id: str) -> PydanticAIAgentConfigEntry:
     """Return a config entry for an MCP response service."""
     entry = hass.config_entries.async_get_entry(entry_id)
     if entry is None or entry.domain != DOMAIN:
@@ -261,9 +249,7 @@ def _config_entry_for_service(
     return entry
 
 
-def _mcp_service_subentry_ids(
-    entry: PydanticAIAgentConfigEntry, requested_id: str | None
-) -> list[str]:
+def _mcp_service_subentry_ids(entry: PydanticAIAgentConfigEntry, requested_id: str | None) -> list[str]:
     """Return target MCP subentry IDs for a response service call."""
     if requested_id is not None:
         return [requested_id]

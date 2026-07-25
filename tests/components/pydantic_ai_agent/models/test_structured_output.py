@@ -75,9 +75,7 @@ def test_structured_output_name_is_prefixed_bounded_and_collision_safe() -> None
 
 def test_structured_model_request_parameters_for_tool_mode() -> None:
     """Tool mode exposes the output as an output tool and disallows text."""
-    function_tool = ToolDefinition(
-        name="lookup", parameters_json_schema={"type": "object"}
-    )
+    function_tool = ToolDefinition(name="lookup", parameters_json_schema={"type": "object"})
     schema = {"type": "object", "properties": {"answer": {"type": "string"}}}
 
     params = structured_model_request_parameters(
@@ -130,9 +128,7 @@ def test_output_tool_names_only_returns_tool_mode_name() -> None:
         (OUTPUT_MODE_PROMPTED, PromptedOutput),
     ],
 )
-def test_structured_agent_output_type_returns_mode_specific_wrapper(
-    mode: str, expected_type: type[object]
-) -> None:
+def test_structured_agent_output_type_returns_mode_specific_wrapper(mode: str, expected_type: type[object]) -> None:
     """Agent output types use the Pydantic AI wrapper for the selected mode."""
     output_type = structured_agent_output_type(
         output_mode=mode,

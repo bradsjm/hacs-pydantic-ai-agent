@@ -98,14 +98,10 @@ from .mcp_helpers import (
 from .skill_helpers import _append_skill_schema_fields, _normalise_skill_selection
 
 
-def _agent_form_suggested_values(
-    options: Mapping[str, Any], hass: HomeAssistant | None = None
-) -> dict[str, Any]:
+def _agent_form_suggested_values(options: Mapping[str, Any], hass: HomeAssistant | None = None) -> dict[str, Any]:
     """Return per-agent suggested values matching the sectioned form schema."""
     suggested_values = dict(options)
-    suggested_values[_SECTION_RUN_SETTINGS] = {
-        key: options[key] for key in _RUN_SETTING_KEYS if key in options
-    }
+    suggested_values[_SECTION_RUN_SETTINGS] = {key: options[key] for key in _RUN_SETTING_KEYS if key in options}
     if CONF_LLM_HASS_API in options:
         llm_hass_api = options[CONF_LLM_HASS_API]
         if hass is not None:
@@ -123,16 +119,12 @@ def _conversation_schema(
     """Return the conversation subentry schema, pruning unavailable HA APIs."""
     options = dict(options or {})
     model_options = _model_profile_select_options(entry)
-    fallback_refs = _deduplicate_fallback_model_refs(
-        options.get(CONF_FALLBACK_MODEL_REFS, [])
-    )
+    fallback_refs = _deduplicate_fallback_model_refs(options.get(CONF_FALLBACK_MODEL_REFS, []))
     primary_model_ref = options.get(CONF_PRIMARY_MODEL_REF)
     if not isinstance(primary_model_ref, str):
         primary_model_ref = None
     fallback_refs = [ref for ref in fallback_refs if ref != primary_model_ref]
-    fallback_model_options = _fallback_model_profile_select_options(
-        hass, entry, fallback_refs, primary_model_ref
-    )
+    fallback_model_options = _fallback_model_profile_select_options(hass, entry, fallback_refs, primary_model_ref)
     hass_apis: list[SelectOptionDict] = []
     valid_api_ids: set[str] = set()
     for api in llm.async_get_apis(hass):
@@ -140,9 +132,7 @@ def _conversation_schema(
         valid_api_ids.add(api.id)
 
     if CONF_LLM_HASS_API in options:
-        options[CONF_LLM_HASS_API] = [
-            api for api in options[CONF_LLM_HASS_API] if api in valid_api_ids
-        ]
+        options[CONF_LLM_HASS_API] = [api for api in options[CONF_LLM_HASS_API] if api in valid_api_ids]
     schema: VolDictType = {
         vol.Required(
             CONF_AGENT_NAME,
@@ -180,16 +170,16 @@ def _conversation_schema(
                 translation_key=CONF_FALLBACK_MODEL_REFS,
             )
         )
-        schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = (
-            section(vol.Schema(fallback_schema), {"collapsed": True})
+        schema[_section_schema_key(_SECTION_FALLBACK_MODELS, fallback_schema)] = section(
+            vol.Schema(fallback_schema), {"collapsed": True}
         )
     context_schema = _context_management_schema(
         options,
         entry,
         default_mode=CONTEXT_MANAGEMENT_CONTEXT_MANAGER,
     )
-    schema[_section_schema_key(_SECTION_CONTEXT_MANAGEMENT, context_schema.schema)] = (
-        section(context_schema, {"collapsed": True})
+    schema[_section_schema_key(_SECTION_CONTEXT_MANAGEMENT, context_schema.schema)] = section(
+        context_schema, {"collapsed": True}
     )
     run_settings_schema = _run_settings_schema(
         options,
@@ -249,8 +239,8 @@ def _conversation_schema(
         )
     ] = BooleanSelector()
     _append_mcp_server_schema_fields(external_tools_schema, options, entry)
-    schema[_section_schema_key(_SECTION_EXTERNAL_TOOLS, external_tools_schema)] = (
-        section(vol.Schema(external_tools_schema), {"collapsed": True})
+    schema[_section_schema_key(_SECTION_EXTERNAL_TOOLS, external_tools_schema)] = section(
+        vol.Schema(external_tools_schema), {"collapsed": True}
     )
     skills_schema: VolDictType = {}
     _append_skill_schema_fields(skills_schema, options, entry)
@@ -298,12 +288,8 @@ def _model_profile_schema(
             ): TextSelector(TextSelectorConfig()),
             vol.Optional(
                 _MODEL_SETTING_TEMPERATURE,
-                description={
-                    "suggested_value": model_settings.get(_MODEL_SETTING_TEMPERATURE)
-                },
-            ): NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
-            ),
+                description={"suggested_value": model_settings.get(_MODEL_SETTING_TEMPERATURE)},
+            ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)),
             _section_schema_key(
                 _SECTION_ADVANCED_MODEL_SETTINGS,
                 advanced_model_settings_schema.schema,
@@ -322,48 +308,24 @@ def _model_settings_schema(options: Mapping[str, Any] | None = None) -> vol.Sche
         {
             vol.Optional(
                 _MODEL_SETTING_TOP_P,
-                description={
-                    "suggested_value": model_settings.get(_MODEL_SETTING_TOP_P)
-                },
-            ): NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
-            ),
+                description={"suggested_value": model_settings.get(_MODEL_SETTING_TOP_P)},
+            ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)),
             vol.Optional(
                 _MODEL_SETTING_SEED,
-                description={
-                    "suggested_value": model_settings.get(_MODEL_SETTING_SEED)
-                },
-            ): NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)
-            ),
+                description={"suggested_value": model_settings.get(_MODEL_SETTING_SEED)},
+            ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=1)),
             vol.Optional(
                 _MODEL_SETTING_PRESENCE_PENALTY,
-                description={
-                    "suggested_value": model_settings.get(
-                        _MODEL_SETTING_PRESENCE_PENALTY
-                    )
-                },
-            ): NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
-            ),
+                description={"suggested_value": model_settings.get(_MODEL_SETTING_PRESENCE_PENALTY)},
+            ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)),
             vol.Optional(
                 _MODEL_SETTING_FREQUENCY_PENALTY,
-                description={
-                    "suggested_value": model_settings.get(
-                        _MODEL_SETTING_FREQUENCY_PENALTY
-                    )
-                },
-            ): NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)
-            ),
+                description={"suggested_value": model_settings.get(_MODEL_SETTING_FREQUENCY_PENALTY)},
+            ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step=0.1)),
             vol.Optional(
                 _MODEL_SETTING_TEMPLATED_EXTRA_BODY,
-                default=_format_templated_extra_body(
-                    model_settings.get(_MODEL_SETTING_TEMPLATED_EXTRA_BODY)
-                ),
-            ): _key_value_rows_selector(
-                CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE, {"template": None}
-            ),
+                default=_format_templated_extra_body(model_settings.get(_MODEL_SETTING_TEMPLATED_EXTRA_BODY)),
+            ): _key_value_rows_selector(CONF_CHAT_TEMPLATE_KWARG_VALUE_TEMPLATE, {"template": None}),
         }
     )
 
@@ -393,9 +355,7 @@ def _run_settings_schema(
         vol.Required(
             CONF_TOOL_RETRIES,
             default=options.get(CONF_TOOL_RETRIES, DEFAULT_TOOL_RETRIES),
-        ): NumberSelector(
-            NumberSelectorConfig(mode=NumberSelectorMode.BOX, min=0, step=1)
-        ),
+        ): NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, min=0, step=1)),
     }
     if visibility.supports_thinking:
         thinking_default = _format_thinking_value(options)
@@ -428,20 +388,12 @@ def _model_pricing_schema(options: Mapping[str, Any] | None = None) -> vol.Schem
         output_key = vol.Optional(_MODEL_PRICING_OUTPUT, default=pricing["output"])
     cache_read_key = vol.Optional(_MODEL_PRICING_CACHE_READ)
     if pricing.get("cache_read") is not None:
-        cache_read_key = vol.Optional(
-            _MODEL_PRICING_CACHE_READ, default=pricing["cache_read"]
-        )
+        cache_read_key = vol.Optional(_MODEL_PRICING_CACHE_READ, default=pricing["cache_read"])
     return vol.Schema(
         {
-            input_key: NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
-            ),
-            output_key: NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
-            ),
-            cache_read_key: NumberSelector(
-                NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
-            ),
+            input_key: NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")),
+            output_key: NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")),
+            cache_read_key: NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")),
         }
     )
 
@@ -464,12 +416,8 @@ def _conversation_data_from_user_input(
         ),
     )
     data = dict(user_input)
-    data[CONF_FALLBACK_MODEL_REFS] = _normalise_fallback_model_refs(
-        data.get(CONF_FALLBACK_MODEL_REFS, [])
-    )
-    _normalise_context_management_settings(
-        data, entry, default_mode=CONTEXT_MANAGEMENT_CONTEXT_MANAGER
-    )
+    data[CONF_FALLBACK_MODEL_REFS] = _normalise_fallback_model_refs(data.get(CONF_FALLBACK_MODEL_REFS, []))
+    _normalise_context_management_settings(data, entry, default_mode=CONTEXT_MANAGEMENT_CONTEXT_MANAGER)
     if not data.get(CONF_LLM_HASS_API):
         data.pop(CONF_LLM_HASS_API, None)
     if data.get(CONF_STREAMING_ENABLED, True) is not False:

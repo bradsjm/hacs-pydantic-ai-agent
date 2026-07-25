@@ -117,9 +117,7 @@ def _mcp_server_select_options(
     configured_ids = {str(option["value"]) for option in options if "value" in option}
     for server_id in _normalise_selected_mcp_server_ids(selected_server_ids):
         if server_id not in configured_ids:
-            options.append(
-                SelectOptionDict(label=f"Unavailable / {server_id}", value=server_id)
-            )
+            options.append(SelectOptionDict(label=f"Unavailable / {server_id}", value=server_id))
     return options
 
 
@@ -135,9 +133,7 @@ def _append_mcp_server_schema_fields(
     schema[
         vol.Optional(
             CONF_MCP_SERVER_IDS,
-            default=_normalise_selected_mcp_server_ids(
-                options.get(CONF_MCP_SERVER_IDS)
-            ),
+            default=_normalise_selected_mcp_server_ids(options.get(CONF_MCP_SERVER_IDS)),
         )
     ] = SelectSelector(
         SelectSelectorConfig(
@@ -148,9 +144,7 @@ def _append_mcp_server_schema_fields(
     )
 
 
-def _selected_mcp_server_error(
-    entry: ConfigEntry, data: Mapping[str, Any]
-) -> str | None:
+def _selected_mcp_server_error(entry: ConfigEntry, data: Mapping[str, Any]) -> str | None:
     """Return a form error for selected MCP servers that cannot run."""
     for server_id in _normalise_selected_mcp_server_ids(data.get(CONF_MCP_SERVER_IDS)):
         subentry = entry.subentries.get(server_id)
@@ -229,9 +223,7 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
     }
     return vol.Schema(
         {
-            vol.Required(CONF_NAME, default=options.get(CONF_NAME, "")): TextSelector(
-                TextSelectorConfig()
-            ),
+            vol.Required(CONF_NAME, default=options.get(CONF_NAME, "")): TextSelector(TextSelectorConfig()),
             vol.Required(
                 CONF_MCP_URL,
                 default=options.get(CONF_MCP_URL, ""),
@@ -244,9 +236,7 @@ def _mcp_server_schema(options: Mapping[str, Any] | None = None) -> vol.Schema:
     )
 
 
-def _format_mcp_headers(
-    headers: object, secret_header_keys: object = ()
-) -> list[dict[str, str | bool]]:
+def _format_mcp_headers(headers: object, secret_header_keys: object = ()) -> list[dict[str, str | bool]]:
     """Return headers in selector-compatible row shape for the config form."""
     return format_header_rows(headers, secret_header_keys)
 
@@ -295,9 +285,7 @@ def _mcp_tools_schema(
             ): SelectSelector(
                 SelectSelectorConfig(
                     options=[
-                        SelectOptionDict(
-                            label=MCP_TOOL_MODE_ALL, value=MCP_TOOL_MODE_ALL
-                        ),
+                        SelectOptionDict(label=MCP_TOOL_MODE_ALL, value=MCP_TOOL_MODE_ALL),
                         SelectOptionDict(
                             label=MCP_TOOL_MODE_SPECIFIED,
                             value=MCP_TOOL_MODE_SPECIFIED,
@@ -338,25 +326,15 @@ def _mcp_server_data_from_user_input(
     data: dict[str, Any] = {
         CONF_NAME: str(user_input[CONF_NAME]).strip(),
         CONF_MCP_URL: normalise_mcp_url(user_input[CONF_MCP_URL]),
-        CONF_MCP_CALL_CACHE_ENABLED: bool(
-            user_input.get(CONF_MCP_CALL_CACHE_ENABLED, False)
-        ),
+        CONF_MCP_CALL_CACHE_ENABLED: bool(user_input.get(CONF_MCP_CALL_CACHE_ENABLED, False)),
         CONF_MCP_CALL_CACHE_TTL: _parse_mcp_call_cache_ttl(
             user_input.get(CONF_MCP_CALL_CACHE_TTL, DEFAULT_MCP_CALL_CACHE_TTL)
         ),
-        CONF_MCP_TIMEOUT: _parse_mcp_timeout(
-            user_input.get(CONF_MCP_TIMEOUT, DEFAULT_MCP_TIMEOUT)
-        ),
-        CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(
-            user_input.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)
-        ),
-        CONF_MCP_DEFERRED_LOADING: bool(
-            user_input.get(CONF_MCP_DEFERRED_LOADING, False)
-        ),
+        CONF_MCP_TIMEOUT: _parse_mcp_timeout(user_input.get(CONF_MCP_TIMEOUT, DEFAULT_MCP_TIMEOUT)),
+        CONF_MCP_INCLUDE_RETURN_SCHEMA: bool(user_input.get(CONF_MCP_INCLUDE_RETURN_SCHEMA, True)),
+        CONF_MCP_DEFERRED_LOADING: bool(user_input.get(CONF_MCP_DEFERRED_LOADING, False)),
     }
-    headers, secret_header_keys = _parse_mcp_headers_with_secrets(
-        user_input.get(CONF_MCP_HEADERS), previous_data
-    )
+    headers, secret_header_keys = _parse_mcp_headers_with_secrets(user_input.get(CONF_MCP_HEADERS), previous_data)
     if headers:
         data[CONF_MCP_HEADERS] = headers
         data[CONF_MCP_SECRET_HEADER_KEYS] = secret_header_keys
@@ -380,9 +358,7 @@ def _parse_mcp_headers_with_secrets(
     except ValueError as err:
         raise vol.Invalid(str(err)) from err
     validated_headers = parse_mcp_headers(headers)
-    return validated_headers, normalize_secret_header_keys(
-        validated_headers, secret_header_keys
-    )
+    return validated_headers, normalize_secret_header_keys(validated_headers, secret_header_keys)
 
 
 def _parse_mcp_call_cache_ttl(value: object) -> int:
@@ -431,8 +407,7 @@ def _mcp_url_already_configured(
             existing_identity = _mcp_url_identity(subentry.data.get(CONF_MCP_URL))
         except MCPValidationError:
             _LOGGER.warning(
-                "Ignoring invalid stored MCP URL while checking duplicates "
-                "for subentry %s",
+                "Ignoring invalid stored MCP URL while checking duplicates for subentry %s",
                 subentry.subentry_id,
             )
             continue

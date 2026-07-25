@@ -28,9 +28,7 @@ def _sorted_select_options(
     )
 
 
-def _flatten_section_data(
-    data: Mapping[str, Any], section_keys: Iterable[str]
-) -> dict[str, Any]:
+def _flatten_section_data(data: Mapping[str, Any], section_keys: Iterable[str]) -> dict[str, Any]:
     """Return form data with HA section namespaces flattened."""
     flattened = dict(data)
     for key in section_keys:
@@ -92,11 +90,7 @@ def _section_defaults(section_schema: VolDictType) -> dict[str, Any]:
     defaults: dict[str, Any] = {}
     for key in section_schema:
         key_default = getattr(key, "default", vol.Undefined)
-        if (
-            isinstance(key, vol.Marker)
-            and isinstance(key.schema, str)
-            and not isinstance(key_default, vol.Undefined)
-        ):
+        if isinstance(key, vol.Marker) and isinstance(key.schema, str) and not isinstance(key_default, vol.Undefined):
             defaults[key.schema] = key_default()
     return defaults
 
@@ -134,9 +128,7 @@ def _key_value_rows_selector(
     }
     if include_secret_toggle:
         del secret_default
-        fields[CONF_KEY_VALUE_IS_SECRET] = ObjectSelectorField(
-            selector={"boolean": {}}, required=False
-        )
+        fields[CONF_KEY_VALUE_IS_SECRET] = ObjectSelectorField(selector={"boolean": {}}, required=False)
     config = ObjectSelectorConfig(multiple=True, fields=fields)
     if label_field is not None:
         config["label_field"] = label_field

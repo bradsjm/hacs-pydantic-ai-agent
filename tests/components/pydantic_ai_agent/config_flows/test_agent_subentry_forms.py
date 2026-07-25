@@ -31,9 +31,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 
-def _loaded_entry_with_model(
-    hass: HomeAssistant, make_config_entry: Any, make_subentry: Any
-) -> Any:
+def _loaded_entry_with_model(hass: HomeAssistant, make_config_entry: Any, make_subentry: Any) -> Any:
     """Add a loaded workspace with one selectable model profile to HA."""
     provider = make_subentry(
         subentry_id="provider-1",

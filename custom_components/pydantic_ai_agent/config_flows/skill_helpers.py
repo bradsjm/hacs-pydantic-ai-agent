@@ -62,9 +62,7 @@ def _normalise_selected_skill_ids(raw_skill_ids: object) -> list[str]:
     return skill_ids
 
 
-def _skill_select_options(
-    entry: ConfigEntry | None, selected_skill_ids: object = None
-) -> list[SelectOptionDict]:
+def _skill_select_options(entry: ConfigEntry | None, selected_skill_ids: object = None) -> list[SelectOptionDict]:
     """Return workspace Skill subentries as select options."""
     if entry is None:
         return []
@@ -78,9 +76,7 @@ def _skill_select_options(
     configured_ids = {str(option["value"]) for option in options if "value" in option}
     for skill_id in _normalise_selected_skill_ids(selected_skill_ids):
         if skill_id not in configured_ids:
-            options.append(
-                SelectOptionDict(label=f"Unavailable / {skill_id}", value=skill_id)
-            )
+            options.append(SelectOptionDict(label=f"Unavailable / {skill_id}", value=skill_id))
     return options
 
 

@@ -27,9 +27,7 @@ from ..models.model_profiles import (
 from .helpers import _sorted_select_options
 
 
-def _referenced_provider_profile_ids(
-    entry: ConfigEntry, provider_subentry_id: str
-) -> set[str]:
+def _referenced_provider_profile_ids(entry: ConfigEntry, provider_subentry_id: str) -> set[str]:
     """Return model profile IDs referenced by conversation or AI task subentries."""
     referenced: set[str] = set()
     for subentry in entry.subentries.values():
@@ -40,9 +38,7 @@ def _referenced_provider_profile_ids(
             continue
         for profile_ref in _selected_model_profile_refs(subentry.data):
             try:
-                ref_provider_subentry_id, profile_id = parse_model_profile_ref(
-                    profile_ref
-                )
+                ref_provider_subentry_id, profile_id = parse_model_profile_ref(profile_ref)
             except HomeAssistantError:
                 continue
             if ref_provider_subentry_id == provider_subentry_id:
@@ -116,11 +112,7 @@ def _fallback_model_profile_select_options(
 ) -> list[SelectOptionDict]:
     """Return workspace-local fallback profile options."""
     del hass
-    options = [
-        option
-        for option in _model_profile_select_options(entry)
-        if option.get("value") != primary_ref
-    ]
+    options = [option for option in _model_profile_select_options(entry) if option.get("value") != primary_ref]
     configured_refs = {str(option["value"]) for option in options if "value" in option}
     for ref in _normalise_fallback_model_refs(selected_refs):
         if ref != primary_ref and ref not in configured_refs:
@@ -140,9 +132,7 @@ def _selected_model_profile_refs(data: Mapping[str, Any]) -> list[str]:
     return [primary_ref, *[item for item in fallback_refs if isinstance(item, str)]]
 
 
-def _selected_model_profile_error(
-    hass: HomeAssistant, entry: ConfigEntry, data: Mapping[str, Any]
-) -> str | None:
+def _selected_model_profile_error(hass: HomeAssistant, entry: ConfigEntry, data: Mapping[str, Any]) -> str | None:
     """Return a form error for missing or invalid model profile selections."""
     del hass
     primary_ref = data.get(CONF_PRIMARY_MODEL_REF)
@@ -150,9 +140,7 @@ def _selected_model_profile_error(
         return "model_profile_required"
     if not configured_model_profile_exists(entry, primary_ref):
         return "model_profile_not_found"
-    fallback_refs = _normalise_fallback_model_refs(
-        data.get(CONF_FALLBACK_MODEL_REFS, [])
-    )
+    fallback_refs = _normalise_fallback_model_refs(data.get(CONF_FALLBACK_MODEL_REFS, []))
     if primary_ref in fallback_refs:
         return "primary_model_in_fallbacks"
     if len(fallback_refs) != len(set(fallback_refs)):
